@@ -30,6 +30,7 @@ export function formatHumanReadableOutput(input: {
   outputMode: HumanOutputMode;
   minSeverity?: FindingSeverity;
   scanTarget: string;
+  focusPath?: string;
 }): string {
   const filteredFindings = input.minSeverity
     ? input.result.findings.filter(
@@ -39,6 +40,9 @@ export function formatHumanReadableOutput(input: {
   const lines: string[] = [];
 
   lines.push(`Scan target: ${input.scanTarget}`);
+  if (input.focusPath) {
+    lines.push(`Focus path: ${input.focusPath}`);
+  }
   if (input.result.configSource) {
     const sourceLabel = input.result.configSource.filePath
       ? `${input.result.configSource.kind} (${input.result.configSource.filePath})`

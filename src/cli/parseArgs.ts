@@ -3,6 +3,7 @@ import type { ConfigSummaryMode, HumanOutputMode } from "./format.js";
 
 export type ParsedCliArgs = {
   targetPath?: string;
+  focusPath?: string;
   configPath?: string;
   json: boolean;
   outputMinSeverity?: FindingSeverity;
@@ -56,6 +57,11 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
 
     if (arg === "--config") {
       parsed.configPath = readNextValue(args, ++index, "--config");
+      continue;
+    }
+
+    if (arg === "--focus") {
+      parsed.focusPath = readNextValue(args, ++index, "--focus");
       continue;
     }
 

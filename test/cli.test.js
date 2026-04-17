@@ -57,6 +57,28 @@ test("CLI emits default-config warning and human-readable output", async () => {
   });
 });
 
+test("CLI treats the positional path as the project root for config discovery", async () => {
+  await withTempDir(async (tempDir) => {
+    await writeProjectFile(
+      tempDir,
+      "apps/web/src/App.tsx",
+      'export function App() { return <div className="app-shell" />; }',
+    );
+    await writeProjectFile(tempDir, "apps/web/src/styles/global.css", ".app-shell {}");
+    await writeProjectFile(
+      tempDir,
+      "apps/web/react-css-scanner.json",
+      `${JSON.stringify({ rootDir: ".", css: { global: ["src/styles/global.css"] } }, null, 2)}\n`,
+    );
+
+    const result = await runCli(["apps/web"], tempDir);
+
+    assert.equal(result.code, 0);
+    assert.match(result.stdout, /Config source: project-root/);
+    assert.doesNotMatch(result.stdout, /missing-css-class/);
+  });
+});
+
 test("CLI writes JSON output to a suffixed file when overwrite is disabled", async () => {
   await withTempDir(async (tempDir) => {
     await writeProjectFile(tempDir, "src/App.tsx", "export function App() { return null; }");
@@ -74,7 +96,7 @@ test("CLI writes JSON output to a suffixed file when overwrite is disabled", asy
   });
 });
 
-test("CLI resolves explicit config paths from the current working directory when targeting a subdirectory", async () => {
+test("CLI resolves explicit config paths from the current working directory when focusing a subdirectory", async () => {
   await withTempDir(async (tempDir) => {
     await writeProjectFile(
       tempDir,
@@ -88,15 +110,19 @@ test("CLI resolves explicit config paths from the current working directory when
       `${JSON.stringify({ rootDir: "apps/web", css: { global: ["src/styles/global.css"] } }, null, 2)}\n`,
     );
 
-    const result = await runCli(["apps/web/src", "--config", "react-css-scanner.json"], tempDir);
+    const result = await runCli(
+      ["--focus", "apps/web/src", "--config", "react-css-scanner.json"],
+      tempDir,
+    );
 
     assert.equal(result.code, 0);
     assert.match(result.stdout, /Config source: explicit-path/);
+    assert.match(result.stdout, /Focus path: apps\/web\/src/i);
     assert.doesNotMatch(result.stdout, /missing-css-class/);
   });
 });
 
-test("CLI scans only the targeted subtree when config rootDir points at a nested app", async () => {
+test("CLI focus filters findings while retaining full-project indexing", async () => {
   await withTempDir(async (tempDir) => {
     await writeProjectFile(
       tempDir,
@@ -110,25 +136,34 @@ test("CLI scans only the targeted subtree when config rootDir points at a nested
     await writeProjectFile(
       tempDir,
       "apps/web/src/other/Other.tsx",
-      'export function Other() { return <div className="missing" />; }',
+      [
+        'import "../feature/Feature.css";',
+        'export function Other() { return <><div className="feature" /><div className="missingOutside" /></>; }',
+      ].join("\n"),
     );
     await writeProjectFile(
       tempDir,
-      "react-css-scanner.json",
-      `${JSON.stringify({ rootDir: "apps/web" }, null, 2)}\n`,
+      "apps/web/react-css-scanner.json",
+      `${JSON.stringify({ rootDir: ".", ownership: { namingConvention: "sibling" } }, null, 2)}\n`,
     );
 
-    const result = await runCli(["apps/web/src/feature", "--json"], tempDir);
+    const result = await runCli(["apps/web", "--focus", "src/feature", "--json"], tempDir);
 
     assert.equal(result.code, 0);
     const payload = JSON.parse(result.stdout);
-    assert.equal(payload.summary.sourceFileCount, 1);
+    assert.equal(payload.summary.sourceFileCount, 2);
     assert.equal(payload.summary.cssFileCount, 1);
+    assert.ok(
+      payload.findings.some(
+        (finding) =>
+          finding.ruleId === "component-style-cross-component" &&
+          finding.subject?.cssFilePath === "src/feature/Feature.css",
+      ),
+    );
     assert.ok(
       !payload.findings.some(
         (finding) =>
-          finding.ruleId === "missing-css-class" &&
-          finding.subject?.sourceFilePath === "src/other/Other.tsx",
+          finding.ruleId === "missing-css-class" && finding.subject?.className === "missingOutside",
       ),
     );
   });

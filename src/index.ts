@@ -4,6 +4,7 @@ import { buildScanSummary } from "./runtime/findings.js";
 import { runRules } from "./rules/engine.js";
 import { loadReactCssScannerConfig } from "./config/load.js";
 import { extractProjectFacts } from "./facts/extractProjectFacts.js";
+import { normalizePathForMatch } from "./files/pathUtils.js";
 import { buildProjectModel } from "./model/buildProjectModel.js";
 
 export {
@@ -77,34 +78,99 @@ export type {
 } from "./rules/types.js";
 
 export async function scanReactCss(input: ScanInput = {}): Promise<ScanResult> {
-  const cwd = input.cwd ?? input.targetPath ?? process.cwd();
-  const scanTargetPath = input.targetPath
-    ? path.resolve(input.cwd ?? process.cwd(), input.targetPath)
-    : undefined;
+  const callerCwd = input.cwd ?? process.cwd();
+  const cwd = input.targetPath ? path.resolve(callerCwd, input.targetPath) : callerCwd;
   const loadedConfig = await loadReactCssScannerConfig({
     cwd,
     configPath: input.configPath,
     config: input.config,
   });
-  const facts = await extractProjectFacts(loadedConfig.config, cwd, scanTargetPath);
+  const facts = await extractProjectFacts(loadedConfig.config, cwd);
   const model = buildProjectModel({
     config: loadedConfig.config,
     facts,
   });
   const ruleResult = runRules(model);
+  const { findings, focusWarning } = filterFindingsForFocus({
+    findings: ruleResult.findings,
+    rootDir: facts.rootDir,
+    cwd,
+    targetPath: input.targetPath,
+    focusPath: input.focusPath,
+  });
   const summary = buildScanSummary({
     sourceFileCount: model.graph.sourceFiles.length,
     cssFileCount: model.graph.cssFiles.length,
-    findings: ruleResult.findings,
+    findings,
   });
 
   return {
     config: loadedConfig.config,
     configSource: loadedConfig.source,
-    operationalWarnings: loadedConfig.warnings,
-    findings: ruleResult.findings,
+    operationalWarnings: focusWarning
+      ? [...loadedConfig.warnings, focusWarning]
+      : loadedConfig.warnings,
+    findings,
     summary,
   };
 }
 
 export const scan = scanReactCss;
+
+function filterFindingsForFocus(input: {
+  findings: ScanResult["findings"];
+  rootDir: string;
+  cwd: string;
+  targetPath?: string;
+  focusPath?: string;
+}): { findings: ScanResult["findings"]; focusWarning?: string } {
+  if (!input.focusPath) {
+    return {
+      findings: input.findings,
+    };
+  }
+
+  const focusBasePath = input.targetPath
+    ? path.resolve(input.cwd ?? process.cwd(), input.targetPath)
+    : (input.cwd ?? process.cwd());
+  const absoluteFocusPath = path.resolve(focusBasePath, input.focusPath);
+  const relativeFocusPath = normalizePathForMatch(path.relative(input.rootDir, absoluteFocusPath));
+
+  if (
+    !relativeFocusPath ||
+    relativeFocusPath.startsWith("..") ||
+    path.isAbsolute(relativeFocusPath)
+  ) {
+    return {
+      findings: [],
+      focusWarning: `Focus path is outside the resolved scan root and no findings were emitted: ${absoluteFocusPath}`,
+    };
+  }
+
+  return {
+    findings: input.findings.filter((finding) =>
+      findingTouchesFocusPath(finding, relativeFocusPath),
+    ),
+  };
+}
+
+function findingTouchesFocusPath(
+  finding: ScanResult["findings"][number],
+  focusPath: string,
+): boolean {
+  const candidatePaths = [
+    finding.primaryLocation?.filePath,
+    ...finding.relatedLocations.map((location) => location.filePath),
+    finding.subject?.sourceFilePath,
+    finding.subject?.cssFilePath,
+  ];
+
+  return candidatePaths.some((candidatePath) =>
+    typeof candidatePath === "string" ? matchesFocusPath(candidatePath, focusPath) : false,
+  );
+}
+
+function matchesFocusPath(candidatePath: string, focusPath: string): boolean {
+  const normalizedCandidate = normalizePathForMatch(candidatePath);
+  return normalizedCandidate === focusPath || normalizedCandidate.startsWith(`${focusPath}/`);
+}

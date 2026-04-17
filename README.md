@@ -85,6 +85,12 @@ Scan a specific path:
 npx react-css-scanner ./packages/web
 ```
 
+Focus emitted findings on a subdirectory while still indexing the full project:
+
+```bash
+npx react-css-scanner ./packages/web --focus src/features/payments
+```
+
 Emit JSON:
 
 ```bash
@@ -100,6 +106,7 @@ npx react-css-scanner --json --output-file ./reports/react-css-scanner.json
 Useful flags:
 
 - `--config path/to/react-css-scanner.json`
+- `--focus path/to/subdirectory`
 - `--json`
 - `--output-file path/to/report.json`
 - `--overwrite-output`

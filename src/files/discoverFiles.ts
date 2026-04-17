@@ -1,4 +1,4 @@
-import { readdir, stat } from "node:fs/promises";
+import { readdir } from "node:fs/promises";
 import path from "node:path";
 import type { ResolvedReactCssScannerConfig } from "../config/types.js";
 import {
@@ -12,21 +12,10 @@ import type { DiscoveredProjectFile, FileDiscoveryResult } from "./types.js";
 export async function discoverProjectFiles(
   config: ResolvedReactCssScannerConfig,
   cwd: string,
-  scanTargetPath?: string,
 ): Promise<FileDiscoveryResult> {
   const rootDir = path.resolve(cwd, config.rootDir);
   const discoveredFiles: DiscoveredProjectFile[] = [];
-  const scanStartPath = await resolveScanStartPath(rootDir, scanTargetPath ?? rootDir);
-
-  if (!scanStartPath) {
-    return {
-      rootDir,
-      sourceFiles: [],
-      cssFiles: [],
-    };
-  }
-
-  await collectProjectFiles(scanStartPath, rootDir, config, discoveredFiles);
+  await walkDirectory(rootDir, rootDir, config, discoveredFiles);
 
   const sourceFiles = discoveredFiles
     .filter((file) => file.kind === "source")
@@ -40,47 +29,6 @@ export async function discoverProjectFiles(
     sourceFiles,
     cssFiles,
   };
-}
-
-async function collectProjectFiles(
-  scanStartPath: string,
-  rootDir: string,
-  config: ResolvedReactCssScannerConfig,
-  results: DiscoveredProjectFile[],
-): Promise<void> {
-  const stats = await safeStat(scanStartPath);
-  if (!stats) {
-    return;
-  }
-
-  if (stats.isDirectory()) {
-    await walkDirectory(scanStartPath, rootDir, config, results);
-    return;
-  }
-
-  if (!stats.isFile()) {
-    return;
-  }
-
-  const relativePath = normalizePathForMatch(path.relative(rootDir, scanStartPath));
-  if (shouldExcludePath(relativePath, config.source.exclude)) {
-    return;
-  }
-
-  if (!shouldIncludePath(relativePath, config.source.include)) {
-    return;
-  }
-
-  const kind = getFileKind(relativePath);
-  if (!kind) {
-    return;
-  }
-
-  results.push({
-    kind,
-    absolutePath: scanStartPath,
-    relativePath,
-  });
 }
 
 async function walkDirectory(
@@ -169,33 +117,4 @@ function getFileKind(relativePath: string): DiscoveredProjectFile["kind"] | unde
 
 function compareDiscoveredFiles(left: DiscoveredProjectFile, right: DiscoveredProjectFile): number {
   return left.relativePath.localeCompare(right.relativePath);
-}
-
-function resolveScanStartPath(rootDir: string, requestedScanTarget: string): string | undefined {
-  const resolvedTarget = path.resolve(requestedScanTarget);
-  const rootContainsTarget = isSameOrDescendant(rootDir, resolvedTarget);
-  const targetContainsRoot = isSameOrDescendant(resolvedTarget, rootDir);
-
-  if (rootContainsTarget) {
-    return resolvedTarget;
-  }
-
-  if (targetContainsRoot) {
-    return rootDir;
-  }
-
-  return undefined;
-}
-
-function isSameOrDescendant(parentPath: string, childPath: string): boolean {
-  const relative = path.relative(parentPath, childPath);
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
-}
-
-async function safeStat(targetPath: string) {
-  try {
-    return await stat(targetPath);
-  } catch {
-    return undefined;
-  }
 }

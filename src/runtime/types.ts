@@ -32,6 +32,7 @@ export type Finding = {
 
 export type ScanInput = {
   targetPath?: string;
+  focusPath?: string;
   configPath?: string;
   config?: RawReactCssScannerConfig;
   cwd?: string;

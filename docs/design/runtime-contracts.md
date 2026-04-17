@@ -50,12 +50,13 @@ react-css-scanner
 ### Supported syntax
 
 ```bash
-react-css-scanner [targetPath] [--config path/to/react-css-scanner.json] [--json] [--output-min-severity warning] [--output-file ./reports/react-css-scanner.json] [--overwrite-output] [--config-summary default] [--output-mode default]
+react-css-scanner [targetPath] [--focus path/to/focus] [--config path/to/react-css-scanner.json] [--json] [--output-min-severity warning] [--output-file ./reports/react-css-scanner.json] [--overwrite-output] [--config-summary default] [--output-mode default]
 ```
 
 ### Supported flags
 
 - `--config path/to/react-css-scanner.json`
+- `--focus path/to/focus`
 - `--json`
 - `--output-min-severity info|warning|error`
 - `--output-file path/to/report.json`
@@ -65,7 +66,8 @@ react-css-scanner [targetPath] [--config path/to/react-css-scanner.json] [--json
 
 ### CLI behavior
 
-- If `targetPath` is omitted, the scanner uses the current working directory.
+- If `targetPath` is omitted, the scanner uses the current working directory as the project root.
+- If `--focus` is provided, the scanner still indexes the full project but only emits findings that touch the focused path.
 - If `--config` is provided, it overrides discovery.
 - If `--json` is provided, the scanner emits machine-readable JSON.
 - Without `--json`, the scanner emits human-readable terminal output.
@@ -89,8 +91,10 @@ Current shape:
 ```ts
 type ScanInput = {
   targetPath?: string;
+  focusPath?: string;
   configPath?: string;
   config?: RawReactCssScannerConfig;
+  cwd?: string;
 };
 
 type ScanResult = {

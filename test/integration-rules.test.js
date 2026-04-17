@@ -159,6 +159,56 @@ test("integration scans report component css used outside its owning component",
   );
 });
 
+test("integration focus filters findings without dropping full-project context", async () => {
+  await withBuiltProject(
+    new TestProjectBuilder()
+      .withTemplate("basic-react-app")
+      .withSourceFile("src/App.tsx", 'export { Feature as App } from "./feature/Feature";\n')
+      .withSourceFile(
+        "src/feature/Feature.tsx",
+        [
+          'import "./Feature.css";',
+          'export function Feature() { return <div className="feature" />; }',
+        ].join("\n"),
+      )
+      .withCssFile("src/feature/Feature.css", ".feature {}\n")
+      .withSourceFile(
+        "src/other/Other.tsx",
+        [
+          'import "../feature/Feature.css";',
+          'export function Other() { return <><div className="feature" /><div className="missingOutside" /></>; }',
+        ].join("\n"),
+      )
+      .withConfig({
+        ownership: {
+          namingConvention: "sibling",
+        },
+      }),
+    async (project) => {
+      const result = await scanReactCss({
+        targetPath: project.rootDir,
+        focusPath: "src/feature",
+      });
+
+      assert.ok(
+        result.findings.some(
+          (finding) =>
+            finding.ruleId === "component-style-cross-component" &&
+            finding.subject?.cssFilePath === "src/feature/Feature.css",
+        ),
+      );
+      assert.ok(
+        !result.findings.some(
+          (finding) =>
+            finding.ruleId === "missing-css-class" &&
+            finding.subject?.className === "missingOutside",
+        ),
+      );
+      assert.equal(result.summary.sourceFileCount, 3);
+    },
+  );
+});
+
 test("integration scans report narrow global css and utility replacement opportunities", async () => {
   await withBuiltProject(
     new TestProjectBuilder()

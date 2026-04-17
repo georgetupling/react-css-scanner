@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import path from "node:path";
 import { scanReactCss } from "./index.js";
 import { formatHumanReadableOutput, formatJsonOutput } from "./cli/format.js";
 import { CliArgumentError, parseCliArgs } from "./cli/parseArgs.js";
@@ -10,10 +11,12 @@ void runCli(process.argv);
 export async function runCli(argv: string[]): Promise<void> {
   try {
     const parsedArgs = parseCliArgs(argv);
+    const cliCwd = process.cwd();
+    const scanRoot = parsedArgs.targetPath ? path.resolve(cliCwd, parsedArgs.targetPath) : cliCwd;
     const result = await scanReactCss({
-      targetPath: parsedArgs.targetPath,
-      configPath: parsedArgs.configPath,
-      cwd: process.cwd(),
+      focusPath: parsedArgs.focusPath,
+      configPath: parsedArgs.configPath ? path.resolve(cliCwd, parsedArgs.configPath) : undefined,
+      cwd: scanRoot,
     });
 
     for (const warning of result.operationalWarnings ?? []) {
@@ -28,7 +31,7 @@ export async function runCli(argv: string[]): Promise<void> {
           filePath: parsedArgs.outputFile,
           content,
           overwrite: parsedArgs.overwriteOutput,
-          cwd: process.cwd(),
+          cwd: cliCwd,
         });
         console.log(writtenPath);
       } else {
@@ -39,7 +42,8 @@ export async function runCli(argv: string[]): Promise<void> {
         result,
         outputMode: parsedArgs.outputMode,
         minSeverity: parsedArgs.outputMinSeverity,
-        scanTarget: parsedArgs.targetPath ?? process.cwd(),
+        scanTarget: parsedArgs.targetPath ?? cliCwd,
+        focusPath: parsedArgs.focusPath,
       });
       console.log(output);
     }
