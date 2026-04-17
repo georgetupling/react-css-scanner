@@ -137,6 +137,61 @@ export const DEFAULT_CONFIG: ResolvedReactCssScannerConfig = {
           "fa-duotone",
         ],
       },
+      {
+        provider: "material-design-icons",
+        match: [
+          "**/@mdi/font@*/css/materialdesignicons*.css",
+          "**/npm/@mdi/font@*/css/materialdesignicons*.css",
+          "**/unpkg.com/@mdi/font@*/css/materialdesignicons*.css",
+          "**/materialdesignicons*.css",
+        ],
+        classPrefixes: ["mdi-"],
+        classNames: ["mdi", "mdi-set"],
+      },
+      {
+        provider: "bootstrap-icons",
+        match: [
+          "**/bootstrap-icons@*/font/bootstrap-icons*.css",
+          "**/npm/bootstrap-icons@*/font/bootstrap-icons*.css",
+          "**/unpkg.com/bootstrap-icons@*/font/bootstrap-icons*.css",
+          "**/bootstrap-icons/font/bootstrap-icons*.css",
+        ],
+        classPrefixes: ["bi-"],
+        classNames: ["bi"],
+      },
+      {
+        provider: "animate.css",
+        match: [
+          "**/cdnjs.cloudflare.com/ajax/libs/animate.css/**/animate*.css",
+          "**/animate.css@*/animate*.css",
+          "**/npm/animate.css@*/animate*.css",
+          "**/animate.css/**/animate*.css",
+        ],
+        classPrefixes: ["animate__"],
+        classNames: ["animate__animated"],
+      },
+      {
+        provider: "uikit",
+        match: [
+          "**/uikit@*/dist/css/uikit*.css",
+          "**/npm/uikit@*/dist/css/uikit*.css",
+          "**/unpkg.com/uikit@*/dist/css/uikit*.css",
+          "**/uikit/dist/css/uikit*.css",
+        ],
+        classPrefixes: ["uk-"],
+        classNames: [],
+      },
+      {
+        provider: "pure.css",
+        match: [
+          "**/purecss@*/build/pure*.css",
+          "**/npm/purecss@*/build/pure*.css",
+          "**/unpkg.com/purecss@*/build/pure*.css",
+          "**/purecss/build/pure*.css",
+        ],
+        classPrefixes: ["pure-"],
+        classNames: [],
+      },
     ],
   },
   classComposition: {

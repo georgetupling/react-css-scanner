@@ -1,13 +1,10 @@
 import path from "node:path";
-import { access } from "node:fs/promises";
 import type { ResolvedReactCssScannerConfig } from "../config/types.js";
 import { discoverProjectFiles } from "../files/discoverFiles.js";
-import {
-  extractCssFileFacts,
-  extractExternalCssFacts,
-  extractExternalCssFactsFromContent,
-} from "./extractCssFacts.js";
+import { fileExists } from "../files/fsUtils.js";
+import { extractCssFileFacts, extractExternalCssFacts } from "./extractCssFacts.js";
 import { extractHtmlFileFacts } from "./extractHtmlFacts.js";
+import { extractRemoteExternalCssFacts } from "./extractRemoteExternalCssFacts.js";
 import { extractSourceFileFacts } from "./extractSourceFacts.js";
 import type { ProjectFactExtractionResult } from "./types.js";
 
@@ -45,7 +42,10 @@ export async function extractProjectFacts(
   );
   const fetchedRemoteExternalCssFacts =
     config.externalCss.enabled && config.externalCss.mode === "fetch-remote"
-      ? await fetchRemoteHtmlExternalCssFacts(htmlFacts, operationalWarnings)
+      ? await extractRemoteExternalCssFacts({
+          htmlFacts,
+          operationalWarnings,
+        })
       : [];
 
   return {
@@ -58,59 +58,6 @@ export async function extractProjectFacts(
     htmlFacts: htmlFacts.sort((left, right) => left.filePath.localeCompare(right.filePath)),
     operationalWarnings,
   };
-}
-
-async function fetchRemoteHtmlExternalCssFacts(
-  htmlFacts: ProjectFactExtractionResult["htmlFacts"],
-  operationalWarnings: string[],
-) {
-  const remoteStylesheetHrefs = [
-    ...new Set(
-      htmlFacts
-        .flatMap((htmlFact) => htmlFact.stylesheetLinks)
-        .filter((stylesheetLink) => stylesheetLink.isRemote)
-        .map((stylesheetLink) => stylesheetLink.href),
-    ),
-  ].sort((left, right) => left.localeCompare(right));
-
-  const fetchResults = await Promise.all(
-    remoteStylesheetHrefs.map(async (href) => {
-      try {
-        const response = await fetch(href);
-        if (!response.ok) {
-          operationalWarnings.push(
-            `Could not fetch remote external CSS "${href}" (${response.status} ${response.statusText}); falling back to declared external CSS behavior.`,
-          );
-          return undefined;
-        }
-
-        const contentType = response.headers.get("content-type");
-        if (contentType && !contentType.toLowerCase().includes("text/css")) {
-          operationalWarnings.push(
-            `Remote external CSS "${href}" returned unexpected content type "${contentType}"; falling back to declared external CSS behavior.`,
-          );
-          return undefined;
-        }
-
-        const content = await response.text();
-        return extractExternalCssFactsFromContent({
-          specifier: href,
-          resolvedPath: href,
-          content,
-        });
-      } catch (error) {
-        const reason =
-          error instanceof Error && error.message ? error.message : "unknown fetch failure";
-        operationalWarnings.push(
-          `Could not fetch remote external CSS "${href}" (${reason}); falling back to declared external CSS behavior.`,
-        );
-        return undefined;
-      }
-    }),
-  );
-
-  operationalWarnings.sort((left, right) => left.localeCompare(right));
-  return fetchResults.filter((result) => result !== undefined);
 }
 
 async function filterExistingExternalCssImports(
@@ -150,13 +97,4 @@ function collectExternalCssImports(
         : path.resolve(rootDir, resolvedPath),
     }))
     .sort((left, right) => left.specifier.localeCompare(right.specifier));
-}
-
-async function fileExists(filePath: string): Promise<boolean> {
-  try {
-    await access(filePath);
-    return true;
-  } catch {
-    return false;
-  }
 }

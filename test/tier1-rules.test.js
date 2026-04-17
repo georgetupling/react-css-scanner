@@ -481,3 +481,39 @@ test("html-linked built-in external css providers prevent false missing-css-clas
     );
   });
 });
+
+test("html-linked bootstrap-icons provider prevents false missing-css-class findings", async () => {
+  await withTempDir(async (tempDir) => {
+    await writeProjectFile(
+      tempDir,
+      "index.html",
+      [
+        "<!doctype html>",
+        '<html><head><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.min.css" /></head><body></body></html>',
+      ].join("\n"),
+    );
+    await writeProjectFile(
+      tempDir,
+      "src/App.tsx",
+      'export function App() { return <div className="bi bi-trash missing" />; }',
+    );
+
+    const findings = await runScenario(tempDir);
+
+    for (const className of ["bi", "bi-trash"]) {
+      assert.ok(
+        !findings.some(
+          (finding) =>
+            finding.ruleId === "missing-css-class" && finding.subject?.className === className,
+        ),
+      );
+    }
+
+    assert.ok(
+      findings.some(
+        (finding) =>
+          finding.ruleId === "missing-css-class" && finding.subject?.className === "missing",
+      ),
+    );
+  });
+});

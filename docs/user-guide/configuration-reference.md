@@ -317,7 +317,7 @@ Type: `Array<{ provider: string; match: string[]; classPrefixes: string[]; class
 
 Default:
 
-- built-in Font Awesome provider preset
+- built-in provider presets for Font Awesome, Bootstrap Icons, Material Design Icons, Animate.css, UIkit, and Pure.css
 
 Example:
 

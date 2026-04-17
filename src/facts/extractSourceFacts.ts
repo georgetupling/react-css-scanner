@@ -1,7 +1,8 @@
-import { readFile, stat } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import ts from "typescript";
 import type { ResolvedReactCssScannerConfig } from "../config/types.js";
+import { fileExists } from "../files/fsUtils.js";
 import { isCssFilePath } from "../files/pathUtils.js";
 import type { DiscoveredProjectFile } from "../files/types.js";
 import type {
@@ -483,15 +484,6 @@ async function resolveRelativeImportPath(basePath: string): Promise<string | und
   }
 
   return undefined;
-}
-
-async function fileExists(filePath: string): Promise<boolean> {
-  try {
-    const fileStats = await stat(filePath);
-    return fileStats.isFile();
-  } catch {
-    return false;
-  }
 }
 
 function getScriptKind(filePath: string): ts.ScriptKind {

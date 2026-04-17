@@ -189,3 +189,36 @@ test("activates declared external css providers from matching html stylesheet li
     ]);
   });
 });
+
+test("activates bootstrap-icons provider from matching html stylesheet links", async () => {
+  await withTempDir(async (tempDir) => {
+    await writeProjectFile(
+      tempDir,
+      "index.html",
+      [
+        "<!doctype html>",
+        '<html><head><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.min.css" /></head><body></body></html>',
+      ].join("\n"),
+    );
+    await writeProjectFile(
+      tempDir,
+      "src/App.tsx",
+      'export function App() { return <i className="bi bi-trash" />; }',
+    );
+
+    const facts = await extractProjectFacts(DEFAULT_CONFIG, tempDir);
+    const model = buildProjectModel({ config: DEFAULT_CONFIG, facts });
+    const provider = model.indexes.activeExternalCssProviders.get("bootstrap-icons");
+
+    assert.ok(provider);
+    assert.deepEqual(provider.classPrefixes, ["bi-"]);
+    assert.ok(provider.classNames.includes("bi"));
+    assert.deepEqual(provider.matchedStylesheets, [
+      {
+        filePath: "index.html",
+        href: "https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.min.css",
+        isRemote: true,
+      },
+    ]);
+  });
+});

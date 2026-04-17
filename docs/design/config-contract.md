@@ -45,7 +45,7 @@ That currently captures the default product assumptions:
 - utility CSS detection defaults
 - ownership defaults for pages and component-convention behavior
 - external CSS mode set to `declared-globals`
-- built-in declared external global providers such as Font Awesome
+- built-in declared external global providers such as Font Awesome, Bootstrap Icons, Material Design Icons, Animate.css, UIkit, and Pure.css
 - opt-in `fetch-remote` support for remote HTML-linked stylesheet URLs
 - native helper support for `classnames` and `clsx`
 - policy default of `failOnSeverity: "error"`
