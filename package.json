@@ -21,6 +21,7 @@
     "node": ">=20"
   },
   "scripts": {
+    "prepare": "husky",
     "build": "tsdown",
     "dev": "tsdown --watch",
     "check": "tsc --noEmit",
@@ -28,6 +29,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "benchmark": "npm run build && node test/performance/benchmark.js",
+    "precommit": "npm run format:check && npm run lint && npm run test",
     "test": "npm run build && node --test test/*.test.js",
     "prepublishOnly": "npm run check && npm run lint && npm run build"
   },
@@ -52,6 +54,7 @@
     "@types/node": "^24.6.0",
     "eslint": "^10.2.0",
     "globals": "^17.5.0",
+    "husky": "^9.1.7",
     "prettier": "^3.8.3",
     "tsdown": "^0.14.2",
     "typescript": "^5.9.3",

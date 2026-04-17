@@ -1,6 +1,10 @@
 import type { RuleConfigObject } from "../config/types.js";
 import { matchesAnyGlob } from "../files/pathUtils.js";
-import type { CssAtRuleContextFact, CssClassDefinitionFact, CssDeclarationFact } from "../facts/types.js";
+import type {
+  CssAtRuleContextFact,
+  CssClassDefinitionFact,
+  CssDeclarationFact,
+} from "../facts/types.js";
 import type { CssFileNode, ProjectModel } from "../model/types.js";
 
 export const DYNAMIC_REFERENCE_KINDS = new Set([
@@ -124,7 +128,7 @@ export function getUsingSourceFiles(model: ProjectModel, cssFile: CssFileNode): 
 export function getRuleNumberConfig(
   model: ProjectModel,
   ruleId: string,
-  field: "threshold" | "minDeclarationOverlap" | "minOccurrences" | "minDeclarations",
+  field: "threshold" | "maxUtilityClasses" | "minOccurrences" | "minDeclarations",
   fallback: number,
 ): number {
   const configuredValue = model.config.rules[ruleId];

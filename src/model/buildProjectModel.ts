@@ -108,17 +108,17 @@ function buildExternalCssResources(
       }
 
       const externalFact = externalFactsBySpecifier.get(externalImport.specifier);
-        resources.set(externalImport.specifier, {
-          specifier: externalImport.specifier,
-          resolvedPath:
-            externalFact?.resolvedPath ?? externalImport.resolvedPath ?? externalImport.specifier,
-          importedBy: [sourceFile.path],
-          category: "external",
-          ownership: "external",
-          styleRules: [...(externalFact?.styleRules ?? [])],
-          classDefinitions: [...(externalFact?.classDefinitions ?? [])],
-          imports: [...(externalFact?.imports ?? [])],
-        });
+      resources.set(externalImport.specifier, {
+        specifier: externalImport.specifier,
+        resolvedPath:
+          externalFact?.resolvedPath ?? externalImport.resolvedPath ?? externalImport.specifier,
+        importedBy: [sourceFile.path],
+        category: "external",
+        ownership: "external",
+        styleRules: [...(externalFact?.styleRules ?? [])],
+        classDefinitions: [...(externalFact?.classDefinitions ?? [])],
+        imports: [...(externalFact?.imports ?? [])],
+      });
     }
   }
 

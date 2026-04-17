@@ -125,7 +125,7 @@ Lower a rule to info:
     },
     "utility-class-replacement": {
       "severity": "info",
-      "minDeclarationOverlap": 3
+      "maxUtilityClasses": 3
     },
     "repeated-style-pattern": {
       "severity": "info",

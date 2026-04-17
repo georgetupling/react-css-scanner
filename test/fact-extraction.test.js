@@ -73,8 +73,16 @@ test("auto-discovers nested React source roots when source.include is omitted", 
       "packages/ui/package.json",
       '{\n  "name": "packages-ui",\n  "peerDependencies": {\n    "react": "^18.0.0"\n  }\n}\n',
     );
-    await writeProjectFile(tempDir, "apps/web/src/App.tsx", "export function App() { return null; }");
-    await writeProjectFile(tempDir, "packages/ui/src/Button.tsx", "export function Button() { return null; }");
+    await writeProjectFile(
+      tempDir,
+      "apps/web/src/App.tsx",
+      "export function App() { return null; }",
+    );
+    await writeProjectFile(
+      tempDir,
+      "packages/ui/src/Button.tsx",
+      "export function Button() { return null; }",
+    );
     await writeProjectFile(tempDir, "tools/scripts/index.ts", "export const task = true;");
 
     const result = await discoverProjectFiles(DEFAULT_CONFIG, tempDir);
@@ -91,13 +99,13 @@ test("auto-discovery fails clearly when no React source roots are found", async 
     await writeProjectFile(tempDir, "package.json", '{\n  "name": "no-react"\n}\n');
     await writeProjectFile(tempDir, "src/App.tsx", "export function App() { return null; }");
 
-    await assert.rejects(() => discoverProjectFiles(DEFAULT_CONFIG, tempDir), (error) => {
-      assert.match(
-        error.message,
-        /No React source roots were discovered automatically/i,
-      );
-      return true;
-    });
+    await assert.rejects(
+      () => discoverProjectFiles(DEFAULT_CONFIG, tempDir),
+      (error) => {
+        assert.match(error.message, /No React source roots were discovered automatically/i);
+        return true;
+      },
+    );
   });
 });
 
@@ -279,7 +287,9 @@ test("extracts selector branch semantics for standalone, compound, and contextua
     );
 
     const result = await extractProjectFacts(DEFAULT_CONFIG, tempDir);
-    const cssFacts = result.cssFacts.find((fact) => fact.filePath === "src/styles/selector-shapes.css");
+    const cssFacts = result.cssFacts.find(
+      (fact) => fact.filePath === "src/styles/selector-shapes.css",
+    );
 
     assert.ok(cssFacts);
 
@@ -306,7 +316,8 @@ test("extracts selector branch semantics for standalone, compound, and contextua
 
     const negatedButton = cssFacts.classDefinitions.find(
       (definition) =>
-        definition.className === "button" && definition.selector === ".button:not(.button--disabled)",
+        definition.className === "button" &&
+        definition.selector === ".button:not(.button--disabled)",
     );
     assert.equal(negatedButton?.selectorBranch.matchKind, "standalone");
     assert.deepEqual(negatedButton?.selectorBranch.negativeClassNames, ["button--disabled"]);

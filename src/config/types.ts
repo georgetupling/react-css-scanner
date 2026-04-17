@@ -16,7 +16,7 @@ export type ExternalCssGlobalProviderConfig = {
 export type RuleConfigObject = {
   severity: RuleSeverity;
   threshold?: number;
-  minDeclarationOverlap?: number;
+  maxUtilityClasses?: number;
   minOccurrences?: number;
   minDeclarations?: number;
 };
@@ -214,7 +214,7 @@ export const DEFAULT_CONFIG: ResolvedReactCssScannerConfig = {
     },
     "utility-class-replacement": {
       severity: "info",
-      minDeclarationOverlap: 2,
+      maxUtilityClasses: 3,
     },
   },
 };

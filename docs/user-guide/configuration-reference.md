@@ -424,7 +424,7 @@ Each rule can use either:
 
 - `severity`
 - `threshold`
-- `minDeclarationOverlap`
+- `maxUtilityClasses`
 - `minOccurrences`
 - `minDeclarations`
 
@@ -451,7 +451,7 @@ Each rule can use either:
     },
     "utility-class-replacement": {
       "severity": "info",
-      "minDeclarationOverlap": 3
+      "maxUtilityClasses": 3
     },
     "repeated-style-pattern": {
       "severity": "info",

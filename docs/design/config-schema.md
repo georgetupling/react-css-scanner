@@ -121,7 +121,7 @@ Example:
     },
     "utility-class-replacement": {
       "severity": "info",
-      "minDeclarationOverlap": 2
+      "maxUtilityClasses": 3
     },
     "repeated-style-pattern": {
       "severity": "info",
@@ -468,7 +468,7 @@ Expanded object form:
     },
     "utility-class-replacement": {
       "severity": "info",
-      "minDeclarationOverlap": 2
+      "maxUtilityClasses": 3
     },
     "repeated-style-pattern": {
       "severity": "info",
@@ -529,7 +529,7 @@ If no config file is present, the scanner should behave roughly like this:
     },
     "utility-class-replacement": {
       "severity": "info",
-      "minDeclarationOverlap": 2
+      "maxUtilityClasses": 3
     }
   }
 }

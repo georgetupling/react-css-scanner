@@ -290,9 +290,11 @@ test("empty-css-rule reports empty selector blocks and preserves at-rule context
     await writeProjectFile(
       tempDir,
       "src/App.css",
-      [".filled { color: red; }", ".empty {}", "@media (min-width: 768px) { .responsive-empty {} }"].join(
-        "\n",
-      ),
+      [
+        ".filled { color: red; }",
+        ".empty {}",
+        "@media (min-width: 768px) { .responsive-empty {} }",
+      ].join("\n"),
     );
 
     const findings = await runScenario(tempDir);
@@ -336,8 +338,7 @@ test("redundant-css-declaration-block reports exact same-file duplicates in the 
     const findings = await runScenario(tempDir);
     const finding = findings.find(
       (entry) =>
-        entry.ruleId === "redundant-css-declaration-block" &&
-        entry.subject?.className === "button",
+        entry.ruleId === "redundant-css-declaration-block" && entry.subject?.className === "button",
     );
 
     assert.ok(finding);
@@ -377,8 +378,7 @@ test("redundant-css-declaration-block ignores breakpoint and selector-context di
     const findings = await runScenario(tempDir);
     const finding = findings.find(
       (entry) =>
-        entry.ruleId === "redundant-css-declaration-block" &&
-        entry.subject?.className === "button",
+        entry.ruleId === "redundant-css-declaration-block" && entry.subject?.className === "button",
     );
 
     assert.equal(finding, undefined);
@@ -400,8 +400,8 @@ test("duplicate-css-class-definition reports duplicate project class names once"
     assert.equal(duplicateFindings.length, 1);
     assert.deepEqual(duplicateFindings[0].metadata.duplicateCssFiles, ["src/A.css", "src/B.css"]);
     assert.deepEqual(duplicateFindings[0].metadata.duplicateLocations, [
-      { filePath: "src/A.css", line: 1, selector: ".shared" },
-      { filePath: "src/B.css", line: 1, selector: ".shared" },
+      { filePath: "src/A.css", line: 1, selector: ".shared", atRuleContext: [] },
+      { filePath: "src/B.css", line: 1, selector: ".shared", atRuleContext: [] },
     ]);
   });
 });
@@ -421,6 +421,22 @@ test("duplicate-css-class-definition ignores same-file compound and attribute va
     );
 
     assert.equal(finding, undefined);
+  });
+});
+
+test("duplicate-css-class-definition ignores different at-rule contexts for the same class", async () => {
+  await withTempDir(async (tempDir) => {
+    await writeProjectFile(tempDir, "src/A.css", "@media (min-width: 768px) { .shared {} }");
+    await writeProjectFile(tempDir, "src/B.css", ".shared {}");
+
+    const findings = await runScenario(tempDir);
+    const duplicateFindings = findings.filter(
+      (finding) =>
+        finding.ruleId === "duplicate-css-class-definition" &&
+        finding.subject?.className === "shared",
+    );
+
+    assert.equal(duplicateFindings.length, 0);
   });
 });
 

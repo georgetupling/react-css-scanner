@@ -213,9 +213,10 @@ test("compound and contextual selectors do not satisfy plain missing-css-class r
     await writeProjectFile(
       tempDir,
       "src/App.tsx",
-      ['import "./App.css";', 'export function App() { return <div className="button icon" />; }'].join(
-        "\n",
-      ),
+      [
+        'import "./App.css";',
+        'export function App() { return <div className="button icon" />; }',
+      ].join("\n"),
     );
     await writeProjectFile(
       tempDir,
@@ -233,7 +234,8 @@ test("compound and contextual selectors do not satisfy plain missing-css-class r
     );
     assert.ok(
       findings.some(
-        (finding) => finding.ruleId === "missing-css-class" && finding.subject?.className === "icon",
+        (finding) =>
+          finding.ruleId === "missing-css-class" && finding.subject?.className === "icon",
       ),
     );
     assert.ok(
@@ -250,14 +252,17 @@ test("compound and contextual selectors are excluded from plain unused-css-class
     await writeProjectFile(
       tempDir,
       "src/App.tsx",
-      ['import "./App.css";', 'export function App() { return <div className="button icon" />; }'].join(
-        "\n",
-      ),
+      [
+        'import "./App.css";',
+        'export function App() { return <div className="button icon" />; }',
+      ].join("\n"),
     );
     await writeProjectFile(
       tempDir,
       "src/App.css",
-      [".button.button--primary {}", ".toolbar .icon {}", ".button {}", ".used:hover {}"].join("\n"),
+      [".button.button--primary {}", ".toolbar .icon {}", ".button {}", ".used:hover {}"].join(
+        "\n",
+      ),
     );
 
     const findings = await runScenario(tempDir);
@@ -275,7 +280,8 @@ test("compound and contextual selectors are excluded from plain unused-css-class
     );
     assert.ok(
       !findings.some(
-        (finding) => finding.ruleId === "unused-css-class" && finding.subject?.className === "button",
+        (finding) =>
+          finding.ruleId === "unused-css-class" && finding.subject?.className === "button",
       ),
     );
   });
@@ -360,18 +366,21 @@ test("global-css-not-global reports narrow global css usage but not broadly used
   });
 });
 
-test("utility-class-replacement reports utility overlap above threshold but not below it", async () => {
+test("utility-class-replacement reports classes fully covered by a small utility composition", async () => {
   await withTempDir(async (tempDir) => {
     await writeProjectFile(
       tempDir,
       "src/styles/utilities.css",
-      ".u-stack { display: flex; gap: 8px; }",
+      [".flex { display: flex; }", ".gap-2 { gap: 8px; }", ".bold { font-weight: bold; }"].join(
+        "\n",
+      ),
     );
     await writeProjectFile(
       tempDir,
       "src/components/Card.css",
       [
-        ".cardStack { display: flex; gap: 8px; color: red; }",
+        ".cardStack { display: flex; gap: 8px; }",
+        ".cardRow { display: flex; gap: 8px; font-weight: bold; color: red; }",
         ".cardTitle { font-weight: bold; }",
       ].join("\n"),
     );
@@ -393,9 +402,42 @@ test("utility-class-replacement reports utility overlap above threshold but not 
       !findings.some(
         (finding) =>
           finding.ruleId === "utility-class-replacement" &&
+          finding.subject?.className === "cardRow",
+      ),
+    );
+    assert.ok(
+      findings.some(
+        (finding) =>
+          finding.ruleId === "utility-class-replacement" &&
           finding.subject?.className === "cardTitle",
       ),
     );
+  });
+});
+
+test("utility-class-replacement reports single-declaration utility replacements", async () => {
+  await withTempDir(async (tempDir) => {
+    await writeProjectFile(tempDir, "src/styles/utilities.css", ".text-sm { font-size: 0.8rem; }");
+    await writeProjectFile(
+      tempDir,
+      "src/components/Explainer.css",
+      ".section__explainer-text { font-size: 0.8rem; }",
+    );
+
+    const findings = await runScenario(tempDir, {
+      css: {
+        utilities: ["src/styles/utilities.css"],
+      },
+    });
+
+    const finding = findings.find(
+      (entry) =>
+        entry.ruleId === "utility-class-replacement" &&
+        entry.subject?.className === "section__explainer-text",
+    );
+
+    assert.ok(finding);
+    assert.deepEqual(finding.metadata?.utilityClassNames, ["text-sm"]);
   });
 });
 
@@ -404,12 +446,12 @@ test("utility-class-replacement includes line numbers for both class locations",
     await writeProjectFile(
       tempDir,
       "src/styles/utilities.css",
-      ".u-stack { display: flex; gap: 8px; }",
+      ".flex { display: flex; }\n.gap-2 { gap: 8px; }",
     );
     await writeProjectFile(
       tempDir,
       "src/components/Card.css",
-      ".cardStack { display: flex; gap: 8px; color: red; }",
+      ".cardStack { display: flex; gap: 8px; }",
     );
 
     const findings = await runScenario(tempDir, {
@@ -425,7 +467,120 @@ test("utility-class-replacement includes line numbers for both class locations",
     assert.ok(finding);
     assert.equal(finding.primaryLocation?.filePath, "src/components/Card.css");
     assert.equal(finding.primaryLocation?.line, 1);
-    assert.deepEqual(finding.relatedLocations, [{ filePath: "src/styles/utilities.css", line: 1 }]);
+    assert.deepEqual(finding.relatedLocations, [
+      { filePath: "src/styles/utilities.css", line: 1 },
+      { filePath: "src/styles/utilities.css", line: 2 },
+    ]);
+    assert.deepEqual(finding.metadata?.utilityClassNames, ["flex", "gap-2"]);
+  });
+});
+
+test("utility-class-replacement ignores overlap that only exists in a different at-rule context", async () => {
+  await withTempDir(async (tempDir) => {
+    await writeProjectFile(
+      tempDir,
+      "src/styles/utilities.css",
+      "@media (min-width: 768px) { .flex { display: flex; } .gap-4 { gap: 1rem; } }",
+    );
+    await writeProjectFile(tempDir, "src/Card.css", ".cardStack { display: flex; gap: 1rem; }");
+
+    const findings = await runScenario(tempDir, {
+      css: {
+        global: ["src/styles/utilities.css"],
+        utilities: ["src/styles/utilities.css"],
+      },
+    });
+
+    assert.ok(
+      !findings.some(
+        (finding) =>
+          finding.ruleId === "utility-class-replacement" &&
+          finding.subject?.className === "cardStack",
+      ),
+    );
+  });
+});
+
+test("utility-class-replacement skips classes with same-selector variants in other at-rule contexts", async () => {
+  await withTempDir(async (tempDir) => {
+    await writeProjectFile(
+      tempDir,
+      "src/styles/utilities.css",
+      ".flex { display: flex; }\n.gap-2 { gap: 8px; }",
+    );
+    await writeProjectFile(
+      tempDir,
+      "src/components/Card.css",
+      [
+        ".cardStack { display: flex; gap: 8px; }",
+        "@media (min-width: 768px) { .cardStack { gap: 16px; } }",
+      ].join("\n"),
+    );
+
+    const findings = await runScenario(tempDir, {
+      css: {
+        utilities: ["src/styles/utilities.css"],
+      },
+    });
+
+    assert.ok(
+      !findings.some(
+        (finding) =>
+          finding.ruleId === "utility-class-replacement" &&
+          finding.subject?.className === "cardStack",
+      ),
+    );
+  });
+});
+
+test("utility-class-replacement respects maxUtilityClasses for utility compositions", async () => {
+  await withTempDir(async (tempDir) => {
+    await writeProjectFile(
+      tempDir,
+      "src/styles/utilities.css",
+      [
+        ".grid { display: grid; }",
+        ".cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }",
+        ".gap-1 { gap: 4px; }",
+      ].join("\n"),
+    );
+    await writeProjectFile(
+      tempDir,
+      "src/components/Grid.css",
+      ".productGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }",
+    );
+
+    const defaultFindings = await runScenario(tempDir, {
+      css: {
+        utilities: ["src/styles/utilities.css"],
+      },
+    });
+    assert.ok(
+      defaultFindings.some(
+        (finding) =>
+          finding.ruleId === "utility-class-replacement" &&
+          finding.subject?.className === "productGrid",
+      ),
+    );
+
+    const strictFindings = await runScenario(tempDir, {
+      css: {
+        utilities: ["src/styles/utilities.css"],
+      },
+      rules: {
+        "utility-class-replacement": {
+          severity: "info",
+          maxUtilityClasses: 2,
+        },
+      },
+    });
+    assert.ok(
+      !strictFindings.some(
+        (finding) =>
+          finding.ruleId === "utility-class-replacement" &&
+          finding.subject?.className === "productGrid",
+      ),
+    );
   });
 });
 

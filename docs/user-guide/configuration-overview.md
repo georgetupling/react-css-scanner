@@ -78,7 +78,7 @@ If you omit `source.include`, the scanner auto-discovers React source roots by l
     },
     "utility-class-replacement": {
       "severity": "info",
-      "minDeclarationOverlap": 2
+      "maxUtilityClasses": 3
     },
     "repeated-style-pattern": {
       "severity": "info",
@@ -182,7 +182,7 @@ If no config file is found, the scanner behaves like this:
     },
     "utility-class-replacement": {
       "severity": "info",
-      "minDeclarationOverlap": 2
+      "maxUtilityClasses": 3
     }
   }
 }

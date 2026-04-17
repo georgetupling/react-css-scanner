@@ -211,7 +211,11 @@ async function isReactPackageJson(packageJsonPath: string): Promise<boolean> {
     return false;
   }
 
-  if (!parsedPackageJson || typeof parsedPackageJson !== "object" || Array.isArray(parsedPackageJson)) {
+  if (
+    !parsedPackageJson ||
+    typeof parsedPackageJson !== "object" ||
+    Array.isArray(parsedPackageJson)
+  ) {
     return false;
   }
 

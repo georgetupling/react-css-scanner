@@ -370,11 +370,8 @@ test("integration scans report narrow global css and utility replacement opportu
         ].join("\n"),
       )
       .withCssFile("src/styles/global-single.css", ".globalSingle {}\n")
-      .withCssFile("src/styles/utilities.css", ".u-stack { display: flex; gap: 8px; }\n")
-      .withCssFile(
-        "src/components/Card.css",
-        ".cardStack { display: flex; gap: 8px; color: red; }\n",
-      )
+      .withCssFile("src/styles/utilities.css", ".flex { display: flex; }\n.gap-2 { gap: 8px; }\n")
+      .withCssFile("src/components/Card.css", ".cardStack { display: flex; gap: 8px; }\n")
       .withConfig({
         css: {
           global: ["src/styles/global-single.css"],

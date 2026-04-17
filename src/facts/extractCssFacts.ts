@@ -54,10 +54,7 @@ function buildExternalCssFact(
 function extractClassDefinitions(
   styleRules: CssFileFact["styleRules"],
 ): CssFileFact["classDefinitions"] {
-  const definitions = new Map<
-    string,
-    CssFileFact["classDefinitions"][number]
-  >();
+  const definitions = new Map<string, CssFileFact["classDefinitions"][number]>();
 
   for (const styleRule of styleRules) {
     const declarations = extractDeclarationNames(styleRule.declarations);
@@ -119,8 +116,6 @@ function extractCssImports(content: string): CssImportFact[] {
   return imports;
 }
 
-function serializeAtRuleContext(
-  atRuleContext: Array<{ name: string; params: string }>,
-): string {
+function serializeAtRuleContext(atRuleContext: Array<{ name: string; params: string }>): string {
   return atRuleContext.map((entry) => `${entry.name}:${entry.params}`).join("|");
 }

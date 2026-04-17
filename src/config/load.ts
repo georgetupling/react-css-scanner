@@ -38,7 +38,7 @@ const POLICY_KEYS = new Set(["failOnSeverity"]);
 const RULE_OBJECT_KEYS = new Set([
   "severity",
   "threshold",
-  "minDeclarationOverlap",
+  "maxUtilityClasses",
   "minOccurrences",
   "minDeclarations",
 ]);
@@ -449,10 +449,10 @@ function normalizeRuleConfigValue(
     );
   }
 
-  if (value.minDeclarationOverlap !== undefined) {
-    normalizedRule.minDeclarationOverlap = normalizePositiveInteger(
-      value.minDeclarationOverlap,
-      `${valuePath}.minDeclarationOverlap`,
+  if (value.maxUtilityClasses !== undefined) {
+    normalizedRule.maxUtilityClasses = normalizePositiveInteger(
+      value.maxUtilityClasses,
+      `${valuePath}.maxUtilityClasses`,
       filePath,
     );
   }
