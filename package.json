@@ -1,6 +1,6 @@
 {
   "name": "react-css-scanner",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "CLI and Node API for auditing React CSS usage.",
   "type": "module",
   "bin": {
@@ -38,7 +38,15 @@
     "cli",
     "typescript"
   ],
-  "license": "UNLICENSED",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/georgetupling/react-css-scanner.git"
+  },
+  "homepage": "https://github.com/georgetupling/react-css-scanner#readme",
+  "bugs": {
+    "url": "https://github.com/georgetupling/react-css-scanner/issues"
+  },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/node": "^24.6.0",
