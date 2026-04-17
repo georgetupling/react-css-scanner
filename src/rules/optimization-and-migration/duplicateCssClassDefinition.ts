@@ -1,5 +1,9 @@
 import type { RuleDefinition } from "../types.js";
-import { getAtRuleContextSignature, isCssModuleFile, isSimpleRootClassDefinition } from "../helpers.js";
+import {
+  getAtRuleContextSignature,
+  isCssModuleFile,
+  isSimpleRootClassDefinition,
+} from "../helpers.js";
 
 export const duplicateCssClassDefinitionRule: RuleDefinition = {
   ruleId: "duplicate-css-class-definition",
@@ -48,8 +52,9 @@ export const duplicateCssClassDefinitionRule: RuleDefinition = {
           return left.cssFile.localeCompare(right.cssFile);
         });
 
-        const duplicateCssFiles = [...new Set(sortedDefinitions.map((definition) => definition.cssFile))]
-          .sort((left, right) => left.localeCompare(right));
+        const duplicateCssFiles = [
+          ...new Set(sortedDefinitions.map((definition) => definition.cssFile)),
+        ].sort((left, right) => left.localeCompare(right));
 
         findings.push(
           context.createFinding({

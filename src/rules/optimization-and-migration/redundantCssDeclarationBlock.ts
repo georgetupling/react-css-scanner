@@ -1,9 +1,5 @@
 import type { RuleDefinition } from "../types.js";
-import {
-  getAtRuleContextSignature,
-  getDeclarationSignature,
-  isCssModuleFile,
-} from "../helpers.js";
+import { getAtRuleContextSignature, getDeclarationSignature, isCssModuleFile } from "../helpers.js";
 
 export const redundantCssDeclarationBlockRule: RuleDefinition = {
   ruleId: "redundant-css-declaration-block",

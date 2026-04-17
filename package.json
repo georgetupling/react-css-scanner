@@ -29,8 +29,10 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "benchmark": "npm run build && node test/performance/benchmark.js",
-    "precommit": "npm run format:check && npm run lint && npm run test",
-    "test": "npm run build && node --test test/*.test.js",
+    "precommit": "npm run format:check && npm run lint && npm run test:coverage:check",
+    "test": "npm run build && node --test \"test/unit/*.test.js\" \"test/unit/**/*.test.js\" \"test/feature/*.test.js\" \"test/integration/*.test.js\"",
+    "test:coverage": "npm run build && node --test --experimental-test-coverage \"test/unit/*.test.js\" \"test/unit/**/*.test.js\" \"test/feature/*.test.js\" \"test/integration/*.test.js\"",
+    "test:coverage:check": "npm run build && node --test --experimental-test-coverage --test-coverage-lines=80 \"test/unit/*.test.js\" \"test/unit/**/*.test.js\" \"test/feature/*.test.js\" \"test/integration/*.test.js\"",
     "prepublishOnly": "npm run check && npm run lint && npm run build"
   },
   "keywords": [

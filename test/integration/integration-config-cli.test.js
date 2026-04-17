@@ -3,10 +3,10 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { mkdir, writeFile } from "node:fs/promises";
 
-import { scanReactCss } from "../dist/index.js";
-import { TestProjectBuilder } from "./support/TestProjectBuilder.js";
-import { runCli, runCliWithOptions } from "./support/cliTestUtils.js";
-import { withBuiltProject, withTempDir } from "./support/integrationTestUtils.js";
+import { scanReactCss } from "../../dist/index.js";
+import { TestProjectBuilder } from "../support/TestProjectBuilder.js";
+import { runCli, runCliWithOptions } from "../support/cliTestUtils.js";
+import { withBuiltProject, withTempDir } from "../support/integrationTestUtils.js";
 
 test("project-root config makes configured global CSS reachable in integration scans", async () => {
   const builder = new TestProjectBuilder()

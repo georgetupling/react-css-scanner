@@ -40,8 +40,7 @@ export const unusedCssModuleClassRule: RuleDefinition = {
             }
 
             return sourceFile.cssModuleImports.some(
-              (entry) =>
-                entry.localName === moduleLocalName && entry.resolvedPath === cssFile.path,
+              (entry) => entry.localName === moduleLocalName && entry.resolvedPath === cssFile.path,
             );
           }),
         );

@@ -55,7 +55,10 @@ export const utilityClassReplacementRule: RuleDefinition = {
           definition.atRuleContext,
         );
         const hasCrossContextVariants = cssFile.classDefinitions.some((candidate) => {
-          if (!isSimpleRootClassDefinition(candidate) || candidate.className !== definition.className) {
+          if (
+            !isSimpleRootClassDefinition(candidate) ||
+            candidate.className !== definition.className
+          ) {
             return false;
           }
 
@@ -70,7 +73,9 @@ export const utilityClassReplacementRule: RuleDefinition = {
         const targetDeclarations = getEffectiveDeclarations(definition.declarationDetails);
 
         const candidateUtilities = utilityDefinitions
-          .filter((utilityDefinition) => utilityDefinition.definition.className !== definition.className)
+          .filter(
+            (utilityDefinition) => utilityDefinition.definition.className !== definition.className,
+          )
           .filter((utilityDefinition) => {
             const utilityAtRuleContextSignature = getAtRuleContextSignature(
               utilityDefinition.definition.atRuleContext,
@@ -177,7 +182,9 @@ function findUtilityComposition(
   utilityDefinitions: EffectiveUtilityDefinition[],
   maxUtilityClasses: number,
 ): EffectiveUtilityDefinition[] | undefined {
-  const remainingProperties = new Set(targetDeclarations.map((declaration) => declaration.property));
+  const remainingProperties = new Set(
+    targetDeclarations.map((declaration) => declaration.property),
+  );
 
   for (let utilityCount = 1; utilityCount <= maxUtilityClasses; utilityCount += 1) {
     const match = searchUtilityComposition(

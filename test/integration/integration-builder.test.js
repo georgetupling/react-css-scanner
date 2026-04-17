@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { scanReactCss } from "../dist/index.js";
-import { TestProjectBuilder } from "./support/TestProjectBuilder.js";
-import { withBuiltProject } from "./support/integrationTestUtils.js";
+import { scanReactCss } from "../../dist/index.js";
+import { TestProjectBuilder } from "../support/TestProjectBuilder.js";
+import { withBuiltProject } from "../support/integrationTestUtils.js";
 
 test("TestProjectBuilder composes template, resource files, and deterministic file output", async () => {
   const builder = new TestProjectBuilder()

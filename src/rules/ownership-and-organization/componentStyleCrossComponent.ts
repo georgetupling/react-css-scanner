@@ -24,7 +24,9 @@ export const componentStyleCrossComponentRule: RuleDefinition = {
       }
 
       const usingSources = getUsingSourceFiles(context.model, cssFile);
-      const crossComponentSources = [...usingSources].filter((sourceFile) => !ownerSources.has(sourceFile));
+      const crossComponentSources = [...usingSources].filter(
+        (sourceFile) => !ownerSources.has(sourceFile),
+      );
 
       if (crossComponentSources.length === 0) {
         continue;

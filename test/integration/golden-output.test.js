@@ -2,10 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-import { scanReactCss } from "../dist/index.js";
-import { formatHumanReadableOutput, formatJsonOutput } from "../dist/cli/format.js";
-import { TestProjectBuilder } from "./support/TestProjectBuilder.js";
-import { withBuiltProject } from "./support/integrationTestUtils.js";
+import { scanReactCss } from "../../dist/index.js";
+import { formatHumanReadableOutput, formatJsonOutput } from "../../dist/cli/format.js";
+import { TestProjectBuilder } from "../support/TestProjectBuilder.js";
+import { withBuiltProject } from "../support/integrationTestUtils.js";
 
 const PROJECT_ROOT_TOKEN = "<PROJECT_ROOT>";
 
@@ -62,7 +62,7 @@ test("human-readable verbose output stays stable for grouped findings", async ()
 });
 
 async function readGoldenResource(resourcePath) {
-  return readFile(new URL(`./resources/${resourcePath}`, import.meta.url), "utf8");
+  return readFile(new URL(`../resources/${resourcePath}`, import.meta.url), "utf8");
 }
 
 function normalizeScanResult(result, projectRoot) {

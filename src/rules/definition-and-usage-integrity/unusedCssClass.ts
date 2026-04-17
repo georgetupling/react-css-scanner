@@ -28,7 +28,8 @@ export const unusedCssClassRule: RuleDefinition = {
           continue;
         }
 
-        const references = context.model.indexes.classReferencesByName.get(definition.className) ?? [];
+        const references =
+          context.model.indexes.classReferencesByName.get(definition.className) ?? [];
         const convincingReferences = references.filter((entry) => {
           if (isCssModuleReference(entry.reference.kind)) {
             return false;

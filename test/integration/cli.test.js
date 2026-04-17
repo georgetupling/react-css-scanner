@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 
-import { runCli } from "./support/cliTestUtils.js";
+import { runCli } from "../support/cliTestUtils.js";
 
 async function withTempDir(run) {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "react-css-scanner-cli-test-"));

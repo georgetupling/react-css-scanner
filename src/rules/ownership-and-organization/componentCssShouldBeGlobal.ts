@@ -28,8 +28,9 @@ export const componentCssShouldBeGlobalRule: RuleDefinition = {
       const usingSources = [...getUsingSourceFiles(context.model, cssFile)].sort((left, right) =>
         left.localeCompare(right),
       );
-      const nonOwnerUsageCount = usingSources.filter((sourceFile) => !ownerSources.has(sourceFile))
-        .length;
+      const nonOwnerUsageCount = usingSources.filter(
+        (sourceFile) => !ownerSources.has(sourceFile),
+      ).length;
 
       if (nonOwnerUsageCount < threshold) {
         continue;

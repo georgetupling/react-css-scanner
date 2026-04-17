@@ -9,7 +9,7 @@ import {
   buildProjectModel,
   extractProjectFacts,
   normalizeReactCssScannerConfig,
-} from "../dist/index.js";
+} from "../../dist/index.js";
 
 async function withTempDir(run) {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "react-css-scanner-model-test-"));
