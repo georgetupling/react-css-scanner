@@ -24,7 +24,12 @@
     "build": "tsdown",
     "dev": "tsdown --watch",
     "check": "tsc --noEmit",
-    "prepublishOnly": "npm run check && npm run build"
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "benchmark": "npm run build && node test/performance/benchmark.js",
+    "test": "npm run build && node --test test/*.test.js",
+    "prepublishOnly": "npm run check && npm run lint && npm run build"
   },
   "keywords": [
     "react",
@@ -35,7 +40,13 @@
   ],
   "license": "UNLICENSED",
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^24.6.0",
+    "eslint": "^10.2.0",
+    "globals": "^17.5.0",
+    "prettier": "^3.8.3",
     "tsdown": "^0.14.2",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.58.2"
   }
 }

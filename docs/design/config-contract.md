@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document points to the concrete TypeScript configuration contract for the MVP.
+This document points to the concrete TypeScript configuration contract for the implemented scanner.
 
 The goal is to make the config model precise enough to implement against, rather than leaving it only as prose examples.
 
@@ -10,7 +10,7 @@ The goal is to make the config model precise enough to implement against, rather
 
 The current TypeScript config contract lives in:
 
-- [src/config/types.ts](/c:/Users/georg/Desktop/react-css-scanner/src/config/types.ts)
+- [src/config/types.ts](../../src/config/types.ts)
 
 ## Main exported types
 
@@ -30,14 +30,14 @@ The intended split is:
 - `RawReactCssScannerConfig`: what can be read from JSON config files or passed into the API
 - `ResolvedReactCssScannerConfig`: the normalized runtime shape after defaults and validation are applied
 
-For MVP, config resolution should load exactly one discovered source.
+Config resolution should load exactly one discovered source.
 It should not merge multiple config files.
 
 ## Current normalized defaults
 
 The default normalized config is represented by `DEFAULT_CONFIG`.
 
-That currently captures the MVP assumptions:
+That currently captures the default product assumptions:
 
 - `rootDir: "."`
 - source include/exclude defaults
@@ -57,6 +57,6 @@ The prose design still lives in:
 
 - [config-schema.md](./config-schema.md)
 - [architecture.md](./architecture.md)
-- [mvp-rules.md](./mvp-rules.md)
+- [rules.md](./rules.md)
 
 When those docs and the TypeScript contract disagree, the mismatch should be treated as a design bug and resolved explicitly.

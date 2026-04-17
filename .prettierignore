@@ -1,0 +1,5 @@
+dist
+node_modules
+coverage
+docs
+legacy-code-not-part-of-mvp

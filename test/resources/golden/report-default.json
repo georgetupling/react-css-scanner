@@ -1,0 +1,69 @@
+{
+  "summary": {
+    "fileCount": 2,
+    "sourceFileCount": 1,
+    "cssFileCount": 1,
+    "findingCount": 2,
+    "errorCount": 1,
+    "warningCount": 1,
+    "infoCount": 0
+  },
+  "findings": [
+    {
+      "ruleId": "missing-css-class",
+      "family": "definition-and-usage-integrity",
+      "severity": "error",
+      "confidence": "high",
+      "message": "Class \"missing\" is referenced in React code but no matching reachable CSS class definition was found.",
+      "primaryLocation": {
+        "filePath": "src/App.tsx"
+      },
+      "relatedLocations": [],
+      "subject": {
+        "className": "missing",
+        "sourceFilePath": "src/App.tsx"
+      },
+      "metadata": {
+        "referenceKind": "string-literal"
+      }
+    },
+    {
+      "ruleId": "unused-css-class",
+      "family": "definition-and-usage-integrity",
+      "severity": "warning",
+      "confidence": "high",
+      "message": "CSS class \"unused\" does not have any convincing reachable React usage.",
+      "primaryLocation": {
+        "filePath": "src/App.css"
+      },
+      "relatedLocations": [],
+      "subject": {
+        "className": "unused",
+        "cssFilePath": "src/App.css"
+      },
+      "metadata": {}
+    }
+  ],
+  "config": {
+    "rootDir": ".",
+    "source": {
+      "include": ["src"],
+      "exclude": ["dist", "build", "coverage", "node_modules"]
+    },
+    "css": {
+      "global": [],
+      "utilities": ["**/utilities.css", "**/utilities/**/*.css"],
+      "modules": {
+        "enabled": true,
+        "patterns": ["**/*.module.css"]
+      }
+    },
+    "externalCss": {
+      "enabled": true,
+      "mode": "imported-only"
+    },
+    "policy": {
+      "failOnSeverity": "error"
+    }
+  }
+}

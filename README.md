@@ -1,41 +1,144 @@
 # react-css-scanner
 
-`react-css-scanner` is a standalone React CSS audit tool that can be used either:
+`react-css-scanner` audits how React source code uses CSS.
 
-- as a CLI via `npx react-css-scanner` or an npm script
-- as a Node API via `import { scan } from "react-css-scanner"`
+It scans source files, project CSS, CSS Modules, and imported external CSS, then reports deterministic findings for local development and CI.
 
-## Project setup
+## What It Checks
 
-The package is now scaffolded as:
+The current rules cover:
 
-- TypeScript source in `src/`
-- ESM-only npm package output
-- CLI entrypoint via `bin`
-- Node import API from the same package
-- temporary bridge to the existing legacy `css-audit/*.cjs` implementation
+- missing or unreachable class usage
+- unused CSS classes
+- CSS Module mistakes
+- ownership and organization issues
+- dynamic class usage with explicit confidence levels
+- imported external CSS validation
+- duplicate class-definition checks
 
-That bridge keeps the current scanner working while the internals are ported to TypeScript incrementally.
+Findings always carry both severity and confidence.
 
-## Intended usage
-
-CLI:
+## Install
 
 ```bash
-npx react-css-scanner ./src
+npm install --save-dev react-css-scanner
 ```
 
-Node API:
+Node `20+` is required.
+
+## CLI Usage
+
+Scan the current project:
+
+```bash
+npx react-css-scanner
+```
+
+Scan a specific path:
+
+```bash
+npx react-css-scanner ./packages/web
+```
+
+Emit JSON:
+
+```bash
+npx react-css-scanner --json
+```
+
+Write JSON to a file:
+
+```bash
+npx react-css-scanner --json --output-file ./reports/react-css-scanner.json
+```
+
+Useful flags:
+
+- `--config path/to/react-css-scanner.json`
+- `--json`
+- `--output-file path/to/report.json`
+- `--overwrite-output`
+- `--config-summary off|default|verbose`
+- `--output-mode minimal|default|verbose`
+- `--output-min-severity info|warning|error`
+
+`--output-min-severity` only affects human-readable output and cannot be combined with `--json`.
+
+## Node API
 
 ```ts
-import { scan } from "react-css-scanner";
+import { scanReactCss } from "react-css-scanner";
 
-const findings = scan({ targetDirectory: "./src" });
-console.log(findings);
+const result = await scanReactCss({
+  targetPath: process.cwd(),
+});
+
+console.log(result.summary);
+console.log(result.findings);
 ```
 
-## Next steps
+The package also exports `scan` as an alias.
 
-1. Install dependencies.
-2. Run `npm run build`.
-3. Port the legacy `css-audit/*.cjs` modules into `src/` one slice at a time.
+## Config
+
+The config file is JSON and defaults to `react-css-scanner.json`.
+
+Discovery order:
+
+1. explicit `--config` or API `configPath`
+2. project-root `react-css-scanner.json`
+3. `REACT_CSS_SCANNER_CONFIG_DIR/react-css-scanner.json`
+4. the first `react-css-scanner.json` found on the OS `PATH`
+5. built-in defaults
+
+Only one config source is loaded. There is no config merging.
+
+Built-in defaults assume a typical `src`-based React project, enable CSS Modules by convention, understand `classnames` and `clsx`, and fail on `error` findings by default.
+
+Example:
+
+```json
+{
+  "rootDir": ".",
+  "css": {
+    "global": ["src/styles/global.css"]
+  },
+  "ownership": {
+    "pagePatterns": ["src/pages/**/*", "src/routes/**/*"]
+  },
+  "policy": {
+    "failOnSeverity": "warning"
+  }
+}
+```
+
+## Output And CI
+
+The CLI returns a non-zero exit code when findings meet the configured `policy.failOnSeverity` threshold.
+
+Default policy:
+
+- `error` findings fail the scan
+- `warning` and `info` do not
+
+Human-readable output is stable and terminal-friendly. JSON output is deterministic and intended for tooling and CI.
+
+## Development
+
+Repo commands:
+
+- `npm run build`
+- `npm run check`
+- `npm run lint`
+- `npm run format`
+- `npm test`
+- `npm run benchmark`
+
+## Docs
+
+- [docs/README.md](./docs/README.md)
+- [docs/design/architecture.md](./docs/design/architecture.md)
+- [docs/design/runtime-contracts.md](./docs/design/runtime-contracts.md)
+- [docs/design/config-contract.md](./docs/design/config-contract.md)
+- [docs/design/rules.md](./docs/design/rules.md)
+- [docs/future-work/post-mvp-ideas.md](./docs/future-work/post-mvp-ideas.md)

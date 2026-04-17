@@ -7,6 +7,7 @@
     "declaration": true,
     "noEmit": true,
     "skipLibCheck": true,
+    "types": ["node"],
     "esModuleInterop": true,
     "verbatimModuleSyntax": true,
     "forceConsistentCasingInFileNames": true
