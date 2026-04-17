@@ -15,7 +15,7 @@ The design goal is:
 
 - Prefer a small number of top-level concepts over many tiny switches.
 - Make common React project conventions work without much configuration.
-- Default to useful behavior for `src`-based apps.
+- Default to useful behavior for common React project layouts without forcing every project to declare `source.include`.
 - Let projects override structure and policy without redefining every rule.
 - Separate project structure configuration from rule tuning.
 
@@ -23,7 +23,7 @@ The design goal is:
 
 Most projects should only need to configure:
 
-- where the app source lives if it is not `src`
+- where the app source lives if auto-discovery is not sufficient
 - which CSS should be treated as global
 - policy thresholds
 
@@ -85,7 +85,6 @@ Example:
   "$schema": "./node_modules/react-css-scanner/schema.json",
   "rootDir": ".",
   "source": {
-    "include": ["src"],
     "exclude": ["dist", "build", "coverage", "node_modules"]
   },
   "css": {
@@ -156,7 +155,6 @@ Proposed shape:
 ```json
 {
   "source": {
-    "include": ["src"],
     "exclude": ["dist", "build", "coverage", "node_modules"]
   }
 }
@@ -164,16 +162,17 @@ Proposed shape:
 
 Defaults:
 
-- `include`: `["src"]`
+- `include`: omitted, which enables automatic React source-root discovery
 - `exclude`: `["dist", "build", "coverage", "node_modules"]`
 
 Meaning:
 
 - include and exclude values should be repo-relative globs
+- when `include` is omitted, the scanner looks for React-bearing `package.json` files in the root and nested projects, then adds common source directories such as `src`, `app`, and `client/src`
 
 Why:
 
-- Most React projects use `src`.
+- Most React projects still follow a small set of common layouts.
 - Most projects want standard build output directories excluded.
 
 ### `css`
@@ -493,7 +492,6 @@ If no config file is present, the scanner should behave roughly like this:
 {
   "rootDir": ".",
   "source": {
-    "include": ["src"],
     "exclude": ["dist", "build", "coverage", "node_modules"]
   },
   "css": {
@@ -575,7 +573,7 @@ Instead:
 
 The proposed JSON schema should:
 
-- assume `src` by default
+- auto-discover common React source roots by default
 - treat CSS Modules as enabled by convention
 - detect common utility CSS via filenames such as `utilities.css`
 - support explicit ownership classification for page and component CSS

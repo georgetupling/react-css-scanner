@@ -67,6 +67,7 @@ export type ResolvedReactCssScannerConfig = {
   source: {
     include: string[];
     exclude: string[];
+    discovery: "auto" | "explicit";
   };
   css: {
     global: string[];
@@ -98,8 +99,9 @@ export type ResolvedReactCssScannerConfig = {
 export const DEFAULT_CONFIG: ResolvedReactCssScannerConfig = {
   rootDir: ".",
   source: {
-    include: ["src"],
+    include: [],
     exclude: ["dist", "build", "coverage", "node_modules"],
+    discovery: "auto",
   },
   css: {
     global: [],

@@ -1,5 +1,6 @@
-import { access, readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { fileExists } from "../files/fsUtils.js";
 import {
   DEFAULT_CONFIG,
   type ExternalCssGlobalProviderConfig,
@@ -224,6 +225,7 @@ export function normalizeReactCssScannerConfig(
       exclude: normalizeStringArray(source?.exclude, "config.source.exclude", options.filePath) ?? [
         ...DEFAULT_CONFIG.source.exclude,
       ],
+      discovery: source?.include === undefined ? "auto" : "explicit",
     },
     css: {
       global: normalizeStringArray(css?.global, "config.css.global", options.filePath) ?? [
@@ -480,6 +482,7 @@ function cloneResolvedConfig(config: ResolvedReactCssScannerConfig): ResolvedRea
     source: {
       include: [...config.source.include],
       exclude: [...config.source.exclude],
+      discovery: config.source.discovery,
     },
     css: {
       global: [...config.css.global],
@@ -698,14 +701,5 @@ function assertKnownKeys(
         path: `${valuePath}.${key}`,
       });
     }
-  }
-}
-
-async function fileExists(filePath: string): Promise<boolean> {
-  try {
-    await access(filePath);
-    return true;
-  } catch {
-    return false;
   }
 }

@@ -10,6 +10,11 @@ async function withTempDir(run) {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "react-css-scanner-cli-test-"));
 
   try {
+    await writeProjectFile(
+      tempDir,
+      "package.json",
+      '{\n  "name": "cli-test",\n  "dependencies": {\n    "react": "^18.0.0"\n  }\n}\n',
+    );
     await run(tempDir);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
@@ -61,6 +66,11 @@ test("CLI treats the positional path as the project root for config discovery", 
   await withTempDir(async (tempDir) => {
     await writeProjectFile(
       tempDir,
+      "apps/web/package.json",
+      '{\n  "name": "apps-web",\n  "dependencies": {\n    "react": "^18.0.0"\n  }\n}\n',
+    );
+    await writeProjectFile(
+      tempDir,
       "apps/web/src/App.tsx",
       'export function App() { return <div className="app-shell" />; }',
     );
@@ -100,6 +110,11 @@ test("CLI resolves explicit config paths from the current working directory when
   await withTempDir(async (tempDir) => {
     await writeProjectFile(
       tempDir,
+      "apps/web/package.json",
+      '{\n  "name": "apps-web",\n  "dependencies": {\n    "react": "^18.0.0"\n  }\n}\n',
+    );
+    await writeProjectFile(
+      tempDir,
       "apps/web/src/App.tsx",
       'export function App() { return <div className="app-shell" />; }',
     );
@@ -124,6 +139,11 @@ test("CLI resolves explicit config paths from the current working directory when
 
 test("CLI focus filters findings while retaining full-project indexing", async () => {
   await withTempDir(async (tempDir) => {
+    await writeProjectFile(
+      tempDir,
+      "apps/web/package.json",
+      '{\n  "name": "apps-web",\n  "dependencies": {\n    "react": "^18.0.0"\n  }\n}\n',
+    );
     await writeProjectFile(
       tempDir,
       "apps/web/src/feature/Feature.tsx",

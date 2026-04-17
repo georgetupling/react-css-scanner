@@ -67,6 +67,8 @@ react-css-scanner [targetPath] [--focus path/to/focus] [--config path/to/react-c
 ### CLI behavior
 
 - If `targetPath` is omitted, the scanner uses the current working directory as the project root.
+- If `source.include` is omitted, built-in defaults auto-discover React source roots by scanning the project root and nested package roots for React-bearing `package.json` files plus common source directories such as `src`, `app`, and `client/src`.
+- If auto-discovery finds no React source roots, the scan fails with a fatal error instead of silently scanning nothing.
 - If `--focus` is provided, the scanner still indexes the full project but only emits findings that touch the focused path.
 - If `--config` is provided, it overrides discovery.
 - If `--json` is provided, the scanner emits machine-readable JSON.
@@ -219,6 +221,8 @@ For the same file tree, config, and CLI options, the scanner should produce:
 - the same summary
 - the same exit-code behavior
 - stable output ordering
+
+Auto-discovery is part of this contract: for the same project tree and config, the resolved source roots should be stable.
 
 ## Operational warnings
 

@@ -149,7 +149,9 @@ Discovery order:
 
 Only one config source is loaded. There is no config merging.
 
-Built-in defaults assume a typical `src`-based React project, enable CSS Modules by convention, understand `classnames` and `clsx`, recognize common HTML-linked external providers such as Font Awesome, Bootstrap Icons, Material Design Icons, Animate.css, UIkit, and Pure.css, and fail on `error` findings by default.
+Built-in defaults auto-discover React source roots by looking for React-bearing `package.json` files and common source directories such as `src`, `app`, and `client/src`, enable CSS Modules by convention, understand `classnames` and `clsx`, recognize common HTML-linked external providers such as Font Awesome, Bootstrap Icons, Material Design Icons, Animate.css, UIkit, and Pure.css, and fail on `error` findings by default.
+
+If auto-discovery does not find any React source roots, the scan fails clearly. In that case, either point the scanner at the correct project root or configure `source.include` explicitly.
 
 If you want the scanner to fetch remote HTML-linked stylesheets directly for a scan, set `externalCss.mode` to `fetch-remote`. Fetch failures surface as operational warnings and fall back to external-css heuristics instead of crashing the scan.
 

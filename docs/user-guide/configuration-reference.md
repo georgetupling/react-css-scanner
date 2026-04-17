@@ -9,7 +9,6 @@ This page lists every supported configuration option in `react-css-scanner.json`
   "$schema": "./node_modules/react-css-scanner/schema.json",
   "rootDir": ".",
   "source": {
-    "include": ["src"],
     "exclude": ["dist", "build", "coverage", "node_modules"]
   },
   "css": {
@@ -82,8 +81,13 @@ Type: `string[]`
 Default:
 
 ```json
-["src"]
+[]
 ```
+
+Meaning:
+
+- if omitted, the scanner auto-discovers React source roots from the project root and nested package roots
+- if set explicitly, those include paths are used instead of auto-discovery
 
 Example:
 
@@ -114,6 +118,12 @@ Example:
   }
 }
 ```
+
+Common auto-discovery source directory candidates are:
+
+- `src`
+- `app`
+- `client/src`
 
 ## `css`
 

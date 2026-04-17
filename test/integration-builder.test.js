@@ -23,6 +23,7 @@ test("TestProjectBuilder composes template, resource files, and deterministic fi
 
   await withBuiltProject(builder, async (project) => {
     assert.deepEqual(await project.listFiles(), [
+      "package.json",
       "src/App.tsx",
       "src/components/Button.css",
       "src/components/Button.tsx",

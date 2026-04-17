@@ -40,7 +40,7 @@ The default normalized config is represented by `DEFAULT_CONFIG`.
 That currently captures the default product assumptions:
 
 - `rootDir: "."`
-- source include/exclude defaults
+- source exclude defaults plus auto-discovery of React source roots when `source.include` is omitted
 - CSS Modules enabled by convention
 - utility CSS detection defaults
 - ownership defaults for pages and component-convention behavior

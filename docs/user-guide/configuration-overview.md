@@ -32,6 +32,8 @@ Only one config source is loaded. Config files are not merged.
 
 That is enough for many projects.
 
+If you omit `source.include`, the scanner auto-discovers React source roots by looking for React-bearing `package.json` files and common source directories such as `src`, `app`, and `client/src`.
+
 ## Full Example
 
 ```json
@@ -141,8 +143,9 @@ If no config file is found, the scanner behaves like this:
 {
   "rootDir": ".",
   "source": {
-    "include": ["src"],
-    "exclude": ["dist", "build", "coverage", "node_modules"]
+    "include": [],
+    "exclude": ["dist", "build", "coverage", "node_modules"],
+    "discovery": "auto"
   },
   "css": {
     "global": [],
@@ -186,5 +189,7 @@ If no config file is found, the scanner behaves like this:
 ```
 
 If built-in defaults are used because no config file was found, the CLI emits an operational warning.
+
+If auto-discovery cannot find any React source roots, the scan fails clearly. In that case, set `source.include` explicitly or scan from the correct project root.
 
 For every supported option, see [Configuration Reference](./configuration-reference.md).

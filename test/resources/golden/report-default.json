@@ -53,8 +53,9 @@
   "config": {
     "rootDir": ".",
     "source": {
-      "include": ["src"],
-      "exclude": ["dist", "build", "coverage", "node_modules"]
+      "include": [],
+      "exclude": ["dist", "build", "coverage", "node_modules"],
+      "discovery": "auto"
     },
     "css": {
       "global": [],

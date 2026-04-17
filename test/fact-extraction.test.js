@@ -4,12 +4,22 @@ import os from "node:os";
 import path from "node:path";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 
-import { DEFAULT_CONFIG, discoverProjectFiles, extractProjectFacts } from "../dist/index.js";
+import {
+  DEFAULT_CONFIG,
+  discoverProjectFiles,
+  extractProjectFacts,
+  normalizeReactCssScannerConfig,
+} from "../dist/index.js";
 
 async function withTempDir(run) {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "react-css-scanner-facts-test-"));
 
   try {
+    await writeProjectFile(
+      tempDir,
+      "package.json",
+      '{\n  "name": "facts-test",\n  "dependencies": {\n    "react": "^18.0.0"\n  }\n}\n',
+    );
     await run(tempDir);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
@@ -47,6 +57,66 @@ test("discovers source and css files deterministically with include/exclude rule
     assert.deepEqual(
       result.htmlFiles.map((file) => file.relativePath),
       ["index.html"],
+    );
+  });
+});
+
+test("auto-discovers nested React source roots when source.include is omitted", async () => {
+  await withTempDir(async (tempDir) => {
+    await writeProjectFile(
+      tempDir,
+      "apps/web/package.json",
+      '{\n  "name": "apps-web",\n  "dependencies": {\n    "react": "^18.0.0"\n  }\n}\n',
+    );
+    await writeProjectFile(
+      tempDir,
+      "packages/ui/package.json",
+      '{\n  "name": "packages-ui",\n  "peerDependencies": {\n    "react": "^18.0.0"\n  }\n}\n',
+    );
+    await writeProjectFile(tempDir, "apps/web/src/App.tsx", "export function App() { return null; }");
+    await writeProjectFile(tempDir, "packages/ui/src/Button.tsx", "export function Button() { return null; }");
+    await writeProjectFile(tempDir, "tools/scripts/index.ts", "export const task = true;");
+
+    const result = await discoverProjectFiles(DEFAULT_CONFIG, tempDir);
+
+    assert.deepEqual(
+      result.sourceFiles.map((file) => file.relativePath),
+      ["apps/web/src/App.tsx", "packages/ui/src/Button.tsx"],
+    );
+  });
+});
+
+test("auto-discovery fails clearly when no React source roots are found", async () => {
+  await withTempDir(async (tempDir) => {
+    await writeProjectFile(tempDir, "package.json", '{\n  "name": "no-react"\n}\n');
+    await writeProjectFile(tempDir, "src/App.tsx", "export function App() { return null; }");
+
+    await assert.rejects(() => discoverProjectFiles(DEFAULT_CONFIG, tempDir), (error) => {
+      assert.match(
+        error.message,
+        /No React source roots were discovered automatically/i,
+      );
+      return true;
+    });
+  });
+});
+
+test("explicit source.include bypasses React auto-discovery", async () => {
+  await withTempDir(async (tempDir) => {
+    await writeProjectFile(tempDir, "package.json", '{\n  "name": "explicit-include-test"\n}\n');
+    await writeProjectFile(tempDir, "custom/App.tsx", "export function App() { return null; }");
+
+    const config = normalizeReactCssScannerConfig({
+      source: {
+        include: ["custom"],
+      },
+    });
+
+    const result = await discoverProjectFiles(config, tempDir);
+
+    assert.deepEqual(
+      result.sourceFiles.map((file) => file.relativePath),
+      ["custom/App.tsx"],
     );
   });
 });
@@ -227,7 +297,14 @@ test("extracts html stylesheet facts for linked external stylesheets", async () 
       ].join("\n"),
     );
 
-    const result = await extractProjectFacts(DEFAULT_CONFIG, tempDir);
+    const result = await extractProjectFacts(
+      normalizeReactCssScannerConfig({
+        source: {
+          include: ["src"],
+        },
+      }),
+      tempDir,
+    );
 
     assert.deepEqual(result.htmlFacts, [
       {

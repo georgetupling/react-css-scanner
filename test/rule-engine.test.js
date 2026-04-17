@@ -19,6 +19,11 @@ async function withTempDir(run) {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "react-css-scanner-rules-test-"));
 
   try {
+    await writeProjectFile(
+      tempDir,
+      "package.json",
+      '{\n  "name": "rule-engine-test",\n  "dependencies": {\n    "react": "^18.0.0"\n  }\n}\n',
+    );
     await run(tempDir);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
