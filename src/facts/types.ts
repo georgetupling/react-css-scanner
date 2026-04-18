@@ -18,6 +18,7 @@ export type ClassReferenceKind =
   | "template-literal"
   | "conditional"
   | "helper-call"
+  | "expression-evaluated"
   | "css-module-property"
   | "css-module-dynamic-property";
 

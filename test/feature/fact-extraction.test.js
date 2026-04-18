@@ -214,7 +214,7 @@ test("extracts source facts for local css, external css, helpers, and css module
       appFacts.classReferences.some(
         (reference) =>
           reference.className === "app" &&
-          reference.kind === "helper-call" &&
+          reference.kind === "expression-evaluated" &&
           reference.confidence === "high" &&
           typeof reference.line === "number" &&
           typeof reference.column === "number",
@@ -266,6 +266,48 @@ test("extracts class references through const indirection and boolean-gated expr
     assert.ok(buttonFacts.classReferences.every((reference) => typeof reference.line === "number"));
     assert.ok(
       buttonFacts.classReferences.every((reference) => typeof reference.column === "number"),
+    );
+  });
+});
+
+test("extracts class references through same-file helper functions that transparently join classes", async () => {
+  await withTempDir(async (tempDir) => {
+    await writeProjectFile(
+      tempDir,
+      "src/Button.tsx",
+      [
+        "function joinClasses(...classes) {",
+        '  return classes.filter(Boolean).join(" ");',
+        "}",
+        "const isSmall = true;",
+        "export function Button() {",
+        '  return <button className={joinClasses("button", isSmall && "button--sm")} />;',
+        "}",
+      ].join("\n"),
+    );
+
+    const result = await extractProjectFacts(DEFAULT_CONFIG, tempDir);
+    const buttonFacts = result.sourceFacts.find((fact) => fact.filePath === "src/Button.tsx");
+
+    assert.ok(buttonFacts);
+    assert.ok(
+      buttonFacts.classReferences.some(
+        (reference) =>
+          reference.className === "button" && reference.kind === "expression-evaluated",
+      ),
+    );
+    assert.ok(
+      buttonFacts.classReferences.some(
+        (reference) =>
+          reference.className === "button--sm" && reference.kind === "expression-evaluated",
+      ),
+    );
+    assert.ok(
+      !buttonFacts.classReferences.some(
+        (reference) =>
+          reference.kind === "helper-call" &&
+          reference.source === 'joinClasses("button", isSmall && "button--sm")',
+      ),
     );
   });
 });

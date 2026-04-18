@@ -1,6 +1,11 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import ts from "typescript";
+import {
+  evaluateClassExpression,
+  type ClassExpressionEvaluationContext,
+  type LocalFunctionBinding,
+} from "../class-expression-evaluator/index.js";
 import type { ResolvedScanReactCssConfig } from "../config/types.js";
 import { fileExists } from "../files/fsUtils.js";
 import { isCssFilePath } from "../files/pathUtils.js";
@@ -36,9 +41,11 @@ export async function extractSourceFileFacts(
   const helperImports = new Set<string>();
   const cssModuleLocalNames = new Set<string>();
   const localBindings = new Map<string, ts.Expression>();
-  const expressionContext: ExpressionCollectionContext = {
+  const localFunctions = new Map<string, LocalFunctionBinding>();
+  const expressionContext: ClassExpressionEvaluationContext = {
     helperImports,
     localBindings,
+    localFunctions,
     parsedSourceFile: parsed,
   };
 
@@ -139,13 +146,34 @@ export async function extractSourceFileFacts(
       localBindings.set(node.name.text, node.initializer);
     }
 
-    if (ts.isJsxAttribute(node) && ts.isIdentifier(node.name) && node.name.text === "className") {
-      collectClassNameExpressionFacts(node.initializer, classReferences, expressionContext);
-      return;
+    if (ts.isFunctionDeclaration(node) && node.name) {
+      const bodyExpression = getFunctionBodyExpression(node);
+      if (bodyExpression) {
+        localFunctions.set(node.name.text, {
+          bodyExpression,
+          parameters: node.parameters,
+        });
+      }
     }
 
-    if (ts.isCallExpression(node)) {
-      collectHelperCallFacts(node, expressionContext, classReferences);
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.initializer &&
+      isTrackableBinding(node) &&
+      (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer))
+    ) {
+      const bodyExpression = getFunctionBodyExpression(node.initializer);
+      if (bodyExpression) {
+        localFunctions.set(node.name.text, {
+          bodyExpression,
+          parameters: node.initializer.parameters,
+        });
+      }
+    }
+
+    if (ts.isJsxAttribute(node) && ts.isIdentifier(node.name) && node.name.text === "className") {
+      collectClassNameExpressionFacts(node.initializer, classReferences, expressionContext);
       return;
     }
 
@@ -198,21 +226,14 @@ export async function extractSourceFileFacts(
 function collectClassNameExpressionFacts(
   initializer: ts.JsxAttribute["initializer"],
   classReferences: ClassReferenceFact[],
-  context: ExpressionCollectionContext,
+  context: ClassExpressionEvaluationContext,
 ): void {
   if (!initializer) {
     return;
   }
 
-  if (ts.isStringLiteral(initializer)) {
-    pushTokenFacts(
-      initializer.text,
-      "string-literal",
-      "high",
-      initializer,
-      context,
-      classReferences,
-    );
+  if (ts.isStringLiteral(initializer) || ts.isNoSubstitutionTemplateLiteral(initializer)) {
+    collectExpressionFacts(initializer, classReferences, context);
     return;
   }
 
@@ -226,221 +247,33 @@ function collectClassNameExpressionFacts(
 function collectExpressionFacts(
   expression: ts.Expression,
   classReferences: ClassReferenceFact[],
-  context: ExpressionCollectionContext,
-  seenIdentifiers = new Set<string>(),
+  context: ClassExpressionEvaluationContext,
 ): void {
-  const staticValue = resolveStaticClassValue(expression, context, seenIdentifiers);
-  if (staticValue) {
-    pushTokenFacts(
-      staticValue.value,
-      staticValue.kind,
-      staticValue.confidence,
-      expression,
-      context,
-      classReferences,
-    );
-    return;
-  }
+  const evaluation = evaluateClassExpression(expression, context);
 
-  if (ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) {
-    pushTokenFacts(expression.text, "string-literal", "high", expression, context, classReferences);
-    return;
-  }
-
-  if (ts.isIdentifier(expression)) {
-    if (seenIdentifiers.has(expression.text)) {
-      return;
-    }
-
-    const initializer = context.localBindings.get(expression.text);
-    if (!initializer) {
-      return;
-    }
-
-    seenIdentifiers.add(expression.text);
-    collectExpressionFacts(initializer, classReferences, context, seenIdentifiers);
-    seenIdentifiers.delete(expression.text);
-    return;
-  }
-
-  if (ts.isTemplateExpression(expression)) {
-    for (const headToken of tokenizeClassNames(expression.head.text)) {
-      classReferences.push(
-        createClassReferenceFact(expression, context.parsedSourceFile, {
-          className: headToken,
-          kind: "template-literal",
-          confidence: "medium",
-          source: expression.getText(),
-        }),
-      );
-    }
-
-    for (const span of expression.templateSpans) {
-      collectExpressionFacts(span.expression, classReferences, context, seenIdentifiers);
-      for (const literalToken of tokenizeClassNames(span.literal.text)) {
-        classReferences.push(
-          createClassReferenceFact(expression, context.parsedSourceFile, {
-            className: literalToken,
-            kind: "template-literal",
-            confidence: "medium",
-            source: expression.getText(),
-          }),
-        );
-      }
-    }
-    return;
-  }
-
-  if (ts.isConditionalExpression(expression)) {
-    collectExpressionFacts(expression.whenTrue, classReferences, context, seenIdentifiers);
-    collectExpressionFacts(expression.whenFalse, classReferences, context, seenIdentifiers);
+  for (const token of evaluation.tokens) {
     classReferences.push(
-      createClassReferenceFact(expression, context.parsedSourceFile, {
-        kind: "conditional",
-        confidence: "medium",
-        source: expression.getText(),
-      }),
-    );
-    return;
-  }
-
-  if (ts.isArrayLiteralExpression(expression)) {
-    for (const element of expression.elements) {
-      if (ts.isSpreadElement(element)) {
-        classReferences.push(
-          createClassReferenceFact(expression, context.parsedSourceFile, {
-            kind: "helper-call",
-            confidence: "low",
-            source: expression.getText(),
-          }),
-        );
-        continue;
-      }
-
-      collectExpressionFacts(element as ts.Expression, classReferences, context, seenIdentifiers);
-    }
-    return;
-  }
-
-  if (ts.isBinaryExpression(expression)) {
-    if (
-      expression.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken ||
-      expression.operatorToken.kind === ts.SyntaxKind.BarBarToken ||
-      expression.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken
-    ) {
-      collectExpressionFacts(expression.right, classReferences, context, seenIdentifiers);
-      classReferences.push(
-        createClassReferenceFact(expression, context.parsedSourceFile, {
-          kind: "conditional",
-          confidence: "medium",
-          source: expression.getText(),
-        }),
-      );
-      return;
-    }
-
-    if (expression.operatorToken.kind === ts.SyntaxKind.PlusToken) {
-      collectExpressionFacts(expression.left, classReferences, context, seenIdentifiers);
-      collectExpressionFacts(expression.right, classReferences, context, seenIdentifiers);
-      return;
-    }
-  }
-
-  if (
-    ts.isCallExpression(expression) &&
-    ts.isPropertyAccessExpression(expression.expression) &&
-    expression.expression.name.text === "join" &&
-    ts.isArrayLiteralExpression(expression.expression.expression)
-  ) {
-    for (const element of expression.expression.expression.elements) {
-      collectExpressionFacts(element as ts.Expression, classReferences, context, seenIdentifiers);
-    }
-    return;
-  }
-
-  if (ts.isCallExpression(expression)) {
-    collectHelperCallFacts(expression, context, classReferences);
-  }
-}
-
-function collectHelperCallFacts(
-  node: ts.CallExpression,
-  context: ExpressionCollectionContext,
-  classReferences: ClassReferenceFact[],
-): void {
-  if (!ts.isIdentifier(node.expression) || !context.helperImports.has(node.expression.text)) {
-    return;
-  }
-
-  for (const argument of node.arguments) {
-    if (ts.isStringLiteral(argument) || ts.isNoSubstitutionTemplateLiteral(argument)) {
-      pushTokenFacts(argument.text, "helper-call", "high", argument, context, classReferences);
-      continue;
-    }
-
-    if (ts.isObjectLiteralExpression(argument)) {
-      for (const property of argument.properties) {
-        if (
-          ts.isPropertyAssignment(property) &&
-          (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name))
-        ) {
-          classReferences.push(
-            createClassReferenceFact(property.name, context.parsedSourceFile, {
-              className: ts.isIdentifier(property.name) ? property.name.text : property.name.text,
-              kind: "helper-call",
-              confidence: "medium",
-              source: property.getText(),
-            }),
-          );
-        }
-      }
-      continue;
-    }
-
-    if (ts.isArrayLiteralExpression(argument)) {
-      for (const element of argument.elements) {
-        if (ts.isExpression(element)) {
-          collectExpressionFacts(element, classReferences, context);
-        }
-      }
-      continue;
-    }
-
-    classReferences.push(
-      createClassReferenceFact(argument, context.parsedSourceFile, {
-        kind: "helper-call",
-        confidence: "low",
-        source: argument.getText(),
+      createClassReferenceFact(token.anchorNode, context.parsedSourceFile, {
+        className: token.token,
+        kind: token.kind,
+        confidence: token.confidence,
+        source: token.source,
+        metadata: {
+          certainty: token.certainty,
+        },
       }),
     );
   }
-}
 
-function pushTokenFacts(
-  value: string,
-  kind: ClassReferenceFact["kind"],
-  confidence: ClassReferenceFact["confidence"],
-  anchorNode: ts.Node,
-  context: ExpressionCollectionContext,
-  classReferences: ClassReferenceFact[],
-): void {
-  for (const token of tokenizeClassNames(value)) {
+  for (const dynamicExpression of evaluation.dynamics) {
     classReferences.push(
-      createClassReferenceFact(anchorNode, context.parsedSourceFile, {
-        className: token,
-        kind,
-        confidence,
-        source: value,
+      createClassReferenceFact(dynamicExpression.anchorNode, context.parsedSourceFile, {
+        kind: dynamicExpression.kind,
+        confidence: dynamicExpression.confidence,
+        source: dynamicExpression.source,
       }),
     );
   }
-}
-
-function tokenizeClassNames(value: string): string[] {
-  return value
-    .split(/\s+/)
-    .map((token) => token.trim())
-    .filter(Boolean);
 }
 
 async function resolveImportSpecifier(
@@ -530,12 +363,6 @@ function sortClassReferences(classReferences: ClassReferenceFact[]): ClassRefere
   });
 }
 
-type ExpressionCollectionContext = {
-  helperImports: Set<string>;
-  localBindings: Map<string, ts.Expression>;
-  parsedSourceFile: ts.SourceFile;
-};
-
 function createClassReferenceFact(
   node: ts.Node,
   parsedSourceFile: ts.SourceFile,
@@ -551,85 +378,6 @@ function createClassReferenceFact(
   };
 }
 
-function resolveStaticClassValue(
-  expression: ts.Expression,
-  context: ExpressionCollectionContext,
-  seenIdentifiers: Set<string>,
-):
-  | {
-      value: string;
-      kind: ClassReferenceFact["kind"];
-      confidence: ClassReferenceFact["confidence"];
-    }
-  | undefined {
-  if (ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) {
-    return {
-      value: expression.text,
-      kind: "string-literal",
-      confidence: "high",
-    };
-  }
-
-  if (ts.isIdentifier(expression)) {
-    if (seenIdentifiers.has(expression.text)) {
-      return undefined;
-    }
-
-    const initializer = context.localBindings.get(expression.text);
-    if (!initializer) {
-      return undefined;
-    }
-
-    seenIdentifiers.add(expression.text);
-    const resolved = resolveStaticClassValue(initializer, context, seenIdentifiers);
-    seenIdentifiers.delete(expression.text);
-    return resolved;
-  }
-
-  if (ts.isTemplateExpression(expression)) {
-    let value = expression.head.text;
-
-    for (const span of expression.templateSpans) {
-      const resolvedSpan = resolveStaticClassValue(span.expression, context, seenIdentifiers);
-      if (!resolvedSpan) {
-        return undefined;
-      }
-
-      value += resolvedSpan.value;
-      value += span.literal.text;
-    }
-
-    return {
-      value,
-      kind: "template-literal",
-      confidence: "high",
-    };
-  }
-
-  if (
-    ts.isBinaryExpression(expression) &&
-    expression.operatorToken.kind === ts.SyntaxKind.PlusToken
-  ) {
-    const left = resolveStaticClassValue(expression.left, context, seenIdentifiers);
-    const right = resolveStaticClassValue(expression.right, context, seenIdentifiers);
-    if (!left || !right) {
-      return undefined;
-    }
-
-    return {
-      value: `${left.value}${right.value}`,
-      kind: "template-literal",
-      confidence: "high",
-    };
-  }
-
-  if (ts.isParenthesizedExpression(expression)) {
-    return resolveStaticClassValue(expression.expression, context, seenIdentifiers);
-  }
-
-  return undefined;
-}
-
 function isTrackableBinding(node: ts.VariableDeclaration): boolean {
   const list = node.parent;
   if (!ts.isVariableDeclarationList(list)) {
@@ -637,4 +385,23 @@ function isTrackableBinding(node: ts.VariableDeclaration): boolean {
   }
 
   return (list.flags & ts.NodeFlags.Const) !== 0;
+}
+
+function getFunctionBodyExpression(
+  node: ts.FunctionDeclaration | ts.FunctionExpression | ts.ArrowFunction,
+): ts.Expression | undefined {
+  if (ts.isArrowFunction(node) && ts.isExpression(node.body)) {
+    return node.body;
+  }
+
+  if (!node.body || !ts.isBlock(node.body) || node.body.statements.length !== 1) {
+    return undefined;
+  }
+
+  const [statement] = node.body.statements;
+  if (!ts.isReturnStatement(statement) || !statement.expression) {
+    return undefined;
+  }
+
+  return statement.expression;
 }

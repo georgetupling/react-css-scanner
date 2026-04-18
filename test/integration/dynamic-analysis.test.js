@@ -7,7 +7,10 @@ import { withBuiltProject } from "../support/integrationTestUtils.js";
 
 test("integration scans preserve dynamic-class-reference confidence through the full pipeline", async () => {
   const builder = new TestProjectBuilder().withTemplate("basic-react-app");
-  await builder.withSourceFileFromResource("src/App.tsx", "source/components/DynamicPanel.tsx");
+  builder.withSourceFile(
+    "src/App.tsx",
+    'export function App() { return <div className={`panel ${getStateClass()}`} />; }',
+  );
   builder.withCssFile("src/App.css", ".panel {}\n.open {}\n");
 
   await withBuiltProject(builder, async (project) => {
@@ -27,8 +30,7 @@ test("integration scans report dynamic missing css classes from helper-composed 
         "src/App.tsx",
         [
           'import classNames from "classnames";',
-          "const state = true;",
-          'export function App() { return <div className={classNames("panel", state && "missingDynamic")} />; }',
+          'export function App() { return <div className={classNames("panel", "missing-" + getSuffix())} />; }',
         ].join("\n"),
       ),
     async (project) => {
@@ -38,7 +40,7 @@ test("integration scans report dynamic missing css classes from helper-composed 
         result.findings.some(
           (finding) =>
             finding.ruleId === "dynamic-missing-css-class" &&
-            finding.metadata.sourceExpression === 'state && "missingDynamic"',
+            finding.metadata.sourceExpression === '"missing-" + getSuffix()',
         ),
       );
     },
