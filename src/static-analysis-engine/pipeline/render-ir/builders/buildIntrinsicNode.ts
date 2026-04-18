@@ -1,5 +1,6 @@
 import ts from "typescript";
 
+import type { ClassExpressionSummary } from "../../abstract-values/types.js";
 import {
   summarizeClassNameExpression,
   toAbstractClassSet,
@@ -16,7 +17,7 @@ import {
   resolveExactTruthyExpression,
   resolveIntrinsicTagName,
 } from "../resolution/resolveExactValues.js";
-import type { ClassExpressionSummary, RenderNode } from "../types.js";
+import type { RenderNode } from "../types.js";
 
 export function buildElementNode(input: {
   tagNameNode: ts.JsxTagNameExpression;
@@ -108,7 +109,19 @@ function summarizeClassAttribute(
 function unwrapJsxAttributeInitializer(
   initializer: ts.JsxAttribute["initializer"],
 ): ts.Expression | undefined {
+  if (!initializer) {
+    return undefined;
+  }
+
   if (ts.isStringLiteral(initializer) || ts.isNoSubstitutionTemplateLiteral(initializer)) {
+    return initializer;
+  }
+
+  if (
+    ts.isJsxElement(initializer) ||
+    ts.isJsxSelfClosingElement(initializer) ||
+    ts.isJsxFragment(initializer)
+  ) {
     return initializer;
   }
 

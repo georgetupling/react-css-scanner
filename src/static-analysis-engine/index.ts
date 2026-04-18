@@ -1,4 +1,5 @@
 export { analyzeProjectSourceTexts, analyzeSourceText } from "./entry/scan.js";
+export { analyzeCssSources } from "./pipeline/css-analysis/index.js";
 export { parseSourceFile } from "./pipeline/parse/index.js";
 export {
   buildModuleGraphFromSource,
@@ -16,8 +17,32 @@ export {
   analyzeSelectorQueries,
   extractSelectorQueriesFromCssText,
 } from "./pipeline/selector-analysis/index.js";
+export { buildReachabilitySummary } from "./pipeline/reachability/index.js";
+export { buildRenderGraph } from "./pipeline/render-graph/index.js";
+export { runExperimentalRules } from "./pipeline/rule-execution/index.js";
+export {
+  compareExperimentalFindings,
+  compareExperimentalRuleResults,
+  formatExperimentalComparisonReport,
+  runExperimentalSelectorPilotAgainstCurrentScanner,
+  runExperimentalSelectorPilotForProject,
+  runExperimentalSelectorPilotForSource,
+  summarizeExperimentalComparison,
+  toExperimentalFindings,
+} from "./comparison/index.js";
 export type { EngineModuleId, EngineSymbolId, SourceAnchor } from "./types/core.js";
 export type { StaticAnalysisEngineResult } from "./types/runtime.js";
+export type { ExperimentalCssFileAnalysis } from "./pipeline/css-analysis/index.js";
+export type {
+  RenderGraph,
+  RenderGraphEdge,
+  RenderGraphNode,
+} from "./pipeline/render-graph/index.js";
+export type {
+  ReachabilityAvailability,
+  ReachabilitySummary,
+  StylesheetReachabilityRecord,
+} from "./pipeline/reachability/index.js";
 export type {
   ModuleExportEdge,
   ModuleExportRecord,
@@ -45,6 +70,19 @@ export type {
   RenderSubtree,
   RenderUnknownNode,
 } from "./pipeline/render-ir/index.js";
+export type {
+  ExperimentalRuleId,
+  ExperimentalRuleResult,
+  ExperimentalRuleSeverity,
+} from "./pipeline/rule-execution/index.js";
+export type {
+  ExperimentalFindingComparison,
+  ExperimentalFindingComparisonSummary,
+  ExperimentalFindingLike,
+  ExperimentalRuleComparisonResult,
+  ExperimentalSelectorPilotArtifact,
+  ExperimentalSelectorPilotShadowArtifact,
+} from "./comparison/index.js";
 export type {
   AnalysisConfidence,
   AnalysisStatus,

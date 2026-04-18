@@ -191,6 +191,7 @@ test("static analysis engine can derive selector queries from css text inputs", 
   const result = analyzeSourceText({
     filePath: "src/TopicManagePage.tsx",
     sourceText: [
+      'import "./TopicManagePage.css";',
       "export function TopicManagePage() {",
       '  return <section className="topic-manage-page"><h1 className="topic-manage-page__title-skeleton" /></section>;',
       "}",
@@ -221,6 +222,7 @@ test("static analysis engine splits comma-separated css selectors into separate 
   const result = analyzeSourceText({
     filePath: "src/TopicManagePage.tsx",
     sourceText: [
+      'import "./TopicManagePage.css";',
       "export function TopicManagePage() {",
       '  return <section className="topic-manage-page"><h1 className="topic-manage-page__title-skeleton" /><div className="topic-manage-page__subtitle" /></section>;',
       "}",
@@ -263,6 +265,7 @@ test("static analysis engine preserves css-derived selector anchors across multi
   const result = analyzeSourceText({
     filePath: "src/TopicManagePage.tsx",
     sourceText: [
+      'import "./TopicManagePage.css";',
       "export function TopicManagePage() {",
       '  return <section className="topic-manage-page"><h1 className="topic-manage-page__title-skeleton" /></section>;',
       "}",
@@ -307,6 +310,7 @@ test("static analysis engine preserves @media context on css-derived selectors",
   const result = analyzeSourceText({
     filePath: "src/TopicManagePage.tsx",
     sourceText: [
+      'import "./TopicManagePage.css";',
       "export function TopicManagePage() {",
       '  return <section className="topic-manage-page"><h1 className="topic-manage-page__title-skeleton" /></section>;',
       "}",
@@ -342,6 +346,35 @@ test("static analysis engine preserves @media context on css-derived selectors",
         queryText: "(min-width: 800px)",
       },
     ],
+  });
+});
+
+test("static analysis engine reports css-derived selectors as unavailable when the stylesheet is not imported", () => {
+  const result = analyzeSourceText({
+    filePath: "src/TopicManagePage.tsx",
+    sourceText: [
+      "export function TopicManagePage() {",
+      '  return <section className="topic-manage-page"><h1 className="topic-manage-page__title-skeleton" /></section>;',
+      "}",
+    ].join("\n"),
+    selectorCssSources: [
+      {
+        filePath: "src/TopicManagePage.css",
+        cssText: ".topic-manage-page .topic-manage-page__title-skeleton { width: 100%; }",
+      },
+    ],
+  });
+
+  assert.equal(result.selectorQueryResults.length, 1);
+  assert.equal(result.selectorQueryResults[0].outcome, "no-match-under-bounded-analysis");
+  assert.equal(result.selectorQueryResults[0].status, "resolved");
+  assert.equal(result.selectorQueryResults[0].confidence, "high");
+  assert.deepEqual(result.selectorQueryResults[0].reachability, {
+    kind: "css-source",
+    cssFilePath: "src/TopicManagePage.css",
+    availability: "unavailable",
+    directlyImportingSourceFilePaths: [],
+    reasons: ["no analyzed source file directly imports this stylesheet"],
   });
 });
 

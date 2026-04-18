@@ -1,6 +1,6 @@
 import ts from "typescript";
 
-import type { SourceAnchor } from "../../types/core.js";
+import type { SourceAnchor } from "../../../types/core.js";
 import type { BuildContext } from "./internalTypes.js";
 import type { RenderNode } from "../types.js";
 

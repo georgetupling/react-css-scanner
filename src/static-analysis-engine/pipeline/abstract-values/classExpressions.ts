@@ -157,7 +157,19 @@ function tokenizeClassNames(value: string): string[] {
 function unwrapJsxAttributeInitializer(
   initializer: ts.JsxAttribute["initializer"],
 ): ts.Expression | undefined {
+  if (!initializer) {
+    return undefined;
+  }
+
   if (ts.isStringLiteral(initializer) || ts.isNoSubstitutionTemplateLiteral(initializer)) {
+    return initializer;
+  }
+
+  if (
+    ts.isJsxElement(initializer) ||
+    ts.isJsxSelfClosingElement(initializer) ||
+    ts.isJsxFragment(initializer)
+  ) {
     return initializer;
   }
 

@@ -173,6 +173,41 @@ test("static analysis engine expands direct imported components across files", (
   assert.equal(result.selectorQueryResults[0].outcome, "match");
 });
 
+test("static analysis engine exposes a lightweight render graph for cross-file component composition", () => {
+  const result = analyzeProjectSourceTexts({
+    sourceFiles: [
+      {
+        filePath: "src/PanelShell.tsx",
+        sourceText: [
+          "export function PanelShell({ children }: { children: React.ReactNode }) {",
+          '  return <section className="panel-shell">{children}</section>;',
+          "}",
+        ].join("\n"),
+      },
+      {
+        filePath: "src/App.tsx",
+        sourceText: [
+          'import { PanelShell } from "./PanelShell";',
+          "export function App() {",
+          '  return <PanelShell><h1 className="panel-shell__title" /></PanelShell>;',
+          "}",
+        ].join("\n"),
+      },
+    ],
+  });
+
+  assert.deepEqual(
+    result.renderGraph.nodes.map((node) => `${node.filePath}:${node.componentName}`),
+    ["src/App.tsx:App", "src/PanelShell.tsx:PanelShell"],
+  );
+  assert.equal(result.renderGraph.edges.length, 1);
+  assert.equal(result.renderGraph.edges[0].fromComponentName, "App");
+  assert.equal(result.renderGraph.edges[0].toComponentName, "PanelShell");
+  assert.equal(result.renderGraph.edges[0].toFilePath, "src/PanelShell.tsx");
+  assert.equal(result.renderGraph.edges[0].resolution, "resolved");
+  assert.equal(result.renderGraph.edges[0].traversal, "direct-jsx");
+});
+
 test("static analysis engine expands multi-hop imported wrapper components across files", () => {
   const result = analyzeProjectSourceTexts({
     sourceFiles: [

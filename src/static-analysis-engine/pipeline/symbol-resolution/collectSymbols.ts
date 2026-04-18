@@ -133,7 +133,9 @@ function classifyVariableKind(localName: string, declarationFlags: ts.NodeFlags)
   return isConst ? "constant" : "variable";
 }
 
-function isExported(statement: ts.Statement): boolean {
+function isExported(
+  statement: ts.Statement & { modifiers?: ts.NodeArray<ts.ModifierLike> },
+): boolean {
   return (
     statement.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword) ?? false
   );

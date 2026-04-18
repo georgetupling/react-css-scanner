@@ -108,6 +108,10 @@ function buildImportRecord(
   fromFilePath: string,
   resolveImportSpecifier?: (fromFilePath: string, specifier: string) => EngineModuleId | undefined,
 ): ModuleImportRecord {
+  if (!ts.isStringLiteral(statement.moduleSpecifier)) {
+    throw new Error("buildImportRecord requires a string-literal module specifier");
+  }
+
   const specifier = statement.moduleSpecifier.text;
   const importClause = statement.importClause;
   const importedNames: ModuleImportRecord["importedNames"] = [];

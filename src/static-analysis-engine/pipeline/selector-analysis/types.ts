@@ -1,4 +1,5 @@
 import type { SourceAnchor } from "../../types/core.js";
+import type { ReachabilityAvailability } from "../reachability/types.js";
 
 export type SemanticOutcome = "match" | "possible-match" | "no-match-under-bounded-analysis";
 
@@ -122,4 +123,15 @@ export type SelectorQueryResult = {
   status: AnalysisStatus;
   confidence: AnalysisConfidence;
   reasons: string[];
+  reachability?:
+    | {
+        kind: "direct-query";
+      }
+    | {
+        kind: "css-source";
+        cssFilePath?: string;
+        availability: ReachabilityAvailability;
+        directlyImportingSourceFilePaths: string[];
+        reasons: string[];
+      };
 };
