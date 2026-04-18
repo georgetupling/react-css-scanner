@@ -207,7 +207,7 @@ test("unresolved uppercase JSX targets do not create render edges", async () => 
     await writeProjectFile(
       tempDir,
       "src/App.tsx",
-      'export function App() { return <MissingWidget />; }',
+      "export function App() { return <MissingWidget />; }",
     );
 
     const facts = await extractProjectFacts(DEFAULT_CONFIG, tempDir);
@@ -250,6 +250,107 @@ test("wrapper-imported css reaches leaf components through render ancestry", asy
     assert.ok(leafReachability);
     assert.ok(leafReachability.renderContextDefiniteLocalCss.has("src/Field.css"));
     assert.equal(leafReachability.renderContextPossibleLocalCss.size, 0);
+  });
+});
+
+test("route-based reachability includes css from higher ancestors on a single render path", async () => {
+  await withTempDir(async (tempDir) => {
+    await writeProjectFile(
+      tempDir,
+      "src/App.tsx",
+      [
+        'import "./Page.css";',
+        'import { Wrapper } from "./Wrapper";',
+        "export function App() { return <Wrapper />; }",
+      ].join("\n"),
+    );
+    await writeProjectFile(
+      tempDir,
+      "src/Wrapper.tsx",
+      ['import { Leaf } from "./Leaf";', "export function Wrapper() { return <Leaf />; }"].join(
+        "\n",
+      ),
+    );
+    await writeProjectFile(
+      tempDir,
+      "src/Leaf.tsx",
+      'export function Leaf() { return <div className="page-shell" />; }',
+    );
+    await writeProjectFile(tempDir, "src/Page.css", ".page-shell {}");
+
+    const facts = await extractProjectFacts(DEFAULT_CONFIG, tempDir);
+    const model = buildProjectModel({ config: DEFAULT_CONFIG, facts });
+
+    const leafReachability = model.reachability.get("src/Leaf.tsx");
+    assert.ok(leafReachability);
+    assert.ok(leafReachability.renderContextDefiniteLocalCss.has("src/Page.css"));
+    assert.equal(leafReachability.renderContextPossibleLocalCss.size, 0);
+  });
+});
+
+test("route-based reachability works when the css provider is five ancestors away", async () => {
+  await withTempDir(async (tempDir) => {
+    await writeProjectFile(
+      tempDir,
+      "src/App.tsx",
+      [
+        'import "./DeepPage.css";',
+        'import { LevelOne } from "./LevelOne";',
+        "export function App() { return <LevelOne />; }",
+      ].join("\n"),
+    );
+    await writeProjectFile(
+      tempDir,
+      "src/LevelOne.tsx",
+      [
+        'import { LevelTwo } from "./LevelTwo";',
+        "export function LevelOne() { return <LevelTwo />; }",
+      ].join("\n"),
+    );
+    await writeProjectFile(
+      tempDir,
+      "src/LevelTwo.tsx",
+      [
+        'import { LevelThree } from "./LevelThree";',
+        "export function LevelTwo() { return <LevelThree />; }",
+      ].join("\n"),
+    );
+    await writeProjectFile(
+      tempDir,
+      "src/LevelThree.tsx",
+      [
+        'import { LevelFour } from "./LevelFour";',
+        "export function LevelThree() { return <LevelFour />; }",
+      ].join("\n"),
+    );
+    await writeProjectFile(
+      tempDir,
+      "src/LevelFour.tsx",
+      [
+        'import { LevelFive } from "./LevelFive";',
+        "export function LevelFour() { return <LevelFive />; }",
+      ].join("\n"),
+    );
+    await writeProjectFile(
+      tempDir,
+      "src/LevelFive.tsx",
+      ['import { Leaf } from "./Leaf";', "export function LevelFive() { return <Leaf />; }"].join(
+        "\n",
+      ),
+    );
+    await writeProjectFile(
+      tempDir,
+      "src/Leaf.tsx",
+      'export function Leaf() { return <div className="deep-shell" />; }',
+    );
+    await writeProjectFile(tempDir, "src/DeepPage.css", ".deep-shell {}");
+
+    const facts = await extractProjectFacts(DEFAULT_CONFIG, tempDir);
+    const model = buildProjectModel({ config: DEFAULT_CONFIG, facts });
+
+    const leafReachability = model.reachability.get("src/Leaf.tsx");
+    assert.ok(leafReachability);
+    assert.ok(leafReachability.renderContextDefiniteLocalCss.has("src/DeepPage.css"));
   });
 });
 

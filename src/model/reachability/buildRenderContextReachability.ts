@@ -1,5 +1,5 @@
 import type { ReachabilityInfo, SourceFileNode } from "../types.js";
-import { intersectSets, unionSets } from "./shared.js";
+import { collectRenderRoutes, intersectSets, unionSets } from "./shared.js";
 
 export function buildRenderContextReachability(input: {
   sourceFiles: SourceFileNode[];
@@ -15,21 +15,21 @@ export function buildRenderContextReachability(input: {
       continue;
     }
 
-    const directRenderParents = [...(renderersBySourcePath.get(sourceFile.path) ?? [])];
-    const renderAncestorReachabilities = directRenderParents
-      .map((sourcePath) => importReachability.get(sourcePath))
-      .filter((reachability): reachability is ReachabilityInfo => Boolean(reachability));
+    const renderRoutes = collectRenderRoutes(sourceFile.path, renderersBySourcePath);
+    const routeCssSets = renderRoutes.map((route) =>
+      unionSets(
+        route
+          .map((sourcePath) => importReachability.get(sourcePath)?.localCss)
+          .filter((reachability): reachability is Set<string> => Boolean(reachability)),
+      ),
+    );
 
     const renderContextDefiniteLocalCss = new Set<string>();
     const renderContextPossibleLocalCss = new Set<string>();
 
-    if (renderAncestorReachabilities.length > 0) {
-      const intersectedCss = intersectSets(
-        renderAncestorReachabilities.map((reachability) => reachability.localCss),
-      );
-      const unionCss = unionSets(
-        renderAncestorReachabilities.map((reachability) => reachability.localCss),
-      );
+    if (routeCssSets.length > 0) {
+      const intersectedCss = intersectSets(routeCssSets);
+      const unionCss = unionSets(routeCssSets);
 
       for (const cssPath of intersectedCss) {
         if (!directReachability.directLocalCss.has(cssPath)) {

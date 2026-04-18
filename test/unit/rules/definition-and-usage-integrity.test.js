@@ -185,6 +185,42 @@ test("missing-css-class does not report classes satisfied only through wrapper r
   });
 });
 
+test("missing-css-class does not report classes satisfied through a higher render ancestor route", async () => {
+  await withRuleTempDir(async (tempDir) => {
+    await writeProjectFile(
+      tempDir,
+      "src/App.tsx",
+      [
+        'import "./Page.css";',
+        'import { Wrapper } from "./Wrapper";',
+        "export function App() { return <Wrapper />; }",
+      ].join("\n"),
+    );
+    await writeProjectFile(
+      tempDir,
+      "src/Wrapper.tsx",
+      ['import { Leaf } from "./Leaf";', "export function Wrapper() { return <Leaf />; }"].join(
+        "\n",
+      ),
+    );
+    await writeProjectFile(
+      tempDir,
+      "src/Leaf.tsx",
+      'export function Leaf() { return <div className="page-shell" />; }',
+    );
+    await writeProjectFile(tempDir, "src/Page.css", ".page-shell {}");
+
+    const findings = await runRuleScenario(tempDir);
+
+    assert.ok(
+      !findings.some(
+        (finding) =>
+          finding.ruleId === "missing-css-class" && finding.subject?.className === "page-shell",
+      ),
+    );
+  });
+});
+
 test("unused-css-class does not report classes used only through wrapper render context", async () => {
   await withRuleTempDir(async (tempDir) => {
     await writeProjectFile(
@@ -221,7 +257,8 @@ test("unused-css-class does not report classes used only through wrapper render 
     );
     assert.ok(
       findings.some(
-        (finding) => finding.ruleId === "unused-css-class" && finding.subject?.className === "unused",
+        (finding) =>
+          finding.ruleId === "unused-css-class" && finding.subject?.className === "unused",
       ),
     );
   });
@@ -271,6 +308,185 @@ test("unreachable-css stays advisory for layout utility css available on only on
     assert.equal(finding.confidence, "low");
     assert.equal(finding.metadata?.renderContextReachability, "possible");
     assert.deepEqual(finding.metadata?.possibleRenderContextCssFiles, ["src/layout.css"]);
+  });
+});
+
+test("unreachable-css stays advisory when a deep ancestor provides css on only some routes", async () => {
+  await withRuleTempDir(async (tempDir) => {
+    await writeProjectFile(
+      tempDir,
+      "src/App.tsx",
+      [
+        'import { StyledChainEntry } from "./StyledChainEntry";',
+        'import { PlainChainEntry } from "./PlainChainEntry";',
+        "export function App() { return <><StyledChainEntry /><PlainChainEntry /></>; }",
+      ].join("\n"),
+    );
+    await writeProjectFile(
+      tempDir,
+      "src/StyledChainEntry.tsx",
+      [
+        'import "./DeepChain.css";',
+        'import { StyledLevelOne } from "./StyledLevelOne";',
+        "export function StyledChainEntry() { return <StyledLevelOne />; }",
+      ].join("\n"),
+    );
+    await writeProjectFile(
+      tempDir,
+      "src/StyledLevelOne.tsx",
+      [
+        'import { StyledLevelTwo } from "./StyledLevelTwo";',
+        "export function StyledLevelOne() { return <StyledLevelTwo />; }",
+      ].join("\n"),
+    );
+    await writeProjectFile(
+      tempDir,
+      "src/StyledLevelTwo.tsx",
+      [
+        'import { StyledLevelThree } from "./StyledLevelThree";',
+        "export function StyledLevelTwo() { return <StyledLevelThree />; }",
+      ].join("\n"),
+    );
+    await writeProjectFile(
+      tempDir,
+      "src/StyledLevelThree.tsx",
+      [
+        'import { StyledLevelFour } from "./StyledLevelFour";',
+        "export function StyledLevelThree() { return <StyledLevelFour />; }",
+      ].join("\n"),
+    );
+    await writeProjectFile(
+      tempDir,
+      "src/StyledLevelFour.tsx",
+      [
+        'import { Child } from "./Child";',
+        "export function StyledLevelFour() { return <Child />; }",
+      ].join("\n"),
+    );
+    await writeProjectFile(
+      tempDir,
+      "src/PlainChainEntry.tsx",
+      [
+        'import { PlainLevelOne } from "./PlainLevelOne";',
+        "export function PlainChainEntry() { return <PlainLevelOne />; }",
+      ].join("\n"),
+    );
+    await writeProjectFile(
+      tempDir,
+      "src/PlainLevelOne.tsx",
+      [
+        'import { PlainLevelTwo } from "./PlainLevelTwo";',
+        "export function PlainLevelOne() { return <PlainLevelTwo />; }",
+      ].join("\n"),
+    );
+    await writeProjectFile(
+      tempDir,
+      "src/PlainLevelTwo.tsx",
+      [
+        'import { PlainLevelThree } from "./PlainLevelThree";',
+        "export function PlainLevelTwo() { return <PlainLevelThree />; }",
+      ].join("\n"),
+    );
+    await writeProjectFile(
+      tempDir,
+      "src/PlainLevelThree.tsx",
+      [
+        'import { PlainLevelFour } from "./PlainLevelFour";',
+        "export function PlainLevelThree() { return <PlainLevelFour />; }",
+      ].join("\n"),
+    );
+    await writeProjectFile(
+      tempDir,
+      "src/PlainLevelFour.tsx",
+      [
+        'import { Child } from "./Child";',
+        "export function PlainLevelFour() { return <Child />; }",
+      ].join("\n"),
+    );
+    await writeProjectFile(
+      tempDir,
+      "src/Child.tsx",
+      'export function Child() { return <div className="deep-chain" />; }',
+    );
+    await writeProjectFile(tempDir, "src/DeepChain.css", ".deep-chain {}");
+
+    const findings = await runRuleScenario(tempDir);
+    const finding = findings.find(
+      (entry) => entry.ruleId === "unreachable-css" && entry.subject?.className === "deep-chain",
+    );
+
+    assert.ok(finding);
+    assert.equal(finding.confidence, "low");
+    assert.equal(finding.metadata?.renderContextReachability, "possible");
+    assert.deepEqual(finding.metadata?.possibleRenderContextCssFiles, ["src/DeepChain.css"]);
+  });
+});
+
+test("route-based reachability classifies different classes independently across different routes", async () => {
+  await withRuleTempDir(async (tempDir) => {
+    await writeProjectFile(
+      tempDir,
+      "src/App.tsx",
+      [
+        'import { AlphaPage } from "./AlphaPage";',
+        'import { BetaPage } from "./BetaPage";',
+        "export function App() { return <><AlphaPage /><BetaPage /></>; }",
+      ].join("\n"),
+    );
+    await writeProjectFile(
+      tempDir,
+      "src/AlphaPage.tsx",
+      [
+        'import "./Alpha.css";',
+        'import { Child } from "./Child";',
+        "export function AlphaPage() { return <Child />; }",
+      ].join("\n"),
+    );
+    await writeProjectFile(
+      tempDir,
+      "src/BetaPage.tsx",
+      [
+        'import "./Beta.css";',
+        'import { Child } from "./Child";',
+        "export function BetaPage() { return <Child />; }",
+      ].join("\n"),
+    );
+    await writeProjectFile(
+      tempDir,
+      "src/Child.tsx",
+      'export function Child() { return <div className="alpha beta" />; }',
+    );
+    await writeProjectFile(tempDir, "src/Alpha.css", ".alpha {}");
+    await writeProjectFile(tempDir, "src/Beta.css", ".beta {}");
+
+    const findings = await runRuleScenario(tempDir);
+
+    assert.ok(
+      !findings.some(
+        (finding) =>
+          finding.ruleId === "missing-css-class" && finding.subject?.className === "alpha",
+      ),
+    );
+    assert.ok(
+      !findings.some(
+        (finding) =>
+          finding.ruleId === "missing-css-class" && finding.subject?.className === "beta",
+      ),
+    );
+
+    const alphaUnreachable = findings.find(
+      (finding) => finding.ruleId === "unreachable-css" && finding.subject?.className === "alpha",
+    );
+    const betaUnreachable = findings.find(
+      (finding) => finding.ruleId === "unreachable-css" && finding.subject?.className === "beta",
+    );
+
+    assert.ok(alphaUnreachable);
+    assert.ok(betaUnreachable);
+    assert.equal(alphaUnreachable.confidence, "low");
+    assert.equal(betaUnreachable.confidence, "low");
+    assert.deepEqual(alphaUnreachable.metadata?.possibleRenderContextCssFiles, ["src/Alpha.css"]);
+    assert.deepEqual(betaUnreachable.metadata?.possibleRenderContextCssFiles, ["src/Beta.css"]);
   });
 });
 
