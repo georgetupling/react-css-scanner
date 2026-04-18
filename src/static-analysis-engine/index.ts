@@ -8,6 +8,10 @@ export {
   toAbstractClassSet,
 } from "./pipeline/abstract-values/index.js";
 export { buildSameFileRenderSubtrees } from "./pipeline/render-ir/index.js";
+export {
+  analyzeSelectorQueries,
+  extractSelectorQueriesFromCssText,
+} from "./pipeline/selector-analysis/index.js";
 export type { EngineModuleId, EngineSymbolId, SourceAnchor } from "./types/core.js";
 export type { StaticAnalysisEngineResult } from "./types/runtime.js";
 export type {
@@ -36,3 +40,12 @@ export type {
   RenderSubtree,
   RenderUnknownNode,
 } from "./pipeline/render-ir/index.js";
+export type {
+  AnalysisConfidence,
+  AnalysisStatus,
+  ExtractedSelectorQuery,
+  SelectorConstraint,
+  SelectorQueryResult,
+  SelectorSourceInput,
+  SemanticOutcome,
+} from "./pipeline/selector-analysis/index.js";

@@ -2,11 +2,22 @@ import { collectClassExpressionSummaries } from "../pipeline/abstract-values/ind
 import { buildModuleGraphFromSource, createModuleId } from "../pipeline/module-graph/index.js";
 import { parseSourceFile } from "../pipeline/parse/index.js";
 import { buildSameFileRenderSubtrees } from "../pipeline/render-ir/index.js";
+import {
+  analyzeSelectorQueries,
+  extractSelectorQueriesFromCssText,
+  parseSelectorQueries,
+} from "../pipeline/selector-analysis/index.js";
 import { collectTopLevelSymbols } from "../pipeline/symbol-resolution/index.js";
 import type { StaticAnalysisEngineResult } from "../types/runtime.js";
 import type { ModuleGraph } from "../pipeline/module-graph/index.js";
 import type { ClassExpressionSummary } from "../pipeline/abstract-values/index.js";
 import type { RenderSubtree } from "../pipeline/render-ir/index.js";
+import type {
+  ExtractedSelectorQuery,
+  ParsedSelectorQuery,
+  SelectorQueryResult,
+  SelectorSourceInput,
+} from "../pipeline/selector-analysis/index.js";
 import type { EngineSymbol } from "../pipeline/symbol-resolution/index.js";
 import type { EngineModuleId, EngineSymbolId } from "../types/core.js";
 import type ts from "typescript";
@@ -14,6 +25,8 @@ import type ts from "typescript";
 export function analyzeSourceText(input: {
   filePath: string;
   sourceText: string;
+  selectorQueries?: string[];
+  selectorCssSources?: SelectorSourceInput[];
 }): StaticAnalysisEngineResult {
   const parseStage = runParseStage(input);
   const symbolResolutionStage = runSymbolResolutionStage({
@@ -34,12 +47,24 @@ export function analyzeSourceText(input: {
     filePath: input.filePath,
     parsedSourceFile: parseStage.parsedSourceFile,
   });
+  const selectorInputStage = runSelectorInputStage({
+    selectorQueries: input.selectorQueries ?? [],
+    selectorCssSources: input.selectorCssSources ?? [],
+  });
+  const selectorParsingStage = runSelectorParsingStage({
+    selectorQueries: selectorInputStage.selectorQueries,
+  });
+  const selectorAnalysisStage = runSelectorAnalysisStage({
+    selectorQueries: selectorParsingStage.selectorQueries,
+    renderSubtrees: renderIrStage.renderSubtrees,
+  });
 
   return {
     moduleGraph: moduleGraphStage.moduleGraph,
     symbols: symbolResolutionStage.symbols,
     classExpressions: abstractValueStage.classExpressions,
     renderSubtrees: renderIrStage.renderSubtrees,
+    selectorQueryResults: selectorAnalysisStage.selectorQueryResults,
   };
 }
 
@@ -62,6 +87,18 @@ type AbstractValueStageResult = {
 
 type RenderIrStageResult = {
   renderSubtrees: RenderSubtree[];
+};
+
+type SelectorAnalysisStageResult = {
+  selectorQueryResults: SelectorQueryResult[];
+};
+
+type SelectorInputStageResult = {
+  selectorQueries: ExtractedSelectorQuery[];
+};
+
+type SelectorParsingStageResult = {
+  selectorQueries: ParsedSelectorQuery[];
 };
 
 function runParseStage(input: { filePath: string; sourceText: string }): ParseStageResult {
@@ -120,5 +157,39 @@ function runRenderIrStage(input: {
 }): RenderIrStageResult {
   return {
     renderSubtrees: buildSameFileRenderSubtrees(input),
+  };
+}
+
+function runSelectorInputStage(input: {
+  selectorQueries: string[];
+  selectorCssSources: SelectorSourceInput[];
+}): SelectorInputStageResult {
+  const directQueries: ExtractedSelectorQuery[] = input.selectorQueries.map((selectorText) => ({
+    selectorText,
+    source: { kind: "direct-query" },
+  }));
+  const cssDerivedQueries = input.selectorCssSources.flatMap((selectorSource) =>
+    extractSelectorQueriesFromCssText(selectorSource),
+  );
+
+  return {
+    selectorQueries: [...directQueries, ...cssDerivedQueries],
+  };
+}
+
+function runSelectorParsingStage(input: {
+  selectorQueries: ExtractedSelectorQuery[];
+}): SelectorParsingStageResult {
+  return {
+    selectorQueries: parseSelectorQueries(input.selectorQueries),
+  };
+}
+
+function runSelectorAnalysisStage(input: {
+  selectorQueries: ParsedSelectorQuery[];
+  renderSubtrees: RenderSubtree[];
+}): SelectorAnalysisStageResult {
+  return {
+    selectorQueryResults: analyzeSelectorQueries(input),
   };
 }

@@ -19,6 +19,9 @@ The MVP implementation is complete.
 
 Work should now treat the codebase and the durable design docs as the source of truth. Extend the implementation carefully instead of re-planning the architecture from scratch each session.
 
+There is also in-flight work on a replacement static-analysis-engine track.
+That subsystem is intentionally being developed beside the current scanner rather than merged into the production analysis path yet.
+
 ## Doc map
 
 Start here:
@@ -39,6 +42,15 @@ Future-only docs:
 
 - [docs/future-work/post-mvp-ideas.md](./docs/future-work/post-mvp-ideas.md)
 - [docs/future-work/future-notes.md](./docs/future-work/future-notes.md)
+
+Static-analysis-engine docs:
+
+- [docs/static-analysis-engine/requirements.md](./docs/static-analysis-engine/requirements.md)
+- [docs/static-analysis-engine/directory-structure-and-boundaries.md](./docs/static-analysis-engine/directory-structure-and-boundaries.md)
+- [docs/static-analysis-engine/core-irs-and-type-shapes.md](./docs/static-analysis-engine/core-irs-and-type-shapes.md)
+- [docs/static-analysis-engine/architecture.md](./docs/static-analysis-engine/architecture.md)
+- [docs/static-analysis-engine/uncertainty-and-decision-model.md](./docs/static-analysis-engine/uncertainty-and-decision-model.md)
+- [docs/static-analysis-engine/roadmap.md](./docs/static-analysis-engine/roadmap.md)
 
 ## Source of truth hierarchy
 
@@ -151,6 +163,15 @@ The current implementation is organized around:
 - `src/runtime`: scan result and finding helpers
 - `src/cli`: CLI parsing, formatting, and output handling
 
+The in-flight static-analysis-engine work is organized separately under:
+
+- `src/static-analysis-engine`
+- `test/static-analysis-engine`
+- `docs/static-analysis-engine`
+
+Treat that subsystem as a project-within-the-project.
+Its staged pipeline, types, and internal reasoning model should remain coherent and should not casually depend on old-engine internals.
+
 ## Legacy code warning
 
 There is legacy reference material in:
@@ -191,6 +212,8 @@ If you add or change operational behavior, update the relevant docs in `docs/des
 - Do not make output filtering affect JSON unless the runtime contract is intentionally changed.
 - Do not assume every non-page thing is a component; `unclassified` exists for a reason.
 - Do not regress determinism in findings, summary output, or exit-code behavior.
+- Do not blur the in-flight static-analysis-engine work back into the old scanner architecture without an explicit migration decision.
+- Do not import deep old-engine helpers into `src/static-analysis-engine`; follow the boundary rules in `docs/static-analysis-engine/directory-structure-and-boundaries.md`.
 
 ## If you need to reorient quickly
 
@@ -201,3 +224,12 @@ Read in this order:
 3. [docs/design/rules.md](./docs/design/rules.md)
 4. [docs/design/architecture.md](./docs/design/architecture.md)
 5. [docs/design/testing-plan.md](./docs/design/testing-plan.md)
+
+If you are working on the static-analysis-engine track, read in this order:
+
+1. [docs/static-analysis-engine/requirements.md](./docs/static-analysis-engine/requirements.md)
+2. [docs/static-analysis-engine/directory-structure-and-boundaries.md](./docs/static-analysis-engine/directory-structure-and-boundaries.md)
+3. [docs/static-analysis-engine/core-irs-and-type-shapes.md](./docs/static-analysis-engine/core-irs-and-type-shapes.md)
+4. [docs/static-analysis-engine/architecture.md](./docs/static-analysis-engine/architecture.md)
+5. [docs/static-analysis-engine/uncertainty-and-decision-model.md](./docs/static-analysis-engine/uncertainty-and-decision-model.md)
+6. [docs/static-analysis-engine/roadmap.md](./docs/static-analysis-engine/roadmap.md)
