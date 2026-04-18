@@ -113,6 +113,14 @@ function inspectNodeForSiblingConstraint(input: {
     return inspectSiblingContainer(node.children, constraint);
   }
 
+  if (node.kind === "repeated-region") {
+    const evaluation = inspectNodeForSiblingConstraint({
+      node: node.template,
+      constraint,
+    });
+    return evaluation === "match" ? "possible-match" : evaluation;
+  }
+
   if (node.kind !== "element") {
     return "no-match";
   }
@@ -203,6 +211,19 @@ function expandNodeIntoSiblingSequences(node: RenderNode): SiblingSequence[] {
         certainty: "possible" as const,
       })),
       ...expandNodeIntoSiblingSequences(node.whenFalse).map((sequence) => ({
+        ...sequence,
+        certainty: "possible" as const,
+      })),
+    ];
+  }
+
+  if (node.kind === "repeated-region") {
+    return [
+      {
+        nodes: [],
+        certainty: "possible",
+      },
+      ...expandNodeIntoSiblingSequences(node.template).map((sequence) => ({
         ...sequence,
         certainty: "possible" as const,
       })),

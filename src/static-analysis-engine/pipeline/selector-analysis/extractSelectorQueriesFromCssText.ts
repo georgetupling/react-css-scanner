@@ -1,37 +1,123 @@
-import type { ExtractedSelectorQuery, SelectorSourceInput } from "./types.js";
+import type { CssAtRuleContext, ExtractedSelectorQuery, SelectorSourceInput } from "./types.js";
 
 export function extractSelectorQueriesFromCssText(
   input: SelectorSourceInput,
 ): ExtractedSelectorQuery[] {
   const cssWithoutComments = input.cssText.replace(/\/\*[\s\S]*?\*\//g, "");
   const queries: ExtractedSelectorQuery[] = [];
-  const rulePattern = /([^{}]+)\{/g;
 
-  for (const match of cssWithoutComments.matchAll(rulePattern)) {
-    const rawSelectorPrelude = match[1];
-    const selectorPrelude = rawSelectorPrelude?.trim();
-    if (!selectorPrelude || selectorPrelude.startsWith("@")) {
+  collectSelectorQueries({
+    sourceText: cssWithoutComments,
+    filePath: input.filePath,
+    blockStart: 0,
+    blockEnd: cssWithoutComments.length,
+    inheritedAtRuleContext: [],
+    queries,
+  });
+
+  return queries;
+}
+
+function collectSelectorQueries(input: {
+  sourceText: string;
+  filePath: string | undefined;
+  blockStart: number;
+  blockEnd: number;
+  inheritedAtRuleContext: CssAtRuleContext[];
+  queries: ExtractedSelectorQuery[];
+}) {
+  const { sourceText, blockStart, blockEnd, inheritedAtRuleContext, queries, filePath } = input;
+  let cursor = blockStart;
+
+  while (cursor < blockEnd) {
+    cursor = skipWhitespace(sourceText, cursor, blockEnd);
+    if (cursor >= blockEnd) {
+      return;
+    }
+
+    const openBraceIndex = sourceText.indexOf("{", cursor);
+    if (openBraceIndex === -1 || openBraceIndex >= blockEnd) {
+      return;
+    }
+
+    const preludeText = sourceText.slice(cursor, openBraceIndex).trim();
+    const preludeStartIndex = cursor;
+    const blockCloseIndex = findMatchingBrace(sourceText, openBraceIndex, blockEnd);
+    if (blockCloseIndex === -1) {
+      return;
+    }
+
+    if (preludeText.startsWith("@media")) {
+      const queryText = preludeText.slice("@media".length).trim();
+      collectSelectorQueries({
+        sourceText,
+        filePath,
+        blockStart: openBraceIndex + 1,
+        blockEnd: blockCloseIndex,
+        inheritedAtRuleContext: [
+          ...inheritedAtRuleContext,
+          {
+            kind: "media",
+            queryText,
+          },
+        ],
+        queries,
+      });
+    } else if (!preludeText.startsWith("@")) {
+      for (const selectorEntry of splitSelectorPrelude(
+        sourceText.slice(preludeStartIndex, openBraceIndex),
+        preludeStartIndex,
+      )) {
+        queries.push({
+          selectorText: selectorEntry.selectorText,
+          source: {
+            kind: "css-source",
+            selectorAnchor: toSourceAnchor(
+              sourceText,
+              filePath,
+              selectorEntry.startOffset,
+              selectorEntry.endOffset,
+            ),
+            ...(inheritedAtRuleContext.length > 0
+              ? {
+                  atRuleContext: inheritedAtRuleContext,
+                }
+              : {}),
+          },
+        });
+      }
+    }
+
+    cursor = blockCloseIndex + 1;
+  }
+}
+
+function skipWhitespace(sourceText: string, start: number, end: number): number {
+  let cursor = start;
+  while (cursor < end && /\s/.test(sourceText[cursor] ?? "")) {
+    cursor += 1;
+  }
+  return cursor;
+}
+
+function findMatchingBrace(sourceText: string, openBraceIndex: number, end: number): number {
+  let depth = 0;
+
+  for (let index = openBraceIndex; index < end; index += 1) {
+    if (sourceText[index] === "{") {
+      depth += 1;
       continue;
     }
 
-    const preludeStartIndex = match.index ?? 0;
-    for (const selectorEntry of splitSelectorPrelude(selectorPrelude, preludeStartIndex)) {
-      queries.push({
-        selectorText: selectorEntry.selectorText,
-        source: {
-          kind: "css-source",
-          selectorAnchor: toSourceAnchor(
-            cssWithoutComments,
-            input.filePath,
-            selectorEntry.startOffset,
-            selectorEntry.endOffset,
-          ),
-        },
-      });
+    if (sourceText[index] === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return index;
+      }
     }
   }
 
-  return queries;
+  return -1;
 }
 
 function splitSelectorPrelude(

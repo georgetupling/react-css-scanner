@@ -99,6 +99,11 @@ function inspectNodeForSameNodeConstraint(
     return mergeBranchEvaluations(whenTrue, whenFalse);
   }
 
+  if (node.kind === "repeated-region") {
+    const evaluation = inspectNodeForSameNodeConstraint(node.template, classNames);
+    return evaluation === "match" ? "possible-match" : evaluation;
+  }
+
   if (node.kind === "fragment") {
     return mergeInspectionEvaluations(
       node.children.map((child) => inspectNodeForSameNodeConstraint(child, classNames)),

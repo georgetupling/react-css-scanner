@@ -269,6 +269,123 @@ Support:
 - the engine still produces stable and understandable traces
 - the first slice still performs acceptably with bounded local expansion
 
+## Status
+
+Complete.
+
+## Phase 5 Support Matrix
+
+Phase 5 is complete.
+
+This support matrix now serves as:
+
+- the record of what the completed Phase 5 milestone covers
+- the boundary line between finished same-file work and Phase 6 cross-file work
+
+### Implemented in Phase 5 so far
+
+- same-file local component expansion
+- simple prop passing
+- `children` insertion
+- generic same-file named JSX subtree props inserted via local component props
+- bounded local component expansion depth
+- explicit unresolved outcomes for:
+  - unsupported parameter binding
+  - unsupported prop passing
+  - `children` not consumed
+  - component expansion cycle
+  - component expansion budget exceeded
+- bounded same-file helper-call expansion
+- explicit unresolved helper outcomes for:
+  - helper recursion cycle
+  - helper expansion budget exceeded
+  - unsupported helper arguments
+- local const alias tracking inside component bodies
+- bounded control-flow lowering for:
+  - ternaries
+  - `&&`
+  - `||`
+  - `??`
+  - direct `null` / `undefined`
+  - simple `switch`
+  - bounded statement-level `if / else`
+  - bounded early-return statement bodies
+- bounded exact evaluation for:
+  - equality and relational comparisons
+  - string predicates such as `includes`, `startsWith`, `endsWith`
+  - collection predicates such as `find`, `some`, `every`, `includes`
+- bounded exact collection rendering for:
+  - array literals
+  - `map(...)`
+  - `filter(...)`
+  - `filter(Boolean)`
+  - `find(...)`
+- explicit `repeated-region` render nodes for bounded unknown list output such as non-exact `map(...)`
+
+### Closeout and stabilization work
+
+These are useful maintenance tasks, but they are no longer required to call Phase 5 complete.
+
+- continue cleanup of unsupported and budgeted outcomes where helpful
+- keep support-matrix and boundary documentation aligned with implementation changes
+
+### Explicitly out of scope for the rest of Phase 5
+
+These should not quietly drift into the Phase 5 implementation.
+
+- cross-file component expansion
+- cross-file helper or constant reasoning
+- render props
+- function-as-children
+- dynamic component identities
+- higher-order components
+- `as={SomeComponent}` polymorphism
+- hooks-based control-flow reasoning
+- broad framework-specific semantics
+- arbitrary helper or value-flow interpretation
+
+### Common patterns the current render IR still does not represent well
+
+This list is useful both for triage and for preventing accidental scope drift.
+
+#### Phase 6 candidates
+
+- imported component expansion
+- imported constants and helper summaries
+- cross-file wrapper composition
+
+#### Later than Phase 6 unless priorities change
+
+- render props
+- dynamic component identities
+- higher-order components
+- non-bounded general list/data-flow interpretation
+- rich runtime behavior tied to hooks, effects, or framework semantics
+
+## Phase 5 Outcome
+
+Phase 5 is now complete.
+
+The key result is:
+
+- the engine can build a meaningfully rich same-file render IR across local component boundaries while staying bounded and explicit about uncertainty
+
+That means the next milestone should no longer be framed as "finish same-file local expansion."
+
+It should be framed as:
+
+- move into bounded cross-file reasoning in Phase 6
+
+## Practical Phase 5 exit criteria
+
+Phase 5 should be considered complete when all of these are true:
+
+- same-file wrapper-style local components work reliably for the common supported shapes
+- unsupported and over-budget outcomes are explicit and stable
+- helper and component expansion limits are no longer hidden in ad hoc control flow
+- the supported same-file surface is documented clearly enough that future work can distinguish Phase 5 gaps from Phase 6 work
+- the next most important missing behaviors are predominantly cross-file rather than same-file
+
 ## Phase 6: Early Cross-File Reasoning
 
 ## Goal

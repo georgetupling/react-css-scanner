@@ -61,6 +61,11 @@ export type SelectorSourceInput = {
   cssText: string;
 };
 
+export type CssAtRuleContext = {
+  kind: "media";
+  queryText: string;
+};
+
 export type ExtractedSelectorQuery = {
   selectorText: string;
   source:
@@ -70,6 +75,7 @@ export type ExtractedSelectorQuery = {
     | {
         kind: "css-source";
         selectorAnchor?: SourceAnchor;
+        atRuleContext?: CssAtRuleContext[];
       };
 };
 
@@ -82,6 +88,7 @@ export type ParsedSelectorQuery = {
     | {
         kind: "css-source";
         selectorAnchor?: SourceAnchor;
+        atRuleContext?: CssAtRuleContext[];
       };
   normalizedSelectorText: string;
   normalizedSelector: NormalizedSelector;
@@ -103,6 +110,7 @@ export type SelectorQueryResult = {
     | {
         kind: "css-source";
         selectorAnchor?: SourceAnchor;
+        atRuleContext?: CssAtRuleContext[];
       };
   constraint?:
     | SelectorConstraint

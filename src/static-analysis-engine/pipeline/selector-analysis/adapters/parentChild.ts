@@ -166,6 +166,15 @@ function inspectDirectChildForClassRequirement(
     return "no-match";
   }
 
+  if (node.kind === "repeated-region") {
+    const evaluation = inspectDirectChildForClassRequirement(
+      node.template,
+      childClassName,
+      parentPresence,
+    );
+    return evaluation === "match" ? "possible-match" : evaluation;
+  }
+
   if (node.kind !== "element") {
     return "no-match";
   }

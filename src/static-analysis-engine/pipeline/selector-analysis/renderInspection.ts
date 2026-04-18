@@ -81,6 +81,15 @@ export function inspectRenderNode<TState>(input: {
     );
   }
 
+  if (input.node.kind === "repeated-region") {
+    const templateEvaluation = inspectRenderNode({
+      node: input.node.template,
+      state: input.state,
+      adapter: input.adapter,
+    });
+    return templateEvaluation === "match" ? "possible-match" : templateEvaluation;
+  }
+
   if (input.node.kind !== "element") {
     return "no-match";
   }
@@ -98,6 +107,11 @@ function flattenDirectChildCandidates(children: RenderNode[]): RenderNode[] {
   for (const child of children) {
     if (child.kind === "fragment") {
       directChildren.push(...flattenDirectChildCandidates(child.children));
+      continue;
+    }
+
+    if (child.kind === "repeated-region") {
+      directChildren.push(child);
       continue;
     }
 

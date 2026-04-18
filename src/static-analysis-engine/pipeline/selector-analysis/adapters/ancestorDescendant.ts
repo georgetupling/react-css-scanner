@@ -122,6 +122,14 @@ function inspectNodeForAncestorDescendantConstraint(input: {
     );
   }
 
+  if (node.kind === "repeated-region") {
+    const evaluation = inspectNodeForAncestorDescendantConstraint({
+      ...input,
+      node: node.template,
+    });
+    return evaluation === "match" ? "possible-match" : evaluation;
+  }
+
   if (node.kind !== "element") {
     return "no-match";
   }

@@ -5,6 +5,7 @@ export type RenderNodeKind =
   | "element"
   | "fragment"
   | "conditional"
+  | "repeated-region"
   | "component-reference"
   | "unknown";
 
@@ -32,6 +33,12 @@ export type RenderConditionalNode = RenderNodeBase & {
   whenFalse: RenderNode;
 };
 
+export type RenderRepeatedRegionNode = RenderNodeBase & {
+  kind: "repeated-region";
+  template: RenderNode;
+  reason: string;
+};
+
 export type RenderComponentReferenceNode = RenderNodeBase & {
   kind: "component-reference";
   componentName: string;
@@ -47,6 +54,7 @@ export type RenderNode =
   | RenderElementNode
   | RenderFragmentNode
   | RenderConditionalNode
+  | RenderRepeatedRegionNode
   | RenderComponentReferenceNode
   | RenderUnknownNode;
 
