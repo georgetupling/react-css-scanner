@@ -8,7 +8,7 @@ test("dynamic-class-reference reports unresolved dynamic composition but ignores
     await writeProjectFile(
       tempDir,
       "src/App.tsx",
-      'export function App() { return <div className={`panel ${getStateClass()}`} />; }',
+      "export function App() { return <div className={`panel ${getStateClass()}`} />; }",
     );
     await writeProjectFile(
       tempDir,
@@ -33,7 +33,8 @@ test("dynamic-class-reference reports unresolved dynamic composition but ignores
       !findings.some(
         (finding) =>
           finding.ruleId === "dynamic-class-reference" &&
-          (finding.subject?.className === "static" || finding.subject?.className === "static--open"),
+          (finding.subject?.className === "static" ||
+            finding.subject?.className === "static--open"),
       ),
     );
   });

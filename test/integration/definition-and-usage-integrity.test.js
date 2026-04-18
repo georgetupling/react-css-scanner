@@ -56,14 +56,17 @@ test("integration scans treat transparently joined helper classes as real usage"
         !result.findings.some(
           (finding) =>
             finding.ruleId === "unused-css-class" &&
-            (finding.subject?.className === "button" || finding.subject?.className === "button--sm"),
+            (finding.subject?.className === "button" ||
+              finding.subject?.className === "button--sm"),
         ),
       );
       assert.ok(
         !result.findings.some(
           (finding) =>
-            (finding.ruleId === "missing-css-class" || finding.ruleId === "dynamic-class-reference") &&
-            (finding.subject?.className === "button" || finding.subject?.className === "button--sm"),
+            (finding.ruleId === "missing-css-class" ||
+              finding.ruleId === "dynamic-class-reference") &&
+            (finding.subject?.className === "button" ||
+              finding.subject?.className === "button--sm"),
         ),
       );
     },

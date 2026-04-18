@@ -9,7 +9,7 @@ test("integration scans preserve dynamic-class-reference confidence through the 
   const builder = new TestProjectBuilder().withTemplate("basic-react-app");
   builder.withSourceFile(
     "src/App.tsx",
-    'export function App() { return <div className={`panel ${getStateClass()}`} />; }',
+    "export function App() { return <div className={`panel ${getStateClass()}`} />; }",
   );
   builder.withCssFile("src/App.css", ".panel {}\n.open {}\n");
 

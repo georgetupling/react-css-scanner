@@ -1,9 +1,5 @@
 import ts from "typescript";
-import type {
-  EvaluationEnvironment,
-  EvaluationHelpers,
-  LocalFunctionBinding,
-} from "../types.js";
+import type { EvaluationEnvironment, EvaluationHelpers, LocalFunctionBinding } from "../types.js";
 
 export function evaluateCallExpression(
   expression: ts.CallExpression,
@@ -140,7 +136,8 @@ function evaluateLocalFunctionCall(
       }
 
       const argument =
-        expression.arguments[parameterIndex] ?? localFunction.parameters[parameterIndex]?.initializer;
+        expression.arguments[parameterIndex] ??
+        localFunction.parameters[parameterIndex]?.initializer;
       if (argument) {
         return helpers.markAllTokensAsExpressionEvaluated(
           helpers.evaluateArrayLikeExpression(argument, env, depth + 1),
@@ -180,7 +177,10 @@ function evaluateLocalFunctionCall(
 
 function getTransparentJoinParameter(localFunction: LocalFunctionBinding) {
   const { bodyExpression } = localFunction;
-  if (!ts.isCallExpression(bodyExpression) || !ts.isPropertyAccessExpression(bodyExpression.expression)) {
+  if (
+    !ts.isCallExpression(bodyExpression) ||
+    !ts.isPropertyAccessExpression(bodyExpression.expression)
+  ) {
     return undefined;
   }
 
@@ -191,7 +191,8 @@ function getTransparentJoinParameter(localFunction: LocalFunctionBinding) {
   if (
     bodyExpression.arguments.length > 1 ||
     (bodyExpression.arguments.length === 1 &&
-      (!ts.isStringLiteral(bodyExpression.arguments[0]) || bodyExpression.arguments[0].text !== " "))
+      (!ts.isStringLiteral(bodyExpression.arguments[0]) ||
+        bodyExpression.arguments[0].text !== " "))
   ) {
     return undefined;
   }

@@ -63,9 +63,7 @@ export type EvaluationHelpers = {
   markAllTokensAsExpressionEvaluated: (
     result: ClassExpressionEvaluation,
   ) => ClassExpressionEvaluation;
-  downgradeTokensToPossible: (
-    result: ClassExpressionEvaluation,
-  ) => ClassExpressionEvaluation;
+  downgradeTokensToPossible: (result: ClassExpressionEvaluation) => ClassExpressionEvaluation;
   tokensFromString: (
     value: string,
     anchorNode: ts.Node,

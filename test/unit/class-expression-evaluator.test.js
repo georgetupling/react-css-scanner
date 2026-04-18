@@ -78,7 +78,7 @@ function evaluateFromSource(source, options = {}) {
 
 test("template expressions downgrade interpolated tokens to possible when not fully static", () => {
   const result = evaluateFromSource(
-    'export function App() { return <div className={`panel ${getStateClass()}`} />; }',
+    "export function App() { return <div className={`panel ${getStateClass()}`} />; }",
   );
 
   assert.deepEqual(
@@ -105,7 +105,7 @@ test("direct string literals split into definite class tokens", () => {
 
 test("simple fully static template literals are recovered as definite tokens", () => {
   const result = evaluateFromSource(
-    'export function App() { return <div className={`button button--sm`} />; }',
+    "export function App() { return <div className={`button button--sm`} />; }",
   );
 
   assert.deepEqual(
@@ -119,10 +119,12 @@ test("simple fully static template literals are recovered as definite tokens", (
 });
 
 test("finite ternary conditionals mark shared tokens definite and branch tokens possible", () => {
-  const result = evaluateFromSource([
-    "const isOpen = getOpenState();",
-    'export function App() { return <div className={isOpen ? "panel is-open" : "panel"} />; }',
-  ].join("\n"));
+  const result = evaluateFromSource(
+    [
+      "const isOpen = getOpenState();",
+      'export function App() { return <div className={isOpen ? "panel is-open" : "panel"} />; }',
+    ].join("\n"),
+  );
 
   assert.deepEqual(
     result.tokens
@@ -136,10 +138,12 @@ test("finite ternary conditionals mark shared tokens definite and branch tokens 
 });
 
 test("boolean-gated expressions become definite when the gate resolves statically", () => {
-  const result = evaluateFromSource([
-    "const isOpen = true;",
-    'export function App() { return <div className={isOpen && "panel--open"} />; }',
-  ].join("\n"));
+  const result = evaluateFromSource(
+    [
+      "const isOpen = true;",
+      'export function App() { return <div className={isOpen && "panel--open"} />; }',
+    ].join("\n"),
+  );
 
   assert.deepEqual(
     result.tokens.map((token) => [token.token, token.certainty]),
@@ -149,10 +153,12 @@ test("boolean-gated expressions become definite when the gate resolves staticall
 });
 
 test("logical or falls back to the right side when the left side is statically falsy", () => {
-  const result = evaluateFromSource([
-    'const maybeClass = "";',
-    'export function App() { return <div className={maybeClass || "fallback"} />; }',
-  ].join("\n"));
+  const result = evaluateFromSource(
+    [
+      'const maybeClass = "";',
+      'export function App() { return <div className={maybeClass || "fallback"} />; }',
+    ].join("\n"),
+  );
 
   assert.deepEqual(
     result.tokens.map((token) => [token.token, token.certainty]),
@@ -161,10 +167,12 @@ test("logical or falls back to the right side when the left side is statically f
 });
 
 test("nullish coalescing falls back to the right side when the left side is statically null", () => {
-  const result = evaluateFromSource([
-    "const maybeClass = null;",
-    'export function App() { return <div className={maybeClass ?? "fallback"} />; }',
-  ].join("\n"));
+  const result = evaluateFromSource(
+    [
+      "const maybeClass = null;",
+      'export function App() { return <div className={maybeClass ?? "fallback"} />; }',
+    ].join("\n"),
+  );
 
   assert.deepEqual(
     result.tokens.map((token) => [token.token, token.certainty]),
@@ -173,10 +181,12 @@ test("nullish coalescing falls back to the right side when the left side is stat
 });
 
 test("binary string concatenation is recovered when it is fully static", () => {
-  const result = evaluateFromSource([
-    'const variant = "primary";',
-    'export function App() { return <div className={"button" + " " + ("button--" + variant)} />; }',
-  ].join("\n"));
+  const result = evaluateFromSource(
+    [
+      'const variant = "primary";',
+      'export function App() { return <div className={"button" + " " + ("button--" + variant)} />; }',
+    ].join("\n"),
+  );
 
   assert.deepEqual(
     result.tokens.map((token) => [token.token, token.certainty]),
@@ -203,11 +213,13 @@ test("parenthesized expressions are unwrapped before evaluation", () => {
 });
 
 test("finite variant template literals resolved through const indirection stay definite", () => {
-  const result = evaluateFromSource([
-    'const variant = "ghost";',
-    'const classes = `button button--${variant}`;',
-    "export function App() { return <button className={classes} />; }",
-  ].join("\n"));
+  const result = evaluateFromSource(
+    [
+      'const variant = "ghost";',
+      "const classes = `button button--${variant}`;",
+      "export function App() { return <button className={classes} />; }",
+    ].join("\n"),
+  );
 
   assert.deepEqual(
     result.tokens.map((token) => [token.token, token.certainty]),
@@ -220,10 +232,12 @@ test("finite variant template literals resolved through const indirection stay d
 });
 
 test('array filter(Boolean).join(" ") expressions are evaluated directly', () => {
-  const result = evaluateFromSource([
-    "const isSmall = true;",
-    'export function App() { return <button className={["button", isSmall && "button--sm"].filter(Boolean).join(" ")} />; }',
-  ].join("\n"));
+  const result = evaluateFromSource(
+    [
+      "const isSmall = true;",
+      'export function App() { return <button className={["button", isSmall && "button--sm"].filter(Boolean).join(" ")} />; }',
+    ].join("\n"),
+  );
 
   assert.deepEqual(
     result.tokens.map((token) => [token.token, token.certainty]),
@@ -235,13 +249,15 @@ test('array filter(Boolean).join(" ") expressions are evaluated directly', () =>
 });
 
 test("transparent same-file join helpers are evaluated without helper-name guessing", () => {
-  const result = evaluateFromSource([
-    "function joinClasses(...classes) {",
-    '  return classes.filter(Boolean).join(" ");',
-    "}",
-    "const isSmall = true;",
-    'export function App() { return <button className={joinClasses("button", isSmall && "button--sm")} />; }',
-  ].join("\n"));
+  const result = evaluateFromSource(
+    [
+      "function joinClasses(...classes) {",
+      '  return classes.filter(Boolean).join(" ");',
+      "}",
+      "const isSmall = true;",
+      'export function App() { return <button className={joinClasses("button", isSmall && "button--sm")} />; }',
+    ].join("\n"),
+  );
 
   assert.deepEqual(
     result.tokens.map((token) => [token.token, token.kind, token.certainty]),
@@ -263,10 +279,12 @@ test("unsupported helper calls stay dynamic instead of inventing tokens", () => 
 });
 
 test("imported helper object syntax produces possible tokens for conditional keys", () => {
-  const result = evaluateFromSource([
-    "const enabled = false;",
-    'export function App() { return <div className={clsx({ panel: true, open: enabled })} />; }',
-  ].join("\n"));
+  const result = evaluateFromSource(
+    [
+      "const enabled = false;",
+      "export function App() { return <div className={clsx({ panel: true, open: enabled })} />; }",
+    ].join("\n"),
+  );
 
   assert.deepEqual(
     result.tokens
@@ -280,39 +298,48 @@ test("imported helper object syntax produces possible tokens for conditional key
 });
 
 test("checkbox-style local helper composition keeps base and conditional modifier classes", () => {
-  const result = evaluateFromSource([
-    "function joinClasses(...classes) {",
-    '  return classes.filter(Boolean).join(" ");',
-    "}",
-    "const disabled = true;",
-    'export function Checkbox() { return <label className={joinClasses("checkbox", disabled && "checkbox--disabled")} />; }',
-  ].join("\n"));
+  const result = evaluateFromSource(
+    [
+      "function joinClasses(...classes) {",
+      '  return classes.filter(Boolean).join(" ");',
+      "}",
+      "const disabled = true;",
+      'export function Checkbox() { return <label className={joinClasses("checkbox", disabled && "checkbox--disabled")} />; }',
+    ].join("\n"),
+  );
 
-  assert.deepEqual(result.tokens.map((token) => token.token), [
-    "checkbox",
-    "checkbox--disabled",
-  ]);
+  assert.deepEqual(
+    result.tokens.map((token) => token.token),
+    ["checkbox", "checkbox--disabled"],
+  );
 });
 
 test("toast-style helper composition recovers base and variant classes", () => {
-  const result = evaluateFromSource([
-    "function joinClasses(...classes) {",
-    '  return classes.filter(Boolean).join(" ");',
-    "}",
-    'const variant = "error";',
-    'export function Toast() { return <section className={joinClasses("toast", `toast--${variant}`)} />; }',
-  ].join("\n"));
+  const result = evaluateFromSource(
+    [
+      "function joinClasses(...classes) {",
+      '  return classes.filter(Boolean).join(" ");',
+      "}",
+      'const variant = "error";',
+      'export function Toast() { return <section className={joinClasses("toast", `toast--${variant}`)} />; }',
+    ].join("\n"),
+  );
 
-  assert.deepEqual(result.tokens.map((token) => token.token), ["toast", "toast--error"]);
+  assert.deepEqual(
+    result.tokens.map((token) => token.token),
+    ["toast", "toast--error"],
+  );
 });
 
 test("tag-builder style mixed local and utility classes are both recovered", () => {
-  const result = evaluateFromSource([
-    "function joinClasses(...classes) {",
-    '  return classes.filter(Boolean).join(" ");',
-    "}",
-    'export function TagBuilder() { return <div className={joinClasses("tag-builder__list cluster")} />; }',
-  ].join("\n"));
+  const result = evaluateFromSource(
+    [
+      "function joinClasses(...classes) {",
+      '  return classes.filter(Boolean).join(" ");',
+      "}",
+      'export function TagBuilder() { return <div className={joinClasses("tag-builder__list cluster")} />; }',
+    ].join("\n"),
+  );
 
   assert.deepEqual(
     result.tokens.map((token) => token.token).sort((left, right) => left.localeCompare(right)),

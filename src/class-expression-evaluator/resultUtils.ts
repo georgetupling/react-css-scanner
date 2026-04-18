@@ -1,10 +1,6 @@
 import type { ConfidenceLevel } from "../config/types.js";
 import type { ClassReferenceFact } from "../facts/types.js";
-import type {
-  ClassExpressionEvaluation,
-  TokenCertainty,
-  TokenEvaluation,
-} from "./types.js";
+import type { ClassExpressionEvaluation, TokenCertainty, TokenEvaluation } from "./types.js";
 
 export function emptyEvaluation(): ClassExpressionEvaluation {
   return {
@@ -85,9 +81,7 @@ export function mergeInto(
   target.dynamics.push(...input.dynamics);
 }
 
-export function normalizeEvaluation(
-  input: ClassExpressionEvaluation,
-): ClassExpressionEvaluation {
+export function normalizeEvaluation(input: ClassExpressionEvaluation): ClassExpressionEvaluation {
   const tokensByName = new Map<string, TokenEvaluation>();
 
   for (const token of input.tokens) {

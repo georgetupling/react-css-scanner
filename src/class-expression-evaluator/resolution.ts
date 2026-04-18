@@ -1,9 +1,6 @@
 import ts from "typescript";
 import type { ClassReferenceFact } from "../facts/types.js";
-import type {
-  ClassExpressionEvaluationContext,
-  EvaluationEnvironment,
-} from "./types.js";
+import type { ClassExpressionEvaluationContext, EvaluationEnvironment } from "./types.js";
 
 export function resolveIdentifierExpression(
   expression: ts.Identifier,
@@ -150,7 +147,10 @@ export function resolveBooleanValue(
     return true;
   }
 
-  if (expression.kind === ts.SyntaxKind.FalseKeyword || expression.kind === ts.SyntaxKind.NullKeyword) {
+  if (
+    expression.kind === ts.SyntaxKind.FalseKeyword ||
+    expression.kind === ts.SyntaxKind.NullKeyword
+  ) {
     return false;
   }
 

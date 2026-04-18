@@ -45,7 +45,8 @@ export function createExpressionEvaluator(context: ClassExpressionEvaluationCont
     emptyEvaluation,
     resolveBooleanValue: (expression, env, seenIdentifiers) =>
       resolveBooleanValue(expression, context, env, seenIdentifiers),
-    resolveIdentifierExpression: (expression, env) => resolveIdentifierExpression(expression, context, env),
+    resolveIdentifierExpression: (expression, env) =>
+      resolveIdentifierExpression(expression, context, env),
     getStaticPropertyName,
   };
 
@@ -60,7 +61,12 @@ export function createExpressionEvaluator(context: ClassExpressionEvaluationCont
 
     const staticValue = resolveStaticClassValue(expression, context, env, new Set());
     if (staticValue) {
-      return tokensFromString(staticValue.value, expression, staticValue.kind, staticValue.confidence);
+      return tokensFromString(
+        staticValue.value,
+        expression,
+        staticValue.kind,
+        staticValue.confidence,
+      );
     }
 
     if (ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) {
