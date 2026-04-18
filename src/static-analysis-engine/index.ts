@@ -1,6 +1,10 @@
-export { analyzeSourceText } from "./entry/scan.js";
+export { analyzeProjectSourceTexts, analyzeSourceText } from "./entry/scan.js";
 export { parseSourceFile } from "./pipeline/parse/index.js";
-export { buildModuleGraphFromSource, createModuleId } from "./pipeline/module-graph/index.js";
+export {
+  buildModuleGraphFromSource,
+  buildModuleGraphFromSources,
+  createModuleId,
+} from "./pipeline/module-graph/index.js";
 export { collectTopLevelSymbols, createSymbolId } from "./pipeline/symbol-resolution/index.js";
 export {
   collectClassExpressionSummaries,
@@ -37,6 +41,7 @@ export type {
   RenderFragmentNode,
   RenderNode,
   RenderNodeKind,
+  RenderRepeatedRegionNode,
   RenderSubtree,
   RenderUnknownNode,
 } from "./pipeline/render-ir/index.js";

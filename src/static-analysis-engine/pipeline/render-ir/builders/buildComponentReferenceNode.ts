@@ -1,11 +1,13 @@
 import ts from "typescript";
 
-import type { SameFileComponentDefinition } from "../collection/types.js";
-import { isRenderableExpression } from "../collection/renderableExpressionGuards.js";
+import type { SameFileComponentDefinition } from "../collection/shared/types.js";
+import { isRenderableExpression } from "../collection/shared/renderableExpressionGuards.js";
 import type { BuildContext } from "../shared/internalTypes.js";
 import {
+  buildComponentExpansionReason,
   buildUnsupportedParameterExpansionReason,
-  LOCAL_COMPONENT_EXPANSION_REASONS,
+  COMPONENT_DEFINITION_NOT_FOUND_REASON,
+  getExpansionScope,
   MAX_LOCAL_COMPONENT_EXPANSION_DEPTH,
 } from "../shared/expansionPolicy.js";
 import { toSourceAnchor } from "../shared/renderIrUtils.js";
@@ -21,22 +23,26 @@ export function buildComponentReferenceNode(
   buildRenderNode: (node: ts.Expression | ts.JsxChild, context: BuildContext) => RenderNode,
 ): RenderNode {
   const componentName = tagNameNode.getText(context.parsedSourceFile);
-  const definition = context.componentsByName.get(componentName);
+  const definition =
+    resolveComponentDefinition(tagNameNode, context) ??
+    context.componentsByFilePath.get(context.currentComponentFilePath)?.get(componentName);
   if (!definition) {
     return {
       kind: "component-reference",
       sourceAnchor: toSourceAnchor(tagNameNode, context.parsedSourceFile, context.filePath),
       componentName,
-      reason: LOCAL_COMPONENT_EXPANSION_REASONS.definitionNotFound,
+      reason: COMPONENT_DEFINITION_NOT_FOUND_REASON,
     };
   }
+
+  const expansionScope = getExpansionScope(context.currentComponentFilePath, definition.filePath);
 
   if (context.expansionStack.includes(componentName)) {
     return {
       kind: "component-reference",
       sourceAnchor: toSourceAnchor(tagNameNode, context.parsedSourceFile, context.filePath),
       componentName,
-      reason: LOCAL_COMPONENT_EXPANSION_REASONS.cycle,
+      reason: buildComponentExpansionReason(expansionScope, "cycle"),
     };
   }
 
@@ -45,7 +51,7 @@ export function buildComponentReferenceNode(
       kind: "component-reference",
       sourceAnchor: toSourceAnchor(tagNameNode, context.parsedSourceFile, context.filePath),
       componentName,
-      reason: LOCAL_COMPONENT_EXPANSION_REASONS.budgetExceeded,
+      reason: buildComponentExpansionReason(expansionScope, "budgetExceeded"),
     };
   }
 
@@ -53,6 +59,7 @@ export function buildComponentReferenceNode(
     definition,
     attributes,
     children,
+    expansionScope,
     context,
     buildRenderNode,
   );
@@ -67,6 +74,9 @@ export function buildComponentReferenceNode(
 
   return buildRenderNode(definition.rootExpression, {
     ...context,
+    filePath: definition.filePath,
+    parsedSourceFile: definition.parsedSourceFile,
+    currentComponentFilePath: definition.filePath,
     currentDepth: context.currentDepth + 1,
     expansionStack: [...context.expansionStack, componentName],
     expressionBindings: mergeExpressionBindings(
@@ -85,10 +95,24 @@ export function buildComponentReferenceNode(
   });
 }
 
+function resolveComponentDefinition(
+  tagNameNode: ts.JsxTagNameExpression,
+  context: BuildContext,
+): SameFileComponentDefinition | undefined {
+  if (ts.isPropertyAccessExpression(tagNameNode) && ts.isIdentifier(tagNameNode.expression)) {
+    return context.namespaceComponentDefinitions
+      .get(tagNameNode.expression.text)
+      ?.get(tagNameNode.name.text);
+  }
+
+  return undefined;
+}
+
 function buildComponentExpansionBindings(
   definition: SameFileComponentDefinition,
   attributes: ts.JsxAttributes,
   children: readonly ts.JsxChild[],
+  expansionScope: import("../shared/expansionPolicy.js").ExpansionScope,
   context: BuildContext,
   buildRenderNode: (node: ts.Expression | ts.JsxChild, context: BuildContext) => RenderNode,
 ):
@@ -104,6 +128,7 @@ function buildComponentExpansionBindings(
     } {
   const attributeExpressions = collectLocalComponentAttributeExpressions(
     attributes,
+    expansionScope,
     context,
     buildRenderNode,
   );
@@ -113,7 +138,10 @@ function buildComponentExpansionBindings(
 
   if (definition.parameterBinding.kind === "unsupported") {
     return {
-      reason: buildUnsupportedParameterExpansionReason(definition.parameterBinding.reason),
+      reason: buildUnsupportedParameterExpansionReason(
+        expansionScope,
+        definition.parameterBinding.reason,
+      ),
     };
   }
 
@@ -122,11 +150,15 @@ function buildComponentExpansionBindings(
       attributeExpressions.properties.size > 0 ||
       attributeExpressions.subtreeProperties.size > 0
     ) {
-      return { reason: LOCAL_COMPONENT_EXPANSION_REASONS.unsupportedProps };
+      return {
+        reason: buildComponentExpansionReason(expansionScope, "unsupportedProps"),
+      };
     }
 
     if (children.length > 0) {
-      return { reason: LOCAL_COMPONENT_EXPANSION_REASONS.childrenNotConsumed };
+      return {
+        reason: buildComponentExpansionReason(expansionScope, "childrenNotConsumed"),
+      };
     }
 
     return {
@@ -184,6 +216,7 @@ function buildComponentExpansionBindings(
 
 function collectLocalComponentAttributeExpressions(
   attributes: ts.JsxAttributes,
+  expansionScope: import("../shared/expansionPolicy.js").ExpansionScope,
   context: BuildContext,
   buildRenderNode: (node: ts.Expression | ts.JsxChild, context: BuildContext) => RenderNode,
 ):
@@ -199,20 +232,28 @@ function collectLocalComponentAttributeExpressions(
 
   for (const property of attributes.properties) {
     if (ts.isJsxSpreadAttribute(property)) {
-      return { reason: LOCAL_COMPONENT_EXPANSION_REASONS.unsupportedProps };
+      return {
+        reason: buildComponentExpansionReason(expansionScope, "unsupportedProps"),
+      };
     }
 
     if (!ts.isIdentifier(property.name)) {
-      return { reason: LOCAL_COMPONENT_EXPANSION_REASONS.unsupportedProps };
+      return {
+        reason: buildComponentExpansionReason(expansionScope, "unsupportedProps"),
+      };
     }
 
     if (!property.initializer) {
-      return { reason: LOCAL_COMPONENT_EXPANSION_REASONS.unsupportedProps };
+      return {
+        reason: buildComponentExpansionReason(expansionScope, "unsupportedProps"),
+      };
     }
 
     const expression = unwrapJsxAttributeInitializer(property.initializer);
     if (!expression) {
-      return { reason: LOCAL_COMPONENT_EXPANSION_REASONS.unsupportedProps };
+      return {
+        reason: buildComponentExpansionReason(expansionScope, "unsupportedProps"),
+      };
     }
 
     properties.set(property.name.text, expression);
@@ -228,7 +269,19 @@ function collectLocalComponentAttributeExpressions(
 function unwrapJsxAttributeInitializer(
   initializer: ts.JsxAttribute["initializer"],
 ): ts.Expression | undefined {
+  if (!initializer) {
+    return undefined;
+  }
+
   if (ts.isStringLiteral(initializer) || ts.isNoSubstitutionTemplateLiteral(initializer)) {
+    return initializer;
+  }
+
+  if (
+    ts.isJsxElement(initializer) ||
+    ts.isJsxSelfClosingElement(initializer) ||
+    ts.isJsxFragment(initializer)
+  ) {
     return initializer;
   }
 

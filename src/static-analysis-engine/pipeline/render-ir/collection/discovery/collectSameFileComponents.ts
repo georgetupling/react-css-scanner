@@ -1,8 +1,8 @@
 import ts from "typescript";
-import { isExported, toSourceAnchor, unwrapExpression } from "./utils.js";
-import type { SameFileComponentDefinition } from "./types.js";
-import { summarizeParameterBinding } from "./summarizeParameterBinding.js";
-import { summarizeComponentBody } from "./summarizeComponentBody.js";
+import { isExported, toSourceAnchor, unwrapExpression } from "../shared/utils.js";
+import type { SameFileComponentDefinition } from "../shared/types.js";
+import { summarizeParameterBinding } from "../summarization/summarizeParameterBinding.js";
+import { summarizeComponentBody } from "../summarization/summarizeComponentBody.js";
 
 export function collectSameFileComponents(input: {
   filePath: string;
@@ -20,6 +20,8 @@ export function collectSameFileComponents(input: {
       components.push({
         componentName: statement.name.text,
         exported: isExported(statement),
+        filePath: input.filePath,
+        parsedSourceFile: input.parsedSourceFile,
         sourceAnchor: toSourceAnchor(statement.name, input.parsedSourceFile, input.filePath),
         rootExpression: bodySummary.rootExpression,
         localExpressionBindings: bodySummary.localExpressionBindings,
@@ -54,6 +56,8 @@ export function collectSameFileComponents(input: {
       components.push({
         componentName: declaration.name.text,
         exported: isExported(statement),
+        filePath: input.filePath,
+        parsedSourceFile: input.parsedSourceFile,
         sourceAnchor: toSourceAnchor(declaration.name, input.parsedSourceFile, input.filePath),
         rootExpression: bodySummary.rootExpression,
         localExpressionBindings: bodySummary.localExpressionBindings,
@@ -65,4 +69,4 @@ export function collectSameFileComponents(input: {
 
   return components;
 }
-export type { SameFileComponentDefinition, LocalHelperDefinition } from "./types.js";
+export type { SameFileComponentDefinition, LocalHelperDefinition } from "../shared/types.js";

@@ -54,6 +54,10 @@ export function resolveExactIntrinsicTagNameExpression(
 }
 
 export function isIntrinsicTagName(tagName: string): boolean {
+  if (tagName.includes(".")) {
+    return false;
+  }
+
   const firstCharacter = tagName[0];
   return firstCharacter === firstCharacter.toLowerCase();
 }

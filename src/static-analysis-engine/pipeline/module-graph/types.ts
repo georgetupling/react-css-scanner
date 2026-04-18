@@ -14,8 +14,10 @@ export type ModuleImportRecord = {
 
 export type ModuleExportRecord = {
   exportedName: string;
+  sourceExportedName?: string;
   localSymbolId?: EngineSymbolId;
   reexportedModuleId?: EngineModuleId;
+  reexportKind?: "named" | "namespace" | "star";
 };
 
 export type ModuleNode = {

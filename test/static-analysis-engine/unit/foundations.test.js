@@ -1,7 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { analyzeSourceText } from "../../../dist/static-analysis-engine.js";
+import {
+  analyzeProjectSourceTexts,
+  analyzeSourceText,
+} from "../../../dist/static-analysis-engine.js";
 
 test("static analysis engine builds a same-file module model with imports and symbols", () => {
   const result = analyzeSourceText({
@@ -88,4 +91,36 @@ test("static analysis engine degrades unsupported class expressions to unknown",
     reason: "unsupported-expression:Identifier",
   });
   assert.equal(result.classExpressions[0].classes.unknownDynamic, true);
+});
+
+test("static analysis engine builds a multi-file module graph with resolved relative imports", () => {
+  const result = analyzeProjectSourceTexts({
+    sourceFiles: [
+      {
+        filePath: "src/App.tsx",
+        sourceText: [
+          'import { PanelShell } from "./PanelShell";',
+          "export function App() {",
+          "  return <PanelShell />;",
+          "}",
+        ].join("\n"),
+      },
+      {
+        filePath: "src/PanelShell.tsx",
+        sourceText: [
+          "export function PanelShell() {",
+          '  return <section className="panel-shell" />;',
+          "}",
+        ].join("\n"),
+      },
+    ],
+  });
+
+  assert.equal(result.moduleGraph.modulesById.size, 2);
+  const appModule = result.moduleGraph.modulesById.get("module:src/App.tsx");
+  assert.ok(appModule);
+  assert.equal(appModule.imports.length, 1);
+  assert.equal(appModule.imports[0].resolvedModuleId, "module:src/PanelShell.tsx");
+  assert.ok(result.symbols.has("symbol:module:src/App.tsx:PanelShell"));
+  assert.ok(result.symbols.has("symbol:module:src/PanelShell.tsx:PanelShell"));
 });

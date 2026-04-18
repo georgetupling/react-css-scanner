@@ -1,6 +1,6 @@
 import ts from "typescript";
 
-import type { SourceAnchor } from "../../../types/core.js";
+import type { SourceAnchor } from "../../../../types/core.js";
 
 export function unwrapExpression(expression: ts.Expression): ts.Expression {
   let current = expression;
@@ -15,9 +15,23 @@ export function unwrapExpression(expression: ts.Expression): ts.Expression {
   return current;
 }
 
-export function isExported(statement: ts.Statement): boolean {
+export function isExported(
+  statement: ts.Statement & {
+    modifiers?: ts.NodeArray<ts.ModifierLike>;
+  },
+): boolean {
   return (
     statement.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword) ?? false
+  );
+}
+
+export function isDefaultExported(
+  node: ts.Node & {
+    modifiers?: ts.NodeArray<ts.ModifierLike>;
+  },
+): boolean {
+  return (
+    node.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.DefaultKeyword) ?? false
   );
 }
 

@@ -1,7 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { analyzeSourceText } from "../../../dist/static-analysis-engine.js";
+import {
+  analyzeProjectSourceTexts,
+  analyzeSourceText,
+} from "../../../dist/static-analysis-engine.js";
 
 test("static analysis engine builds a same-file render subtree for intrinsic JSX", () => {
   const result = analyzeSourceText({
@@ -137,6 +140,692 @@ test("static analysis engine expands props-identifier subtree props through prop
   assert.equal(result.selectorQueryResults[0].outcome, "match");
 });
 
+test("static analysis engine expands direct imported components across files", () => {
+  const result = analyzeProjectSourceTexts({
+    sourceFiles: [
+      {
+        filePath: "src/PanelShell.tsx",
+        sourceText: [
+          "export function PanelShell({ children }: { children: React.ReactNode }) {",
+          '  return <section className="panel-shell">{children}</section>;',
+          "}",
+        ].join("\n"),
+      },
+      {
+        filePath: "src/App.tsx",
+        sourceText: [
+          'import { PanelShell } from "./PanelShell";',
+          "export function App() {",
+          '  return <PanelShell><h1 className="panel-shell__title" /></PanelShell>;',
+          "}",
+        ].join("\n"),
+      },
+    ],
+    selectorQueries: [".panel-shell .panel-shell__title"],
+  });
+
+  const appSubtree = result.renderSubtrees.find((subtree) => subtree.componentName === "App");
+  assert.ok(appSubtree);
+  assert.equal(appSubtree.root.kind, "element");
+  assert.equal(appSubtree.root.tagName, "section");
+  assert.deepEqual(appSubtree.root.className?.classes.definite, ["panel-shell"]);
+  assert.equal(result.selectorQueryResults.length, 1);
+  assert.equal(result.selectorQueryResults[0].outcome, "match");
+});
+
+test("static analysis engine expands multi-hop imported wrapper components across files", () => {
+  const result = analyzeProjectSourceTexts({
+    sourceFiles: [
+      {
+        filePath: "src/base.tsx",
+        sourceText: [
+          "export function PanelShell({ children }: { children: React.ReactNode }) {",
+          '  return <section className="panel-shell">{children}</section>;',
+          "}",
+        ].join("\n"),
+      },
+      {
+        filePath: "src/layout.tsx",
+        sourceText: [
+          'import { PanelShell } from "./base";',
+          "export function LayoutShell({ children }: { children: React.ReactNode }) {",
+          '  return <PanelShell><div className="layout-shell">{children}</div></PanelShell>;',
+          "}",
+        ].join("\n"),
+      },
+      {
+        filePath: "src/page.tsx",
+        sourceText: [
+          'import { LayoutShell } from "./layout";',
+          "export function PageShell({ children }: { children: React.ReactNode }) {",
+          '  return <LayoutShell><main className="page-shell">{children}</main></LayoutShell>;',
+          "}",
+        ].join("\n"),
+      },
+      {
+        filePath: "src/App.tsx",
+        sourceText: [
+          'import { PageShell } from "./page";',
+          "export function App() {",
+          '  return <PageShell><h1 className="page-title" /></PageShell>;',
+          "}",
+        ].join("\n"),
+      },
+    ],
+    selectorQueries: [
+      ".panel-shell .page-title",
+      ".layout-shell .page-title",
+      ".page-shell .page-title",
+    ],
+  });
+
+  const appSubtree = result.renderSubtrees.find((subtree) => subtree.componentName === "App");
+  assert.ok(appSubtree);
+  assert.equal(appSubtree.root.kind, "element");
+  assert.equal(result.selectorQueryResults.length, 3);
+  assert.equal(result.selectorQueryResults[0].outcome, "match");
+  assert.equal(result.selectorQueryResults[1].outcome, "match");
+  assert.equal(result.selectorQueryResults[2].outcome, "match");
+});
+
+test("static analysis engine resolves imported constant class bindings across files", () => {
+  const result = analyzeProjectSourceTexts({
+    sourceFiles: [
+      {
+        filePath: "src/theme.ts",
+        sourceText: 'export const panelClasses = "panel is-open";',
+      },
+      {
+        filePath: "src/App.tsx",
+        sourceText: [
+          'import { panelClasses } from "./theme";',
+          "export function App() {",
+          "  return <section className={panelClasses} />;",
+          "}",
+        ].join("\n"),
+      },
+    ],
+  });
+
+  const appSubtree = result.renderSubtrees.find((subtree) => subtree.componentName === "App");
+  assert.ok(appSubtree);
+  assert.equal(appSubtree.root.kind, "element");
+  assert.deepEqual(appSubtree.root.className?.classes.definite, ["panel", "is-open"]);
+});
+
+test("static analysis engine resolves imported object-literal class bindings across files", () => {
+  const result = analyzeProjectSourceTexts({
+    sourceFiles: [
+      {
+        filePath: "src/theme.ts",
+        sourceText: 'export const panelClasses = { open: "panel is-open" };',
+      },
+      {
+        filePath: "src/App.tsx",
+        sourceText: [
+          'import { panelClasses } from "./theme";',
+          "export function App() {",
+          "  return <section className={panelClasses.open} />;",
+          "}",
+        ].join("\n"),
+      },
+    ],
+  });
+
+  const appSubtree = result.renderSubtrees.find((subtree) => subtree.componentName === "App");
+  assert.ok(appSubtree);
+  assert.equal(appSubtree.root.kind, "element");
+  assert.deepEqual(appSubtree.root.className?.classes.definite, ["panel", "is-open"]);
+});
+
+test("static analysis engine resolves imported constant branch conditions across files", () => {
+  const result = analyzeProjectSourceTexts({
+    sourceFiles: [
+      {
+        filePath: "src/flags.ts",
+        sourceText: "export const isOpen = true;",
+      },
+      {
+        filePath: "src/App.tsx",
+        sourceText: [
+          'import { isOpen } from "./flags";',
+          "export function App() {",
+          '  return isOpen ? <section className="panel is-open" /> : <section className="panel" />;',
+          "}",
+        ].join("\n"),
+      },
+    ],
+  });
+
+  const appSubtree = result.renderSubtrees.find((subtree) => subtree.componentName === "App");
+  assert.ok(appSubtree);
+  assert.equal(appSubtree.root.kind, "element");
+  assert.deepEqual(appSubtree.root.className?.classes.definite, ["panel", "is-open"]);
+});
+
+test("static analysis engine resolves imported object-literal branch conditions across files", () => {
+  const result = analyzeProjectSourceTexts({
+    sourceFiles: [
+      {
+        filePath: "src/flags.ts",
+        sourceText: "export const panelFlags = { isOpen: true };",
+      },
+      {
+        filePath: "src/App.tsx",
+        sourceText: [
+          'import { panelFlags } from "./flags";',
+          "export function App() {",
+          '  return panelFlags.isOpen ? <section className="panel is-open" /> : <section className="panel" />;',
+          "}",
+        ].join("\n"),
+      },
+    ],
+  });
+
+  const appSubtree = result.renderSubtrees.find((subtree) => subtree.componentName === "App");
+  assert.ok(appSubtree);
+  assert.equal(appSubtree.root.kind, "element");
+  assert.deepEqual(appSubtree.root.className?.classes.definite, ["panel", "is-open"]);
+});
+
+test("static analysis engine resolves imported helper class bindings across files", () => {
+  const result = analyzeProjectSourceTexts({
+    sourceFiles: [
+      {
+        filePath: "src/theme.ts",
+        sourceText: ["export function getPanelClasses() {", '  return "panel is-open";', "}"].join(
+          "\n",
+        ),
+      },
+      {
+        filePath: "src/App.tsx",
+        sourceText: [
+          'import { getPanelClasses } from "./theme";',
+          "export function App() {",
+          "  return <section className={getPanelClasses()} />;",
+          "}",
+        ].join("\n"),
+      },
+    ],
+  });
+
+  const appSubtree = result.renderSubtrees.find((subtree) => subtree.componentName === "App");
+  assert.ok(appSubtree);
+  assert.equal(appSubtree.root.kind, "element");
+  assert.deepEqual(appSubtree.root.className?.classes.definite, ["panel", "is-open"]);
+});
+
+test("static analysis engine resolves imported helper branch conditions across files", () => {
+  const result = analyzeProjectSourceTexts({
+    sourceFiles: [
+      {
+        filePath: "src/flags.ts",
+        sourceText: ["export function shouldRenderOpen() {", "  return true;", "}"].join("\n"),
+      },
+      {
+        filePath: "src/App.tsx",
+        sourceText: [
+          'import { shouldRenderOpen } from "./flags";',
+          "export function App() {",
+          '  return shouldRenderOpen() ? <section className="panel is-open" /> : <section className="panel" />;',
+          "}",
+        ].join("\n"),
+      },
+    ],
+  });
+
+  const appSubtree = result.renderSubtrees.find((subtree) => subtree.componentName === "App");
+  assert.ok(appSubtree);
+  assert.equal(appSubtree.root.kind, "element");
+  assert.deepEqual(appSubtree.root.className?.classes.definite, ["panel", "is-open"]);
+});
+
+test("static analysis engine resolves imported helper JSX branches across files", () => {
+  const result = analyzeProjectSourceTexts({
+    sourceFiles: [
+      {
+        filePath: "src/view.tsx",
+        sourceText: [
+          "export function renderTitle() {",
+          '  return <h1 className="panel-shell__title" />;',
+          "}",
+        ].join("\n"),
+      },
+      {
+        filePath: "src/App.tsx",
+        sourceText: [
+          'import { renderTitle } from "./view";',
+          "export function App() {",
+          '  return <section className="panel-shell">{renderTitle()}</section>;',
+          "}",
+        ].join("\n"),
+      },
+    ],
+    selectorQueries: [".panel-shell .panel-shell__title"],
+  });
+
+  const appSubtree = result.renderSubtrees.find((subtree) => subtree.componentName === "App");
+  assert.ok(appSubtree);
+  assert.equal(appSubtree.root.kind, "element");
+  assert.equal(appSubtree.root.children.length, 1);
+  assert.equal(appSubtree.root.children[0].kind, "element");
+  assert.equal(result.selectorQueryResults.length, 1);
+  assert.equal(result.selectorQueryResults[0].outcome, "match");
+});
+
+test("static analysis engine expands default-imported components across files", () => {
+  const result = analyzeProjectSourceTexts({
+    sourceFiles: [
+      {
+        filePath: "src/PanelShell.tsx",
+        sourceText: [
+          "function PanelShell({ children }: { children: React.ReactNode }) {",
+          '  return <section className="panel-shell">{children}</section>;',
+          "}",
+          "export default PanelShell;",
+        ].join("\n"),
+      },
+      {
+        filePath: "src/App.tsx",
+        sourceText: [
+          'import PanelShell from "./PanelShell";',
+          "export function App() {",
+          '  return <PanelShell><h1 className="panel-shell__title" /></PanelShell>;',
+          "}",
+        ].join("\n"),
+      },
+    ],
+    selectorQueries: [".panel-shell .panel-shell__title"],
+  });
+
+  const appSubtree = result.renderSubtrees.find((subtree) => subtree.componentName === "App");
+  assert.ok(appSubtree);
+  assert.equal(appSubtree.root.kind, "element");
+  assert.equal(appSubtree.root.tagName, "section");
+  assert.equal(result.selectorQueryResults[0].outcome, "match");
+});
+
+test("static analysis engine resolves default-imported constant class bindings across files", () => {
+  const result = analyzeProjectSourceTexts({
+    sourceFiles: [
+      {
+        filePath: "src/theme.ts",
+        sourceText: 'export default "panel is-open";',
+      },
+      {
+        filePath: "src/App.tsx",
+        sourceText: [
+          'import panelClasses from "./theme";',
+          "export function App() {",
+          "  return <section className={panelClasses} />;",
+          "}",
+        ].join("\n"),
+      },
+    ],
+  });
+
+  const appSubtree = result.renderSubtrees.find((subtree) => subtree.componentName === "App");
+  assert.ok(appSubtree);
+  assert.equal(appSubtree.root.kind, "element");
+  assert.deepEqual(appSubtree.root.className?.classes.definite, ["panel", "is-open"]);
+});
+
+test("static analysis engine resolves default-imported helper branches across files", () => {
+  const result = analyzeProjectSourceTexts({
+    sourceFiles: [
+      {
+        filePath: "src/flags.ts",
+        sourceText: [
+          "function shouldRenderOpen() {",
+          "  return true;",
+          "}",
+          "export default shouldRenderOpen;",
+        ].join("\n"),
+      },
+      {
+        filePath: "src/App.tsx",
+        sourceText: [
+          'import shouldRenderOpen from "./flags";',
+          "export function App() {",
+          '  return shouldRenderOpen() ? <section className="panel is-open" /> : <section className="panel" />;',
+          "}",
+        ].join("\n"),
+      },
+    ],
+  });
+
+  const appSubtree = result.renderSubtrees.find((subtree) => subtree.componentName === "App");
+  assert.ok(appSubtree);
+  assert.equal(appSubtree.root.kind, "element");
+  assert.deepEqual(appSubtree.root.className?.classes.definite, ["panel", "is-open"]);
+});
+
+test("static analysis engine resolves transitive imported constant bindings across files", () => {
+  const result = analyzeProjectSourceTexts({
+    sourceFiles: [
+      {
+        filePath: "src/base.ts",
+        sourceText: 'export const panelClasses = "panel is-open";',
+      },
+      {
+        filePath: "src/theme.ts",
+        sourceText: [
+          'import { panelClasses as baseClasses } from "./base";',
+          "export const themedPanelClasses = baseClasses;",
+        ].join("\n"),
+      },
+      {
+        filePath: "src/App.tsx",
+        sourceText: [
+          'import { themedPanelClasses } from "./theme";',
+          "export function App() {",
+          "  return <section className={themedPanelClasses} />;",
+          "}",
+        ].join("\n"),
+      },
+    ],
+  });
+
+  const appSubtree = result.renderSubtrees.find((subtree) => subtree.componentName === "App");
+  assert.ok(appSubtree);
+  assert.equal(appSubtree.root.kind, "element");
+  assert.deepEqual(appSubtree.root.className?.classes.definite, ["panel", "is-open"]);
+});
+
+test("static analysis engine resolves transitive imported helper branches across files", () => {
+  const result = analyzeProjectSourceTexts({
+    sourceFiles: [
+      {
+        filePath: "src/core.ts",
+        sourceText: ["export function shouldRenderOpen() {", "  return true;", "}"].join("\n"),
+      },
+      {
+        filePath: "src/flags.ts",
+        sourceText: [
+          'import { shouldRenderOpen as coreShouldRenderOpen } from "./core";',
+          "export function isPanelOpen() {",
+          "  return coreShouldRenderOpen();",
+          "}",
+        ].join("\n"),
+      },
+      {
+        filePath: "src/App.tsx",
+        sourceText: [
+          'import { isPanelOpen } from "./flags";',
+          "export function App() {",
+          '  return isPanelOpen() ? <section className="panel is-open" /> : <section className="panel" />;',
+          "}",
+        ].join("\n"),
+      },
+    ],
+  });
+
+  const appSubtree = result.renderSubtrees.find((subtree) => subtree.componentName === "App");
+  assert.ok(appSubtree);
+  assert.equal(appSubtree.root.kind, "element");
+  assert.deepEqual(appSubtree.root.className?.classes.definite, ["panel", "is-open"]);
+});
+
+test("static analysis engine resolves named re-exported components across files", () => {
+  const result = analyzeProjectSourceTexts({
+    sourceFiles: [
+      {
+        filePath: "src/base.tsx",
+        sourceText: [
+          "export function PanelShell({ children }: { children: React.ReactNode }) {",
+          '  return <section className="panel-shell">{children}</section>;',
+          "}",
+        ].join("\n"),
+      },
+      {
+        filePath: "src/index.ts",
+        sourceText: 'export { PanelShell } from "./base";',
+      },
+      {
+        filePath: "src/App.tsx",
+        sourceText: [
+          'import { PanelShell } from "./index";',
+          "export function App() {",
+          '  return <PanelShell><h1 className="panel-shell__title" /></PanelShell>;',
+          "}",
+        ].join("\n"),
+      },
+    ],
+    selectorQueries: [".panel-shell .panel-shell__title"],
+  });
+
+  const appSubtree = result.renderSubtrees.find((subtree) => subtree.componentName === "App");
+  assert.ok(appSubtree);
+  assert.equal(appSubtree.root.kind, "element");
+  assert.equal(result.selectorQueryResults[0].outcome, "match");
+});
+
+test("static analysis engine resolves named re-exported constant bindings across files", () => {
+  const result = analyzeProjectSourceTexts({
+    sourceFiles: [
+      {
+        filePath: "src/base.ts",
+        sourceText: 'export const panelClasses = "panel is-open";',
+      },
+      {
+        filePath: "src/theme.ts",
+        sourceText: 'export { panelClasses } from "./base";',
+      },
+      {
+        filePath: "src/App.tsx",
+        sourceText: [
+          'import { panelClasses } from "./theme";',
+          "export function App() {",
+          "  return <section className={panelClasses} />;",
+          "}",
+        ].join("\n"),
+      },
+    ],
+  });
+
+  const appSubtree = result.renderSubtrees.find((subtree) => subtree.componentName === "App");
+  assert.ok(appSubtree);
+  assert.deepEqual(appSubtree.root.className?.classes.definite, ["panel", "is-open"]);
+});
+
+test("static analysis engine resolves named re-exported helper branches across files", () => {
+  const result = analyzeProjectSourceTexts({
+    sourceFiles: [
+      {
+        filePath: "src/core.ts",
+        sourceText: ["export function shouldRenderOpen() {", "  return true;", "}"].join("\n"),
+      },
+      {
+        filePath: "src/flags.ts",
+        sourceText: 'export { shouldRenderOpen } from "./core";',
+      },
+      {
+        filePath: "src/App.tsx",
+        sourceText: [
+          'import { shouldRenderOpen } from "./flags";',
+          "export function App() {",
+          '  return shouldRenderOpen() ? <section className="panel is-open" /> : <section className="panel" />;',
+          "}",
+        ].join("\n"),
+      },
+    ],
+  });
+
+  const appSubtree = result.renderSubtrees.find((subtree) => subtree.componentName === "App");
+  assert.ok(appSubtree);
+  assert.equal(appSubtree.root.kind, "element");
+  assert.deepEqual(appSubtree.root.className?.classes.definite, ["panel", "is-open"]);
+});
+
+test("static analysis engine resolves star re-exported constant bindings across files", () => {
+  const result = analyzeProjectSourceTexts({
+    sourceFiles: [
+      {
+        filePath: "src/base.ts",
+        sourceText: 'export const panelClasses = "panel is-open";',
+      },
+      {
+        filePath: "src/theme.ts",
+        sourceText: 'export * from "./base";',
+      },
+      {
+        filePath: "src/App.tsx",
+        sourceText: [
+          'import { panelClasses } from "./theme";',
+          "export function App() {",
+          "  return <section className={panelClasses} />;",
+          "}",
+        ].join("\n"),
+      },
+    ],
+  });
+
+  const appSubtree = result.renderSubtrees.find((subtree) => subtree.componentName === "App");
+  assert.ok(appSubtree);
+  assert.deepEqual(appSubtree.root.className?.classes.definite, ["panel", "is-open"]);
+});
+
+test("static analysis engine resolves namespace-imported constant bindings across files", () => {
+  const result = analyzeProjectSourceTexts({
+    sourceFiles: [
+      {
+        filePath: "src/theme.ts",
+        sourceText: 'export const panelClasses = "panel is-open";',
+      },
+      {
+        filePath: "src/App.tsx",
+        sourceText: [
+          'import * as theme from "./theme";',
+          "export function App() {",
+          "  return <section className={theme.panelClasses} />;",
+          "}",
+        ].join("\n"),
+      },
+    ],
+  });
+
+  const appSubtree = result.renderSubtrees.find((subtree) => subtree.componentName === "App");
+  assert.ok(appSubtree);
+  assert.deepEqual(appSubtree.root.className?.classes.definite, ["panel", "is-open"]);
+});
+
+test("static analysis engine resolves namespace-imported helper branches across files", () => {
+  const result = analyzeProjectSourceTexts({
+    sourceFiles: [
+      {
+        filePath: "src/flags.ts",
+        sourceText: ["export function shouldRenderOpen() {", "  return true;", "}"].join("\n"),
+      },
+      {
+        filePath: "src/App.tsx",
+        sourceText: [
+          'import * as flags from "./flags";',
+          "export function App() {",
+          '  return flags.shouldRenderOpen() ? <section className="panel is-open" /> : <section className="panel" />;',
+          "}",
+        ].join("\n"),
+      },
+    ],
+  });
+
+  const appSubtree = result.renderSubtrees.find((subtree) => subtree.componentName === "App");
+  assert.ok(appSubtree);
+  assert.equal(appSubtree.root.kind, "element");
+  assert.deepEqual(appSubtree.root.className?.classes.definite, ["panel", "is-open"]);
+});
+
+test("static analysis engine resolves namespace-imported component references across files", () => {
+  const result = analyzeProjectSourceTexts({
+    sourceFiles: [
+      {
+        filePath: "src/ui.tsx",
+        sourceText: [
+          "export function PanelShell({ children }: { children: React.ReactNode }) {",
+          '  return <section className="panel-shell">{children}</section>;',
+          "}",
+        ].join("\n"),
+      },
+      {
+        filePath: "src/App.tsx",
+        sourceText: [
+          'import * as ui from "./ui";',
+          "export function App() {",
+          '  return <ui.PanelShell><h1 className="panel-shell__title" /></ui.PanelShell>;',
+          "}",
+        ].join("\n"),
+      },
+    ],
+    selectorQueries: [".panel-shell .panel-shell__title"],
+  });
+
+  const appSubtree = result.renderSubtrees.find((subtree) => subtree.componentName === "App");
+  assert.ok(appSubtree);
+  assert.equal(appSubtree.root.kind, "element");
+  assert.equal(result.selectorQueryResults[0].outcome, "match");
+});
+
+test("static analysis engine resolves named imports of namespace re-exports across files", () => {
+  const result = analyzeProjectSourceTexts({
+    sourceFiles: [
+      {
+        filePath: "src/ui.tsx",
+        sourceText: [
+          "export function PanelShell({ children }: { children: React.ReactNode }) {",
+          '  return <section className="panel-shell">{children}</section>;',
+          "}",
+        ].join("\n"),
+      },
+      {
+        filePath: "src/barrel.ts",
+        sourceText: 'export * as ui from "./ui";',
+      },
+      {
+        filePath: "src/App.tsx",
+        sourceText: [
+          'import { ui } from "./barrel";',
+          "export function App() {",
+          '  return <ui.PanelShell><h1 className="panel-shell__title" /></ui.PanelShell>;',
+          "}",
+        ].join("\n"),
+      },
+    ],
+    selectorQueries: [".panel-shell .panel-shell__title"],
+  });
+
+  const appSubtree = result.renderSubtrees.find((subtree) => subtree.componentName === "App");
+  assert.ok(appSubtree);
+  assert.equal(appSubtree.root.kind, "element");
+  assert.equal(result.selectorQueryResults[0].outcome, "match");
+});
+
+test("static analysis engine resolves named imports of namespace re-exported constants across files", () => {
+  const result = analyzeProjectSourceTexts({
+    sourceFiles: [
+      {
+        filePath: "src/theme.ts",
+        sourceText: 'export const panelClasses = "panel is-open";',
+      },
+      {
+        filePath: "src/barrel.ts",
+        sourceText: 'export * as theme from "./theme";',
+      },
+      {
+        filePath: "src/App.tsx",
+        sourceText: [
+          'import { theme } from "./barrel";',
+          "export function App() {",
+          "  return <section className={theme.panelClasses} />;",
+          "}",
+        ].join("\n"),
+      },
+    ],
+  });
+
+  const appSubtree = result.renderSubtrees.find((subtree) => subtree.componentName === "App");
+  assert.ok(appSubtree);
+  assert.deepEqual(appSubtree.root.className?.classes.definite, ["panel", "is-open"]);
+});
+
 test("static analysis engine preserves unresolved component references when local expansion is unsupported", () => {
   const result = analyzeSourceText({
     filePath: "src/App.tsx",
@@ -157,6 +846,38 @@ test("static analysis engine preserves unresolved component references when loca
   assert.equal(
     result.renderSubtrees[1].root.reason,
     "same-file-component-expansion-unsupported:destructured-default-values",
+  );
+});
+
+test("static analysis engine preserves explicit cross-file unsupported component outcomes", () => {
+  const result = analyzeProjectSourceTexts({
+    sourceFiles: [
+      {
+        filePath: "src/Child.tsx",
+        sourceText: [
+          "export function Child({ title = 'fallback' }: { title?: string }) {",
+          '  return <div className="child">{title}</div>;',
+          "}",
+        ].join("\n"),
+      },
+      {
+        filePath: "src/App.tsx",
+        sourceText: [
+          'import { Child } from "./Child";',
+          "export function App() {",
+          "  return <Child />;",
+          "}",
+        ].join("\n"),
+      },
+    ],
+  });
+
+  const appSubtree = result.renderSubtrees.find((subtree) => subtree.componentName === "App");
+  assert.ok(appSubtree);
+  assert.equal(appSubtree.root.kind, "component-reference");
+  assert.equal(
+    appSubtree.root.reason,
+    "cross-file-component-expansion-unsupported:destructured-default-values",
   );
 });
 
@@ -202,12 +923,69 @@ test("static analysis engine preserves unresolved component references when prop
   );
 });
 
+test("static analysis engine preserves explicit cross-file component expansion budget outcomes", () => {
+  const result = analyzeProjectSourceTexts({
+    sourceFiles: [
+      {
+        filePath: "src/D.tsx",
+        sourceText: ["export function D() {", '  return <div className="level-d" />;', "}"].join(
+          "\n",
+        ),
+      },
+      {
+        filePath: "src/C.tsx",
+        sourceText: [
+          'import { D } from "./D";',
+          "export function C() {",
+          "  return <D />;",
+          "}",
+        ].join("\n"),
+      },
+      {
+        filePath: "src/B.tsx",
+        sourceText: [
+          'import { C } from "./C";',
+          "export function B() {",
+          "  return <C />;",
+          "}",
+        ].join("\n"),
+      },
+      {
+        filePath: "src/A.tsx",
+        sourceText: [
+          'import { B } from "./B";',
+          "export function A() {",
+          "  return <B />;",
+          "}",
+        ].join("\n"),
+      },
+      {
+        filePath: "src/App.tsx",
+        sourceText: [
+          'import { A } from "./A";',
+          "export function App() {",
+          "  return <A />;",
+          "}",
+        ].join("\n"),
+      },
+    ],
+  });
+
+  const appSubtree = result.renderSubtrees.find((subtree) => subtree.componentName === "App");
+  assert.ok(appSubtree);
+  assert.equal(appSubtree.root.kind, "component-reference");
+  assert.equal(appSubtree.root.reason, "cross-file-component-expansion-budget-exceeded");
+});
+
 test("static analysis engine preserves unresolved component references when local expansion hits the depth budget", () => {
   const result = analyzeSourceText({
     filePath: "src/App.tsx",
     sourceText: [
+      "function D() {",
+      '  return <div className="level-d" />;',
+      "}",
       "function C() {",
-      '  return <div className="level-c" />;',
+      "  return <D />;",
       "}",
       "function B() {",
       "  return <C />;",
@@ -221,11 +999,11 @@ test("static analysis engine preserves unresolved component references when loca
     ].join("\n"),
   });
 
-  assert.equal(result.renderSubtrees.length, 4);
-  assert.equal(result.renderSubtrees[3].componentName, "App");
-  assert.equal(result.renderSubtrees[3].root.kind, "component-reference");
+  assert.equal(result.renderSubtrees.length, 5);
+  assert.equal(result.renderSubtrees[4].componentName, "App");
+  assert.equal(result.renderSubtrees[4].root.kind, "component-reference");
   assert.equal(
-    result.renderSubtrees[3].root.reason,
+    result.renderSubtrees[4].root.reason,
     "same-file-component-expansion-budget-exceeded",
   );
 });
@@ -325,6 +1103,35 @@ test("static analysis engine preserves explicit helper expansion argument failur
     result.renderSubtrees[1].root.reason,
     "same-file-helper-expansion-unsupported-arguments",
   );
+});
+
+test("static analysis engine preserves explicit cross-file helper expansion argument failures", () => {
+  const result = analyzeProjectSourceTexts({
+    sourceFiles: [
+      {
+        filePath: "src/helpers.ts",
+        sourceText: [
+          "export function renderPanel(tone: string) {",
+          "  return <section className={tone} />;",
+          "}",
+        ].join("\n"),
+      },
+      {
+        filePath: "src/App.tsx",
+        sourceText: [
+          'import { renderPanel } from "./helpers";',
+          "export function App() {",
+          "  return renderPanel();",
+          "}",
+        ].join("\n"),
+      },
+    ],
+  });
+
+  const appSubtree = result.renderSubtrees.find((subtree) => subtree.componentName === "App");
+  assert.ok(appSubtree);
+  assert.equal(appSubtree.root.kind, "unknown");
+  assert.equal(appSubtree.root.reason, "cross-file-helper-expansion-unsupported-arguments");
 });
 
 test("static analysis engine expands same-file local components with destructured prop bindings", () => {

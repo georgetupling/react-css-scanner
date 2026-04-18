@@ -7,7 +7,7 @@ import {
   tryBuildFoundArrayRenderNode,
   tryBuildMappedArrayRenderNode,
 } from "./builders/buildArrayNodes.js";
-import { collectSameFileComponents } from "./collection/collectSameFileComponents.js";
+import { collectSameFileComponents } from "./collection/discovery/collectSameFileComponents.js";
 import type { BuildContext } from "./shared/internalTypes.js";
 import {
   createEmptyFragmentNode,
@@ -24,20 +24,58 @@ import type { RenderNode, RenderSubtree } from "./types.js";
 export function buildSameFileRenderSubtrees(input: {
   filePath: string;
   parsedSourceFile: ts.SourceFile;
+  componentDefinitions?: import("./collection/shared/types.js").SameFileComponentDefinition[];
+  componentsByFilePath?: Map<
+    string,
+    Map<string, import("./collection/shared/types.js").SameFileComponentDefinition>
+  >;
+  importedExpressionBindings?: Map<string, ts.Expression>;
+  importedHelperDefinitions?: Map<
+    string,
+    import("./collection/shared/types.js").LocalHelperDefinition
+  >;
+  importedNamespaceExpressionBindings?: Map<string, Map<string, ts.Expression>>;
+  importedNamespaceHelperDefinitions?: Map<
+    string,
+    Map<string, import("./collection/shared/types.js").LocalHelperDefinition>
+  >;
+  importedNamespaceComponentDefinitions?: Map<
+    string,
+    Map<string, import("./collection/shared/types.js").SameFileComponentDefinition>
+  >;
 }): RenderSubtree[] {
-  const componentDefinitions = collectSameFileComponents(input);
-  const componentsByName = new Map(
+  const componentDefinitions = input.componentDefinitions ?? collectSameFileComponents(input);
+  const localComponentsByName = new Map(
     componentDefinitions.map((definition) => [definition.componentName, definition]),
   );
+  const componentsByFilePath =
+    input.componentsByFilePath ?? new Map([[input.filePath, localComponentsByName]]);
 
   return componentDefinitions.map((definition) => ({
     root: buildRenderNode(definition.rootExpression, {
-      ...input,
-      componentsByName,
+      filePath: definition.filePath,
+      parsedSourceFile: definition.parsedSourceFile,
+      currentComponentFilePath: definition.filePath,
+      componentsByFilePath,
       currentDepth: 0,
       expansionStack: [definition.componentName],
-      expressionBindings: new Map(definition.localExpressionBindings),
-      helperDefinitions: new Map(definition.localHelperDefinitions),
+      expressionBindings: new Map([
+        ...(input.importedExpressionBindings?.entries() ?? []),
+        ...definition.localExpressionBindings.entries(),
+      ]),
+      helperDefinitions: new Map([
+        ...(input.importedHelperDefinitions?.entries() ?? []),
+        ...definition.localHelperDefinitions.entries(),
+      ]),
+      namespaceExpressionBindings: new Map(
+        input.importedNamespaceExpressionBindings?.entries() ?? [],
+      ),
+      namespaceHelperDefinitions: new Map(
+        input.importedNamespaceHelperDefinitions?.entries() ?? [],
+      ),
+      namespaceComponentDefinitions: new Map(
+        input.importedNamespaceComponentDefinitions?.entries() ?? [],
+      ),
       helperExpansionStack: [],
       propsObjectProperties: new Map(),
       propsObjectSubtreeProperties: new Map(),

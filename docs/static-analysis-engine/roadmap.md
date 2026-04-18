@@ -425,6 +425,91 @@ Support:
 - the first flagship capability works beyond same-file toy examples
 - technical-unknown states remain explicit
 
+## Status
+
+Complete.
+
+### Phase 6 Support Matrix
+
+Phase 6 is complete.
+
+This support matrix now serves as:
+
+- the record of what the completed Phase 6 milestone covers
+- the boundary line between finished bounded cross-file reasoning and Phase 7 rule migration
+
+### Implemented in Phase 6
+
+- project-level multi-file analysis entrypoint
+- merged module graph construction across provided source files
+- direct relative named-import component expansion across files
+- imported constant propagation for direct named exports
+- imported helper summaries for direct named exports
+- direct relative default-import component expansion across files
+- imported constant propagation for direct default exports
+- imported helper summaries for direct default exports
+- bounded namespace-import resolution for components, constants, and helpers across direct relative source files
+- bounded namespace re-export resolution for components and constants across direct relative source files
+- bounded transitive imported-value propagation for constants and helpers across direct relative source chains
+- bounded re-export resolution for named re-exports and `export *` chains
+- bounded cross-file object-literal property access for imported constants used in class bindings and branch conditions
+- scope-aware cross-file unsupported and budgeted outcomes for component and helper expansion
+
+### Current intentional limits
+
+- only bounded direct relative source imports
+- only bounded imported component expansion, including named, default, namespace, and current re-export forms
+- only bounded imported constants and helpers, including named, default, namespace, and current re-export forms
+- transitive imported-value propagation is bounded and depth-limited
+- re-export resolution is bounded and limited to direct relative source chains, including the current namespace re-export subset
+- no arbitrary wildcard-import value propagation beyond the current bounded namespace-import surface
+- no render-prop or higher-order patterns
+
+### Closeout and stabilization work
+
+These are useful maintenance tasks, but they are no longer required to call Phase 6 complete.
+
+- keep the Phase 6 support matrix and closeout note aligned with implementation changes
+- keep the documented support surface aligned with implementation if the bounded import model grows
+
+### Explicitly out of scope for the rest of Phase 6
+
+These should not quietly drift back into this milestone.
+
+- render props
+- function-as-children
+- higher-order components
+- dynamic component identities
+- `as={SomeComponent}` polymorphism across modules
+- arbitrary interprocedural JS evaluation
+- framework-specific runtime semantics
+
+## Phase 6 Outcome
+
+Phase 6 is now complete.
+
+The key result is:
+
+- the engine can reason across module boundaries for a bounded but practically useful subset of component, helper, and constant flows
+
+That means the next milestone should no longer be framed as:
+
+- keep extending bounded import and re-export plumbing
+
+It should be framed as:
+
+- start Phase 7 rule migration and comparison on top of the now-established same-file and cross-file reasoning surface
+
+### Practical Phase 6 completion signal
+
+Phase 6 should feel complete when all of these are true:
+
+- bounded cross-file component, helper, and constant reasoning works reliably across common import/export forms
+- the remaining important gaps are mostly dynamic or product-integration concerns rather than missing basic cross-file import semantics
+- cross-file unsupported and over-budget outcomes are explicit enough to debug confidently
+- the team can describe the supported cross-file surface without reading implementation details
+- the next most valuable work starts to look like Phase 7 rule migration rather than more import-shape plumbing
+
 ## Phase 7: Pilot Rule Migration And Comparison
 
 ## Goal

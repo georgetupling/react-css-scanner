@@ -1,11 +1,13 @@
 import ts from "typescript";
 
-import type { SourceAnchor } from "../../../types/core.js";
-import type { UnsupportedParameterBindingReason } from "../shared/expansionPolicy.js";
+import type { SourceAnchor } from "../../../../types/core.js";
+import type { UnsupportedParameterBindingReason } from "../../shared/expansionPolicy.js";
 
 export type SameFileComponentDefinition = {
   componentName: string;
   exported: boolean;
+  filePath: string;
+  parsedSourceFile: ts.SourceFile;
   sourceAnchor: SourceAnchor;
   rootExpression: ts.Expression;
   localExpressionBindings: Map<string, ts.Expression>;
@@ -25,6 +27,8 @@ export type SameFileComponentDefinition = {
 
 export type LocalHelperDefinition = {
   helperName: string;
+  filePath: string;
+  parsedSourceFile: ts.SourceFile;
   parameterNames: string[];
   returnExpression: ts.Expression;
   localExpressionBindings: Map<string, ts.Expression>;

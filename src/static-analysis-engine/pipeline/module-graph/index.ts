@@ -1,4 +1,8 @@
-export { buildModuleGraphFromSource, createModuleId } from "./buildModuleGraph.js";
+export {
+  buildModuleGraphFromSource,
+  buildModuleGraphFromSources,
+  createModuleId,
+} from "./buildModuleGraph.js";
 export type {
   ModuleExportEdge,
   ModuleExportRecord,
