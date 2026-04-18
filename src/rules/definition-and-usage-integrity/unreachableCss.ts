@@ -5,7 +5,7 @@ import { getDefinitionReachabilityStatus } from "../reachability.js";
 export const unreachableCssRule: RuleDefinition = {
   ruleId: "unreachable-css",
   family: "definition-and-usage-integrity",
-  defaultSeverity: "info",
+  defaultSeverity: "warning",
   run(context) {
     const severity = context.getRuleSeverity("unreachable-css", "info");
     if (severity === "off") {

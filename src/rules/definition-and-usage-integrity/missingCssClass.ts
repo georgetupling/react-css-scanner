@@ -8,7 +8,7 @@ import {
 export const missingCssClassRule: RuleDefinition = {
   ruleId: "missing-css-class",
   family: "definition-and-usage-integrity",
-  defaultSeverity: "info",
+  defaultSeverity: "warning",
   run(context) {
     const severity = context.getRuleSeverity("missing-css-class", "info");
     if (severity === "off") {

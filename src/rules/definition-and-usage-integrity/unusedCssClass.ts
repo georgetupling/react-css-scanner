@@ -7,7 +7,7 @@ import { getReferenceDefinitionCandidates } from "../referenceMatching.js";
 export const unusedCssClassRule: RuleDefinition = {
   ruleId: "unused-css-class",
   family: "definition-and-usage-integrity",
-  defaultSeverity: "info",
+  defaultSeverity: "warning",
   run(context) {
     const severity = context.getRuleSeverity("unused-css-class", "info");
     if (severity === "off") {

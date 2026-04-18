@@ -38,10 +38,10 @@ The product preserves the intent of the earlier Loremaster-style audit while usi
 
 ### Tier 1
 
-- `missing-css-class` - `info`
+- `missing-css-class` - `warning`
 - `css-class-missing-in-some-contexts` - `info`
-- `unreachable-css` - `info`
-- `unused-css-class` - `info`
+- `unreachable-css` - `warning`
+- `unused-css-class` - `warning`
 - `component-style-cross-component` - `warning`
 - `global-css-not-global` - `info`
 - `utility-class-replacement` - `info`
@@ -56,6 +56,8 @@ The product preserves the intent of the earlier Loremaster-style audit while usi
 - `missing-external-css-class` - `error`
 - `duplicate-css-class-definition` - `warning`
 - `component-css-should-be-global` - `info`
+- `empty-css-rule` - `warning`
+- `redundant-css-declaration-block` - `info`
 
 ## Rule notes
 
