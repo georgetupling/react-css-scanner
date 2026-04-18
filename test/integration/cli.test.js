@@ -55,7 +55,7 @@ test("CLI emits default-config warning and human-readable output", async () => {
 
     const result = await runCli([tempDir], tempDir);
 
-    assert.equal(result.code, 1);
+    assert.equal(result.code, 0);
     assert.match(result.stderr, /built-in defaults were used/i);
     assert.match(result.stdout, /Scan target:/);
     assert.match(result.stdout, /missing-css-class/);

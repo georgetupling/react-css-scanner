@@ -111,9 +111,10 @@ Example:
     "failOnSeverity": "error"
   },
   "rules": {
-    "missing-css-class": "error",
-    "unreachable-css": "error",
-    "unused-css-class": "warning",
+    "missing-css-class": "info",
+    "css-class-missing-in-some-contexts": "info",
+    "unreachable-css": "info",
+    "unused-css-class": "info",
     "global-css-not-global": "warning",
     "component-css-should-be-global": {
       "severity": "info",
@@ -436,9 +437,10 @@ Proposed ergonomic shape:
 ```json
 {
   "rules": {
-    "missing-css-class": "error",
-    "unreachable-css": "error",
-    "unused-css-class": "warning",
+    "missing-css-class": "info",
+    "css-class-missing-in-some-contexts": "info",
+    "unreachable-css": "info",
+    "unused-css-class": "info",
     "global-css-not-global": "off"
   }
 }

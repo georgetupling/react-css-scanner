@@ -68,9 +68,10 @@ If you omit `source.include`, the scanner auto-discovers React source roots by l
     "failOnSeverity": "warning"
   },
   "rules": {
-    "missing-css-class": "error",
-    "unreachable-css": "error",
-    "unused-css-class": "warning",
+    "missing-css-class": "info",
+    "css-class-missing-in-some-contexts": "info",
+    "unreachable-css": "info",
+    "unused-css-class": "info",
     "global-css-not-global": "off",
     "component-css-should-be-global": {
       "severity": "info",

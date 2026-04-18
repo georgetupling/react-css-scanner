@@ -37,9 +37,10 @@ The product preserves the intent of the earlier Loremaster-style audit while usi
 
 ### Tier 1
 
-- `missing-css-class` - `error`
-- `unreachable-css` - `error`
-- `unused-css-class` - `warning`
+- `missing-css-class` - `info`
+- `css-class-missing-in-some-contexts` - `info`
+- `unreachable-css` - `info`
+- `unused-css-class` - `info`
 - `component-style-cross-component` - `warning`
 - `global-css-not-global` - `info`
 - `utility-class-replacement` - `info`
@@ -61,9 +62,10 @@ The product preserves the intent of the earlier Loremaster-style audit while usi
 
 These rules answer whether a class is defined, used, and reachable where it is referenced.
 
-- `missing-css-class`: a class referenced by React code has no matching reachable definition in project CSS or imported external CSS
-- `unused-css-class`: a class is defined in CSS but has no convincing usage
-- `unreachable-css`: a referenced class exists, but not in CSS that is reachable for the module using it
+- `missing-css-class`: a class referenced by React code has no matching reachable definition
+- `css-class-missing-in-some-contexts`: a class has a matching project definition, but that definition is only available on some known render routes
+- `unused-css-class`: a class is defined in CSS but has no React usage evidence at all
+- `unreachable-css`: a referenced class exists, but not in CSS that is reachable for the module using it in any known context
 
 For plain React class references, direct evidence comes from standalone selector branches.
 Compound selectors such as `.a.b` and contextual selectors such as `.scope .a` are preserved in the model, but they do not automatically satisfy plain class-definition checks.

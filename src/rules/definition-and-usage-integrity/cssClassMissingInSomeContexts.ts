@@ -5,12 +5,12 @@ import {
   isCssModuleReference,
 } from "../helpers.js";
 
-export const unreachableCssRule: RuleDefinition = {
-  ruleId: "unreachable-css",
+export const cssClassMissingInSomeContextsRule: RuleDefinition = {
+  ruleId: "css-class-missing-in-some-contexts",
   family: "definition-and-usage-integrity",
   defaultSeverity: "info",
   run(context) {
-    const severity = context.getRuleSeverity("unreachable-css", "info");
+    const severity = context.getRuleSeverity("css-class-missing-in-some-contexts", "info");
     if (severity === "off") {
       return [];
     }
@@ -37,49 +37,49 @@ export const unreachableCssRule: RuleDefinition = {
             definition.externalSpecifier,
           ),
         }));
-        const definitelyReachableDefinitions = definitionsWithStatus.filter(
-          (entry) => entry.status === "direct" || entry.status === "import-context",
+        const strongerDefinitions = definitionsWithStatus.filter(
+          (entry) =>
+            entry.status === "direct" ||
+            entry.status === "import-context" ||
+            entry.status === "render-context-definite",
         );
-        if (definitelyReachableDefinitions.length > 0) {
+        if (strongerDefinitions.length > 0) {
           continue;
         }
 
-        const definiteRenderContextDefinitions = definitionsWithStatus.filter(
-          (entry) => entry.status === "render-context-definite",
-        );
-        if (definiteRenderContextDefinitions.length > 0) {
-          continue;
-        }
-
-        const possibleRenderContextDefinitions = definitionsWithStatus.filter(
+        const possibleDefinitions = definitionsWithStatus.filter(
           (entry) => entry.status === "render-context-possible",
         );
-        if (possibleRenderContextDefinitions.length > 0) {
+        if (possibleDefinitions.length === 0) {
           continue;
         }
 
         findings.push(
           context.createFinding({
-            ruleId: "unreachable-css",
+            ruleId: "css-class-missing-in-some-contexts",
             family: "definition-and-usage-integrity",
             severity,
-            confidence: reference.confidence,
-            message: `Class "${reference.className}" exists in project CSS, but not in CSS reachable from "${sourceFile.path}".`,
+            confidence: "low",
+            message: `Class "${reference.className}" is only backed by CSS in some known render contexts for "${sourceFile.path}".`,
             primaryLocation: {
               filePath: sourceFile.path,
               line: reference.line,
               column: reference.column,
             },
-            relatedLocations: candidateDefinitions.map((definition) => ({
-              filePath: definition.cssFile,
-              line: definition.definition.line,
+            relatedLocations: possibleDefinitions.map((entry) => ({
+              filePath: entry.definition.cssFile,
+              line: entry.definition.definition.line,
             })),
             subject: {
               className: reference.className,
               sourceFilePath: sourceFile.path,
             },
             metadata: {
-              candidateCssFiles: candidateDefinitions.map((definition) => definition.cssFile),
+              referenceKind: reference.kind,
+              renderContextReachability: "possible",
+              possibleRenderContextCssFiles: possibleDefinitions.map(
+                (entry) => entry.definition.cssFile,
+              ),
             },
           }),
         );

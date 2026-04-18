@@ -3,15 +3,14 @@ import {
   getDeclaredExternalProviderForClass,
   getProjectClassDefinitions,
   isCssModuleReference,
-  isDefinitionReachable,
 } from "../helpers.js";
 
 export const missingCssClassRule: RuleDefinition = {
   ruleId: "missing-css-class",
   family: "definition-and-usage-integrity",
-  defaultSeverity: "error",
+  defaultSeverity: "info",
   run(context) {
-    const severity = context.getRuleSeverity("missing-css-class", "error");
+    const severity = context.getRuleSeverity("missing-css-class", "info");
     if (severity === "off") {
       return [];
     }
@@ -30,16 +29,7 @@ export const missingCssClassRule: RuleDefinition = {
         }
 
         const candidateDefinitions = getProjectClassDefinitions(context.model, reference.className);
-        const reachableDefinitions = candidateDefinitions.filter((definition) =>
-          isDefinitionReachable(
-            context.model,
-            sourceFile.path,
-            definition.cssFile,
-            definition.externalSpecifier,
-          ),
-        );
-
-        if (reachableDefinitions.length > 0 || candidateDefinitions.length > 0) {
+        if (candidateDefinitions.length > 0) {
           continue;
         }
 

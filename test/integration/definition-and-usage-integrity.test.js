@@ -72,3 +72,53 @@ test("integration scans treat transparently joined helper classes as real usage"
     },
   );
 });
+
+test("integration scans surface partial render-context coverage as css-class-missing-in-some-contexts", async () => {
+  await withBuiltProject(
+    new TestProjectBuilder()
+      .withTemplate("basic-react-app")
+      .withSourceFile(
+        "src/PageWithCss.tsx",
+        [
+          'import "./Page.css";',
+          'import { Child } from "./Child";',
+          "export function PageWithCss() { return <Child />; }",
+        ].join("\n"),
+      )
+      .withSourceFile(
+        "src/PageWithoutCss.tsx",
+        [
+          'import { Child } from "./Child";',
+          "export function PageWithoutCss() { return <Child />; }",
+        ].join("\n"),
+      )
+      .withSourceFile(
+        "src/Child.tsx",
+        'export function Child() { return <div className="page-shell" />; }\n',
+      )
+      .withCssFile("src/Page.css", ".page-shell {}\n"),
+    async (project) => {
+      const result = await scanReactCss({ targetPath: project.rootDir });
+
+      assert.ok(
+        result.findings.some(
+          (finding) =>
+            finding.ruleId === "css-class-missing-in-some-contexts" &&
+            finding.subject?.className === "page-shell",
+        ),
+      );
+      assert.ok(
+        !result.findings.some(
+          (finding) =>
+            finding.ruleId === "missing-css-class" && finding.subject?.className === "page-shell",
+        ),
+      );
+      assert.ok(
+        !result.findings.some(
+          (finding) =>
+            finding.ruleId === "unreachable-css" && finding.subject?.className === "page-shell",
+        ),
+      );
+    },
+  );
+});

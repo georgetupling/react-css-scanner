@@ -1,12 +1,12 @@
 Scan target: <PROJECT_ROOT>
 Config source: project-root (<PROJECT_ROOT>/scan-react-css.json)
-Summary: 3 findings (1 error, 1 warning, 1 info) across 2 files
+Summary: 3 findings (0 error, 0 warning, 3 info) across 2 files
 Findings:
 - orphan
-  [error/high] unreachable-css @ src/App.tsx: Class "orphan" exists in project CSS, but not in CSS reachable from "src/App.tsx".
+  [info/high] unreachable-css @ src/App.tsx: Class "orphan" exists in project CSS, but not in CSS reachable from "src/App.tsx".
     related: src/Other.css
     metadata: {"candidateCssFiles":["src/Other.css"]}
-  [warning/high] unused-css-class @ src/Other.css: CSS class "orphan" does not have any convincing reachable React usage.
+  [info/high] unused-css-class @ src/Other.css: CSS class "orphan" does not have any convincing reachable React usage.
 - src/Other.css
   [info/high] empty-css-rule @ src/Other.css: Selector ".orphan" in "src/Other.css" does not contain any CSS declarations.
     metadata: {"selector":".orphan","atRuleContext":[]}

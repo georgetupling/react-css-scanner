@@ -433,8 +433,9 @@ Each rule can use either:
 ```json
 {
   "rules": {
-    "missing-css-class": "error",
-    "unused-css-class": "warning",
+    "missing-css-class": "info",
+    "css-class-missing-in-some-contexts": "info",
+    "unused-css-class": "info",
     "global-css-not-global": "off"
   }
 }
@@ -465,6 +466,7 @@ Each rule can use either:
 ### Implemented rule IDs
 
 - `missing-css-class`
+- `css-class-missing-in-some-contexts`
 - `unreachable-css`
 - `unused-css-class`
 - `component-style-cross-component`

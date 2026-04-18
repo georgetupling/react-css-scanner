@@ -4,15 +4,15 @@
     "sourceFileCount": 1,
     "cssFileCount": 1,
     "findingCount": 4,
-    "errorCount": 1,
-    "warningCount": 1,
-    "infoCount": 2
+    "errorCount": 0,
+    "warningCount": 0,
+    "infoCount": 4
   },
   "findings": [
     {
       "ruleId": "missing-css-class",
       "family": "definition-and-usage-integrity",
-      "severity": "error",
+      "severity": "info",
       "confidence": "high",
       "message": "Class \"missing\" is referenced in React code but no matching reachable CSS class definition was found.",
       "primaryLocation": {
@@ -28,23 +28,6 @@
       "metadata": {
         "referenceKind": "string-literal"
       }
-    },
-    {
-      "ruleId": "unused-css-class",
-      "family": "definition-and-usage-integrity",
-      "severity": "warning",
-      "confidence": "high",
-      "message": "CSS class \"unused\" does not have any convincing reachable React usage.",
-      "primaryLocation": {
-        "filePath": "src/App.css",
-        "line": 2
-      },
-      "relatedLocations": [],
-      "subject": {
-        "className": "unused",
-        "cssFilePath": "src/App.css"
-      },
-      "metadata": {}
     },
     {
       "ruleId": "empty-css-rule",
@@ -83,6 +66,23 @@
         "selector": ".used",
         "atRuleContext": []
       }
+    },
+    {
+      "ruleId": "unused-css-class",
+      "family": "definition-and-usage-integrity",
+      "severity": "info",
+      "confidence": "high",
+      "message": "CSS class \"unused\" does not have any convincing reachable React usage.",
+      "primaryLocation": {
+        "filePath": "src/App.css",
+        "line": 2
+      },
+      "relatedLocations": [],
+      "subject": {
+        "className": "unused",
+        "cssFilePath": "src/App.css"
+      },
+      "metadata": {}
     }
   ],
   "operationalWarnings": [

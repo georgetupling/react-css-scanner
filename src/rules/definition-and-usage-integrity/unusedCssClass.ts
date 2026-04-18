@@ -1,17 +1,17 @@
 import type { RuleDefinition } from "../types.js";
 import {
+  getDefinitionReachabilityStatus,
   isCssModuleFile,
   isCssModuleReference,
-  isDefinitionReachable,
   isPlainClassDefinition,
 } from "../helpers.js";
 
 export const unusedCssClassRule: RuleDefinition = {
   ruleId: "unused-css-class",
   family: "definition-and-usage-integrity",
-  defaultSeverity: "warning",
+  defaultSeverity: "info",
   run(context) {
-    const severity = context.getRuleSeverity("unused-css-class", "warning");
+    const severity = context.getRuleSeverity("unused-css-class", "info");
     if (severity === "off") {
       return [];
     }
@@ -30,15 +30,38 @@ export const unusedCssClassRule: RuleDefinition = {
 
         const references =
           context.model.indexes.classReferencesByName.get(definition.className) ?? [];
-        const convincingReferences = references.filter((entry) => {
+        const referencesWithStatus = references.flatMap((entry) => {
           if (isCssModuleReference(entry.reference.kind)) {
-            return false;
+            return [];
           }
 
-          return isDefinitionReachable(context.model, entry.sourceFile, cssFile.path);
+          return [
+            {
+              sourceFile: entry.sourceFile,
+              reference: entry.reference,
+              status: getDefinitionReachabilityStatus(
+                context.model,
+                entry.sourceFile,
+                cssFile.path,
+              ),
+            },
+          ];
         });
+        const convincingReferences = referencesWithStatus.filter(
+          (entry) =>
+            entry.status === "direct" ||
+            entry.status === "import-context" ||
+            entry.status === "render-context-definite",
+        );
 
         if (convincingReferences.length > 0) {
+          continue;
+        }
+
+        const possibleRenderContextReferences = referencesWithStatus.filter(
+          (entry) => entry.status === "render-context-possible",
+        );
+        if (possibleRenderContextReferences.length > 0) {
           continue;
         }
 

@@ -35,7 +35,7 @@ test("project-root config makes configured global CSS reachable in integration s
   });
 });
 
-test("CLI integration fails on configured warning severity", async () => {
+test("CLI integration does not fail on configured warning severity when only info findings are emitted", async () => {
   await withBuiltProject(
     new TestProjectBuilder()
       .withTemplate("basic-react-app")
@@ -53,7 +53,7 @@ test("CLI integration fails on configured warning severity", async () => {
       }),
     async (project) => {
       const result = await runCli([project.rootDir], project.rootDir);
-      assert.equal(result.code, 1);
+      assert.equal(result.code, 0);
       assert.match(result.stdout, /unused-css-class/);
     },
   );

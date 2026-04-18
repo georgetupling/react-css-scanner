@@ -107,7 +107,7 @@ test("unreachable-css does not report classes inherited from all known render co
   });
 });
 
-test("unreachable-css is advisory when css is only available from some known render contexts", async () => {
+test("css-class-missing-in-some-contexts reports when css is only available from some known render contexts", async () => {
   await withRuleTempDir(async (tempDir) => {
     await writeProjectFile(
       tempDir,
@@ -135,16 +135,54 @@ test("unreachable-css is advisory when css is only available from some known ren
 
     const findings = await runRuleScenario(tempDir);
     const finding = findings.find(
-      (entry) => entry.ruleId === "unreachable-css" && entry.subject?.className === "page-shell",
+      (entry) =>
+        entry.ruleId === "css-class-missing-in-some-contexts" &&
+        entry.subject?.className === "page-shell",
     );
 
     assert.ok(finding);
     assert.equal(finding.confidence, "low");
-    assert.match(finding.message, /may be available via some render contexts/);
+    assert.match(finding.message, /only backed by CSS in some known render contexts/);
     assert.equal(finding.metadata?.renderContextReachability, "possible");
     assert.deepEqual(finding.metadata?.possibleRenderContextCssFiles, [
       "src/pages/PageWithCss.css",
     ]);
+  });
+});
+
+test("missing-css-class does not report when a definition is only available in some render contexts", async () => {
+  await withRuleTempDir(async (tempDir) => {
+    await writeProjectFile(
+      tempDir,
+      "src/pages/PageWithCss.tsx",
+      [
+        'import "./PageWithCss.css";',
+        'import { Child } from "../components/Child";',
+        "export function PageWithCss() { return <Child />; }",
+      ].join("\n"),
+    );
+    await writeProjectFile(
+      tempDir,
+      "src/pages/PageWithoutCss.tsx",
+      [
+        'import { Child } from "../components/Child";',
+        "export function PageWithoutCss() { return <Child />; }",
+      ].join("\n"),
+    );
+    await writeProjectFile(
+      tempDir,
+      "src/components/Child.tsx",
+      'export function Child() { return <div className="page-shell" />; }',
+    );
+    await writeProjectFile(tempDir, "src/pages/PageWithCss.css", ".page-shell {}");
+
+    const findings = await runRuleScenario(tempDir);
+    assert.ok(
+      !findings.some(
+        (entry) =>
+          entry.ruleId === "missing-css-class" && entry.subject?.className === "page-shell",
+      ),
+    );
   });
 });
 
@@ -264,7 +302,42 @@ test("unused-css-class does not report classes used only through wrapper render 
   });
 });
 
-test("unreachable-css stays advisory for layout utility css available on only one render path", async () => {
+test("unused-css-class does not report when usage only exists in some render contexts", async () => {
+  await withRuleTempDir(async (tempDir) => {
+    await writeProjectFile(
+      tempDir,
+      "src/StyledPage.tsx",
+      [
+        'import "./StyledPage.css";',
+        'import { Child } from "./Child";',
+        "export function StyledPage() { return <Child />; }",
+      ].join("\n"),
+    );
+    await writeProjectFile(
+      tempDir,
+      "src/PlainPage.tsx",
+      [
+        'import { Child } from "./Child";',
+        "export function PlainPage() { return <Child />; }",
+      ].join("\n"),
+    );
+    await writeProjectFile(
+      tempDir,
+      "src/Child.tsx",
+      'export function Child() { return <div className="partial" />; }',
+    );
+    await writeProjectFile(tempDir, "src/StyledPage.css", ".partial {}");
+
+    const findings = await runRuleScenario(tempDir);
+    assert.ok(
+      !findings.some(
+        (entry) => entry.ruleId === "unused-css-class" && entry.subject?.className === "partial",
+      ),
+    );
+  });
+});
+
+test("css-class-missing-in-some-contexts reports layout utility css available on only one render path", async () => {
   await withRuleTempDir(async (tempDir) => {
     await writeProjectFile(
       tempDir,
@@ -301,7 +374,9 @@ test("unreachable-css stays advisory for layout utility css available on only on
 
     const findings = await runRuleScenario(tempDir);
     const finding = findings.find(
-      (entry) => entry.ruleId === "unreachable-css" && entry.subject?.className === "page-flow",
+      (entry) =>
+        entry.ruleId === "css-class-missing-in-some-contexts" &&
+        entry.subject?.className === "page-flow",
     );
 
     assert.ok(finding);
@@ -311,7 +386,7 @@ test("unreachable-css stays advisory for layout utility css available on only on
   });
 });
 
-test("unreachable-css stays advisory when a deep ancestor provides css on only some routes", async () => {
+test("css-class-missing-in-some-contexts reports when a deep ancestor provides css on only some routes", async () => {
   await withRuleTempDir(async (tempDir) => {
     await writeProjectFile(
       tempDir,
@@ -412,7 +487,9 @@ test("unreachable-css stays advisory when a deep ancestor provides css on only s
 
     const findings = await runRuleScenario(tempDir);
     const finding = findings.find(
-      (entry) => entry.ruleId === "unreachable-css" && entry.subject?.className === "deep-chain",
+      (entry) =>
+        entry.ruleId === "css-class-missing-in-some-contexts" &&
+        entry.subject?.className === "deep-chain",
     );
 
     assert.ok(finding);
@@ -461,32 +538,34 @@ test("route-based reachability classifies different classes independently across
 
     const findings = await runRuleScenario(tempDir);
 
+    const alphaMissing = findings.find(
+      (finding) =>
+        finding.ruleId === "css-class-missing-in-some-contexts" &&
+        finding.subject?.className === "alpha",
+    );
+    const betaMissing = findings.find(
+      (finding) =>
+        finding.ruleId === "css-class-missing-in-some-contexts" &&
+        finding.subject?.className === "beta",
+    );
+
+    assert.ok(alphaMissing);
+    assert.ok(betaMissing);
+    assert.equal(alphaMissing.confidence, "low");
+    assert.equal(betaMissing.confidence, "low");
+    assert.deepEqual(alphaMissing.metadata?.possibleRenderContextCssFiles, ["src/Alpha.css"]);
+    assert.deepEqual(betaMissing.metadata?.possibleRenderContextCssFiles, ["src/Beta.css"]);
+
     assert.ok(
       !findings.some(
-        (finding) =>
-          finding.ruleId === "missing-css-class" && finding.subject?.className === "alpha",
+        (finding) => finding.ruleId === "unreachable-css" && finding.subject?.className === "alpha",
       ),
     );
     assert.ok(
       !findings.some(
-        (finding) =>
-          finding.ruleId === "missing-css-class" && finding.subject?.className === "beta",
+        (finding) => finding.ruleId === "unreachable-css" && finding.subject?.className === "beta",
       ),
     );
-
-    const alphaUnreachable = findings.find(
-      (finding) => finding.ruleId === "unreachable-css" && finding.subject?.className === "alpha",
-    );
-    const betaUnreachable = findings.find(
-      (finding) => finding.ruleId === "unreachable-css" && finding.subject?.className === "beta",
-    );
-
-    assert.ok(alphaUnreachable);
-    assert.ok(betaUnreachable);
-    assert.equal(alphaUnreachable.confidence, "low");
-    assert.equal(betaUnreachable.confidence, "low");
-    assert.deepEqual(alphaUnreachable.metadata?.possibleRenderContextCssFiles, ["src/Alpha.css"]);
-    assert.deepEqual(betaUnreachable.metadata?.possibleRenderContextCssFiles, ["src/Beta.css"]);
   });
 });
 
