@@ -192,8 +192,9 @@ function createFindingAggregationKey(finding: Finding): string {
 }
 
 function omitAggregateOccurrenceCount(metadata: Record<string, unknown>): Record<string, unknown> {
-  const { [AGGREGATE_OCCURRENCE_COUNT_KEY]: _ignored, ...rest } = metadata;
-  return rest;
+  return Object.fromEntries(
+    Object.entries(metadata).filter(([key]) => key !== AGGREGATE_OCCURRENCE_COUNT_KEY),
+  );
 }
 
 function dedupeLocations(locations: FindingLocation[]): FindingLocation[] {
@@ -233,7 +234,10 @@ function compareLocations(left: FindingLocation, right: FindingLocation): number
   return (left.context ?? "").localeCompare(right.context ?? "");
 }
 
-function locationsEqual(left: FindingLocation | undefined, right: FindingLocation | undefined): boolean {
+function locationsEqual(
+  left: FindingLocation | undefined,
+  right: FindingLocation | undefined,
+): boolean {
   if (!left || !right) {
     return left === right;
   }

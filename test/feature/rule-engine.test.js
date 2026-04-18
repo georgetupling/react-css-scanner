@@ -123,7 +123,8 @@ test("finding collation merges identical findings and preserves extra locations"
       family: "definition-and-usage-integrity",
       severity: "warning",
       confidence: "high",
-      message: 'Class "world-members-page" is referenced in React code but no matching reachable CSS class definition was found.',
+      message:
+        'Class "world-members-page" is referenced in React code but no matching reachable CSS class definition was found.',
       primaryLocation: {
         filePath: "src/pages/WorldMembersPage.tsx",
         line: 20,
@@ -142,7 +143,8 @@ test("finding collation merges identical findings and preserves extra locations"
       family: "definition-and-usage-integrity",
       severity: "warning",
       confidence: "high",
-      message: 'Class "world-members-page" is referenced in React code but no matching reachable CSS class definition was found.',
+      message:
+        'Class "world-members-page" is referenced in React code but no matching reachable CSS class definition was found.',
       primaryLocation: {
         filePath: "src/pages/WorldMembersPage.tsx",
         line: 42,
@@ -177,7 +179,8 @@ test("finding collation keeps distinct findings separate when their messages or 
       family: "definition-and-usage-integrity",
       severity: "warning",
       confidence: "high",
-      message: 'Class "title-pane" is referenced in React code but no matching reachable CSS class definition was found.',
+      message:
+        'Class "title-pane" is referenced in React code but no matching reachable CSS class definition was found.',
       primaryLocation: {
         filePath: "src/pages/A.tsx",
         line: 10,
@@ -195,7 +198,8 @@ test("finding collation keeps distinct findings separate when their messages or 
       family: "definition-and-usage-integrity",
       severity: "warning",
       confidence: "high",
-      message: 'Class "title-pane" is referenced in React code but no matching reachable CSS class definition was found.',
+      message:
+        'Class "title-pane" is referenced in React code but no matching reachable CSS class definition was found.',
       primaryLocation: {
         filePath: "src/pages/B.tsx",
         line: 10,
@@ -302,8 +306,7 @@ test("scanReactCss collates repeated findings before returning the runtime resul
     const result = await scanReactCss({ targetPath: tempDir });
 
     const finding = result.findings.find(
-      (entry) =>
-        entry.ruleId === "missing-css-class" && entry.subject?.className === "missing",
+      (entry) => entry.ruleId === "missing-css-class" && entry.subject?.className === "missing",
     );
 
     assert.ok(finding);

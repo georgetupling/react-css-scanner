@@ -18,7 +18,12 @@ export {
 } from "./config/load.js";
 export { extractProjectFacts } from "./facts/extractProjectFacts.js";
 export { buildProjectModel } from "./model/buildProjectModel.js";
-export { buildScanSummary, collateFindings, createFinding, sortFindings } from "./runtime/findings.js";
+export {
+  buildScanSummary,
+  collateFindings,
+  createFinding,
+  sortFindings,
+} from "./runtime/findings.js";
 export { runRules } from "./rules/engine.js";
 export { RULE_DEFINITIONS } from "./rules/catalog.js";
 export type {
