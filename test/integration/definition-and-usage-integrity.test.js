@@ -122,3 +122,35 @@ test("integration scans surface partial render-context coverage as css-class-mis
     },
   );
 });
+
+test("integration scans treat classes from transitive css @imports as reachable", async () => {
+  await withBuiltProject(
+    new TestProjectBuilder()
+      .withTemplate("basic-react-app")
+      .withSourceFile(
+        "src/App.tsx",
+        [
+          'import "./index.css";',
+          'import { Child } from "./Child";',
+          "export function App() { return <Child />; }",
+        ].join("\n"),
+      )
+      .withSourceFile(
+        "src/Child.tsx",
+        'export function Child() { return <div className="page-flow" />; }\n',
+      )
+      .withCssFile("src/index.css", '@import "./styles/layout.css";\n')
+      .withCssFile("src/styles/layout.css", ".page-flow {}\n"),
+    async (project) => {
+      const result = await scanReactCss({ targetPath: project.rootDir });
+
+      assert.ok(
+        !result.findings.some(
+          (finding) =>
+            finding.subject?.className === "page-flow" &&
+            (finding.ruleId === "missing-css-class" || finding.ruleId === "unreachable-css"),
+        ),
+      );
+    },
+  );
+});

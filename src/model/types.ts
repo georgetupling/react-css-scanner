@@ -6,6 +6,7 @@ import type {
   CssModuleImportFact,
   ExternalCssFact,
   ProjectFactExtractionResult,
+  SourceFileFact,
   SourceImportFact,
 } from "../facts/types.js";
 

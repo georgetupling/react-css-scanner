@@ -1,8 +1,14 @@
 import type { ResolvedScanReactCssConfig } from "../../config/types.js";
 import type { ProjectFactExtractionResult } from "../../facts/types.js";
+import path from "node:path";
 import type { CssFileNode, ReachabilityInfo, SourceFileNode } from "../types.js";
 import { collectReachableAncestors } from "./shared.js";
 
+// Reachability is built in two passes:
+// 1. walk the source import graph upward so a file can inherit CSS from importing ancestors
+// 2. for each directly imported local CSS file, expand through its local @import chain
+// The CSS-side expansion is memoized per CSS file path and guarded against cycles so shared
+// entry stylesheets do not need to be recomputed for every source file.
 export function buildImportReachability(input: {
   sourceFiles: SourceFileNode[];
   cssFiles: CssFileNode[];
@@ -15,6 +21,7 @@ export function buildImportReachability(input: {
   const { sourceFiles, cssFiles, config, facts } = input;
   const sourceFileByPath = new Map(sourceFiles.map((sourceFile) => [sourceFile.path, sourceFile]));
   const cssFileByPath = new Map(cssFiles.map((cssFile) => [cssFile.path, cssFile]));
+  const transitiveLocalCssImportsByPath = new Map<string, Set<string>>();
   const importersBySourcePath = new Map<string, Set<string>>();
   const renderersBySourcePath = new Map<string, Set<string>>();
   const globalCssPaths = cssFiles
@@ -51,9 +58,14 @@ export function buildImportReachability(input: {
 
   for (const sourceFile of sourceFiles) {
     const reachableSources = collectReachableAncestors(sourceFile.path, importersBySourcePath);
-    const directLocalCss = collectDirectLocalCss(sourceFile, cssFileByPath);
+    const directLocalCss = collectDirectImportedLocalCss(sourceFile, cssFileByPath);
+    const reachableLocalCss = expandLocalCssImports(
+      directLocalCss,
+      cssFileByPath,
+      transitiveLocalCssImportsByPath,
+    );
     const importContextLocalCss = new Set<string>();
-    const localCss = new Set<string>(directLocalCss);
+    const localCss = new Set<string>(reachableLocalCss);
     const externalCss = new Set<string>();
 
     for (const externalImport of sourceFile.externalCssImports) {
@@ -66,7 +78,13 @@ export function buildImportReachability(input: {
         continue;
       }
 
-      for (const cssPath of collectDirectLocalCss(reachableSource, cssFileByPath)) {
+      const reachableAncestorLocalCss = expandLocalCssImports(
+        collectDirectImportedLocalCss(reachableSource, cssFileByPath),
+        cssFileByPath,
+        transitiveLocalCssImportsByPath,
+      );
+
+      for (const cssPath of reachableAncestorLocalCss) {
         if (!directLocalCss.has(cssPath)) {
           importContextLocalCss.add(cssPath);
           localCss.add(cssPath);
@@ -123,7 +141,7 @@ function getProjectWideExternalCssSpecifiers(
   ].sort((left, right) => left.localeCompare(right));
 }
 
-function collectDirectLocalCss(
+function collectDirectImportedLocalCss(
   sourceFile: SourceFileNode,
   cssFileByPath: Map<string, CssFileNode>,
 ): Set<string> {
@@ -146,4 +164,96 @@ function collectDirectLocalCss(
   }
 
   return localCss;
+}
+
+function expandLocalCssImports(
+  cssPaths: Set<string>,
+  cssFileByPath: Map<string, CssFileNode>,
+  transitiveLocalCssImportsByPath: Map<string, Set<string>>,
+): Set<string> {
+  const reachableCss = new Set<string>();
+
+  for (const cssPath of cssPaths) {
+    reachableCss.add(cssPath);
+
+    for (const importedCssPath of collectTransitiveLocalCssImports(
+      cssPath,
+      cssFileByPath,
+      transitiveLocalCssImportsByPath,
+    )) {
+      reachableCss.add(importedCssPath);
+    }
+  }
+
+  return new Set([...reachableCss].sort((left, right) => left.localeCompare(right)));
+}
+
+function collectTransitiveLocalCssImports(
+  cssPath: string,
+  cssFileByPath: Map<string, CssFileNode>,
+  transitiveLocalCssImportsByPath: Map<string, Set<string>>,
+  activePath = new Set<string>(),
+): Set<string> {
+  const cached = transitiveLocalCssImportsByPath.get(cssPath);
+  if (cached) {
+    return cached;
+  }
+
+  if (activePath.has(cssPath)) {
+    return new Set();
+  }
+
+  activePath.add(cssPath);
+
+  const cssFile = cssFileByPath.get(cssPath);
+  const transitiveImports = new Set<string>();
+
+  if (cssFile) {
+    for (const cssImport of cssFile.imports) {
+      if (cssImport.isExternal) {
+        continue;
+      }
+
+      const importedCssPath = resolveLocalCssImport(cssFile.path, cssImport.specifier);
+      const importedCssFile = importedCssPath ? cssFileByPath.get(importedCssPath) : undefined;
+      if (!importedCssFile || importedCssFile.category === "global") {
+        continue;
+      }
+
+      transitiveImports.add(importedCssFile.path);
+
+      for (const nestedImport of collectTransitiveLocalCssImports(
+        importedCssFile.path,
+        cssFileByPath,
+        transitiveLocalCssImportsByPath,
+        activePath,
+      )) {
+        transitiveImports.add(nestedImport);
+      }
+    }
+  }
+
+  activePath.delete(cssPath);
+
+  const sortedImports = new Set(
+    [...transitiveImports].sort((left, right) => left.localeCompare(right)),
+  );
+  transitiveLocalCssImportsByPath.set(cssPath, sortedImports);
+  return sortedImports;
+}
+
+function resolveLocalCssImport(cssFilePath: string, specifier: string): string | undefined {
+  const normalizedSpecifier = specifier.split("\\").join("/");
+
+  if (normalizedSpecifier.startsWith("/")) {
+    return path.posix.normalize(normalizedSpecifier.slice(1));
+  }
+
+  if (!normalizedSpecifier.startsWith(".")) {
+    return undefined;
+  }
+
+  return path.posix.normalize(
+    path.posix.join(path.posix.dirname(cssFilePath), normalizedSpecifier),
+  );
 }

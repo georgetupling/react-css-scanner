@@ -84,6 +84,37 @@ test("configured global css is reachable from every source file", async () => {
   });
 });
 
+test("entry-imported global css in main.tsx is reachable from the imported app module", async () => {
+  await withTempDir(async (tempDir) => {
+    await writeProjectFile(
+      tempDir,
+      "src/main.tsx",
+      ['import "./styles/global.css";', 'import { App } from "./App";', "export function Main() { return <App />; }"].join(
+        "\n",
+      ),
+    );
+    await writeProjectFile(
+      tempDir,
+      "src/App.tsx",
+      'export function App() { return <main className="app-shell" />; }',
+    );
+    await writeProjectFile(tempDir, "src/styles/global.css", ".app-shell {}");
+
+    const config = normalizeScanReactCssConfig({
+      css: {
+        global: ["src/styles/global.css"],
+      },
+    });
+    const facts = await extractProjectFacts(config, tempDir);
+    const model = buildProjectModel({ config, facts });
+
+    assert.deepEqual(
+      [...(model.reachability.get("src/App.tsx")?.globalCss ?? [])],
+      ["src/styles/global.css"],
+    );
+  });
+});
+
 test("parent source imports contribute reachable local and external css", async () => {
   await withTempDir(async (tempDir) => {
     await writeProjectFile(
@@ -144,5 +175,85 @@ test("barrel re-exports preserve reachable css from higher-level importers", asy
 
     assert.ok(reachability);
     assert.deepEqual([...reachability.localCss], ["src/styles/page.css"]);
+  });
+});
+
+test("local css reachability includes transitive css @imports", async () => {
+  await withTempDir(async (tempDir) => {
+    await writeProjectFile(
+      tempDir,
+      "src/App.tsx",
+      ['import "./index.css";', 'export function App() { return <main className="page-flow" />; }'].join(
+        "\n",
+      ),
+    );
+    await writeProjectFile(tempDir, "src/index.css", '@import "./styles/layout.css";\n');
+    await writeProjectFile(tempDir, "src/styles/layout.css", ".page-flow {}\n");
+
+    const config = normalizeScanReactCssConfig({});
+    const facts = await extractProjectFacts(config, tempDir);
+    const model = buildProjectModel({ config, facts });
+    const reachability = model.reachability.get("src/App.tsx");
+
+    assert.ok(reachability);
+    assert.deepEqual([...reachability.directLocalCss], ["src/index.css"]);
+    assert.deepEqual([...reachability.localCss], ["src/index.css", "src/styles/layout.css"]);
+  });
+});
+
+test("ancestor import-context reachability includes transitive css @imports", async () => {
+  await withTempDir(async (tempDir) => {
+    await writeProjectFile(
+      tempDir,
+      "src/Page.tsx",
+      [
+        'import "./index.css";',
+        'import { Child } from "./Child";',
+        "export function Page() { return <Child />; }",
+      ].join("\n"),
+    );
+    await writeProjectFile(
+      tempDir,
+      "src/Child.tsx",
+      'export function Child() { return <section className="page-flow" />; }\n',
+    );
+    await writeProjectFile(tempDir, "src/index.css", '@import "./styles/layout.css";\n');
+    await writeProjectFile(tempDir, "src/styles/layout.css", ".page-flow {}\n");
+
+    const config = normalizeScanReactCssConfig({});
+    const facts = await extractProjectFacts(config, tempDir);
+    const model = buildProjectModel({ config, facts });
+    const reachability = model.reachability.get("src/Child.tsx");
+
+    assert.ok(reachability);
+    assert.deepEqual([...reachability.directLocalCss], []);
+    assert.deepEqual([...reachability.importContextLocalCss], [
+      "src/index.css",
+      "src/styles/layout.css",
+    ]);
+    assert.deepEqual([...reachability.localCss], ["src/index.css", "src/styles/layout.css"]);
+  });
+});
+
+test("transitive css @import reachability terminates cleanly for cycles", async () => {
+  await withTempDir(async (tempDir) => {
+    await writeProjectFile(
+      tempDir,
+      "src/App.tsx",
+      ['import "./a.css";', 'export function App() { return <main className="cycle-b" />; }'].join(
+        "\n",
+      ),
+    );
+    await writeProjectFile(tempDir, "src/a.css", '@import "./b.css";\n.cycle-a {}\n');
+    await writeProjectFile(tempDir, "src/b.css", '@import "./a.css";\n.cycle-b {}\n');
+
+    const config = normalizeScanReactCssConfig({});
+    const facts = await extractProjectFacts(config, tempDir);
+    const model = buildProjectModel({ config, facts });
+    const reachability = model.reachability.get("src/App.tsx");
+
+    assert.ok(reachability);
+    assert.deepEqual([...reachability.directLocalCss], ["src/a.css"]);
+    assert.deepEqual([...reachability.localCss], ["src/a.css", "src/b.css"]);
   });
 });
