@@ -88,6 +88,28 @@ test("template expressions downgrade interpolated tokens to possible when not fu
   assert.ok(result.dynamics.some((entry) => entry.source === "getStateClass()"));
 });
 
+test("unresolved template prefix fragments are not emitted as standalone tokens", () => {
+  const result = evaluateFromSource(
+    "export function App() { return <div className={`button--${variant}`} />; }",
+  );
+
+  assert.deepEqual(result.tokens, []);
+  assert.ok(result.dynamics.some((entry) => entry.kind === "template-literal"));
+  assert.ok(result.dynamics.some((entry) => entry.source === "variant"));
+});
+
+test("static tokens separated by whitespace survive unresolved template spans", () => {
+  const result = evaluateFromSource(
+    "export function App() { return <div className={`button ${variant}`} />; }",
+  );
+
+  assert.deepEqual(
+    result.tokens.map((token) => [token.token, token.certainty]),
+    [["button", "definite"]],
+  );
+  assert.ok(result.dynamics.some((entry) => entry.source === "variant"));
+});
+
 test("direct string literals split into definite class tokens", () => {
   const result = evaluateFromSource(
     'export function App() { return <div className="button button--sm" />; }',

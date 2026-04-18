@@ -89,9 +89,11 @@ test("entry-imported global css in main.tsx is reachable from the imported app m
     await writeProjectFile(
       tempDir,
       "src/main.tsx",
-      ['import "./styles/global.css";', 'import { App } from "./App";', "export function Main() { return <App />; }"].join(
-        "\n",
-      ),
+      [
+        'import "./styles/global.css";',
+        'import { App } from "./App";',
+        "export function Main() { return <App />; }",
+      ].join("\n"),
     );
     await writeProjectFile(
       tempDir,
@@ -183,9 +185,10 @@ test("local css reachability includes transitive css @imports", async () => {
     await writeProjectFile(
       tempDir,
       "src/App.tsx",
-      ['import "./index.css";', 'export function App() { return <main className="page-flow" />; }'].join(
-        "\n",
-      ),
+      [
+        'import "./index.css";',
+        'export function App() { return <main className="page-flow" />; }',
+      ].join("\n"),
     );
     await writeProjectFile(tempDir, "src/index.css", '@import "./styles/layout.css";\n');
     await writeProjectFile(tempDir, "src/styles/layout.css", ".page-flow {}\n");
@@ -227,10 +230,10 @@ test("ancestor import-context reachability includes transitive css @imports", as
 
     assert.ok(reachability);
     assert.deepEqual([...reachability.directLocalCss], []);
-    assert.deepEqual([...reachability.importContextLocalCss], [
-      "src/index.css",
-      "src/styles/layout.css",
-    ]);
+    assert.deepEqual(
+      [...reachability.importContextLocalCss],
+      ["src/index.css", "src/styles/layout.css"],
+    );
     assert.deepEqual([...reachability.localCss], ["src/index.css", "src/styles/layout.css"]);
   });
 });

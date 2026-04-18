@@ -83,3 +83,32 @@ test("integration scans include provider-backed dynamic reference findings when 
     },
   );
 });
+
+test("integration scans do not emit placeholder missing classes for unresolved template variants", async () => {
+  await withBuiltProject(
+    new TestProjectBuilder()
+      .withTemplate("basic-react-app")
+      .withSourceFile(
+        "src/App.tsx",
+        'export function App() { return <button className={`button--${variant}`} />; }\n',
+      )
+      .withCssFile("src/App.css", ".button--primary {}\n.button--ghost {}\n"),
+    async (project) => {
+      const result = await scanReactCss({
+        targetPath: project.rootDir,
+        outputMinSeverity: "debug",
+      });
+
+      assert.ok(
+        !result.findings.some(
+          (finding) =>
+            finding.subject?.className === "button--" &&
+            (finding.ruleId === "missing-css-class" ||
+              finding.ruleId === "dynamic-missing-css-class" ||
+              finding.ruleId === "dynamic-class-reference"),
+        ),
+      );
+      assert.ok(result.findings.some((finding) => finding.ruleId === "dynamic-class-reference"));
+    },
+  );
+});
