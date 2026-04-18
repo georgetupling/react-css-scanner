@@ -79,7 +79,8 @@ export const unusedCssClassRule: RuleDefinition = {
               candidates.some(
                 (candidate) =>
                   candidate.cssFile === cssFile.path &&
-                  candidate.className === definition.className,
+                  candidate.className === definition.className &&
+                  candidate.reachability !== "unreachable",
               )
             ) {
               hasMatchedCandidateUsage = true;

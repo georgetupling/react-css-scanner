@@ -62,6 +62,31 @@ test("human-readable verbose output stays stable for grouped findings", async ()
   );
 });
 
+test("human-readable low verbosity uses compact rows and short disambiguated paths", async () => {
+  await withBuiltProject(
+    new TestProjectBuilder()
+      .withTemplate("basic-react-app")
+      .withCssFile("src/a/Button.css", ".empty {}\n")
+      .withCssFile("src/b/Button.css", ".empty {}\n"),
+    async (project) => {
+      const result = await scanReactCss({ targetPath: project.rootDir });
+      const normalizedResult = normalizeScanResult(result, project.rootDir);
+      const actualOutput = formatHumanReadableOutput({
+        result: normalizedResult,
+        verbosity: "low",
+        scanTarget: PROJECT_ROOT_TOKEN,
+        printConfig: false,
+      });
+
+      assert.match(actualOutput, /^Severity\s+Rule\s+Location\s+Subject$/m);
+      assert.match(actualOutput, /empty-css-rule\s+a\/Button\.css:1\s+src\/a\/Button\.css/);
+      assert.match(actualOutput, /empty-css-rule\s+b\/Button\.css:1\s+src\/b\/Button\.css/);
+      assert.doesNotMatch(actualOutput, /Confidence:/);
+      assert.match(actualOutput, /^Summary$/m);
+    },
+  );
+});
+
 async function readGoldenResource(resourcePath) {
   return readFile(new URL(`../resources/${resourcePath}`, import.meta.url), "utf8");
 }

@@ -186,22 +186,40 @@ Output filtering does not change policy evaluation.
 The human-readable output includes:
 
 - scan target
+- optional focus path
 - config source used
-- summary counts
 - findings in a stable order
+- summary counts in a footer
 
-Default ordering is:
+Human-readable findings are grouped by the directory of the primary finding location.
+
+Within each directory block, findings are ordered by:
 
 1. severity
-2. confidence
-3. subject key such as class name
-4. file path
+2. display file path
+3. line number
+4. rule ID
 
 Human-readable verbosity levels:
 
 - `low`
 - `medium`
 - `high`
+
+Verbosity behavior:
+
+- `low` prints one compact row per finding with severity, rule ID, location, and subject
+- `medium` prints grouped finding blocks with severity, rule ID, location, and the full message
+- `high` prints grouped investigation-friendly blocks and includes confidence, related locations, and metadata
+
+Confidence is omitted from `low` and `medium` output and rendered explicitly in `high` output.
+
+Finding locations are shortened for readability:
+
+- use the basename when it is unique among displayed finding locations
+- otherwise use the shortest disambiguating relative suffix
+
+Human-readable output may use ANSI colors for severity labels when writing to a TTY and `NO_COLOR` is not set.
 
 ## JSON output contract
 
