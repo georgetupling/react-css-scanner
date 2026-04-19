@@ -42,6 +42,10 @@ test("static analysis engine can map experimental rule results into finding-like
   assert.equal(neverSatisfiedFinding.filePath, "src/App.css");
   assert.equal(neverSatisfiedFinding.line, 1);
   assert.equal(neverSatisfiedFinding.selectorText, ".panel-shell .missing-child");
+  assert.deepEqual(
+    neverSatisfiedFinding.traces,
+    neverSatisfiedFinding.experimentalRuleResult.traces,
+  );
 });
 
 test("static analysis engine comparison harness classifies experimental-only and matched findings", () => {

@@ -1,5 +1,6 @@
 import ts from "typescript";
 
+import type { AnalysisTrace } from "../../types/analysis.js";
 import type { EngineModuleId, EngineSymbolId, SourceAnchor } from "../../types/core.js";
 
 export type SymbolKind =
@@ -21,9 +22,14 @@ export type EngineSymbol = {
   declaration: SourceAnchor;
   resolution:
     | { kind: "local" }
-    | { kind: "imported"; targetSymbolId?: EngineSymbolId; targetModuleId?: EngineModuleId }
+    | {
+        kind: "imported";
+        targetSymbolId?: EngineSymbolId;
+        targetModuleId?: EngineModuleId;
+        traces?: AnalysisTrace[];
+      }
     | { kind: "synthetic" }
-    | { kind: "unresolved"; reason: string };
+    | { kind: "unresolved"; reason: string; traces?: AnalysisTrace[] };
   metadata?: Record<string, unknown>;
 };
 
@@ -41,6 +47,7 @@ export type ResolvedImportedBinding = {
   targetFilePath: string;
   targetExportName: string;
   targetSymbolId?: EngineSymbolId;
+  traces: AnalysisTrace[];
 };
 
 export type ResolvedImportedComponentBinding = ResolvedImportedBinding;
@@ -48,6 +55,7 @@ export type ResolvedImportedComponentBinding = ResolvedImportedBinding;
 export type ResolvedNamespaceImport = {
   localName: string;
   exports: Map<string, ResolvedProjectExport>;
+  traces: AnalysisTrace[];
 };
 
 export type ProjectBindingResolution = {

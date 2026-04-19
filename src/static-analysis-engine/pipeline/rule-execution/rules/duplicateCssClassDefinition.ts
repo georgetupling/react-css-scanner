@@ -1,6 +1,7 @@
 import type { ExperimentalCssFileAnalysis } from "../../css-analysis/types.js";
 import type { ExperimentalRuleResult } from "../types.js";
 import {
+  createCssRuleTraces,
   getAtRuleContextSignature,
   isExperimentalCssModuleFile,
   isSimpleRootClassDefinition,
@@ -83,6 +84,17 @@ export function runDuplicateCssClassDefinitionRule(
           "experimental Phase 7 pilot rule derived from parsed class definitions",
           "same root class name was defined multiple times in the same at-rule context",
         ],
+        traces: createCssRuleTraces({
+          ruleId: "duplicate-css-class-definition",
+          summary: `Class "${className}" is defined in multiple locations in project CSS, which may be confusing or redundant.`,
+          filePath: sortedDefinitions[0].cssFile.filePath,
+          line: sortedDefinitions[0].definition.line,
+          metadata: {
+            className,
+            duplicateCssFiles,
+            atRuleContextSignature,
+          },
+        }),
         primaryLocation: toCssPrimaryLocation({
           filePath: sortedDefinitions[0].cssFile.filePath,
           line: sortedDefinitions[0].definition.line,

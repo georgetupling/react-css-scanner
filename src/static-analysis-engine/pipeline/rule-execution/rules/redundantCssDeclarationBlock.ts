@@ -1,6 +1,7 @@
 import type { ExperimentalCssFileAnalysis } from "../../css-analysis/types.js";
 import type { ExperimentalRuleResult } from "../types.js";
 import {
+  createCssRuleTraces,
   getAtRuleContextSignature,
   getDeclarationSignature,
   isExperimentalCssModuleFile,
@@ -63,6 +64,17 @@ export function runRedundantCssDeclarationBlockRule(
         "experimental Phase 7 pilot rule derived from parsed CSS declaration signatures",
         "duplicate declaration block group was found inside the same stylesheet",
       ],
+      traces: createCssRuleTraces({
+        ruleId: "redundant-css-declaration-block",
+        summary: `Class "${className}" repeats the same CSS declarations in the same selector and at-rule context.`,
+        filePath: cssFile.filePath,
+        line: sortedRules[0].line,
+        metadata: {
+          selector,
+          declarationSignature,
+          atRuleContextSignature,
+        },
+      }),
       primaryLocation: toCssPrimaryLocation({
         filePath: cssFile.filePath,
         line: sortedRules[0].line,

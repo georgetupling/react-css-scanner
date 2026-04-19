@@ -1,5 +1,6 @@
 import ts from "typescript";
 
+import type { AnalysisTrace } from "../../types/analysis.js";
 import {
   collectExportedComponentDefinitions,
   collectExportedHelperDefinitions,
@@ -19,6 +20,7 @@ export type ProjectRenderContext = {
   componentDefinitionsByFilePath: Map<string, SameFileComponentDefinition[]>;
   exportedComponentsByFilePath: Map<string, Map<string, SameFileComponentDefinition>>;
   componentsByFilePath: Map<string, Map<string, SameFileComponentDefinition>>;
+  importedComponentBindingTracesByFilePath: Map<string, Map<string, AnalysisTrace[]>>;
   importedExpressionBindingsByFilePath: Map<string, Map<string, ts.Expression>>;
   importedHelperDefinitionsByFilePath: Map<string, Map<string, LocalHelperDefinition>>;
   importedNamespaceExpressionBindingsByFilePath: Map<
@@ -73,6 +75,16 @@ export function buildProjectRenderContext(input: {
       }),
     ]),
   );
+  const importedComponentBindingTracesByFilePath = new Map<string, Map<string, AnalysisTrace[]>>(
+    input.parsedFiles.map((parsedFile) => [
+      parsedFile.filePath,
+      new Map(
+        (input.resolvedImportedComponentBindingsByFilePath.get(parsedFile.filePath) ?? []).map(
+          (binding) => [binding.localName, binding.traces],
+        ),
+      ),
+    ]),
+  );
   const exportedHelperDefinitionsByFilePath = new Map(
     input.parsedFiles.map((parsedFile) => [
       parsedFile.filePath,
@@ -87,6 +99,7 @@ export function buildProjectRenderContext(input: {
     componentDefinitionsByFilePath,
     exportedComponentsByFilePath,
     componentsByFilePath,
+    importedComponentBindingTracesByFilePath,
     importedExpressionBindingsByFilePath: input.importedExpressionBindingsByFilePath,
     importedHelperDefinitionsByFilePath: new Map(
       input.parsedFiles.map((parsedFile) => [

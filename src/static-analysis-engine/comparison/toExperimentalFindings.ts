@@ -9,6 +9,7 @@ export function toExperimentalFindings(
     severity: experimentalRuleResult.severity,
     confidence: experimentalRuleResult.confidence,
     message: experimentalRuleResult.summary,
+    traces: experimentalRuleResult.traces,
     filePath: experimentalRuleResult.primaryLocation?.filePath,
     line: experimentalRuleResult.primaryLocation?.line,
     selectorText: experimentalRuleResult.selectorText,

@@ -1,6 +1,7 @@
 import type { SelectorQueryResult } from "../../selector-analysis/types.js";
 import { deriveAnalysisConfidence } from "../../../types/analysis.js";
 import type { ExperimentalRuleResult } from "../types.js";
+import { createSelectorRuleTraces } from "./ruleTraceHelpers.js";
 
 export function runSelectorAnalysisUnsupportedRule(
   selectorQueryResult: SelectorQueryResult,
@@ -22,6 +23,11 @@ export function runSelectorAnalysisUnsupportedRule(
     selectorText: selectorQueryResult.selectorText,
     decision: selectorQueryResult.decision,
     selectorQueryResult,
+    traces: createSelectorRuleTraces({
+      ruleId: "selector-analysis-unsupported",
+      summary: `selector could not be evaluated under bounded analysis: ${selectorQueryResult.selectorText}`,
+      selectorQueryResult,
+    }),
   };
 }
 

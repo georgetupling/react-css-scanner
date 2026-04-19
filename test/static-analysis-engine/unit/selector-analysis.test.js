@@ -586,7 +586,49 @@ test("static analysis engine propagates stylesheet availability through render g
       category: "reachability",
       summary:
         "component can render LayoutShell from src/LayoutShell.tsx, which has definite stylesheet availability",
-      children: [],
+      children: [
+        {
+          traceId: "render-graph:edge:src/App.tsx:App:LayoutShell:definite:resolved",
+          category: "render-graph",
+          summary: "resolved render edge App -> LayoutShell",
+          anchor: {
+            filePath: "src/App.tsx",
+            startLine: 3,
+            startColumn: 11,
+            endLine: 3,
+            endColumn: 22,
+          },
+          children: [
+            {
+              traceId: "symbol-resolution:direct-export:src/LayoutShell.tsx:LayoutShell",
+              category: "symbol-resolution",
+              summary: "resolved export LayoutShell directly from src/LayoutShell.tsx",
+              anchor: {
+                filePath: "src/App.tsx",
+                startLine: 1,
+                startColumn: 10,
+                endLine: 1,
+                endColumn: 21,
+              },
+              children: [],
+              metadata: {
+                exportedName: "LayoutShell",
+                filePath: "src/LayoutShell.tsx",
+                resolution: "direct-export",
+              },
+            },
+          ],
+          metadata: {
+            fromComponentName: "App",
+            fromFilePath: "src/App.tsx",
+            toComponentName: "LayoutShell",
+            toFilePath: "src/LayoutShell.tsx",
+            resolution: "resolved",
+            renderPath: "definite",
+            traversal: "direct-jsx",
+          },
+        },
+      ],
       metadata: {
         contextKind: "component",
         availability: "definite",
@@ -724,7 +766,49 @@ test("static analysis engine preserves possible stylesheet availability across c
         endLine: 3,
         endColumn: 35,
       },
-      children: [],
+      children: [
+        {
+          traceId: "render-graph:edge:src/App.tsx:App:LayoutShell:possible:resolved",
+          category: "render-graph",
+          summary: "resolved render edge App -> LayoutShell on a possible render path",
+          anchor: {
+            filePath: "src/App.tsx",
+            startLine: 3,
+            startColumn: 24,
+            endLine: 3,
+            endColumn: 35,
+          },
+          children: [
+            {
+              traceId: "symbol-resolution:direct-export:src/LayoutShell.tsx:LayoutShell",
+              category: "symbol-resolution",
+              summary: "resolved export LayoutShell directly from src/LayoutShell.tsx",
+              anchor: {
+                filePath: "src/App.tsx",
+                startLine: 1,
+                startColumn: 10,
+                endLine: 1,
+                endColumn: 21,
+              },
+              children: [],
+              metadata: {
+                exportedName: "LayoutShell",
+                filePath: "src/LayoutShell.tsx",
+                resolution: "direct-export",
+              },
+            },
+          ],
+          metadata: {
+            fromComponentName: "App",
+            fromFilePath: "src/App.tsx",
+            toComponentName: "LayoutShell",
+            toFilePath: "src/LayoutShell.tsx",
+            resolution: "resolved",
+            renderPath: "possible",
+            traversal: "direct-jsx",
+          },
+        },
+      ],
       metadata: {
         contextKind: "render-region",
         availability: "possible",
@@ -781,7 +865,49 @@ test("static analysis engine preserves possible stylesheet availability across c
               endLine: 3,
               endColumn: 35,
             },
-            children: [],
+            children: [
+              {
+                traceId: "render-graph:edge:src/App.tsx:App:LayoutShell:possible:resolved",
+                category: "render-graph",
+                summary: "resolved render edge App -> LayoutShell on a possible render path",
+                anchor: {
+                  filePath: "src/App.tsx",
+                  startLine: 3,
+                  startColumn: 24,
+                  endLine: 3,
+                  endColumn: 35,
+                },
+                children: [
+                  {
+                    traceId: "symbol-resolution:direct-export:src/LayoutShell.tsx:LayoutShell",
+                    category: "symbol-resolution",
+                    summary: "resolved export LayoutShell directly from src/LayoutShell.tsx",
+                    anchor: {
+                      filePath: "src/App.tsx",
+                      startLine: 1,
+                      startColumn: 10,
+                      endLine: 1,
+                      endColumn: 21,
+                    },
+                    children: [],
+                    metadata: {
+                      exportedName: "LayoutShell",
+                      filePath: "src/LayoutShell.tsx",
+                      resolution: "direct-export",
+                    },
+                  },
+                ],
+                metadata: {
+                  fromComponentName: "App",
+                  fromFilePath: "src/App.tsx",
+                  toComponentName: "LayoutShell",
+                  toFilePath: "src/LayoutShell.tsx",
+                  resolution: "resolved",
+                  renderPath: "possible",
+                  traversal: "direct-jsx",
+                },
+              },
+            ],
             metadata: {
               contextKind: "render-region",
               availability: "possible",
@@ -941,7 +1067,49 @@ test("static analysis engine attaches propagated stylesheet availability to repe
         endLine: 3,
         endColumn: 61,
       },
-      children: [],
+      children: [
+        {
+          traceId: "render-graph:edge:src/App.tsx:App:ResultRow:possible:resolved",
+          category: "render-graph",
+          summary: "resolved render edge App -> ResultRow on a possible render path",
+          anchor: {
+            filePath: "src/App.tsx",
+            startLine: 3,
+            startColumn: 52,
+            endLine: 3,
+            endColumn: 61,
+          },
+          children: [
+            {
+              traceId: "symbol-resolution:direct-export:src/ResultRow.tsx:ResultRow",
+              category: "symbol-resolution",
+              summary: "resolved export ResultRow directly from src/ResultRow.tsx",
+              anchor: {
+                filePath: "src/App.tsx",
+                startLine: 1,
+                startColumn: 10,
+                endLine: 1,
+                endColumn: 19,
+              },
+              children: [],
+              metadata: {
+                exportedName: "ResultRow",
+                filePath: "src/ResultRow.tsx",
+                resolution: "direct-export",
+              },
+            },
+          ],
+          metadata: {
+            fromComponentName: "App",
+            fromFilePath: "src/App.tsx",
+            toComponentName: "ResultRow",
+            toFilePath: "src/ResultRow.tsx",
+            resolution: "resolved",
+            renderPath: "possible",
+            traversal: "direct-jsx",
+          },
+        },
+      ],
       metadata: {
         contextKind: "render-region",
         availability: "possible",

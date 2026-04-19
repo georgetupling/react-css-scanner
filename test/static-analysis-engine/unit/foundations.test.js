@@ -136,7 +136,76 @@ test("static analysis engine builds a multi-file module graph with resolved rela
     kind: "imported",
     targetModuleId: "module:src/PanelShell.tsx",
     targetSymbolId: "symbol:module:src/PanelShell.tsx:PanelShell",
+    traces: [
+      {
+        traceId: "symbol-resolution:direct-export:src/PanelShell.tsx:PanelShell",
+        category: "symbol-resolution",
+        summary: "resolved export PanelShell directly from src/PanelShell.tsx",
+        anchor: {
+          filePath: "src/App.tsx",
+          startLine: 1,
+          startColumn: 10,
+          endLine: 1,
+          endColumn: 20,
+        },
+        children: [],
+        metadata: {
+          filePath: "src/PanelShell.tsx",
+          exportedName: "PanelShell",
+          resolution: "direct-export",
+        },
+      },
+    ],
   });
   assert.ok(result.symbols.has("symbol:module:src/App.tsx:PanelShell"));
   assert.ok(result.symbols.has("symbol:module:src/PanelShell.tsx:PanelShell"));
+});
+
+test("static analysis engine preserves producer-owned symbol-resolution traces for unresolved imports", () => {
+  const result = analyzeProjectSourceTexts({
+    sourceFiles: [
+      {
+        filePath: "src/App.tsx",
+        sourceText: [
+          'import { MissingPanel } from "./PanelShell";',
+          "export function App() {",
+          "  return <MissingPanel />;",
+          "}",
+        ].join("\n"),
+      },
+      {
+        filePath: "src/PanelShell.tsx",
+        sourceText: [
+          "export function PanelShell() {",
+          '  return <section className="panel-shell" />;',
+          "}",
+        ].join("\n"),
+      },
+    ],
+  });
+
+  assert.deepEqual(result.symbols.get("symbol:module:src/App.tsx:MissingPanel")?.resolution, {
+    kind: "unresolved",
+    reason: "export-not-found",
+    traces: [
+      {
+        traceId: "symbol-resolution:export-not-found:src/PanelShell.tsx:MissingPanel",
+        category: "symbol-resolution",
+        summary: "could not resolve export MissingPanel from src/PanelShell.tsx",
+        anchor: {
+          filePath: "src/App.tsx",
+          startLine: 1,
+          startColumn: 10,
+          endLine: 1,
+          endColumn: 22,
+        },
+        children: [],
+        metadata: {
+          filePath: "src/PanelShell.tsx",
+          exportedName: "MissingPanel",
+          reason: "export-not-found",
+        },
+      },
+    ],
+  });
 });

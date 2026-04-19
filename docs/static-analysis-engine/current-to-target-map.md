@@ -644,6 +644,30 @@ Lock this rule now:
 Later stages should preserve relevant upstream traces, not rewrite them into new
 freeform reasons.
 
+### Current implemented trace contract
+
+The current engine should now be treated as following this practical trace
+contract:
+
+- a stage owns the trace that explains its own decision
+- when a later stage depends on earlier-stage reasoning, it should usually add a
+  wrapping trace of its own and preserve the earlier traces as `children`
+- later stages should not discard relevant upstream traces and replace them only
+  with freeform reason strings
+- if a rule result does not depend on richer upstream semantic lineage, it
+  should still emit a rule-owned `rule-evaluation` trace so the rule contract
+  remains uniform
+
+Current implemented examples:
+
+- symbol-resolution publishes import/export/unresolved-binding traces
+- render-graph wraps relevant symbol-resolution traces on edge decisions
+- reachability wraps relevant render-graph and symbol-resolution traces on
+  availability contexts
+- selector-analysis wraps relevant reachability traces on selector decisions
+- rule-execution wraps selector-derived decisions and still emits rule-owned
+  traces for CSS-structure findings that do not have deeper upstream lineage
+
 ## Migration Sequence
 
 This is the intended order of cleanup unless a specific change says otherwise.
@@ -772,3 +796,47 @@ What did not change yet:
 This means tranche 2 should now be treated as complete for the bounded scope
 described in this document, while tranche 3 remains the next active cleanup
 target.
+
+## Addendum: Tranche 3 Progress
+
+Tranche 3 is now materially underway, and the main end-to-end trace path exists
+for selector-derived rule results.
+
+Completed changes:
+
+- symbol-resolution now emits producer-owned traces for resolved imported
+  bindings, unresolved imports, and export-resolution paths
+- render-graph now emits producer-owned traces on resolved and unresolved
+  component edges, preserving relevant symbol-resolution children
+- reachability now preserves its own availability traces while nesting upstream
+  render-graph and symbol-resolution provenance beneath them
+- selector-analysis now preserves those reachability-backed traces in selector
+  decisions instead of flattening them into prose-only explanations
+- rule-execution now emits finding-level `rule-evaluation` traces that wrap the
+  selector decision traces, so a rule result can preserve upstream reasoning
+  lineage directly
+
+Current practical trace contract:
+
+- upstream stages still own their own traces
+- later stages may add a new wrapping trace for their own decision
+- later stages should preserve relevant upstream traces as `children` rather
+  than replacing them
+
+Why this counts for tranche 3 progress:
+
+- one non-trivial selector-derived rule result can now be traced through
+  `rule-execution -> selector-analysis -> reachability -> render-graph ->
+  symbol-resolution`
+- the main current-user-facing explanation path no longer depends on ad hoc
+  prose reconstruction alone
+
+What is still incomplete:
+
+- trace coverage is strongest on selector-derived results, not yet equally rich
+  across every rule family
+- some producer categories still have shallower trace coverage than the
+  long-term target
+- the docs now describe a real implemented path, but tranche 3 should still be
+  treated as active until trace coverage is broad enough to feel systemic rather
+  than slice-specific

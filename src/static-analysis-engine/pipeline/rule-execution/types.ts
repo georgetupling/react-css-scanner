@@ -1,4 +1,4 @@
-import type { AnalysisDecision } from "../../types/analysis.js";
+import type { AnalysisDecision, AnalysisTrace } from "../../types/analysis.js";
 import type { FindingConfidence, FindingSeverity } from "../../runtime/compatTypes.js";
 import type { ExperimentalCssFileAnalysis } from "../css-analysis/types.js";
 import type { SelectorQueryResult } from "../selector-analysis/types.js";
@@ -21,6 +21,7 @@ export type ExperimentalRuleResult = {
   confidence: FindingConfidence;
   summary: string;
   reasons: string[];
+  traces: AnalysisTrace[];
   primaryLocation?: {
     filePath?: string;
     line?: number;

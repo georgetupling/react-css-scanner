@@ -1,5 +1,6 @@
 import ts from "typescript";
 
+import type { AnalysisTrace } from "../../types/analysis.js";
 import type { SameFileComponentDefinition } from "../render-ir/index.js";
 import { isIntrinsicTagName } from "../render-ir/resolution/resolveExactIntrinsicTag.js";
 import type { RenderGraph, RenderGraphEdge, RenderGraphNode } from "./types.js";
@@ -7,6 +8,7 @@ import type { RenderGraph, RenderGraphEdge, RenderGraphNode } from "./types.js";
 export function buildRenderGraph(input: {
   componentDefinitionsByFilePath: Map<string, SameFileComponentDefinition[]>;
   componentsByFilePath: Map<string, Map<string, SameFileComponentDefinition>>;
+  importedComponentBindingTracesByFilePath: Map<string, Map<string, AnalysisTrace[]>>;
   importedNamespaceComponentDefinitionsByFilePath: Map<
     string,
     Map<string, Map<string, SameFileComponentDefinition>>
@@ -29,6 +31,8 @@ export function buildRenderGraph(input: {
         collectRenderEdgesForComponent({
           definition,
           availableComponents: input.componentsByFilePath.get(filePath) ?? new Map(),
+          importedComponentBindingTraces:
+            input.importedComponentBindingTracesByFilePath.get(filePath) ?? new Map(),
           namespaceComponents:
             input.importedNamespaceComponentDefinitionsByFilePath.get(filePath) ?? new Map(),
         }),
@@ -42,6 +46,7 @@ export function buildRenderGraph(input: {
 function collectRenderEdgesForComponent(input: {
   definition: SameFileComponentDefinition;
   availableComponents: Map<string, SameFileComponentDefinition>;
+  importedComponentBindingTraces: Map<string, AnalysisTrace[]>;
   namespaceComponents: Map<string, Map<string, SameFileComponentDefinition>>;
 }): RenderGraphEdge[] {
   const edges: RenderGraphEdge[] = [];
@@ -57,30 +62,56 @@ function collectRenderEdgesForComponent(input: {
       return;
     }
 
-    const targetDefinition = resolveComponentDefinition(
+    const resolvedComponent = resolveComponentDefinition(
       tagNameNode,
       input.availableComponents,
+      input.importedComponentBindingTraces,
       input.namespaceComponents,
     );
+
+    const sourceAnchor = toSourceAnchor(
+      tagNameNode,
+      input.definition.parsedSourceFile,
+      input.definition.filePath,
+    );
+    const renderPath = classifyRenderPath({
+      jsxNode: node,
+      componentRootExpression: input.definition.rootExpression,
+      resolved: Boolean(resolvedComponent.definition),
+    });
 
     edges.push({
       fromComponentName: input.definition.componentName,
       fromFilePath: input.definition.filePath,
-      toComponentName: targetDefinition?.componentName ?? tagName,
-      toFilePath: targetDefinition?.filePath,
-      targetSourceAnchor: targetDefinition?.sourceAnchor,
-      sourceAnchor: toSourceAnchor(
-        tagNameNode,
-        input.definition.parsedSourceFile,
-        input.definition.filePath,
-      ),
-      resolution: targetDefinition ? "resolved" : "unresolved",
+      toComponentName: resolvedComponent.definition?.componentName ?? tagName,
+      toFilePath: resolvedComponent.definition?.filePath,
+      targetSourceAnchor: resolvedComponent.definition?.sourceAnchor,
+      sourceAnchor,
+      resolution: resolvedComponent.definition ? "resolved" : "unresolved",
       traversal: "direct-jsx",
-      renderPath: classifyRenderPath({
-        jsxNode: node,
-        componentRootExpression: input.definition.rootExpression,
-        resolved: Boolean(targetDefinition),
-      }),
+      renderPath,
+      traces: [
+        createRenderGraphTrace({
+          traceId: `render-graph:edge:${input.definition.filePath}:${input.definition.componentName}:${resolvedComponent.definition?.componentName ?? tagName}:${renderPath}:${resolvedComponent.definition ? "resolved" : "unresolved"}`,
+          summary: summarizeRenderEdge({
+            fromComponentName: input.definition.componentName,
+            toComponentName: resolvedComponent.definition?.componentName ?? tagName,
+            resolution: resolvedComponent.definition ? "resolved" : "unresolved",
+            renderPath,
+          }),
+          anchor: sourceAnchor,
+          children: resolvedComponent.traces,
+          metadata: {
+            fromComponentName: input.definition.componentName,
+            fromFilePath: input.definition.filePath,
+            toComponentName: resolvedComponent.definition?.componentName ?? tagName,
+            toFilePath: resolvedComponent.definition?.filePath,
+            resolution: resolvedComponent.definition ? "resolved" : "unresolved",
+            renderPath,
+            traversal: "direct-jsx",
+          },
+        }),
+      ],
     });
   });
 
@@ -90,13 +121,24 @@ function collectRenderEdgesForComponent(input: {
 function resolveComponentDefinition(
   tagNameNode: ts.JsxTagNameExpression,
   availableComponents: Map<string, SameFileComponentDefinition>,
+  importedComponentBindingTraces: Map<string, AnalysisTrace[]>,
   namespaceComponents: Map<string, Map<string, SameFileComponentDefinition>>,
-): SameFileComponentDefinition | undefined {
+): {
+  definition?: SameFileComponentDefinition;
+  traces: AnalysisTrace[];
+} {
   if (ts.isPropertyAccessExpression(tagNameNode) && ts.isIdentifier(tagNameNode.expression)) {
-    return namespaceComponents.get(tagNameNode.expression.text)?.get(tagNameNode.name.text);
+    return {
+      definition: namespaceComponents.get(tagNameNode.expression.text)?.get(tagNameNode.name.text),
+      traces: [],
+    };
   }
 
-  return availableComponents.get(tagNameNode.getText());
+  const localName = tagNameNode.getText();
+  return {
+    definition: availableComponents.get(localName),
+    traces: [...(importedComponentBindingTraces.get(localName) ?? [])],
+  };
 }
 
 function visitNode(node: ts.Node, visitor: (node: ts.Node) => void): void {
@@ -172,6 +214,44 @@ function compareEdges(left: RenderGraphEdge, right: RenderGraphEdge): number {
     left.toComponentName.localeCompare(right.toComponentName) ||
     (left.toFilePath ?? "").localeCompare(right.toFilePath ?? "")
   );
+}
+
+function createRenderGraphTrace(input: {
+  traceId: string;
+  summary: string;
+  anchor: import("../../types/core.js").SourceAnchor;
+  metadata?: Record<string, unknown>;
+  children?: AnalysisTrace[];
+}): AnalysisTrace {
+  return {
+    traceId: input.traceId,
+    category: "render-graph",
+    summary: input.summary,
+    anchor: input.anchor,
+    children: [...(input.children ?? [])],
+    ...(input.metadata ? { metadata: input.metadata } : {}),
+  };
+}
+
+function summarizeRenderEdge(input: {
+  fromComponentName: string;
+  toComponentName: string;
+  resolution: RenderGraphEdge["resolution"];
+  renderPath: RenderGraphEdge["renderPath"];
+}): string {
+  if (input.resolution === "unresolved") {
+    return `could not resolve render edge ${input.fromComponentName} -> ${input.toComponentName}`;
+  }
+
+  if (input.renderPath === "possible") {
+    return `resolved render edge ${input.fromComponentName} -> ${input.toComponentName} on a possible render path`;
+  }
+
+  if (input.renderPath === "unknown") {
+    return `resolved render edge ${input.fromComponentName} -> ${input.toComponentName} with unknown render certainty`;
+  }
+
+  return `resolved render edge ${input.fromComponentName} -> ${input.toComponentName}`;
 }
 
 function compareAnchors(

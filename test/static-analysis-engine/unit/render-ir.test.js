@@ -207,6 +207,49 @@ test("static analysis engine exposes a lightweight render graph for cross-file c
   assert.equal(result.renderGraph.edges[0].resolution, "resolved");
   assert.equal(result.renderGraph.edges[0].traversal, "direct-jsx");
   assert.equal(result.renderGraph.edges[0].renderPath, "definite");
+  assert.deepEqual(result.renderGraph.edges[0].traces, [
+    {
+      traceId: "render-graph:edge:src/App.tsx:App:PanelShell:definite:resolved",
+      category: "render-graph",
+      summary: "resolved render edge App -> PanelShell",
+      anchor: {
+        filePath: "src/App.tsx",
+        startLine: 3,
+        startColumn: 11,
+        endLine: 3,
+        endColumn: 21,
+      },
+      children: [
+        {
+          traceId: "symbol-resolution:direct-export:src/PanelShell.tsx:PanelShell",
+          category: "symbol-resolution",
+          summary: "resolved export PanelShell directly from src/PanelShell.tsx",
+          anchor: {
+            filePath: "src/App.tsx",
+            startLine: 1,
+            startColumn: 10,
+            endLine: 1,
+            endColumn: 20,
+          },
+          children: [],
+          metadata: {
+            exportedName: "PanelShell",
+            filePath: "src/PanelShell.tsx",
+            resolution: "direct-export",
+          },
+        },
+      ],
+      metadata: {
+        fromComponentName: "App",
+        fromFilePath: "src/App.tsx",
+        toComponentName: "PanelShell",
+        toFilePath: "src/PanelShell.tsx",
+        resolution: "resolved",
+        renderPath: "definite",
+        traversal: "direct-jsx",
+      },
+    },
+  ]);
 });
 
 test("static analysis engine expands multi-hop imported wrapper components across files", () => {

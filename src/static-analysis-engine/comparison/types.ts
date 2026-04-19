@@ -6,12 +6,14 @@ import type {
 } from "../runtime/compatTypes.js";
 import type { ExperimentalRuleResult } from "../pipeline/rule-execution/types.js";
 import type { StaticAnalysisEngineResult } from "../types/runtime.js";
+import type { AnalysisTrace } from "../types/analysis.js";
 
 export type ExperimentalFindingLike = {
   ruleId: string;
   severity: FindingSeverity;
   confidence: FindingConfidence;
   message: string;
+  traces: AnalysisTrace[];
   filePath?: string;
   line?: number;
   selectorText?: string;

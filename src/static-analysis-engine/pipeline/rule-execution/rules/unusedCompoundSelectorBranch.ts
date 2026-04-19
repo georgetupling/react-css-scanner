@@ -1,6 +1,7 @@
 import type { SelectorQueryResult } from "../../selector-analysis/types.js";
 import { deriveAnalysisConfidence } from "../../../types/analysis.js";
 import type { ExperimentalRuleResult } from "../types.js";
+import { createSelectorRuleTraces } from "./ruleTraceHelpers.js";
 
 export function runUnusedCompoundSelectorBranchRule(
   selectorQueryResult: SelectorQueryResult,
@@ -33,5 +34,10 @@ export function runUnusedCompoundSelectorBranchRule(
     selectorText: selectorQueryResult.selectorText,
     decision: selectorQueryResult.decision,
     selectorQueryResult,
+    traces: createSelectorRuleTraces({
+      ruleId: "unused-compound-selector-branch",
+      summary: `Compound selector branch "${selectorQueryResult.selectorText}" does not have any convincing reachable React usage where all required classes appear together.`,
+      selectorQueryResult,
+    }),
   };
 }

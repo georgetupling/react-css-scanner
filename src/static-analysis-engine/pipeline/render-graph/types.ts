@@ -1,3 +1,4 @@
+import type { AnalysisTrace } from "../../types/analysis.js";
 import type { SourceAnchor } from "../../types/core.js";
 
 export type RenderGraphNode = {
@@ -17,6 +18,7 @@ export type RenderGraphEdge = {
   resolution: "resolved" | "unresolved";
   traversal: "direct-jsx";
   renderPath: "definite" | "possible" | "unknown";
+  traces: AnalysisTrace[];
 };
 
 export type RenderGraph = {

@@ -16,6 +16,7 @@ export type AnalysisConfidence = "high" | "medium" | "low";
 export type AnalysisTraceCategory =
   | "symbol-resolution"
   | "value-evaluation"
+  | "render-graph"
   | "render-expansion"
   | "selector-parsing"
   | "selector-match"

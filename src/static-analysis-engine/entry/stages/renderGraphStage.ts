@@ -18,6 +18,7 @@ export function runRenderGraphStage(input: {
     renderGraph: buildRenderGraph({
       componentDefinitionsByFilePath: new Map([[input.filePath, componentDefinitions]]),
       componentsByFilePath,
+      importedComponentBindingTracesByFilePath: new Map([[input.filePath, new Map()]]),
       importedNamespaceComponentDefinitionsByFilePath: new Map([[input.filePath, new Map()]]),
     }),
   };
@@ -30,6 +31,8 @@ export function runProjectRenderGraphStage(input: {
     renderGraph: buildRenderGraph({
       componentDefinitionsByFilePath: input.projectRenderContext.componentDefinitionsByFilePath,
       componentsByFilePath: input.projectRenderContext.componentsByFilePath,
+      importedComponentBindingTracesByFilePath:
+        input.projectRenderContext.importedComponentBindingTracesByFilePath,
       importedNamespaceComponentDefinitionsByFilePath:
         input.projectRenderContext.importedNamespaceComponentDefinitionsByFilePath,
     }),

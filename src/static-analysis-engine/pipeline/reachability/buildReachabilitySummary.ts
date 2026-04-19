@@ -257,6 +257,7 @@ function buildContextRecords(input: {
         availability: wholeComponentRegionAvailability.availability,
         reasons: wholeComponentRegionAvailability.reasons,
         derivations: wholeComponentRegionAvailability.derivations,
+        traces: wholeComponentRegionAvailability.traces,
       });
     }
 
@@ -269,6 +270,7 @@ function buildContextRecords(input: {
           wholeComponentRegionAvailability.reasons[0] ??
           "render subtree root inherits component stylesheet availability",
         derivations: wholeComponentRegionAvailability.derivations,
+        traces: wholeComponentRegionAvailability.traces,
         predicate: (subtree) =>
           (normalizeProjectPath(subtree.sourceAnchor.filePath) ?? subtree.sourceAnchor.filePath) ===
             (normalizeProjectPath(node.filePath) ?? node.filePath) &&
@@ -280,6 +282,7 @@ function buildContextRecords(input: {
         availability: wholeComponentRegionAvailability.availability,
         reasons: wholeComponentRegionAvailability.reasons,
         derivations: wholeComponentRegionAvailability.derivations,
+        traces: wholeComponentRegionAvailability.traces,
         predicate: () => true,
       });
     }
@@ -317,6 +320,7 @@ function resolveWholeComponentRegionAvailability(input: {
       availability: StylesheetReachabilityContextRecord["availability"];
       reasons: string[];
       derivations: ReachabilityDerivation[];
+      traces: AnalysisTrace[];
     }
   >;
 }):
@@ -324,6 +328,7 @@ function resolveWholeComponentRegionAvailability(input: {
       availability: StylesheetReachabilityContextRecord["availability"];
       reasons: string[];
       derivations: ReachabilityDerivation[];
+      traces: AnalysisTrace[];
     }
   | undefined {
   if (input.directImportingSourceFilePathSet.has(input.filePath)) {
@@ -331,6 +336,7 @@ function resolveWholeComponentRegionAvailability(input: {
       availability: "definite",
       reasons: ["component is declared in a source file that directly imports this stylesheet"],
       derivations: [{ kind: "whole-component-direct-import" }],
+      traces: [],
     };
   }
 
@@ -353,6 +359,7 @@ function resolveWholeComponentRegionAvailability(input: {
           toFilePath: definiteChildEdge.toFilePath,
         },
       ],
+      traces: [...definiteChildEdge.traces],
     };
   }
 
@@ -380,6 +387,7 @@ function resolveWholeComponentRegionAvailability(input: {
       availability: "definite",
       reasons: ["all known renderers of this component have definite stylesheet availability"],
       derivations: [{ kind: "whole-component-all-known-renderers-definite" }],
+      traces: availableIncomingEdges.flatMap((edge) => edge.traces),
     };
   }
 
@@ -388,6 +396,9 @@ function resolveWholeComponentRegionAvailability(input: {
       availability: "possible",
       reasons: ["at least one known renderer of this component has stylesheet availability"],
       derivations: [{ kind: "whole-component-at-least-one-renderer" }],
+      traces: availableIncomingEdges
+        .filter((edge) => edge.renderPath === "definite")
+        .flatMap((edge) => edge.traces),
     };
   }
 
@@ -397,6 +408,7 @@ function resolveWholeComponentRegionAvailability(input: {
       "this component is only rendered on possible paths beneath a renderer with stylesheet availability",
     ],
     derivations: [{ kind: "whole-component-only-possible-renderers" }],
+    traces: availableIncomingEdges.flatMap((edge) => edge.traces),
   };
 }
 
@@ -411,6 +423,7 @@ function addPlacedChildRenderRegionContexts(input: {
       availability: StylesheetReachabilityContextRecord["availability"];
       reasons: string[];
       derivations: ReachabilityDerivation[];
+      traces: AnalysisTrace[];
     }
   >;
 }): void {
@@ -469,6 +482,7 @@ function addPlacedChildRenderRegionContexts(input: {
         availability,
         reasons,
         derivations,
+        traces: edge.traces,
       });
     }
   }
@@ -818,6 +832,7 @@ function computeComponentAvailability(input: {
     availability: StylesheetReachabilityContextRecord["availability"];
     reasons: string[];
     derivations: ReachabilityDerivation[];
+    traces: AnalysisTrace[];
   }
 > {
   const availabilityByComponentKey = new Map<
@@ -826,6 +841,7 @@ function computeComponentAvailability(input: {
       availability: StylesheetReachabilityContextRecord["availability"];
       reasons: string[];
       derivations: ReachabilityDerivation[];
+      traces: AnalysisTrace[];
     }
   >();
 
@@ -848,6 +864,7 @@ function computeComponentAvailability(input: {
         availability: "definite",
         reasons: ["component is declared in a source file that directly imports this stylesheet"],
         derivations: [{ kind: "whole-component-direct-import" }],
+        traces: [],
       });
       continue;
     }
@@ -856,6 +873,7 @@ function computeComponentAvailability(input: {
       availability: "unavailable",
       reasons: [],
       derivations: [],
+      traces: [],
     });
   }
 
@@ -899,7 +917,8 @@ function computeComponentAvailability(input: {
         !areDerivationsEqual(
           currentAvailabilityRecord?.derivations ?? [],
           nextAvailabilityRecord.derivations,
-        )
+        ) ||
+        !areTracesEqual(currentAvailabilityRecord?.traces ?? [], nextAvailabilityRecord.traces)
       ) {
         availabilityByComponentKey.set(componentKey, nextAvailabilityRecord);
         changed = true;
@@ -920,12 +939,14 @@ function evaluateComponentAvailability(input: {
       availability: StylesheetReachabilityContextRecord["availability"];
       reasons: string[];
       derivations: ReachabilityDerivation[];
+      traces: AnalysisTrace[];
     }
   >;
 }): {
   availability: StylesheetReachabilityContextRecord["availability"];
   reasons: string[];
   derivations: ReachabilityDerivation[];
+  traces: AnalysisTrace[];
 } {
   const definiteChildEdge = input.outgoingEdges.find((edge) => {
     const childAvailability = input.availabilityByComponentKey.get(
@@ -946,6 +967,7 @@ function evaluateComponentAvailability(input: {
           toFilePath: definiteChildEdge.toFilePath,
         },
       ],
+      traces: [...definiteChildEdge.traces],
     };
   }
 
@@ -967,6 +989,7 @@ function evaluateComponentAvailability(input: {
         availability: "definite",
         reasons: ["all known renderers of this component have definite stylesheet availability"],
         derivations: [{ kind: "whole-component-all-known-renderers-definite" }],
+        traces: parentAvailabilities.flatMap(({ edge }) => edge.traces),
       };
     }
   }
@@ -993,6 +1016,7 @@ function evaluateComponentAvailability(input: {
           toFilePath: availableChildEdge.toFilePath,
         },
       ],
+      traces: [...availableChildEdge.traces],
     };
   }
 
@@ -1014,6 +1038,7 @@ function evaluateComponentAvailability(input: {
         availability: "possible",
         reasons: ["at least one known renderer of this component has stylesheet availability"],
         derivations: [{ kind: "whole-component-at-least-one-renderer" }],
+        traces: definitePathParentEdges.flatMap((edge) => edge.traces),
       };
     }
 
@@ -1023,6 +1048,7 @@ function evaluateComponentAvailability(input: {
         "this component is only rendered on possible paths beneath a renderer with stylesheet availability",
       ],
       derivations: [{ kind: "whole-component-only-possible-renderers" }],
+      traces: availableParentEdges.flatMap((edge) => edge.traces),
     };
   }
 
@@ -1030,6 +1056,7 @@ function evaluateComponentAvailability(input: {
     availability: "unavailable",
     reasons: [],
     derivations: [],
+    traces: [],
   };
 }
 
@@ -1057,12 +1084,25 @@ function areDerivationsEqual(
   );
 }
 
+function areTracesEqual(left: AnalysisTrace[], right: AnalysisTrace[]): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  const sortedLeft = [...left].sort((a, b) => serializeTrace(a).localeCompare(serializeTrace(b)));
+  const sortedRight = [...right].sort((a, b) => serializeTrace(a).localeCompare(serializeTrace(b)));
+  return sortedLeft.every(
+    (trace, index) => serializeTrace(trace) === serializeTrace(sortedRight[index]),
+  );
+}
+
 function addRenderSubtreeRootContexts(input: {
   contextRecordsByKey: Map<string, StylesheetReachabilityContextRecord>;
   renderSubtrees: RenderSubtree[];
   availability: StylesheetReachabilityContextRecord["availability"];
   reason: string;
   derivations: ReachabilityDerivation[];
+  traces: AnalysisTrace[];
   predicate: (subtree: RenderSubtree) => boolean;
 }): void {
   for (const subtree of input.renderSubtrees.filter(input.predicate)) {
@@ -1082,6 +1122,7 @@ function addRenderSubtreeRootContexts(input: {
       availability: input.availability,
       reasons: [input.reason],
       derivations: [...input.derivations],
+      traces: [...input.traces],
     });
   }
 }
@@ -1092,6 +1133,7 @@ function addRenderRegionContexts(input: {
   availability: StylesheetReachabilityContextRecord["availability"];
   reasons: string[];
   derivations: ReachabilityDerivation[];
+  traces: AnalysisTrace[];
   predicate: (region: RenderRegion) => boolean;
 }): void {
   for (const region of input.renderRegions.filter(input.predicate)) {
@@ -1116,6 +1158,7 @@ function addRenderRegionContexts(input: {
       availability: input.availability,
       reasons: [...input.reasons],
       derivations: [...input.derivations],
+      traces: [...input.traces],
     });
   }
 }
@@ -1168,23 +1211,21 @@ function withContextRecordTraces(
     traces?: AnalysisTrace[];
   },
 ): StylesheetReachabilityContextRecord {
-  const traces =
-    contextRecord.traces && contextRecord.traces.length > 0
-      ? [...contextRecord.traces]
-      : [
-          createReachabilityTrace({
-            traceId: `reachability-context:${contextRecord.context.kind}:${contextRecord.availability}`,
-            summary:
-              contextRecord.reasons[0] ??
-              `reachability context recorded as ${contextRecord.availability}`,
-            anchor: getReachabilityContextAnchor(contextRecord.context),
-            metadata: {
-              contextKind: contextRecord.context.kind,
-              availability: contextRecord.availability,
-              derivations: contextRecord.derivations.map(serializeDerivation),
-            },
-          }),
-        ];
+  const traces = [
+    createReachabilityTrace({
+      traceId: `reachability-context:${contextRecord.context.kind}:${contextRecord.availability}`,
+      summary:
+        contextRecord.reasons[0] ??
+        `reachability context recorded as ${contextRecord.availability}`,
+      anchor: getReachabilityContextAnchor(contextRecord.context),
+      children: contextRecord.traces ? [...contextRecord.traces] : [],
+      metadata: {
+        contextKind: contextRecord.context.kind,
+        availability: contextRecord.availability,
+        derivations: contextRecord.derivations.map(serializeDerivation),
+      },
+    }),
+  ];
 
   return {
     ...contextRecord,

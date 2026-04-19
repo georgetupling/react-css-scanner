@@ -1,6 +1,10 @@
 import type { ExperimentalCssFileAnalysis } from "../../css-analysis/types.js";
 import type { ExperimentalRuleResult } from "../types.js";
-import { toAtRuleContextMetadata, toCssPrimaryLocation } from "./cssRuleHelpers.js";
+import {
+  createCssRuleTraces,
+  toAtRuleContextMetadata,
+  toCssPrimaryLocation,
+} from "./cssRuleHelpers.js";
 
 export function runEmptyCssRule(cssFile: ExperimentalCssFileAnalysis): ExperimentalRuleResult[] {
   return cssFile.styleRules.flatMap((styleRule) => {
@@ -18,6 +22,15 @@ export function runEmptyCssRule(cssFile: ExperimentalCssFileAnalysis): Experimen
           "experimental Phase 7 pilot rule derived from parsed CSS style rules",
           "selector block was parsed successfully but declaration list was empty",
         ],
+        traces: createCssRuleTraces({
+          ruleId: "empty-css-rule",
+          summary: `Selector "${styleRule.selector}" in "${cssFile.filePath}" does not contain any CSS declarations.`,
+          filePath: cssFile.filePath,
+          line: styleRule.line,
+          metadata: {
+            selector: styleRule.selector,
+          },
+        }),
         primaryLocation: toCssPrimaryLocation({
           filePath: cssFile.filePath,
           line: styleRule.line,

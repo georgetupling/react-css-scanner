@@ -1,7 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { analyzeSourceText } from "../../../dist/static-analysis-engine.js";
+import {
+  analyzeProjectSourceTexts,
+  analyzeSourceText,
+} from "../../../dist/static-analysis-engine.js";
 
 test("static analysis engine emits an experimental selector-never-satisfied result for resolved no-match selectors", () => {
   const result = analyzeSourceText({
@@ -64,6 +67,62 @@ test("static analysis engine emits an experimental selector-possibly-satisfied r
   );
 });
 
+test("static analysis engine preserves producer-owned traces on selector-derived rule results", () => {
+  const result = analyzeProjectSourceTexts({
+    sourceFiles: [
+      {
+        filePath: "src/LayoutShell.tsx",
+        sourceText: [
+          'import "./App.css";',
+          "export function LayoutShell({ children }: { children: React.ReactNode }) {",
+          '  return <section className="panel-shell">{children}</section>;',
+          "}",
+        ].join("\n"),
+      },
+      {
+        filePath: "src/App.tsx",
+        sourceText: [
+          'import { LayoutShell } from "./LayoutShell";',
+          "export function App({ showTitle }: { showTitle: boolean }) {",
+          '  return showTitle ? <LayoutShell><h1 className="panel-title" /></LayoutShell> : <main className="panel-title" />;',
+          "}",
+        ].join("\n"),
+      },
+    ],
+    selectorCssSources: [
+      {
+        filePath: "src/App.css",
+        cssText: ".panel-shell .panel-title { color: red; }",
+      },
+    ],
+  });
+
+  assert.equal(result.experimentalRuleResults.length, 1);
+  assert.equal(result.experimentalRuleResults[0].ruleId, "selector-possibly-satisfied");
+  assert.deepEqual(result.experimentalRuleResults[0].traces, [
+    {
+      traceId: "rule-evaluation:selector-possibly-satisfied:.panel-shell .panel-title",
+      category: "rule-evaluation",
+      summary:
+        "selector is only possibly satisfied under bounded analysis: .panel-shell .panel-title",
+      anchor: {
+        filePath: "src/App.css",
+        startLine: 1,
+        startColumn: 1,
+        endLine: 1,
+        endColumn: 26,
+      },
+      children: result.selectorQueryResults[0].decision.traces,
+      metadata: {
+        ruleId: "selector-possibly-satisfied",
+        selectorText: ".panel-shell .panel-title",
+        outcome: "possible-match",
+        status: "resolved",
+      },
+    },
+  ]);
+});
+
 test("static analysis engine emits an experimental selector-analysis-unsupported result for unsupported selectors", () => {
   const result = analyzeSourceText({
     filePath: "src/App.tsx",
@@ -83,6 +142,31 @@ test("static analysis engine emits an experimental selector-analysis-unsupported
     result.experimentalRuleResults[0].reasons[0],
     "experimental Phase 7 pilot rule derived from unsupported bounded selector analysis",
   );
+});
+
+test("static analysis engine preserves producer-owned lineage for unsupported selector rule results", () => {
+  const result = analyzeSourceText({
+    filePath: "src/App.tsx",
+    sourceText: 'export function App() { return <div className="app-shell" />; }',
+    selectorQueries: [".app-shell[role]"],
+  });
+
+  assert.equal(result.experimentalRuleResults.length, 1);
+  assert.equal(result.experimentalRuleResults[0].ruleId, "selector-analysis-unsupported");
+  assert.deepEqual(result.experimentalRuleResults[0].traces, [
+    {
+      traceId: "rule-evaluation:selector-analysis-unsupported:.app-shell[role]",
+      category: "rule-evaluation",
+      summary: "selector could not be evaluated under bounded analysis: .app-shell[role]",
+      children: result.selectorQueryResults[0].decision.traces,
+      metadata: {
+        ruleId: "selector-analysis-unsupported",
+        selectorText: ".app-shell[role]",
+        outcome: "possible-match",
+        status: "unsupported",
+      },
+    },
+  ]);
 });
 
 test("static analysis engine emits an unused-compound-selector-branch result for impossible css-derived compound branches", () => {
@@ -166,6 +250,41 @@ test("static analysis engine emits an empty-css-rule result for selector blocks 
     filePath: "src/App.css",
     line: 1,
   });
+});
+
+test("static analysis engine preserves uniform rule-level traces for non-selector CSS rules", () => {
+  const result = analyzeSourceText({
+    filePath: "src/App.tsx",
+    sourceText: 'export function App() { return <div className="empty" />; }',
+    selectorCssSources: [
+      {
+        filePath: "src/App.css",
+        cssText: ".empty {}",
+      },
+    ],
+  });
+
+  const emptyRuleResult = result.experimentalRuleResults.find(
+    (ruleResult) => ruleResult.ruleId === "empty-css-rule",
+  );
+  assert.ok(emptyRuleResult);
+  assert.deepEqual(emptyRuleResult.traces, [
+    {
+      traceId: "rule-evaluation:empty-css-rule:src/App.css:1",
+      category: "rule-evaluation",
+      summary: 'Selector ".empty" in "src/App.css" does not contain any CSS declarations.',
+      anchor: {
+        filePath: "src/App.css",
+        startLine: 1,
+        startColumn: 1,
+        endLine: 1,
+      },
+      children: [],
+      metadata: {
+        selector: ".empty",
+      },
+    },
+  ]);
 });
 
 test("static analysis engine emits a redundant-css-declaration-block result for repeated declaration blocks", () => {

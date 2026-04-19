@@ -1,6 +1,7 @@
 import type { SelectorConstraint, SelectorQueryResult } from "../../selector-analysis/types.js";
 import { deriveAnalysisConfidence } from "../../../types/analysis.js";
 import type { ExperimentalRuleResult } from "../types.js";
+import { createSelectorRuleTraces } from "./ruleTraceHelpers.js";
 
 export function runContextualSelectorBranchNeverSatisfiedRule(
   selectorQueryResult: SelectorQueryResult,
@@ -33,6 +34,11 @@ export function runContextualSelectorBranchNeverSatisfiedRule(
     selectorText: selectorQueryResult.selectorText,
     decision: selectorQueryResult.decision,
     selectorQueryResult,
+    traces: createSelectorRuleTraces({
+      ruleId: "contextual-selector-branch-never-satisfied",
+      summary: `Contextual selector branch "${selectorQueryResult.selectorText}" appears never satisfied under bounded analysis.`,
+      selectorQueryResult,
+    }),
   };
 }
 

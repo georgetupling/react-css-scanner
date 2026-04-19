@@ -1,6 +1,7 @@
 import type { SelectorQueryResult } from "../../selector-analysis/types.js";
 import { deriveAnalysisConfidence } from "../../../types/analysis.js";
 import type { ExperimentalRuleResult } from "../types.js";
+import { createSelectorRuleTraces } from "./ruleTraceHelpers.js";
 
 export function runSelectorNeverSatisfiedRule(
   selectorQueryResult: SelectorQueryResult,
@@ -25,6 +26,11 @@ export function runSelectorNeverSatisfiedRule(
     selectorText: selectorQueryResult.selectorText,
     decision: selectorQueryResult.decision,
     selectorQueryResult,
+    traces: createSelectorRuleTraces({
+      ruleId: "selector-never-satisfied",
+      summary: `selector appears never satisfied under bounded analysis: ${selectorQueryResult.selectorText}`,
+      selectorQueryResult,
+    }),
   };
 }
 
