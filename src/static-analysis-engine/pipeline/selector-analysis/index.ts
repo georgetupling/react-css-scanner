@@ -1,5 +1,5 @@
 export { extractSelectorQueriesFromCssText } from "./extractSelectorQueriesFromCssText.js";
-export { parseSelectorQueries } from "./parseSelectorQueries.js";
+export { buildParsedSelectorQueries } from "./buildParsedSelectorQueries.js";
 export { analyzeSelectorQueries } from "./analyzeSelectorQueries.js";
 export type {
   AnalysisConfidence,

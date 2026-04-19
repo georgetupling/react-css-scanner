@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { analyzeSourceText } from "../../../dist/static-analysis-engine.js";
-import { parseSelectorQueries } from "../../../dist/static-analysis-engine/pipeline/selector-analysis/parseSelectorQueries.js";
+import { buildParsedSelectorQueries } from "../../../dist/static-analysis-engine/pipeline/selector-analysis/buildParsedSelectorQueries.js";
 
 test("static analysis engine answers same-file ancestor-descendant selector queries", () => {
   const result = analyzeSourceText({
@@ -379,7 +379,7 @@ test("static analysis engine reports css-derived selectors as unavailable when t
 });
 
 test("selector parser emits a step/combinator IR for parent-child selectors", () => {
-  const parsed = parseSelectorQueries([
+  const parsed = buildParsedSelectorQueries([
     {
       selectorText: ".toolbar > .toolbar__button",
       source: {
@@ -411,7 +411,7 @@ test("selector parser emits a step/combinator IR for parent-child selectors", ()
 });
 
 test("selector parser emits a step/combinator IR for adjacent sibling selectors", () => {
-  const parsed = parseSelectorQueries([
+  const parsed = buildParsedSelectorQueries([
     {
       selectorText: ".toolbar__label + .toolbar__button",
       source: {
@@ -443,7 +443,7 @@ test("selector parser emits a step/combinator IR for adjacent sibling selectors"
 });
 
 test("selector parser emits same-node chain steps for compound class selectors", () => {
-  const parsed = parseSelectorQueries([
+  const parsed = buildParsedSelectorQueries([
     {
       selectorText: ".panel.is-open",
       source: {

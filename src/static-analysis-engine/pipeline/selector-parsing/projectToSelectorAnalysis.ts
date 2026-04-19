@@ -1,43 +1,32 @@
-import type {
-  ExtractedSelectorQuery,
-  NormalizedSelector,
-  ParsedSelectorQuery,
-  SelectorConstraint,
-} from "./types.js";
+import type { NormalizedSelector, SelectorConstraint } from "../selector-analysis/types.js";
+import type { ParsedSelectorBranch } from "./types.js";
 
 const UNSUPPORTED_SELECTOR_REASON =
   "only simple .a .b, .a > .b, .a + .b, .a ~ .b, and .a.b selector queries are currently supported";
 
-export function parseSelectorQueries(
-  selectorQueries: ExtractedSelectorQuery[],
-): ParsedSelectorQuery[] {
-  return selectorQueries.map((selectorQuery) => {
-    const normalizedSelectorText = selectorQuery.selectorText.trim().replace(/\s+/g, " ");
-    const normalizedSelector = parseNormalizedSelector(normalizedSelectorText);
-    const constraint = mapNormalizedSelectorToConstraint(normalizedSelector);
-
-    return {
-      selectorText: selectorQuery.selectorText,
-      source: selectorQuery.source,
-      normalizedSelectorText,
-      normalizedSelector,
-      parseNotes: buildParseNotes(normalizedSelector),
-      constraint,
-    };
-  });
-}
-
-function parseNormalizedSelector(selectorText: string): NormalizedSelector {
-  const normalized = selectorText.trim();
-  if (normalized.length === 0) {
+export function projectToNormalizedSelector(
+  parsedBranch: ParsedSelectorBranch,
+): NormalizedSelector {
+  if (
+    parsedBranch.hasUnknownSemantics ||
+    parsedBranch.hasSubjectModifiers ||
+    parsedBranch.negativeClassNames.length > 0
+  ) {
     return {
       kind: "unsupported",
-      reason: "empty-selector",
+      reason: UNSUPPORTED_SELECTOR_REASON,
     };
   }
 
-  const ancestorDescendantMatch = normalized.match(/^\.([A-Za-z0-9_-]+)\s+\.([A-Za-z0-9_-]+)$/);
-  if (ancestorDescendantMatch) {
+  if (parsedBranch.steps.length === 1) {
+    const requiredClasses = parsedBranch.steps[0].selector.requiredClasses;
+    if (requiredClasses.length < 2) {
+      return {
+        kind: "unsupported",
+        reason: UNSUPPORTED_SELECTOR_REASON,
+      };
+    }
+
     return {
       kind: "selector-chain",
       steps: [
@@ -45,119 +34,72 @@ function parseNormalizedSelector(selectorText: string): NormalizedSelector {
           combinatorFromPrevious: null,
           selector: {
             kind: "class-only",
-            requiredClasses: [ancestorDescendantMatch[1]],
+            requiredClasses: [requiredClasses[0]],
           },
         },
-        {
-          combinatorFromPrevious: "descendant",
-          selector: {
-            kind: "class-only",
-            requiredClasses: [ancestorDescendantMatch[2]],
-          },
-        },
-      ],
-    };
-  }
-
-  const parentChildMatch = normalized.match(/^\.([A-Za-z0-9_-]+)\s*>\s*\.([A-Za-z0-9_-]+)$/);
-  if (parentChildMatch) {
-    return {
-      kind: "selector-chain",
-      steps: [
-        {
-          combinatorFromPrevious: null,
-          selector: {
-            kind: "class-only",
-            requiredClasses: [parentChildMatch[1]],
-          },
-        },
-        {
-          combinatorFromPrevious: "child",
-          selector: {
-            kind: "class-only",
-            requiredClasses: [parentChildMatch[2]],
-          },
-        },
-      ],
-    };
-  }
-
-  const adjacentSiblingMatch = normalized.match(/^\.([A-Za-z0-9_-]+)\s*\+\s*\.([A-Za-z0-9_-]+)$/);
-  if (adjacentSiblingMatch) {
-    return {
-      kind: "selector-chain",
-      steps: [
-        {
-          combinatorFromPrevious: null,
-          selector: {
-            kind: "class-only",
-            requiredClasses: [adjacentSiblingMatch[1]],
-          },
-        },
-        {
-          combinatorFromPrevious: "adjacent-sibling",
-          selector: {
-            kind: "class-only",
-            requiredClasses: [adjacentSiblingMatch[2]],
-          },
-        },
-      ],
-    };
-  }
-
-  const generalSiblingMatch = normalized.match(/^\.([A-Za-z0-9_-]+)\s*~\s*\.([A-Za-z0-9_-]+)$/);
-  if (generalSiblingMatch) {
-    return {
-      kind: "selector-chain",
-      steps: [
-        {
-          combinatorFromPrevious: null,
-          selector: {
-            kind: "class-only",
-            requiredClasses: [generalSiblingMatch[1]],
-          },
-        },
-        {
-          combinatorFromPrevious: "general-sibling",
-          selector: {
-            kind: "class-only",
-            requiredClasses: [generalSiblingMatch[2]],
-          },
-        },
-      ],
-    };
-  }
-
-  const sameNodeClasses = normalized.match(/\.([A-Za-z0-9_-]+)/g);
-  if (sameNodeClasses && sameNodeClasses.join("") === normalized && sameNodeClasses.length >= 2) {
-    return {
-      kind: "selector-chain",
-      steps: [
-        {
-          combinatorFromPrevious: null,
-          selector: {
-            kind: "class-only",
-            requiredClasses: [sameNodeClasses[0].slice(1)],
-          },
-        },
-        ...sameNodeClasses.slice(1).map((entry) => ({
+        ...requiredClasses.slice(1).map((className) => ({
           combinatorFromPrevious: "same-node" as const,
           selector: {
             kind: "class-only" as const,
-            requiredClasses: [entry.slice(1)],
+            requiredClasses: [className],
           },
         })),
       ],
     };
   }
 
+  if (parsedBranch.steps.length !== 2) {
+    return {
+      kind: "unsupported",
+      reason: UNSUPPORTED_SELECTOR_REASON,
+    };
+  }
+
+  const [leftStep, rightStep] = parsedBranch.steps;
+  if (
+    leftStep.selector.requiredClasses.length !== 1 ||
+    rightStep.selector.requiredClasses.length !== 1
+  ) {
+    return {
+      kind: "unsupported",
+      reason: UNSUPPORTED_SELECTOR_REASON,
+    };
+  }
+
+  if (
+    rightStep.combinatorFromPrevious !== "descendant" &&
+    rightStep.combinatorFromPrevious !== "child" &&
+    rightStep.combinatorFromPrevious !== "adjacent-sibling" &&
+    rightStep.combinatorFromPrevious !== "general-sibling"
+  ) {
+    return {
+      kind: "unsupported",
+      reason: UNSUPPORTED_SELECTOR_REASON,
+    };
+  }
+
   return {
-    kind: "unsupported",
-    reason: UNSUPPORTED_SELECTOR_REASON,
+    kind: "selector-chain",
+    steps: [
+      {
+        combinatorFromPrevious: null,
+        selector: {
+          kind: "class-only",
+          requiredClasses: [leftStep.selector.requiredClasses[0]],
+        },
+      },
+      {
+        combinatorFromPrevious: rightStep.combinatorFromPrevious,
+        selector: {
+          kind: "class-only",
+          requiredClasses: [rightStep.selector.requiredClasses[0]],
+        },
+      },
+    ],
   };
 }
 
-function mapNormalizedSelectorToConstraint(normalizedSelector: NormalizedSelector):
+export function projectToSelectorConstraint(normalizedSelector: NormalizedSelector):
   | SelectorConstraint
   | {
       kind: "unsupported";
@@ -231,7 +173,7 @@ function mapNormalizedSelectorToConstraint(normalizedSelector: NormalizedSelecto
   };
 }
 
-function buildParseNotes(normalizedSelector: NormalizedSelector): string[] {
+export function buildSelectorParseNotes(normalizedSelector: NormalizedSelector): string[] {
   if (normalizedSelector.kind === "unsupported") {
     return [`unsupported selector shape: ${normalizedSelector.reason}`];
   }

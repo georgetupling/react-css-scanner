@@ -7,13 +7,13 @@ import {
   buildModuleGraphFromSources,
   createModuleId,
 } from "../../pipeline/module-graph/index.js";
-import { parseSourceFile } from "../../pipeline/parse/index.js";
+import { parseSourceFile } from "../../pipeline/source-file-parsing/index.js";
 import { buildReachabilitySummary } from "../../pipeline/reachability/index.js";
 import { runExperimentalRules } from "../../pipeline/rule-execution/index.js";
 import {
   analyzeSelectorQueries,
+  buildParsedSelectorQueries,
   extractSelectorQueriesFromCssText,
-  parseSelectorQueries,
 } from "../../pipeline/selector-analysis/index.js";
 import {
   buildProjectBindingResolution,
@@ -211,7 +211,7 @@ export function runSelectorParsingStage(input: {
   selectorQueries: SelectorInputStageResult["selectorQueries"];
 }): SelectorParsingStageResult {
   return {
-    selectorQueries: parseSelectorQueries(input.selectorQueries),
+    selectorQueries: buildParsedSelectorQueries(input.selectorQueries),
   };
 }
 

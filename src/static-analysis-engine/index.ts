@@ -1,6 +1,6 @@
 export { analyzeProjectSourceTexts, analyzeSourceText } from "./entry/scan.js";
 export { analyzeCssSources } from "./pipeline/css-analysis/index.js";
-export { parseSourceFile } from "./pipeline/parse/index.js";
+export { parseSourceFile } from "./pipeline/source-file-parsing/index.js";
 export {
   buildModuleGraphFromSource,
   buildModuleGraphFromSources,

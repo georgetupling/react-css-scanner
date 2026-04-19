@@ -227,3 +227,25 @@ test("static analysis engine emits a duplicate-css-class-definition result for r
     line: 1,
   });
 });
+
+test("static analysis engine does not group duplicate root class definitions across different media contexts", () => {
+  const result = analyzeSourceText({
+    filePath: "src/App.tsx",
+    sourceText: 'export function App() { return <div className="button" />; }',
+    selectorCssSources: [
+      {
+        filePath: "src/App.css",
+        cssText: "@media (min-width: 768px) { .button { color: red; } }",
+      },
+      {
+        filePath: "src/Other.css",
+        cssText: "@media (min-width: 1024px) { .button { color: blue; } }",
+      },
+    ],
+  });
+
+  const duplicateRuleResult = result.experimentalRuleResults.find(
+    (ruleResult) => ruleResult.ruleId === "duplicate-css-class-definition",
+  );
+  assert.equal(duplicateRuleResult, undefined);
+});

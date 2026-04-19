@@ -1,0 +1,15 @@
+export { parseSelectorBranch } from "./parseSelectorBranch.js";
+export { parseSelectorBranches } from "./parseSelectorBranches.js";
+export { projectToCssSelectorBranchFact } from "./projectToCssSelectorBranchFact.js";
+export {
+  buildSelectorParseNotes,
+  projectToNormalizedSelector,
+  projectToSelectorConstraint,
+} from "./projectToSelectorAnalysis.js";
+export type {
+  ParsedSelectorBranch,
+  ParsedSelectorBranchMatchKind,
+  ParsedSelectorStep,
+  ParsedSimpleSelectorSequence,
+  SelectorStepCombinator,
+} from "./types.js";

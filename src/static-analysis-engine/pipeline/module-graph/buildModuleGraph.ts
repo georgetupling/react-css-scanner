@@ -251,16 +251,25 @@ function buildLocalExportRecords(
     });
   }
 
+  if (ts.isFunctionDeclaration(statement)) {
+    return isDefaultExported(statement) ? [{ exportedName: "default" }] : [];
+  }
+
+  if (!ts.isExportAssignment(statement)) {
+    return [];
+  }
+
   if (statement.isExportEquals) {
     return [];
   }
 
-  if (ts.isIdentifier(statement.expression)) {
+  const { expression } = statement;
+  if (ts.isIdentifier(expression)) {
     return [
       {
         exportedName: "default",
-        sourceExportedName: statement.expression.text,
-        localSymbolId: createTopLevelSymbolId(moduleId, statement.expression.text),
+        sourceExportedName: expression.text,
+        localSymbolId: createTopLevelSymbolId(moduleId, expression.text),
       },
     ];
   }
