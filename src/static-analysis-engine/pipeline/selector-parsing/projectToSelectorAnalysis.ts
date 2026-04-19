@@ -1,3 +1,4 @@
+import type { AnalysisTrace } from "../../types/analysis.js";
 import type { NormalizedSelector, SelectorConstraint } from "../selector-analysis/types.js";
 import type { ParsedSelectorBranch } from "./types.js";
 
@@ -12,19 +13,29 @@ export function projectToNormalizedSelector(
     parsedBranch.hasSubjectModifiers ||
     parsedBranch.negativeClassNames.length > 0
   ) {
-    return {
-      kind: "unsupported",
+    return createUnsupportedNormalizedSelector({
       reason: UNSUPPORTED_SELECTOR_REASON,
-    };
+      summary:
+        "could not normalize selector branch into the supported bounded selector shape subset",
+      metadata: {
+        hasUnknownSemantics: parsedBranch.hasUnknownSemantics,
+        hasSubjectModifiers: parsedBranch.hasSubjectModifiers,
+        negativeClassNames: [...parsedBranch.negativeClassNames],
+      },
+    });
   }
 
   if (parsedBranch.steps.length === 1) {
     const requiredClasses = parsedBranch.steps[0].selector.requiredClasses;
     if (requiredClasses.length < 2) {
-      return {
-        kind: "unsupported",
+      return createUnsupportedNormalizedSelector({
         reason: UNSUPPORTED_SELECTOR_REASON,
-      };
+        summary:
+          "single-step selector branch did not contain enough required classes for supported same-node projection",
+        metadata: {
+          requiredClassCount: requiredClasses.length,
+        },
+      });
     }
 
     return {
@@ -49,10 +60,14 @@ export function projectToNormalizedSelector(
   }
 
   if (parsedBranch.steps.length !== 2) {
-    return {
-      kind: "unsupported",
+    return createUnsupportedNormalizedSelector({
       reason: UNSUPPORTED_SELECTOR_REASON,
-    };
+      summary:
+        "selector branch had an unsupported number of structural steps for bounded selector analysis",
+      metadata: {
+        stepCount: parsedBranch.steps.length,
+      },
+    });
   }
 
   const [leftStep, rightStep] = parsedBranch.steps;
@@ -60,10 +75,14 @@ export function projectToNormalizedSelector(
     leftStep.selector.requiredClasses.length !== 1 ||
     rightStep.selector.requiredClasses.length !== 1
   ) {
-    return {
-      kind: "unsupported",
+    return createUnsupportedNormalizedSelector({
       reason: UNSUPPORTED_SELECTOR_REASON,
-    };
+      summary: "selector branch could not be normalized because one side required multiple classes",
+      metadata: {
+        leftRequiredClasses: [...leftStep.selector.requiredClasses],
+        rightRequiredClasses: [...rightStep.selector.requiredClasses],
+      },
+    });
   }
 
   if (
@@ -72,10 +91,13 @@ export function projectToNormalizedSelector(
     rightStep.combinatorFromPrevious !== "adjacent-sibling" &&
     rightStep.combinatorFromPrevious !== "general-sibling"
   ) {
-    return {
-      kind: "unsupported",
+    return createUnsupportedNormalizedSelector({
       reason: UNSUPPORTED_SELECTOR_REASON,
-    };
+      summary: "selector branch used an unsupported combinator for bounded selector analysis",
+      metadata: {
+        combinator: rightStep.combinatorFromPrevious,
+      },
+    });
   }
 
   return {
@@ -104,6 +126,7 @@ export function projectToSelectorConstraint(normalizedSelector: NormalizedSelect
   | {
       kind: "unsupported";
       reason: string;
+      traces: AnalysisTrace[];
     } {
   if (normalizedSelector.kind === "unsupported") {
     return normalizedSelector;
@@ -111,10 +134,14 @@ export function projectToSelectorConstraint(normalizedSelector: NormalizedSelect
 
   const { steps } = normalizedSelector;
   if (steps.length < 2) {
-    return {
-      kind: "unsupported",
+    return createUnsupportedConstraint({
       reason: UNSUPPORTED_SELECTOR_REASON,
-    };
+      summary:
+        "normalized selector did not contain enough steps to project into a supported selector constraint",
+      metadata: {
+        stepCount: steps.length,
+      },
+    });
   }
 
   const combinators = steps.slice(1).map((step) => step.combinatorFromPrevious);
@@ -170,6 +197,17 @@ export function projectToSelectorConstraint(normalizedSelector: NormalizedSelect
   return {
     kind: "unsupported",
     reason: UNSUPPORTED_SELECTOR_REASON,
+    traces: [
+      createSelectorParsingTrace({
+        traceId: "selector-parsing:constraint:unsupported-shape",
+        summary:
+          "normalized selector could not be projected into one of the currently supported selector constraint shapes",
+        metadata: {
+          stepCount: steps.length,
+          combinators,
+        },
+      }),
+    ],
   };
 }
 
@@ -229,4 +267,59 @@ export function buildSelectorParseNotes(normalizedSelector: NormalizedSelector):
   }
 
   return [`unsupported selector shape: ${UNSUPPORTED_SELECTOR_REASON}`];
+}
+
+function createUnsupportedNormalizedSelector(input: {
+  reason: string;
+  summary: string;
+  metadata?: Record<string, unknown>;
+}): Extract<NormalizedSelector, { kind: "unsupported" }> {
+  return {
+    kind: "unsupported",
+    reason: input.reason,
+    traces: [
+      createSelectorParsingTrace({
+        traceId: "selector-parsing:normalized-selector:unsupported",
+        summary: input.summary,
+        metadata: input.metadata,
+      }),
+    ],
+  };
+}
+
+function createUnsupportedConstraint(input: {
+  reason: string;
+  summary: string;
+  metadata?: Record<string, unknown>;
+}): Extract<
+  ReturnType<typeof projectToSelectorConstraint>,
+  {
+    kind: "unsupported";
+  }
+> {
+  return {
+    kind: "unsupported",
+    reason: input.reason,
+    traces: [
+      createSelectorParsingTrace({
+        traceId: "selector-parsing:constraint:unsupported",
+        summary: input.summary,
+        metadata: input.metadata,
+      }),
+    ],
+  };
+}
+
+function createSelectorParsingTrace(input: {
+  traceId: string;
+  summary: string;
+  metadata?: Record<string, unknown>;
+}): AnalysisTrace {
+  return {
+    traceId: input.traceId,
+    category: "selector-parsing",
+    summary: input.summary,
+    children: [],
+    ...(input.metadata ? { metadata: input.metadata } : {}),
+  };
 }

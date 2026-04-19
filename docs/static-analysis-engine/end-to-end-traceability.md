@@ -131,9 +131,40 @@ Confidence on rule results should be derived from the preserved decision rather 
 
 Reachability does not need to adopt the full shared `AnalysisDecision` contract immediately.
 
-It already preserves structured derivations and explicit availability states.
+It should emit its own shared traces at the point where availability conclusions are made, especially for:
 
-For now, selector analysis can bridge reachability derivations into shared trace payloads.
+- direct-import availability
+- propagated component availability
+- branch-local render-region availability
+- unsupported or budget-limited `unknown` barriers
+
+Selector analysis should then consume those producer-owned traces rather than reconstructing them from freeform reasons.
+
+### Render expansion
+
+Render expansion should emit shared traces directly from bounded expansion decisions.
+
+That includes:
+
+- unresolved component references
+- cycle stops
+- budget stops
+- helper-expansion failures
+- bounded unknown render nodes
+
+This lets later stages distinguish "render expansion stopped here" from "reachability became possible here" instead of flattening them into one vague explanation.
+
+### Selector parsing
+
+Selector parsing should also emit producer-owned traces when selector normalization or constraint projection cannot stay inside the supported bounded subset.
+
+That is important because structural unsupported outcomes are different from:
+
+- reachability uncertainty
+- render-expansion uncertainty
+- budget-limited subtree uncertainty
+
+If those all become plain string reasons too early, later stages cannot explain whether a `possible` or `unsupported` result came from selector shape, render support limits, or stylesheet availability.
 
 ## Non-Goals
 
@@ -149,6 +180,7 @@ The first success condition is much smaller:
 - shared trace and decision types exist
 - selector analysis uses them
 - rule execution preserves them
+- producer stages begin emitting shared traces directly
 - confidence becomes a derived view rather than the primary pipeline payload
 
 ## Recommendation

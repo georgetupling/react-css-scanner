@@ -3,6 +3,7 @@ import type {
   AnalysisConfidence as SharedAnalysisConfidence,
   AnalysisDecision,
   AnalysisStatus as SharedAnalysisStatus,
+  AnalysisTrace,
 } from "../../types/analysis.js";
 import type {
   ReachabilityAvailability,
@@ -63,6 +64,7 @@ export type NormalizedSelector =
   | {
       kind: "unsupported";
       reason: string;
+      traces: AnalysisTrace[];
     };
 
 export type SelectorSourceInput = {
@@ -102,11 +104,13 @@ export type ParsedSelectorQuery = {
   normalizedSelectorText: string;
   normalizedSelector: NormalizedSelector;
   parseNotes: string[];
+  parseTraces: AnalysisTrace[];
   constraint:
     | SelectorConstraint
     | {
         kind: "unsupported";
         reason: string;
+        traces: AnalysisTrace[];
       };
 };
 
@@ -126,6 +130,7 @@ export type SelectorQueryResult = {
     | {
         kind: "unsupported";
         reason: string;
+        traces: AnalysisTrace[];
       };
   outcome: SemanticOutcome;
   status: AnalysisStatus;

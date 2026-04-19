@@ -70,7 +70,7 @@ function analyzeSelectorQuery(input: {
             input.selectorQuery.source.kind === "css-source"
               ? input.selectorQuery.source.selectorAnchor
               : undefined,
-          children: [],
+          children: input.selectorQuery.parseTraces,
           metadata: {
             selectorText: input.selectorQuery.selectorText,
           },

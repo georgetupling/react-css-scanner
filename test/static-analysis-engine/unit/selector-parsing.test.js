@@ -7,6 +7,7 @@ import {
   projectToNormalizedSelector,
   projectToSelectorConstraint,
 } from "../../../dist/static-analysis-engine/pipeline/selector-parsing/projectToSelectorAnalysis.js";
+import { buildParsedSelectorQueries } from "../../../dist/static-analysis-engine/pipeline/selector-analysis/buildParsedSelectorQueries.js";
 
 test("shared selector parser preserves contextual selector structure for css analysis", () => {
   const parsedBranches = parseSelectorBranches(".layout .card__title");
@@ -68,4 +69,28 @@ test("shared selector parser preserves negative classes for css analysis while r
     hasUnknownSemantics: false,
   });
   assert.equal(projectToNormalizedSelector(parsedBranches[0]).kind, "unsupported");
+});
+
+test("shared selector parser emits producer-owned traces for unsupported selector analysis shapes", () => {
+  const [parsedQuery] = buildParsedSelectorQueries([
+    {
+      selectorText: ".button:not(.is-disabled)",
+      source: { kind: "direct-query" },
+    },
+  ]);
+
+  assert.deepEqual(parsedQuery.parseTraces, [
+    {
+      traceId: "selector-parsing:normalized-selector:unsupported",
+      category: "selector-parsing",
+      summary:
+        "could not normalize selector branch into the supported bounded selector shape subset",
+      children: [],
+      metadata: {
+        hasUnknownSemantics: false,
+        hasSubjectModifiers: true,
+        negativeClassNames: ["is-disabled"],
+      },
+    },
+  ]);
 });

@@ -97,6 +97,43 @@ test("static analysis engine marks unsupported selector queries explicitly", () 
     "unsupported selector query: only simple .a .b, .a > .b, .a + .b, .a ~ .b, and .a.b selector queries are currently supported",
     "unsupported selector shape: only simple .a .b, .a > .b, .a + .b, .a ~ .b, and .a.b selector queries are currently supported",
   ]);
+  assert.deepEqual(result.selectorQueryResults[0].decision, {
+    status: "unsupported",
+    certainty: "unknown",
+    dimensions: {
+      structure: "unsupported",
+    },
+    reasons: [
+      "unsupported selector query: only simple .a .b, .a > .b, .a + .b, .a ~ .b, and .a.b selector queries are currently supported",
+      "unsupported selector shape: only simple .a .b, .a > .b, .a + .b, .a ~ .b, and .a.b selector queries are currently supported",
+    ],
+    traces: [
+      {
+        traceId: "selector-match:unsupported-selector-shape",
+        category: "selector-match",
+        summary:
+          "unsupported selector query: only simple .a .b, .a > .b, .a + .b, .a ~ .b, and .a.b selector queries are currently supported",
+        anchor: undefined,
+        children: [
+          {
+            traceId: "selector-parsing:normalized-selector:unsupported",
+            category: "selector-parsing",
+            summary:
+              "could not normalize selector branch into the supported bounded selector shape subset",
+            children: [],
+            metadata: {
+              hasUnknownSemantics: false,
+              hasSubjectModifiers: true,
+              negativeClassNames: [],
+            },
+          },
+        ],
+        metadata: {
+          selectorText: ".app-shell[role]",
+        },
+      },
+    ],
+  });
 });
 
 test("static analysis engine answers same-file parent-child selector queries", () => {

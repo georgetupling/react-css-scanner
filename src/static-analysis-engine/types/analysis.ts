@@ -17,6 +17,7 @@ export type AnalysisTraceCategory =
   | "symbol-resolution"
   | "value-evaluation"
   | "render-expansion"
+  | "selector-parsing"
   | "selector-match"
   | "reachability"
   | "rule-evaluation";
