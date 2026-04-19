@@ -7,7 +7,10 @@ export function analyzeCssSources(
   cssSources: SelectorSourceInput[],
 ): ExperimentalCssFileAnalysis[] {
   return cssSources.map((cssSource) => {
-    const styleRules = extractCssStyleRules(cssSource.cssText);
+    const styleRules = extractCssStyleRules({
+      cssText: cssSource.cssText,
+      filePath: cssSource.filePath,
+    });
 
     return {
       filePath: cssSource.filePath,

@@ -33,3 +33,21 @@ export type ParsedSelectorBranch = {
   hasUnknownSemantics: boolean;
   matchKind: ParsedSelectorBranchMatchKind;
 };
+
+export type ParsedCssAtRuleContext = {
+  kind: "media";
+  queryText: string;
+};
+
+export type ParsedCssSelectorEntry = {
+  selectorText: string;
+  parsedBranch: ParsedSelectorBranch;
+  selectorAnchor?: {
+    filePath: string;
+    startLine: number;
+    startColumn: number;
+    endLine?: number;
+    endColumn?: number;
+  };
+  atRuleContext?: ParsedCssAtRuleContext[];
+};

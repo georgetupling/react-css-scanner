@@ -1,5 +1,8 @@
 import type { CssAtRuleContextFact, CssDeclarationFact, CssStyleRuleFact } from "../facts/types.js";
-import { extractSelectorBranchFacts } from "./parseCssSelectors.js";
+import {
+  extractParsedSelectorEntriesFromSelectorPrelude,
+  projectToCssSelectorBranchFact,
+} from "../pipeline/selector-parsing/index.js";
 
 const DECLARATION_ONLY_AT_RULES = new Set([
   "font-face",
@@ -9,8 +12,11 @@ const DECLARATION_ONLY_AT_RULES = new Set([
   "font-palette-values",
 ]);
 
-export function extractCssStyleRules(content: string): CssStyleRuleFact[] {
-  return parseRuleList(content, 0, content.length, []);
+export function extractCssStyleRules(input: {
+  cssText: string;
+  filePath?: string;
+}): CssStyleRuleFact[] {
+  return parseRuleList(input.cssText, 0, input.cssText.length, [], input.filePath);
 }
 
 function parseRuleList(
@@ -18,6 +24,7 @@ function parseRuleList(
   startIndex: number,
   endIndex: number,
   atRuleContext: CssAtRuleContextFact[],
+  filePath: string | undefined,
 ): CssStyleRuleFact[] {
   const styleRules: CssStyleRuleFact[] = [];
   let index = startIndex;
@@ -47,11 +54,28 @@ function parseRuleList(
       const atRule = parseAtRulePrelude(rawPrelude);
       if (!DECLARATION_ONLY_AT_RULES.has(atRule.name)) {
         styleRules.push(
-          ...parseRuleList(content, blockStartIndex, blockEndIndex, [...atRuleContext, atRule]),
+          ...parseRuleList(
+            content,
+            blockStartIndex,
+            blockEndIndex,
+            [...atRuleContext, atRule],
+            filePath,
+          ),
         );
       }
     } else {
-      const selectorBranches = extractSelectorBranchFacts(rawPrelude);
+      const selectorBranches = extractParsedSelectorEntriesFromSelectorPrelude({
+        selectorPrelude: rawPrelude,
+        preludeStartIndex: prelude.startOffset,
+        sourceText: content,
+        filePath,
+        atRuleContext: atRuleContext
+          .filter((entry) => entry.name === "media")
+          .map((entry) => ({
+            kind: "media" as const,
+            queryText: entry.params,
+          })),
+      }).map((entry) => projectToCssSelectorBranchFact(entry.parsedBranch));
       styleRules.push({
         selector: rawPrelude,
         selectorBranches,

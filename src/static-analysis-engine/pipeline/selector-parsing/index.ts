@@ -1,3 +1,5 @@
+export { extractParsedSelectorEntriesFromCssText } from "./extractParsedSelectorEntriesFromCssText.js";
+export { extractParsedSelectorEntriesFromSelectorPrelude } from "./extractParsedSelectorEntriesFromSelectorPrelude.js";
 export { parseSelectorBranch } from "./parseSelectorBranch.js";
 export { parseSelectorBranches } from "./parseSelectorBranches.js";
 export { projectToCssSelectorBranchFact } from "./projectToCssSelectorBranchFact.js";
@@ -7,6 +9,8 @@ export {
   projectToSelectorConstraint,
 } from "./projectToSelectorAnalysis.js";
 export type {
+  ParsedCssAtRuleContext,
+  ParsedCssSelectorEntry,
   ParsedSelectorBranch,
   ParsedSelectorBranchMatchKind,
   ParsedSelectorStep,
