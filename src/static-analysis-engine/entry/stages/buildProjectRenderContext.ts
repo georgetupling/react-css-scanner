@@ -10,6 +10,7 @@ import {
 import { MAX_CROSS_FILE_IMPORT_PROPAGATION_DEPTH } from "../../pipeline/render-ir/shared/expansionPolicy.js";
 import type {
   ResolvedImportedBinding,
+  ResolvedImportedComponentBinding,
   ResolvedNamespaceImport,
 } from "../../pipeline/symbol-resolution/index.js";
 import type { ParsedProjectFile } from "./types.js";
@@ -36,6 +37,9 @@ export type ProjectRenderContext = {
 
 export function buildProjectRenderContext(input: {
   parsedFiles: ParsedProjectFile[];
+  exportedExpressionBindingsByFilePath: Map<string, Map<string, ts.Expression>>;
+  importedExpressionBindingsByFilePath: Map<string, Map<string, ts.Expression>>;
+  resolvedImportedComponentBindingsByFilePath: Map<string, ResolvedImportedComponentBinding[]>;
   resolvedImportedBindingsByFilePath: Map<string, ResolvedImportedBinding[]>;
   resolvedNamespaceImportsByFilePath: Map<string, ResolvedNamespaceImport[]>;
 }): ProjectRenderContext {
@@ -60,19 +64,13 @@ export function buildProjectRenderContext(input: {
   const componentsByFilePath = new Map<string, Map<string, SameFileComponentDefinition>>(
     input.parsedFiles.map((parsedFile) => [
       parsedFile.filePath,
-      buildAvailableComponentsForFile({
+      hydrateAvailableComponentsForFile({
         filePath: parsedFile.filePath,
         localDefinitions: componentDefinitionsByFilePath.get(parsedFile.filePath) ?? [],
-        resolvedImportedBindings:
-          input.resolvedImportedBindingsByFilePath.get(parsedFile.filePath) ?? [],
+        resolvedImportedComponentBindings:
+          input.resolvedImportedComponentBindingsByFilePath.get(parsedFile.filePath) ?? [],
         exportedComponentsByFilePath,
       }),
-    ]),
-  );
-  const exportedConstBindingsByFilePath = new Map<string, Map<string, ts.Expression>>(
-    input.parsedFiles.map((parsedFile) => [
-      parsedFile.filePath,
-      collectExportedConstBindings(parsedFile.parsedSourceFile),
     ]),
   );
   const exportedHelperDefinitionsByFilePath = new Map(
@@ -89,16 +87,7 @@ export function buildProjectRenderContext(input: {
     componentDefinitionsByFilePath,
     exportedComponentsByFilePath,
     componentsByFilePath,
-    importedExpressionBindingsByFilePath: new Map(
-      input.parsedFiles.map((parsedFile) => [
-        parsedFile.filePath,
-        buildImportedExpressionBindingsForFile({
-          filePath: parsedFile.filePath,
-          resolvedImportedBindingsByFilePath: input.resolvedImportedBindingsByFilePath,
-          exportedConstBindingsByFilePath,
-        }),
-      ]),
-    ),
+    importedExpressionBindingsByFilePath: input.importedExpressionBindingsByFilePath,
     importedHelperDefinitionsByFilePath: new Map(
       input.parsedFiles.map((parsedFile) => [
         parsedFile.filePath,
@@ -116,7 +105,7 @@ export function buildProjectRenderContext(input: {
           filePath: parsedFile.filePath,
           resolvedNamespaceImports:
             input.resolvedNamespaceImportsByFilePath.get(parsedFile.filePath) ?? [],
-          exportedConstBindingsByFilePath,
+          exportedExpressionBindingsByFilePath: input.exportedExpressionBindingsByFilePath,
         }),
       ]),
     ),
@@ -145,16 +134,16 @@ export function buildProjectRenderContext(input: {
   };
 }
 
-function buildAvailableComponentsForFile(input: {
+function hydrateAvailableComponentsForFile(input: {
   filePath: string;
   localDefinitions: SameFileComponentDefinition[];
-  resolvedImportedBindings: ResolvedImportedBinding[];
+  resolvedImportedComponentBindings: ResolvedImportedComponentBinding[];
   exportedComponentsByFilePath: Map<string, Map<string, SameFileComponentDefinition>>;
 }): Map<string, SameFileComponentDefinition> {
   const availableComponents = new Map<string, SameFileComponentDefinition>(
     input.localDefinitions.map((definition) => [definition.componentName, definition]),
   );
-  for (const resolvedBinding of input.resolvedImportedBindings) {
+  for (const resolvedBinding of input.resolvedImportedComponentBindings) {
     const targetDefinition = input.exportedComponentsByFilePath
       .get(resolvedBinding.targetFilePath)
       ?.get(resolvedBinding.targetExportName);
@@ -166,20 +155,6 @@ function buildAvailableComponentsForFile(input: {
   }
 
   return availableComponents;
-}
-
-function buildImportedExpressionBindingsForFile(input: {
-  filePath: string;
-  resolvedImportedBindingsByFilePath: Map<string, ResolvedImportedBinding[]>;
-  exportedConstBindingsByFilePath: Map<string, Map<string, ts.Expression>>;
-}): Map<string, ts.Expression> {
-  return collectTransitiveImportedExpressionBindings({
-    filePath: input.filePath,
-    resolvedImportedBindingsByFilePath: input.resolvedImportedBindingsByFilePath,
-    exportedConstBindingsByFilePath: input.exportedConstBindingsByFilePath,
-    visitedFilePaths: new Set([input.filePath]),
-    currentDepth: 0,
-  });
 }
 
 function buildImportedHelperDefinitionsForFile(input: {
@@ -199,12 +174,12 @@ function buildImportedHelperDefinitionsForFile(input: {
 function buildImportedNamespaceExpressionBindingsForFile(input: {
   filePath: string;
   resolvedNamespaceImports: ResolvedNamespaceImport[];
-  exportedConstBindingsByFilePath: Map<string, Map<string, ts.Expression>>;
+  exportedExpressionBindingsByFilePath: Map<string, Map<string, ts.Expression>>;
 }): Map<string, Map<string, ts.Expression>> {
   return buildResolvedNamespaceBindingsForFile({
     resolvedNamespaceImports: input.resolvedNamespaceImports,
     getResolvedValue: (resolvedExport) =>
-      input.exportedConstBindingsByFilePath
+      input.exportedExpressionBindingsByFilePath
         .get(resolvedExport.targetFilePath)
         ?.get(resolvedExport.targetExportName),
   });
@@ -257,51 +232,6 @@ function buildResolvedNamespaceBindingsForFile<T>(input: {
   return namespaceBindings;
 }
 
-function collectTransitiveImportedExpressionBindings(input: {
-  filePath: string;
-  resolvedImportedBindingsByFilePath: Map<string, ResolvedImportedBinding[]>;
-  exportedConstBindingsByFilePath: Map<string, Map<string, ts.Expression>>;
-  visitedFilePaths: Set<string>;
-  currentDepth: number;
-}): Map<string, ts.Expression> {
-  const expressionBindings = new Map<string, ts.Expression>();
-  if (input.currentDepth >= MAX_CROSS_FILE_IMPORT_PROPAGATION_DEPTH) {
-    return expressionBindings;
-  }
-
-  for (const resolvedBinding of input.resolvedImportedBindingsByFilePath.get(input.filePath) ??
-    []) {
-    const exportedExpression = input.exportedConstBindingsByFilePath
-      .get(resolvedBinding.targetFilePath)
-      ?.get(resolvedBinding.targetExportName);
-    if (!exportedExpression) {
-      continue;
-    }
-
-    expressionBindings.set(resolvedBinding.localName, exportedExpression);
-
-    const importedFilePath = resolvedBinding.targetFilePath;
-    if (input.visitedFilePaths.has(importedFilePath)) {
-      continue;
-    }
-
-    const nestedBindings = collectTransitiveImportedExpressionBindings({
-      ...input,
-      filePath: importedFilePath,
-      visitedFilePaths: new Set([...input.visitedFilePaths, importedFilePath]),
-      currentDepth: input.currentDepth + 1,
-    });
-
-    for (const [identifierName, expression] of nestedBindings.entries()) {
-      if (!expressionBindings.has(identifierName)) {
-        expressionBindings.set(identifierName, expression);
-      }
-    }
-  }
-
-  return expressionBindings;
-}
-
 function collectTransitiveImportedHelperDefinitions(input: {
   filePath: string;
   resolvedImportedBindingsByFilePath: Map<string, ResolvedImportedBinding[]>;
@@ -345,60 +275,4 @@ function collectTransitiveImportedHelperDefinitions(input: {
   }
 
   return helperDefinitions;
-}
-
-function collectExportedConstBindings(parsedSourceFile: ts.SourceFile): Map<string, ts.Expression> {
-  const bindings = new Map<string, ts.Expression>();
-  const topLevelConstBindings = new Map<string, ts.Expression>();
-
-  for (const statement of parsedSourceFile.statements) {
-    if (!ts.isVariableStatement(statement)) {
-      continue;
-    }
-
-    if ((statement.declarationList.flags & ts.NodeFlags.Const) === 0) {
-      continue;
-    }
-
-    for (const declaration of statement.declarationList.declarations) {
-      if (!ts.isIdentifier(declaration.name) || !declaration.initializer) {
-        continue;
-      }
-
-      topLevelConstBindings.set(declaration.name.text, declaration.initializer);
-
-      if (!isExportedStatement(statement)) {
-        continue;
-      }
-
-      bindings.set(declaration.name.text, declaration.initializer);
-    }
-  }
-
-  for (const statement of parsedSourceFile.statements) {
-    if (!ts.isExportAssignment(statement) || statement.isExportEquals) {
-      continue;
-    }
-
-    if (ts.isIdentifier(statement.expression)) {
-      const expression = topLevelConstBindings.get(statement.expression.text);
-      if (expression) {
-        bindings.set("default", expression);
-      }
-
-      continue;
-    }
-
-    bindings.set("default", statement.expression);
-  }
-
-  return bindings;
-}
-
-function isExportedStatement(
-  statement: ts.Statement & { modifiers?: ts.NodeArray<ts.ModifierLike> },
-): boolean {
-  return (
-    statement.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword) ?? false
-  );
 }

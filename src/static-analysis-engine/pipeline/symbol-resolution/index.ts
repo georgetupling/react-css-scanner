@@ -8,6 +8,7 @@ export type {
   EngineSymbol,
   ProjectBindingResolution,
   ResolvedImportedBinding,
+  ResolvedImportedComponentBinding,
   ResolvedNamespaceImport,
   ResolvedProjectExport,
   SymbolKind,

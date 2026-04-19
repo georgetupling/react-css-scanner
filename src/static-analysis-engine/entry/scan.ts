@@ -111,9 +111,16 @@ export function analyzeProjectSourceTexts(input: {
   const bindingResolutionStage = runProjectBindingResolutionStage({
     moduleGraph: moduleGraphStage.moduleGraph,
     symbolsByFilePath: symbolResolutionStage.symbolsByFilePath,
+    parsedFiles: parseStage.parsedFiles,
   });
   const projectRenderContext = buildProjectRenderContext({
     parsedFiles: parseStage.parsedFiles,
+    exportedExpressionBindingsByFilePath:
+      bindingResolutionStage.exportedExpressionBindingsByFilePath,
+    importedExpressionBindingsByFilePath:
+      bindingResolutionStage.importedExpressionBindingsByFilePath,
+    resolvedImportedComponentBindingsByFilePath:
+      bindingResolutionStage.resolvedImportedComponentBindingsByFilePath,
     resolvedImportedBindingsByFilePath: bindingResolutionStage.resolvedImportedBindingsByFilePath,
     resolvedNamespaceImportsByFilePath: bindingResolutionStage.resolvedNamespaceImportsByFilePath,
   });

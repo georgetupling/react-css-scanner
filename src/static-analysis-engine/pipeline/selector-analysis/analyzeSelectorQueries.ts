@@ -1,5 +1,8 @@
 import type { RenderNode, RenderRegionPathSegment, RenderSubtree } from "../render-ir/types.js";
-import type { ReachabilitySummary } from "../reachability/types.js";
+import type {
+  ReachabilitySummary,
+  StylesheetReachabilityContextRecord,
+} from "../reachability/types.js";
 import type { ParsedSelectorQuery, SelectorAnalysisTarget, SelectorQueryResult } from "./types.js";
 import { buildSelectorQueryResult } from "./resultUtils.js";
 import { analyzeAncestorDescendantConstraint } from "./adapters/ancestorDescendant.js";
@@ -11,6 +14,14 @@ type ReachableAnalysisSubtree = {
   subtree: RenderSubtree;
   availability: "definite" | "possible";
   contexts: ReachabilitySummary["stylesheets"][number]["contexts"];
+};
+
+type AvailableContextRecord = StylesheetReachabilityContextRecord & {
+  availability: "definite" | "possible";
+};
+
+type RenderRegionContextRecord = AvailableContextRecord & {
+  context: Extract<StylesheetReachabilityContextRecord["context"], { kind: "render-region" }>;
 };
 
 export function analyzeSelectorQueries(input: {
@@ -266,13 +277,13 @@ function resolveReachableAnalysisSubtrees(
   const availableContextRecords = reachabilityRecord.contexts.filter(
     (contextRecord) =>
       contextRecord.availability === "definite" || contextRecord.availability === "possible",
-  );
+  ) as AvailableContextRecord[];
   const matchingRenderRegionContexts = availableContextRecords.filter(
     (contextRecord) =>
       contextRecord.context.kind === "render-region" &&
       contextRecord.context.filePath === normalizedFilePath &&
       contextRecord.context.componentName === subtree.componentName,
-  );
+  ) as RenderRegionContextRecord[];
   const hasSourceFileContext = availableContextRecords.some(
     (contextRecord) =>
       contextRecord.context.kind === "source-file" &&
@@ -299,26 +310,25 @@ function resolveReachableAnalysisSubtrees(
   const hasSubtreeRootContext = matchingSubtreeRootContexts.length > 0;
   const hasComponentContext = matchingComponentContexts.length > 0;
 
-  const narrowedSubtrees = matchingRenderRegionContexts
-    .map((contextRecord) => {
-      const root = resolveRenderRegionNode({
-        root: subtree.root,
-        path: contextRecord.context.path,
-      });
-      return root
-        ? {
-            subtree: {
-              ...subtree,
-              root,
-            },
-            availability: contextRecord.availability,
-            contexts: [contextRecord],
-          }
-        : undefined;
-    })
-    .filter((analysisSubtree): analysisSubtree is ReachableAnalysisSubtree =>
-      Boolean(analysisSubtree),
-    );
+  const narrowedSubtrees: ReachableAnalysisSubtree[] = [];
+  for (const contextRecord of matchingRenderRegionContexts) {
+    const root = resolveRenderRegionNode({
+      root: subtree.root,
+      path: contextRecord.context.path,
+    });
+    if (!root) {
+      continue;
+    }
+
+    narrowedSubtrees.push({
+      subtree: {
+        ...subtree,
+        root,
+      },
+      availability: contextRecord.availability,
+      contexts: [contextRecord],
+    });
+  }
 
   if (narrowedSubtrees.length > 0 && !hasSourceFileContext) {
     return deduplicateAnalysisSubtrees(narrowedSubtrees);

@@ -1,3 +1,5 @@
+import ts from "typescript";
+
 import type { EngineModuleId, EngineSymbolId, SourceAnchor } from "../../types/core.js";
 
 export type SymbolKind =
@@ -41,6 +43,8 @@ export type ResolvedImportedBinding = {
   targetSymbolId?: EngineSymbolId;
 };
 
+export type ResolvedImportedComponentBinding = ResolvedImportedBinding;
+
 export type ResolvedNamespaceImport = {
   localName: string;
   exports: Map<string, ResolvedProjectExport>;
@@ -50,5 +54,8 @@ export type ProjectBindingResolution = {
   symbols: Map<EngineSymbolId, EngineSymbol>;
   symbolsByFilePath: Map<string, Map<EngineSymbolId, EngineSymbol>>;
   resolvedImportedBindingsByFilePath: Map<string, ResolvedImportedBinding[]>;
+  resolvedImportedComponentBindingsByFilePath: Map<string, ResolvedImportedComponentBinding[]>;
   resolvedNamespaceImportsByFilePath: Map<string, ResolvedNamespaceImport[]>;
+  exportedExpressionBindingsByFilePath: Map<string, Map<string, ts.Expression>>;
+  importedExpressionBindingsByFilePath: Map<string, Map<string, ts.Expression>>;
 };

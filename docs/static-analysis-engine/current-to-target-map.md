@@ -130,7 +130,6 @@ The intended durable top-level subsystem shape is:
 | selector analysis | `pipeline/selector-analysis/` | durable | `pipeline/selector-analysis/` |
 | rule execution | `pipeline/rule-execution/` | durable | `pipeline/rule-execution/` |
 
-
 ## Durable Ownership By Concern
 
 ### 1. Parsing
@@ -738,3 +737,38 @@ The core rule is:
   rebuilding them
 - move shared infrastructure out of stage-looking locations over time
 - treat temporary seams as things to retire, not normalize
+
+## Addendum: Tranche 2 Landed
+
+Tranche 2 is now in.
+
+Completed changes:
+
+- imported const-expression propagation no longer lives only inside
+  `entry/stages/buildProjectRenderContext.ts`
+- symbol-resolution now publishes upstream expression-binding summaries used by
+  later render work
+- symbol-resolution now also publishes imported-component binding summaries so
+  render preparation does not decide for itself which imported bindings are
+  component-shaped
+- `buildProjectRenderContext.ts` still exists, but it is thinner for these paths
+  and is acting more as an adaptation/hydration seam than as the primary owner
+  of cross-file meaning
+
+Why this counts for tranche 2:
+
+- later render work now consumes upstream-published summaries that it does not
+  reconstruct itself
+- at least one real cross-file propagation path has moved upward out of the
+  render-context seam
+
+What did not change yet:
+
+- same-file component discovery still remains close to render work
+- helper semantics are still not owned by a fuller abstract-values summary layer
+- `buildProjectRenderContext.ts` is still a temporary seam and should continue
+  shrinking in later tranches
+
+This means tranche 2 should now be treated as complete for the bounded scope
+described in this document, while tranche 3 remains the next active cleanup
+target.

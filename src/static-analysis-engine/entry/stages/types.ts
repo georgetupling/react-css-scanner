@@ -15,6 +15,7 @@ import type {
 import type {
   EngineSymbol,
   ResolvedImportedBinding,
+  ResolvedImportedComponentBinding,
   ResolvedNamespaceImport,
 } from "../../pipeline/symbol-resolution/index.js";
 import type { EngineModuleId, EngineSymbolId } from "../../types/core.js";
@@ -47,7 +48,10 @@ export type ProjectBindingResolutionStageResult = {
   symbols: Map<EngineSymbolId, EngineSymbol>;
   symbolsByFilePath: Map<string, Map<EngineSymbolId, EngineSymbol>>;
   resolvedImportedBindingsByFilePath: Map<string, ResolvedImportedBinding[]>;
+  resolvedImportedComponentBindingsByFilePath: Map<string, ResolvedImportedComponentBinding[]>;
   resolvedNamespaceImportsByFilePath: Map<string, ResolvedNamespaceImport[]>;
+  exportedExpressionBindingsByFilePath: Map<string, Map<string, ts.Expression>>;
+  importedExpressionBindingsByFilePath: Map<string, Map<string, ts.Expression>>;
 };
 
 export type ModuleGraphStageResult = {

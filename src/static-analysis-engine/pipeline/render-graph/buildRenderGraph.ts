@@ -116,7 +116,7 @@ function classifyRenderPath(input: {
   let current: ts.Node | undefined = input.jsxNode;
 
   while (current && current !== input.componentRootExpression) {
-    const parent = current.parent;
+    const parent: ts.Node | undefined = current.parent;
     if (!parent) {
       break;
     }

@@ -1127,7 +1127,7 @@ function addContextRecord(
   },
 ): void {
   const normalizedContextRecord = withContextRecordTraces(contextRecord);
-  const contextKey = serializeContextKey(contextRecord);
+  const contextKey = serializeContextKey(normalizedContextRecord);
   const existingContextRecord = contextRecordsByKey.get(contextKey);
   if (!existingContextRecord) {
     contextRecordsByKey.set(contextKey, {

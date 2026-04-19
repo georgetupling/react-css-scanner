@@ -145,8 +145,16 @@ export function runProjectModuleGraphStage(input: {
 export function runProjectBindingResolutionStage(input: {
   moduleGraph: ModuleGraph;
   symbolsByFilePath: Map<string, Map<EngineSymbolId, EngineSymbol>>;
+  parsedFiles?: ParsedProjectFile[];
 }): ProjectBindingResolutionStageResult {
-  return buildProjectBindingResolution(input);
+  return buildProjectBindingResolution({
+    ...input,
+    parsedSourceFilesByFilePath: input.parsedFiles
+      ? new Map(
+          input.parsedFiles.map((parsedFile) => [parsedFile.filePath, parsedFile.parsedSourceFile]),
+        )
+      : undefined,
+  });
 }
 
 export function runAbstractValueStage(input: {
