@@ -2,10 +2,10 @@ import ts from "typescript";
 
 import type { LocalHelperDefinition } from "../collection/shared/types.js";
 import type { BuildContext } from "../shared/internalTypes.js";
+import { MAX_LOCAL_HELPER_EXPANSION_DEPTH } from "../../../libraries/policy/index.js";
 import {
   buildHelperExpansionReason,
   getExpansionScope,
-  MAX_LOCAL_HELPER_EXPANSION_DEPTH,
   type HelperExpansionReason,
 } from "../shared/expansionPolicy.js";
 

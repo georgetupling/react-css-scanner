@@ -8,7 +8,7 @@ import {
   type LocalHelperDefinition,
   type SameFileComponentDefinition,
 } from "../../pipeline/render-ir/index.js";
-import { MAX_CROSS_FILE_IMPORT_PROPAGATION_DEPTH } from "../../pipeline/render-ir/shared/expansionPolicy.js";
+import { MAX_CROSS_FILE_IMPORT_PROPAGATION_DEPTH } from "../../libraries/policy/index.js";
 import type {
   ResolvedImportedBinding,
   ResolvedImportedComponentBinding,

@@ -1,8 +1,8 @@
 import ts from "typescript";
 
+import { MAX_CROSS_FILE_IMPORT_PROPAGATION_DEPTH } from "../../libraries/policy/index.js";
 import { createModuleId } from "../module-graph/index.js";
 import type { ModuleGraph } from "../module-graph/types.js";
-import { MAX_CROSS_FILE_IMPORT_PROPAGATION_DEPTH } from "../render-ir/shared/expansionPolicy.js";
 import type { AnalysisTrace } from "../../types/analysis.js";
 import type { EngineSymbolId } from "../../types/core.js";
 import type {

@@ -185,7 +185,6 @@ Some current code does not yet satisfy the target boundary rules.
 Examples include:
 
 - `buildProjectRenderContext.ts` acting as a temporary bridge
-- cross-stage use of render-IR policy constants
 - old-engine fact/runtime type reuse in experimental rule execution and CSS analysis
 
 These are allowed as migration scaffolding, but they should be documented as temporary and not copied into new target-product design work.

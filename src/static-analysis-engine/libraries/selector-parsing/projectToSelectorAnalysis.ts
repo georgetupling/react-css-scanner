@@ -1,5 +1,8 @@
 import type { AnalysisTrace } from "../../types/analysis.js";
-import type { NormalizedSelector, SelectorConstraint } from "../selector-analysis/types.js";
+import type {
+  NormalizedSelector,
+  SelectorConstraint,
+} from "../../pipeline/selector-analysis/types.js";
 import type { ParsedSelectorBranch } from "./types.js";
 
 const UNSUPPORTED_SELECTOR_REASON =

@@ -5,7 +5,7 @@ import {
   parseSelectorBranches,
   projectToNormalizedSelector,
   projectToSelectorConstraint,
-} from "../selector-parsing/index.js";
+} from "../../libraries/selector-parsing/index.js";
 
 const UNSUPPORTED_SELECTOR_REASON =
   "only simple .a .b, .a > .b, .a + .b, .a ~ .b, and .a.b selector queries are currently supported";

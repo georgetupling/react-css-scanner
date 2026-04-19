@@ -1,12 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { parseSelectorBranches } from "../../../dist/static-analysis-engine/pipeline/selector-parsing/parseSelectorBranches.js";
-import { projectToCssSelectorBranchFact } from "../../../dist/static-analysis-engine/pipeline/selector-parsing/projectToCssSelectorBranchFact.js";
+import { parseSelectorBranches } from "../../../dist/static-analysis-engine/libraries/selector-parsing/parseSelectorBranches.js";
+import { projectToCssSelectorBranchFact } from "../../../dist/static-analysis-engine/libraries/selector-parsing/projectToCssSelectorBranchFact.js";
 import {
   projectToNormalizedSelector,
   projectToSelectorConstraint,
-} from "../../../dist/static-analysis-engine/pipeline/selector-parsing/projectToSelectorAnalysis.js";
+} from "../../../dist/static-analysis-engine/libraries/selector-parsing/projectToSelectorAnalysis.js";
 import { buildParsedSelectorQueries } from "../../../dist/static-analysis-engine/pipeline/selector-analysis/buildParsedSelectorQueries.js";
 
 test("shared selector parser preserves contextual selector structure for css analysis", () => {

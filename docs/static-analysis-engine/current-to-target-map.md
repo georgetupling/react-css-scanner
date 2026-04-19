@@ -111,6 +111,11 @@ The intended durable top-level subsystem shape is:
 - `runtime/`
 - `comparison/`
 
+That shared-library shape is now partially implemented in code:
+
+- `libraries/selector-parsing/`
+- `libraries/policy/`
+
 ## Current To Target Stage Map
 
 | Current live step | Current implementation owner | Target status | Target owner |
@@ -126,7 +131,7 @@ The intended durable top-level subsystem shape is:
 | CSS analysis | `pipeline/css-analysis/`, `parser/` | durable | `pipeline/css-analysis/` plus shared CSS libraries |
 | reachability | `pipeline/reachability/` | durable | `pipeline/reachability/` |
 | selector input | `entry/stages/basicStages.ts` | temporary orchestration seam | folded into parse/css-analysis or selector-analysis inputs |
-| selector parsing | `pipeline/selector-parsing/` | shared infrastructure, not a durable stage | `libraries/selector-parsing/` |
+| selector parsing | `libraries/selector-parsing/` | shared infrastructure, not a durable stage | `libraries/selector-parsing/` |
 | selector analysis | `pipeline/selector-analysis/` | durable | `pipeline/selector-analysis/` |
 | rule execution | `pipeline/rule-execution/` | durable | `pipeline/rule-execution/` |
 
@@ -429,30 +434,6 @@ Exit criteria:
 - the pipeline no longer describes `selector input` as a first-class stage-like
   step
 
-### Temporary Seam 4: Selector parsing under `pipeline/`
-
-Current owner:
-
-- `pipeline/selector-parsing/`
-
-What it owns today:
-
-- selector normalization and projection shared by CSS parsing and selector
-  analysis paths
-
-Why it is temporary:
-
-- it is shared infrastructure, not an authoritative analysis stage
-
-Target end-state:
-
-- moved to `libraries/selector-parsing/` or equivalent shared-library space
-
-Exit criteria:
-
-- multi-consumer selector parsing no longer lives under `pipeline/`
-- imports reference a shared-library home rather than a stage-looking path
-
 ### Temporary Seam 5: Old-engine compatibility at the rule/CSS edge
 
 Current owners:
@@ -488,7 +469,7 @@ treated that way in future changes.
 
 Current location:
 
-- `pipeline/selector-parsing/`
+- `libraries/selector-parsing/`
 
 Durable target:
 
@@ -496,8 +477,9 @@ Durable target:
 
 Migration note:
 
-- safe to keep in place temporarily
-- unsafe to treat as if it were owned only by selector-analysis
+- this is now the shared-library home
+- future work should keep shared selector infrastructure here rather than
+  reintroducing stage-looking ownership
 
 ### CSS parsing helpers
 
@@ -519,7 +501,8 @@ Migration note:
 
 Current location:
 
-- partially inside render-IR shared internals
+- `libraries/policy/` for shared budgets
+- render-IR shared internals for render-specific expansion reasons and helpers
 
 Durable target:
 
@@ -527,8 +510,10 @@ Durable target:
 
 Migration note:
 
-- any new cross-cutting budget or propagation limit should be added in shared
-  policy space, not in stage-private helpers
+- tranche 4 moved cross-cutting budgets and propagation limits into shared
+  policy space
+- any new cross-cutting budget or propagation limit should continue to land in
+  shared policy modules, not in stage-private helpers
 
 ## Dependency Rules
 
@@ -553,7 +538,7 @@ Do not introduce new code that:
 - places cross-cutting policy constants in a stage-private helper and reuses
   them from other stages
 - adds more cross-file semantic ownership to `buildProjectRenderContext.ts`
-- treats `pipeline/selector-parsing/` as selector-analysis-private
+- treats `libraries/selector-parsing/` as selector-analysis-private
 - imports deep render-IR helpers into symbol-resolution
 - imports old-engine implementation types deeper into the new engine
 
@@ -561,11 +546,8 @@ Do not introduce new code that:
 
 These exceptions exist today and are allowed only as migration scaffolding:
 
-- symbol-resolution uses a propagation-depth constant currently housed under
-  render-IR internals
 - `buildProjectRenderContext.ts` owns cross-file propagation work that should
   move upstream
-- selector parsing lives under `pipeline/` even though it is shared
 - rule execution and CSS analysis still reuse some old-engine-compatible types
 
 Do not copy these patterns into new code unless the change is explicitly part of
@@ -794,13 +776,11 @@ What did not change yet:
   shrinking in later tranches
 
 This means tranche 2 should now be treated as complete for the bounded scope
-described in this document, while tranche 3 remains the next active cleanup
-target.
+described in this document.
 
-## Addendum: Tranche 3 Progress
+## Addendum: Tranche 3 Landed
 
-Tranche 3 is now materially underway, and the main end-to-end trace path exists
-for selector-derived rule results.
+Tranche 3 is now in for the bounded scope described in this document.
 
 Completed changes:
 
@@ -823,7 +803,7 @@ Current practical trace contract:
 - later stages should preserve relevant upstream traces as `children` rather
   than replacing them
 
-Why this counts for tranche 3 progress:
+Why this counts for tranche 3:
 
 - one non-trivial selector-derived rule result can now be traced through
   `rule-execution -> selector-analysis -> reachability -> render-graph ->
@@ -831,12 +811,45 @@ Why this counts for tranche 3 progress:
 - the main current-user-facing explanation path no longer depends on ad hoc
   prose reconstruction alone
 
-What is still incomplete:
+What did not change yet:
 
 - trace coverage is strongest on selector-derived results, not yet equally rich
   across every rule family
 - some producer categories still have shallower trace coverage than the
   long-term target
-- the docs now describe a real implemented path, but tranche 3 should still be
-  treated as active until trace coverage is broad enough to feel systemic rather
-  than slice-specific
+- later tranches can still broaden and refine explanation coverage, but tranche
+  3's stated success condition is now met
+
+This means tranche 3 should now be treated as complete for the bounded scope
+described in this document, while tranche 4 is the next active cleanup target.
+
+## Addendum: Tranche 4 Landed
+
+Tranche 4 is now in for the bounded scope described in this document.
+
+Completed changes:
+
+- shared selector parsing now lives under `libraries/selector-parsing/`
+- CSS parsing and selector-analysis imports now reference that shared-library
+  home instead of a stage-looking path
+- cross-engine budget constants now live under `libraries/policy/`
+- symbol-resolution and render preparation no longer import shared budget
+  constants from render-IR-private helpers
+
+Why this counts for tranche 4:
+
+- selector parsing is no longer architecturally misleading as if it were a
+  pipeline stage
+- shared policy ownership for cross-engine budgets is now explicit in a
+  top-level library space
+
+What did not change yet:
+
+- the entry pipeline still has a temporary `selector parsing` orchestration step
+- render-IR-specific expansion reasons still live with render-IR helpers, which
+  is acceptable because they are no longer acting as cross-engine policy
+- old-engine compatibility seams at the CSS and rule edge still remain for
+  later cleanup
+
+This means tranche 4 should now be treated as complete for the bounded scope
+described in this document, while tranche 5 is the next active cleanup target.

@@ -2,7 +2,7 @@ import type { CssAtRuleContextFact, CssDeclarationFact, CssStyleRuleFact } from 
 import {
   extractParsedSelectorEntriesFromSelectorPrelude,
   projectToCssSelectorBranchFact,
-} from "../pipeline/selector-parsing/index.js";
+} from "../libraries/selector-parsing/index.js";
 
 const DECLARATION_ONLY_AT_RULES = new Set([
   "font-face",

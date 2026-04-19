@@ -1,4 +1,4 @@
-import { extractParsedSelectorEntriesFromCssText } from "../selector-parsing/index.js";
+import { extractParsedSelectorEntriesFromCssText } from "../../libraries/selector-parsing/index.js";
 import type { CssAtRuleContext, ExtractedSelectorQuery, SelectorSourceInput } from "./types.js";
 
 export function extractSelectorQueriesFromCssText(

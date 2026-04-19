@@ -45,12 +45,15 @@ Future-only docs:
 
 Static-analysis-engine docs:
 
-- [docs/static-analysis-engine/requirements.md](./docs/static-analysis-engine/requirements.md)
-- [docs/static-analysis-engine/directory-structure-and-boundaries.md](./docs/static-analysis-engine/directory-structure-and-boundaries.md)
-- [docs/static-analysis-engine/core-irs-and-type-shapes.md](./docs/static-analysis-engine/core-irs-and-type-shapes.md)
 - [docs/static-analysis-engine/architecture.md](./docs/static-analysis-engine/architecture.md)
-- [docs/static-analysis-engine/uncertainty-and-decision-model.md](./docs/static-analysis-engine/uncertainty-and-decision-model.md)
-- [docs/static-analysis-engine/roadmap.md](./docs/static-analysis-engine/roadmap.md)
+- [docs/static-analysis-engine/subsystem-boundaries.md](./docs/static-analysis-engine/subsystem-boundaries.md)
+- [docs/static-analysis-engine/end-to-end-traceability.md](./docs/static-analysis-engine/end-to-end-traceability.md)
+- [docs/static-analysis-engine/current-to-target-map.md](./docs/static-analysis-engine/current-to-target-map.md)
+- [docs/static-analysis-engine/known-architectural-issues.md](./docs/static-analysis-engine/known-architectural-issues.md)
+- [docs/static-analysis-engine/progress-snapshot-2026-04-19.md](./docs/static-analysis-engine/progress-snapshot-2026-04-19.md)
+- [docs/static-analysis-engine/archive/requirements.md](./docs/static-analysis-engine/archive/requirements.md)
+- [docs/static-analysis-engine/archive/directory-structure-and-boundaries.md](./docs/static-analysis-engine/archive/directory-structure-and-boundaries.md)
+- [docs/static-analysis-engine/archive/core-irs-and-type-shapes.md](./docs/static-analysis-engine/archive/core-irs-and-type-shapes.md)
 
 ## Source of truth hierarchy
 
@@ -213,7 +216,7 @@ If you add or change operational behavior, update the relevant docs in `docs/des
 - Do not assume every non-page thing is a component; `unclassified` exists for a reason.
 - Do not regress determinism in findings, summary output, or exit-code behavior.
 - Do not blur the in-flight static-analysis-engine work back into the old scanner architecture without an explicit migration decision.
-- Do not import deep old-engine helpers into `src/static-analysis-engine`; follow the boundary rules in `docs/static-analysis-engine/directory-structure-and-boundaries.md`.
+- Do not import deep old-engine helpers into `src/static-analysis-engine`; follow the boundary rules in `docs/static-analysis-engine/subsystem-boundaries.md`.
 
 ## If you need to reorient quickly
 
@@ -227,9 +230,9 @@ Read in this order:
 
 If you are working on the static-analysis-engine track, read in this order:
 
-1. [docs/static-analysis-engine/requirements.md](./docs/static-analysis-engine/requirements.md)
-2. [docs/static-analysis-engine/directory-structure-and-boundaries.md](./docs/static-analysis-engine/directory-structure-and-boundaries.md)
-3. [docs/static-analysis-engine/core-irs-and-type-shapes.md](./docs/static-analysis-engine/core-irs-and-type-shapes.md)
-4. [docs/static-analysis-engine/architecture.md](./docs/static-analysis-engine/architecture.md)
-5. [docs/static-analysis-engine/uncertainty-and-decision-model.md](./docs/static-analysis-engine/uncertainty-and-decision-model.md)
-6. [docs/static-analysis-engine/roadmap.md](./docs/static-analysis-engine/roadmap.md)
+1. [docs/static-analysis-engine/architecture.md](./docs/static-analysis-engine/architecture.md)
+2. [docs/static-analysis-engine/subsystem-boundaries.md](./docs/static-analysis-engine/subsystem-boundaries.md)
+3. [docs/static-analysis-engine/end-to-end-traceability.md](./docs/static-analysis-engine/end-to-end-traceability.md)
+4. [docs/static-analysis-engine/current-to-target-map.md](./docs/static-analysis-engine/current-to-target-map.md)
+5. [docs/static-analysis-engine/known-architectural-issues.md](./docs/static-analysis-engine/known-architectural-issues.md)
+6. [docs/static-analysis-engine/progress-snapshot-2026-04-19.md](./docs/static-analysis-engine/progress-snapshot-2026-04-19.md)

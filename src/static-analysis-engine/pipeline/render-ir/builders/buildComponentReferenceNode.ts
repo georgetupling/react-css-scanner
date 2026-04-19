@@ -3,12 +3,12 @@ import ts from "typescript";
 import type { SameFileComponentDefinition } from "../collection/shared/types.js";
 import { isRenderableExpression } from "../collection/shared/renderableExpressionGuards.js";
 import type { BuildContext } from "../shared/internalTypes.js";
+import { MAX_LOCAL_COMPONENT_EXPANSION_DEPTH } from "../../../libraries/policy/index.js";
 import {
   buildComponentExpansionReason,
   buildUnsupportedParameterExpansionReason,
   COMPONENT_DEFINITION_NOT_FOUND_REASON,
   getExpansionScope,
-  MAX_LOCAL_COMPONENT_EXPANSION_DEPTH,
 } from "../shared/expansionPolicy.js";
 import {
   applyPlacementAnchor,
