@@ -70,7 +70,7 @@ The statuses in this document mean:
 | `ownership-and-organization` | `component-style-cross-component`, `page-style-used-by-single-component`, `global-css-not-global`, `component-css-should-be-global` | No meaningful new-engine rule slice yet | Probably adapter-first, then selective native migration |
 | `dynamic-analysis` | `dynamic-class-reference`, `dynamic-missing-css-class` | Engine has bounded value-flow support, but no shipped-rule migration yet | Needs migration design after parity contract is written |
 | `css-modules` | `missing-css-module-class`, `unused-css-module-class` | No meaningful new-engine rule slice yet, and no first-class CSS-Module semantic layer is published yet | Likely compatibility adapter first, unless a native CSS-Module layer is added before cutover |
-| `external-css` | `missing-external-css-class` | First native rule slice now exists on top of imported external CSS, fetch-remote project-wide stylesheets, active declared providers, and native reachability | Native path is now visible, but cutover still needs parity validation and a decision on any remaining runtime-specific adapter needs |
+| `external-css` | `missing-external-css-class` | First native rule slice now exists on top of imported external CSS, fetch-remote project-wide stylesheets, active declared providers, and native reachability | Native rule path plus explicit first-release runtime adapter for fetch/fallback behavior |
 | `optimization-and-migration` | `utility-class-replacement`, `duplicate-css-class-definition`, `empty-css-rule`, `redundant-css-declaration-block`, `unused-compound-selector-branch` | Strongest current new-engine family; several rules already exist experimentally | Best first family for parity-first migration |
 
 ## Rule Matrix
@@ -89,7 +89,7 @@ The statuses in this document mean:
 | `dynamic-analysis` | `dynamic-missing-css-class` | old rule engine on `ProjectModel` plus dynamic matching heuristics | `rule-execution` on top of `abstract-values`, CSS-definition evidence, and bounded unknown/possible outcomes | `needs migration design` | This likely needs explicit policy mapping so the new engine does not silently over-report or under-report dynamic missing cases |
 | `css-modules` | `missing-css-module-class` | old CSS Modules rule engine path | likely `rule-execution` with dedicated CSS Module analysis inputs, or compatibility adapter | `likely compatibility adapter first` | The current new engine does not yet expose a first-class CSS-Module semantic layer comparable to the shipped implementation's import/property model |
 | `css-modules` | `unused-css-module-class` | old CSS Modules rule engine path | likely `rule-execution` with dedicated CSS Module usage inputs, or compatibility adapter | `likely compatibility adapter first` | Same parity-first logic as above; do not block engine cutover on full CSS Modules redesign if an explicit adapter keeps the product contract stable, unless a native CSS-Module layer is added first |
-| `external-css` | `missing-external-css-class` | old external CSS rule engine path | `rule-execution` on top of `external-css`, `reachability`, and bounded class/value evidence | `experimental coverage exists` | The current new engine can now classify external CSS imports in the module graph, propagate directly imported and fetch-remote project-wide external CSS through native reachability, publish active declared providers through `externalCssSummary`, and emit a first native `missing-external-css-class` rule slice; product cutover still needs parity validation and a decision on any remaining runtime-specific adapter needs |
+| `external-css` | `missing-external-css-class` | old external CSS rule engine path | `rule-execution` on top of `external-css`, `reachability`, and bounded class/value evidence, with runtime fetch/fallback behavior adapter-backed in the first release | `experimental coverage exists` | The current new engine can now classify external CSS imports in the module graph, propagate directly imported and fetch-remote project-wide external CSS through native reachability, publish active declared providers through `externalCssSummary`, emit a first native `missing-external-css-class` rule slice, and compare that slice against the current scanner; the remaining first-release adapter boundary is runtime-specific fetch/fallback behavior rather than rule semantics |
 | `optimization-and-migration` | `utility-class-replacement` | old optimization rule engine path | `rule-execution` on top of CSS-definition analysis and configured utility catalogs | `needs migration design` | The new engine can likely support this later, but it is not currently part of the experimental rule slice and may not need to be first-wave |
 | `optimization-and-migration` | `duplicate-css-class-definition` | old optimization rule engine path | `rule-execution` on top of `css-analysis` | `experimental coverage exists` | Already implemented experimentally in the new engine and covered by comparison tests |
 | `optimization-and-migration` | `empty-css-rule` | old optimization rule engine path | `rule-execution` on top of `css-analysis` | `experimental coverage exists` | Already implemented experimentally in the new engine and covered by comparison tests |
@@ -162,8 +162,9 @@ Needed before cutover:
 
 Needed before cutover:
 
-- explicit decision on whether the first release uses the native rule path
-  directly or keeps any remaining runtime-specific behavior adapter-backed
+- keep the native rule path for `missing-external-css-class`
+- keep runtime-specific fetch-remote retrieval, failure fallback, and
+  operational-warning shaping adapter-backed in the first replacement release
 - parity checks for directly imported, declared-global/provider, and fetch-
   remote behavior
 - explicit coverage for unavailable or fallback external stylesheet paths where
@@ -230,9 +231,6 @@ These are not blocking ambiguities for this matrix, but they do require later
   first cutover
 - whether CSS Modules should stay on compatibility adapters through the first
   replacement release instead of waiting for a native CSS-Module semantic layer
-- whether external CSS should still keep any runtime-specific compatibility
-  adapter through the first replacement release now that a native rule path
-  exists for `missing-external-css-class`
 
 ## Summary
 

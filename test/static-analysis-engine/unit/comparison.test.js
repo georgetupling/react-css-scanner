@@ -11,6 +11,13 @@ import {
   toExperimentalFindings,
 } from "../../../dist/static-analysis-engine.js";
 
+const FONT_AWESOME_PROVIDER = {
+  provider: "font-awesome",
+  match: ["**/cdnjs.cloudflare.com/ajax/libs/font-awesome/**/css/*.css"],
+  classPrefixes: ["fa-"],
+  classNames: ["fa", "fa-solid", "fa-regular", "fa-brands"],
+};
+
 test("static analysis engine can map experimental rule results into finding-like shadow-mode records", () => {
   const result = analyzeSourceText({
     filePath: "src/App.tsx",
@@ -336,6 +343,74 @@ test("direct shadow-mode comparison can match css-structure optimization rules",
     assert.match(artifact.report, /empty-css-rule/);
     assert.match(artifact.report, /duplicate-css-class-definition/);
     assert.match(artifact.report, /redundant-css-declaration-block/);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("direct shadow-mode comparison can match native missing-external-css-class while suppressing declared provider tokens", async () => {
+  const project = await new TestProjectBuilder()
+    .withTemplate("basic-react-app")
+    .withFile(
+      "index.html",
+      [
+        "<!doctype html>",
+        "<html><head>",
+        '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />',
+        '</head><body><div id="root"></div></body></html>',
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "bootstrap/dist/css/bootstrap.css";',
+        'export function App() { return <div className="btn fa-solid fa-trash ghost-btn" />; }',
+      ].join("\n"),
+    )
+    .withNodeModuleFile("bootstrap/dist/css/bootstrap.css", ".btn { display: inline-block; }\n")
+    .withConfig({
+      externalCss: {
+        mode: "declared-globals",
+        globals: [FONT_AWESOME_PROVIDER],
+      },
+    })
+    .build();
+
+  try {
+    const artifact = await runExperimentalSelectorPilotAgainstCurrentScanner({
+      cwd: project.rootDir,
+    });
+
+    const externalRuleResults = artifact.experimentalRuleResults.filter(
+      (ruleResult) => ruleResult.ruleId === "missing-external-css-class",
+    );
+    assert.deepEqual(
+      externalRuleResults.map((ruleResult) => ruleResult.metadata?.className),
+      ["ghost-btn"],
+    );
+    assert.ok(
+      artifact.comparisonResult.comparison.matched.some(
+        (entry) =>
+          entry.experimental.ruleId === "missing-external-css-class" &&
+          entry.baseline.ruleId === "missing-external-css-class" &&
+          entry.baseline.subject?.className === "ghost-btn",
+      ),
+    );
+    assert.equal(
+      artifact.comparisonResult.comparison.experimentalOnly.some(
+        (finding) => finding.ruleId === "missing-external-css-class",
+      ),
+      false,
+    );
+    assert.equal(
+      artifact.baselineScanResult.findings.some(
+        (finding) =>
+          finding.ruleId === "missing-external-css-class" &&
+          (finding.subject?.className === "fa-solid" || finding.subject?.className === "fa-trash"),
+      ),
+      false,
+    );
+    assert.match(artifact.report, /missing-external-css-class/);
   } finally {
     await project.cleanup();
   }

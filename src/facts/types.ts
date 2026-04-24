@@ -103,6 +103,7 @@ export type CssFileFact = {
 export type ExternalCssFact = {
   specifier: string;
   resolvedPath: string;
+  content: string;
   styleRules: CssStyleRuleFact[];
   classDefinitions: CssClassDefinitionFact[];
   imports: CssImportFact[];

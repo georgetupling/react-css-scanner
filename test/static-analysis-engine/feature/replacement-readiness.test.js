@@ -1,11 +1,41 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import http from "node:http";
 
 import { TestProjectBuilder } from "../../support/TestProjectBuilder.js";
 import {
   analyzeProjectSourceTexts,
   runExperimentalSelectorPilotAgainstCurrentScanner,
 } from "../../../dist/static-analysis-engine.js";
+
+async function withHttpServer(handler, run) {
+  const server = http.createServer(handler);
+
+  await new Promise((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    server.close();
+    throw new Error("Failed to start test HTTP server.");
+  }
+
+  try {
+    await run(`http://127.0.0.1:${address.port}`);
+  } finally {
+    await new Promise((resolve, reject) => {
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        resolve(undefined);
+      });
+    });
+  }
+}
 
 test("static analysis engine feature validation tracks definite stylesheet reachability through component composition", async () => {
   const project = await new TestProjectBuilder()
@@ -213,6 +243,70 @@ test("static analysis engine feature validation preserves unknown stylesheet rea
   } finally {
     await project.cleanup();
   }
+});
+
+test("static analysis engine feature validation matches current-scanner external-css behavior for fetch-remote project-wide stylesheets", async () => {
+  await withHttpServer(
+    (request, response) => {
+      if (request.url === "/remote.css") {
+        response.writeHead(200, { "content-type": "text/css" });
+        response.end(".btn { display: inline-block; }");
+        return;
+      }
+
+      response.writeHead(404);
+      response.end("not found");
+    },
+    async (serverBaseUrl) => {
+      const project = await new TestProjectBuilder()
+        .withTemplate("basic-react-app")
+        .withFile(
+          "index.html",
+          [
+            "<!doctype html>",
+            "<html><head>",
+            `<link rel="stylesheet" href="${serverBaseUrl}/remote.css" />`,
+            '</head><body><div id="root"></div></body></html>',
+          ].join("\n"),
+        )
+        .withSourceFile(
+          "src/App.tsx",
+          'export function App() { return <button className="btn ghost-btn">Save</button>; }\n',
+        )
+        .withConfig({
+          externalCss: {
+            mode: "fetch-remote",
+          },
+        })
+        .build();
+
+      try {
+        const artifact = await runExperimentalSelectorPilotAgainstCurrentScanner({
+          cwd: project.rootDir,
+        });
+
+        assert.ok(
+          artifact.experimentalRuleResults.some(
+            (ruleResult) =>
+              ruleResult.ruleId === "missing-external-css-class" &&
+              ruleResult.metadata?.className === "ghost-btn",
+          ),
+        );
+        assert.equal(artifact.comparisonResult.summary.matchedCount, 1);
+        assert.equal(artifact.comparisonResult.summary.baselineOnlyCount, 0);
+        assert.ok(
+          artifact.comparisonResult.comparison.matched.some(
+            (entry) =>
+              entry.experimental.ruleId === "missing-external-css-class" &&
+              entry.baseline.ruleId === "missing-external-css-class" &&
+              entry.baseline.subject?.className === "ghost-btn",
+          ),
+        );
+      } finally {
+        await project.cleanup();
+      }
+    },
+  );
 });
 
 async function loadStaticAnalysisProjectInputs(project) {

@@ -79,9 +79,9 @@ current:
 - [ ] the external CSS story is explicit for cutover:
   imported and fetch-remote project-wide propagation are covered natively,
   active declared providers are published natively, and
-  `missing-external-css-class` is either delivered through the native rule path
-  or behind a deliberate compatibility adapter for any remaining runtime-
-  specific behavior
+  `missing-external-css-class` is delivered through the native rule path while
+  runtime-specific fetch/fallback behavior stays behind the deliberate first-
+  release compatibility adapter
 
 ### 2. Shipped Rule Catalog Coverage
 
@@ -157,7 +157,8 @@ current:
 #### `external-css`
 
 - [ ] `missing-external-css-class` has an explicit cutover mode:
-  native or adapter-backed for any remaining runtime-specific behavior
+  native, with runtime-specific fetch/fallback behavior adapter-backed in the
+  first replacement release
 - [ ] parity checks exist for imported external CSS behavior
 - [ ] parity checks exist for declared-global/provider behavior
 - [ ] parity checks exist for fetch-remote and unavailable external stylesheet

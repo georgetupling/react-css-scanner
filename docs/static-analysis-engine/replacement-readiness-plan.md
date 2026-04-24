@@ -129,6 +129,11 @@ Current capability notes:
   active declared providers, and the first native
   `missing-external-css-class` slice now consumes that summary together with
   native reachability and class-expression evidence
+- first-release decision:
+  runtime-specific fetch-remote retrieval, failure fallback, and operational-
+  warning shaping stay adapter-backed in the current scanner/runtime layer while
+  the new engine consumes fetched stylesheet texts and normalized external CSS
+  summary inputs
 - broad render-prop or arbitrary component-as-prop support is **not** assumed to
   be part of the current replacement baseline unless a shipped rule truly needs
   it
@@ -141,8 +146,8 @@ Still open:
 - add a first-class CSS-Module semantic layer before native CSS-Module rule
   cutover
 - finish parity validation and cutover planning for the native external CSS
-  rule slice, including any remaining runtime-specific fetch/fallback behavior
-  that may still need an adapter in the first replacement release
+  rule slice, with the first-release adapter decision now locked for runtime-
+  specific fetch/fallback behavior
 - distinguish "needed for parity-first replacement" from "nice follow-on engine
   expansion"
 
@@ -317,16 +322,16 @@ Why it blocks close-out:
 - the shipped CSS-Module rules depend on semantics that the current new engine
   does not yet publish as a first-class layer
 - the shipped external CSS story now has a first meaningful native rule path,
-  but it still needs parity validation plus a deliberate decision about whether
-  any remaining runtime-specific fetch/fallback behavior stays adapter-backed in
-  the first replacement release
+  but it still needs parity validation before cutover even though the first-
+  release decision is now to keep runtime-specific fetch/fallback behavior
+  adapter-backed
 
 Required close-out action:
 
 - add the missing CSS-Module semantic layer needed for native rule migration
-- complete external CSS parity validation and either finish native cutover or
-  document an explicit adapter boundary for any remaining runtime-specific
-  behavior on top of the native summary, reachability, and rule surfaces
+- complete external CSS parity validation on top of the native summary,
+  reachability, and rule surfaces while keeping runtime-specific fetch/fallback
+  behavior in an explicit first-release adapter boundary
 
 ### Blocker 6: cutover mechanics are still undefined
 

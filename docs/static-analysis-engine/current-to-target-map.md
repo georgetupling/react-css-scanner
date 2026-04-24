@@ -281,8 +281,16 @@ Owns:
 Must not own:
 
 - stylesheet parsing
+- runtime-specific network fetch or warning policy
 - render reasoning
 - finding-level policy decisions
+
+Current migration note:
+
+- first-release fetch-remote retrieval, fallback handling, and operational-
+  warning shaping remain a runtime/current-scanner adapter concern
+- `pipeline/external-css/` should consume normalized HTML/provider inputs and
+  publish activation summaries, not own network policy
 
 ### 9. Stylesheet availability
 

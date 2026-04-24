@@ -45,6 +45,7 @@ function buildExternalCssFact(
   return {
     specifier: input.specifier,
     resolvedPath: input.resolvedPath,
+    content,
     styleRules,
     classDefinitions: extractClassDefinitions(styleRules),
     imports: extractCssImports(content),
