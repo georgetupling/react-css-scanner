@@ -265,7 +265,26 @@ Must not own:
 - selector satisfiability
 - render reasoning
 
-### 8. Stylesheet availability
+### 8. External stylesheet activation
+
+Durable owner:
+
+- `pipeline/external-css/`
+
+Owns:
+
+- declared external provider activation
+- project-wide remote stylesheet activation summaries
+- normalized external CSS summary outputs consumed by reachability and rule
+  execution
+
+Must not own:
+
+- stylesheet parsing
+- render reasoning
+- finding-level policy decisions
+
+### 9. Stylesheet availability
 
 Durable owner:
 
@@ -283,7 +302,7 @@ Must not own:
 - selector semantics
 - cross-file name meaning
 
-### 9. Selector satisfaction
+### 10. Selector satisfaction
 
 Durable owner:
 
@@ -301,7 +320,7 @@ Must not own:
 - low-level selector parsing infrastructure
 - stylesheet availability decisions
 
-### 10. Findings and product-facing conclusions
+### 11. Findings and product-facing conclusions
 
 Durable owner:
 
@@ -329,6 +348,8 @@ authoritative at their layer:
 - abstract-value outputs for bounded expression meaning
 - `RenderGraph` for component composition structure
 - render subtree IR and render regions for approximate rendered structure
+- `ExternalCssSummary` for declared-provider activation and project-wide
+  external stylesheet activation
 - `ReachabilitySummary` for stylesheet availability
 - selector-analysis results for selector satisfaction outcomes
 

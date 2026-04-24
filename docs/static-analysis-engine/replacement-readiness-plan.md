@@ -126,8 +126,9 @@ Current capability notes:
   fetch-remote project-wide HTML-linked external stylesheets through native
   reachability
 - the current engine now publishes a first-class `externalCssSummary` with
-  active declared providers, but provider-backed rule behavior is still not
-  wired into native rule execution
+  active declared providers, and the first native
+  `missing-external-css-class` slice now consumes that summary together with
+  native reachability and class-expression evidence
 - broad render-prop or arbitrary component-as-prop support is **not** assumed to
   be part of the current replacement baseline unless a shipped rule truly needs
   it
@@ -139,9 +140,9 @@ Still open:
 - add any missing bounded support required for those rules
 - add a first-class CSS-Module semantic layer before native CSS-Module rule
   cutover
-- port or re-home the remaining provider-backed external CSS rule behavior so
-  declared providers and external CSS summaries can participate in
-  new-engine-native rule execution
+- finish parity validation and cutover planning for the native external CSS
+  rule slice, including any remaining runtime-specific fetch/fallback behavior
+  that may still need an adapter in the first replacement release
 - distinguish "needed for parity-first replacement" from "nice follow-on engine
   expansion"
 
@@ -308,24 +309,24 @@ Required close-out action:
 - define explicit replacement acceptance criteria and comparison expectations so
   cutover confidence is measured rather than intuitive
 
-### Blocker 5: CSS Modules and external CSS are not yet first-class native
-replacement surfaces
+### Blocker 5: CSS Modules are not yet first-class native, and external CSS
+cutover is not finished
 
 Why it blocks close-out:
 
 - the shipped CSS-Module rules depend on semantics that the current new engine
   does not yet publish as a first-class layer
-- the shipped external CSS rules still depend on provider-backed rule behavior
-  that has not yet been ported into a durable new-engine-native rule path, even
-  though direct imported external CSS, fetch-remote project-wide stylesheets,
-  and active declared providers now have native engine surfaces
+- the shipped external CSS story now has a first meaningful native rule path,
+  but it still needs parity validation plus a deliberate decision about whether
+  any remaining runtime-specific fetch/fallback behavior stays adapter-backed in
+  the first replacement release
 
 Required close-out action:
 
 - add the missing CSS-Module semantic layer needed for native rule migration
-- port or explicitly wrap the remaining provider-backed external CSS rule logic
-  so the first replacement release has a deliberate external CSS story on top
-  of the native summary and reachability surfaces
+- complete external CSS parity validation and either finish native cutover or
+  document an explicit adapter boundary for any remaining runtime-specific
+  behavior on top of the native summary, reachability, and rule surfaces
 
 ### Blocker 6: cutover mechanics are still undefined
 

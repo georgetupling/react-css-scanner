@@ -71,7 +71,11 @@ export function analyzeSourceText(input: {
     reachabilitySummary: reachabilityStage.reachabilitySummary,
   });
   const ruleExecutionStage = runRuleExecutionStage({
+    moduleGraph: moduleGraphStage.moduleGraph,
+    classExpressions: abstractValueStage.classExpressions,
     cssFiles: cssAnalysisStage.cssFiles,
+    externalCssSummary: externalCssStage.externalCssSummary,
+    reachabilitySummary: reachabilityStage.reachabilitySummary,
     selectorQueryResults: selectorAnalysisStage.selectorQueryResults,
   });
 
@@ -151,7 +155,11 @@ export function analyzeProjectSourceTexts(input: {
     reachabilitySummary: reachabilityStage.reachabilitySummary,
   });
   const ruleExecutionStage = runRuleExecutionStage({
+    moduleGraph: moduleGraphStage.moduleGraph,
+    classExpressions: abstractValueStage.classExpressions,
     cssFiles: cssAnalysisStage.cssFiles,
+    externalCssSummary: externalCssStage.externalCssSummary,
+    reachabilitySummary: reachabilityStage.reachabilitySummary,
     selectorQueryResults: selectorAnalysisStage.selectorQueryResults,
   });
 

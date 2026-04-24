@@ -78,9 +78,10 @@ current:
   first-class native layer or deliberate compatibility adapter
 - [ ] the external CSS story is explicit for cutover:
   imported and fetch-remote project-wide propagation are covered natively,
-  active declared providers are published natively, and remaining provider-
-  backed rule behavior is either native or behind a deliberate compatibility
-  adapter
+  active declared providers are published natively, and
+  `missing-external-css-class` is either delivered through the native rule path
+  or behind a deliberate compatibility adapter for any remaining runtime-
+  specific behavior
 
 ### 2. Shipped Rule Catalog Coverage
 
@@ -155,11 +156,12 @@ current:
 
 #### `external-css`
 
-- [ ] the current scanner's remaining external stylesheet/provider handling has
-  been ported into native rule behavior, or the first replacement release has
-  an explicit compatibility adapter
+- [ ] `missing-external-css-class` has an explicit cutover mode:
+  native or adapter-backed for any remaining runtime-specific behavior
 - [ ] parity checks exist for imported external CSS behavior
 - [ ] parity checks exist for declared-global/provider behavior
+- [ ] parity checks exist for fetch-remote and unavailable external stylesheet
+  behavior
 
 #### `optimization-and-migration`
 

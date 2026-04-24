@@ -20,6 +20,7 @@ import {
   buildProjectBindingResolution,
   collectTopLevelSymbols,
 } from "../../pipeline/symbol-resolution/index.js";
+import type { ClassExpressionSummary } from "../../pipeline/abstract-values/index.js";
 import type { ModuleGraph } from "../../pipeline/module-graph/index.js";
 import type { ReachabilitySummary } from "../../pipeline/reachability/index.js";
 import type { RenderGraph } from "../../pipeline/render-graph/index.js";
@@ -246,7 +247,11 @@ function buildSelectorQueries(input: {
 }
 
 export function runRuleExecutionStage(input: {
+  moduleGraph: ModuleGraph;
+  classExpressions: ClassExpressionSummary[];
   cssFiles: ExperimentalCssFileAnalysis[];
+  externalCssSummary: import("../../pipeline/external-css/index.js").ExternalCssSummary;
+  reachabilitySummary: ReachabilitySummary;
   selectorQueryResults: SelectorAnalysisStageResult["selectorQueryResults"];
 }): RuleExecutionStageResult {
   return {

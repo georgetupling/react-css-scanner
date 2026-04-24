@@ -6,6 +6,13 @@ import {
   analyzeSourceText,
 } from "../../../dist/static-analysis-engine.js";
 
+const FONT_AWESOME_PROVIDER = {
+  provider: "font-awesome",
+  match: ["**/cdnjs.cloudflare.com/ajax/libs/font-awesome/**/css/*.css"],
+  classPrefixes: ["fa-"],
+  classNames: ["fa", "fa-solid", "fa-regular", "fa-brands"],
+};
+
 test("static analysis engine emits an experimental selector-never-satisfied result for resolved no-match selectors", () => {
   const result = analyzeSourceText({
     filePath: "src/App.tsx",
@@ -367,4 +374,144 @@ test("static analysis engine does not group duplicate root class definitions acr
     (ruleResult) => ruleResult.ruleId === "duplicate-css-class-definition",
   );
   assert.equal(duplicateRuleResult, undefined);
+});
+
+test("static analysis engine emits missing-external-css-class for unresolved classes when imported external css is in play", () => {
+  const result = analyzeProjectSourceTexts({
+    sourceFiles: [
+      {
+        filePath: "src/App.tsx",
+        sourceText: [
+          'import "bootstrap/dist/css/bootstrap.css";',
+          'export function App() { return <div className="btn ghost-btn" />; }',
+        ].join("\n"),
+      },
+    ],
+    selectorCssSources: [
+      {
+        filePath: "bootstrap/dist/css/bootstrap.css",
+        cssText: ".btn { display: inline-block; }",
+      },
+    ],
+  });
+
+  const missingExternalCssResults = result.experimentalRuleResults.filter(
+    (ruleResult) => ruleResult.ruleId === "missing-external-css-class",
+  );
+  assert.equal(missingExternalCssResults.length, 1);
+  assert.equal(
+    missingExternalCssResults[0].summary,
+    'Class "ghost-btn" appears intended to come from imported external CSS, but no matching imported external stylesheet definition was found.',
+  );
+  assert.equal(missingExternalCssResults[0].primaryLocation?.filePath, "src/App.tsx");
+  assert.equal(missingExternalCssResults[0].primaryLocation?.line, 2);
+  assert.deepEqual(missingExternalCssResults[0].metadata?.externalStylesheetPaths, [
+    "bootstrap/dist/css/bootstrap.css",
+  ]);
+});
+
+test("static analysis engine suppresses missing-external-css-class when a declared provider satisfies the token", () => {
+  const result = analyzeProjectSourceTexts({
+    sourceFiles: [
+      {
+        filePath: "src/App.tsx",
+        sourceText: [
+          'import "bootstrap/dist/css/bootstrap.css";',
+          'export function App() { return <div className="btn fa-solid fa-trash ghost-btn" />; }',
+        ].join("\n"),
+      },
+    ],
+    selectorCssSources: [
+      {
+        filePath: "bootstrap/dist/css/bootstrap.css",
+        cssText: ".btn { display: inline-block; }",
+      },
+    ],
+    externalCss: {
+      enabled: true,
+      mode: "declared-globals",
+      globalProviders: [FONT_AWESOME_PROVIDER],
+      htmlStylesheetLinks: [
+        {
+          filePath: "index.html",
+          href: "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css",
+          isRemote: true,
+        },
+      ],
+    },
+  });
+
+  const missingExternalCssResults = result.experimentalRuleResults.filter(
+    (ruleResult) => ruleResult.ruleId === "missing-external-css-class",
+  );
+  assert.deepEqual(
+    missingExternalCssResults.map((ruleResult) => ruleResult.metadata?.className),
+    ["ghost-btn"],
+  );
+});
+
+test("static analysis engine emits missing-external-css-class for unresolved classes when fetch-remote external css is project-wide", () => {
+  const result = analyzeProjectSourceTexts({
+    sourceFiles: [
+      {
+        filePath: "src/App.tsx",
+        sourceText:
+          'export function App() { return <button className="btn ghost-btn">Save</button>; }',
+      },
+    ],
+    selectorCssSources: [
+      {
+        filePath: "https://cdn.example.com/ui/buttons.css",
+        cssText: ".btn { color: red; }",
+      },
+    ],
+    externalCss: {
+      enabled: true,
+      mode: "fetch-remote",
+      globalProviders: [],
+      htmlStylesheetLinks: [
+        {
+          filePath: "index.html",
+          href: "https://cdn.example.com/ui/buttons.css",
+          isRemote: true,
+        },
+      ],
+    },
+  });
+
+  const missingExternalCssResults = result.experimentalRuleResults.filter(
+    (ruleResult) => ruleResult.ruleId === "missing-external-css-class",
+  );
+  assert.equal(missingExternalCssResults.length, 1);
+  assert.equal(missingExternalCssResults[0].metadata?.className, "ghost-btn");
+  assert.deepEqual(missingExternalCssResults[0].metadata?.externalStylesheetPaths, [
+    "https://cdn.example.com/ui/buttons.css",
+  ]);
+});
+
+test("static analysis engine does not emit missing-external-css-class when only local project css is in play", () => {
+  const result = analyzeProjectSourceTexts({
+    sourceFiles: [
+      {
+        filePath: "src/App.tsx",
+        sourceText: [
+          'import "./App.css";',
+          'export function App() { return <div className="ghost-btn" />; }',
+        ].join("\n"),
+      },
+    ],
+    selectorCssSources: [
+      {
+        filePath: "src/App.css",
+        cssText: ".btn { color: red; }",
+      },
+    ],
+  });
+
+  assert.equal(
+    result.experimentalRuleResults.some(
+      (ruleResult) => ruleResult.ruleId === "missing-external-css-class",
+    ),
+    false,
+  );
 });
