@@ -125,7 +125,7 @@ That shared-library shape is now partially implemented in code:
 | module graph | `pipeline/module-graph/` | durable | `pipeline/module-graph/` |
 | abstract values | `pipeline/abstract-values/` | durable | `pipeline/abstract-values/` |
 | project binding resolution | `pipeline/symbol-resolution/resolveProjectBindings.ts` | temporary explicit seam | absorbed into published symbol-resolution outputs |
-| render context assembly | `entry/stages/buildProjectRenderContext.ts` | temporary explicit seam | responsibilities redistributed to symbol-resolution, abstract-values, and thinner render adapters |
+| project render summaries | `entry/scan.ts`, `entry/stages/basicStages.ts`, `pipeline/render-ir/buildProjectRenderDefinitions.ts`, `pipeline/render-ir/buildProjectRenderBindings.ts`, `pipeline/render-graph/buildProjectComponentAvailability.ts` | temporary explicit seam | promoted into explicit durable stage contracts |
 | render graph | `entry/stages/renderGraphStage.ts`, `pipeline/render-graph/` | durable | `pipeline/render-graph/` |
 | render IR | `entry/stages/renderIrStage.ts`, `pipeline/render-ir/` | durable | `pipeline/render-ir/` |
 | CSS analysis | `pipeline/css-analysis/`, `parser/` | durable | `pipeline/css-analysis/` plus shared CSS libraries |
@@ -396,32 +396,31 @@ Exit criteria:
 - later stages consume a published symbol-resolution output contract rather than
   a special extra pass
 
-### Temporary Seam 2: `buildProjectRenderContext`
+### Temporary Seam 2: `buildProjectRenderContext` (retired)
 
 Current owner:
 
-- `entry/stages/buildProjectRenderContext.ts`
+- `pipeline/render-ir/buildProjectRenderDefinitions.ts`
+- `pipeline/render-ir/buildProjectRenderBindings.ts`
+- `pipeline/render-graph/buildProjectComponentAvailability.ts`
 
 What it owns today:
 
-- same-file component discovery
-- exported component indexing
-- imported component availability assembly
-- exported const collection
-- exported helper collection
-- transitive imported const propagation
-- transitive imported helper propagation
-- namespace import materialization for consts, helpers, and components
+- same-file render definition discovery lives under render-IR
+- helper and namespace binding materialization lives under render-IR
+- component availability assembly lives under render-graph
+- `entry/scan.ts` wires these summaries directly into render graph and render IR
+  stages
 
 Why it is temporary:
 
-- it combines discovery, resolution, summarization, and render preparation
-- it blurs symbol/value ownership with render-stage preparation
+- the remaining cleanup is stage-shape polish, not bridge ownership
+- the deleted seam should not be reintroduced as a convenience packaging layer
 
 Allowed current role:
 
-- a thin adaptation layer that packages already-resolved project summaries for
-  render consumers
+- no remaining bridge layer; render stages consume the published summaries
+  directly
 
 Target end-state:
 
@@ -433,11 +432,9 @@ Target end-state:
 Exit criteria:
 
 - transitive const/helper propagation no longer lives in
-  `buildProjectRenderContext.ts`
-- component availability assembly is either published upstream or reduced to a
-  thin adaptation step
-- the file is deleted or reduced to a small adapter that contains no cross-file
-  semantic reasoning
+  the removed `buildProjectRenderContext.ts` seam
+- component availability assembly is published upstream
+- the file is deleted and later stages consume the summaries directly
 
 ### Temporary Seam 3: Selector input as a separate entry step (retired)
 
@@ -503,11 +500,11 @@ Exit criteria:
 Current migration note:
 
 - `adapters/current-scanner/` now carries the bounded optimization-family
-  migration wave plus the first `definition-and-usage-integrity` family seam
-- the definition-and-usage adapter now prefers a native reachability-backed
-  render-context summary for parity-critical class findings, while still
-  preserving compatibility fallback until the reachability/rule boundary
-  publishes class-safe native inputs
+  migration wave plus the full `definition-and-usage-integrity` family adapter
+- the definition-and-usage adapter now rebuilds
+  direct/import/render/global/external reachability from native engine outputs,
+  while current definition lookup and plain-class candidate policy remain
+  deliberate adapter-owned parity scaffolding
 
 ## Shared Infrastructure That Should Move Or Be Clarified
 
@@ -591,6 +588,8 @@ Do not introduce new code that:
 - places cross-cutting policy constants in a stage-private helper and reuses
   them from other stages
 - adds more cross-file semantic ownership to `buildProjectRenderContext.ts`
+- reintroduces a deleted render-context bridge instead of publishing explicit
+  stage outputs
 - treats `libraries/selector-parsing/` as selector-analysis-private
 - imports deep render-IR helpers into symbol-resolution
 - imports old-engine implementation types deeper into the new engine
@@ -599,8 +598,6 @@ Do not introduce new code that:
 
 These exceptions exist today and are allowed only as migration scaffolding:
 
-- `buildProjectRenderContext.ts` owns cross-file propagation work that should
-  move upstream
 - rule execution and CSS analysis still reuse some old-engine-compatible types
 
 Do not copy these patterns into new code unless the change is explicitly part of
@@ -613,7 +610,8 @@ next phase of work:
 
 - `src/static-analysis-engine/entry/scan.ts`
 - `src/static-analysis-engine/entry/stages/basicStages.ts`
-- `src/static-analysis-engine/entry/stages/buildProjectRenderContext.ts`
+- `src/static-analysis-engine/entry/stages/renderGraphStage.ts`
+- `src/static-analysis-engine/entry/stages/renderIrStage.ts`
 - `src/static-analysis-engine/pipeline/symbol-resolution/resolveProjectBindings.ts`
 - `src/static-analysis-engine/pipeline/reachability/buildReachabilitySummary.ts`
 - `src/static-analysis-engine/pipeline/rule-execution/types.ts`
@@ -724,7 +722,7 @@ Done when:
 Goals:
 
 - move at least one cross-file propagation path out of
-  `buildProjectRenderContext.ts`
+  the old render-context seam
 - publish a clearer upstream summary contract
 
 Done when:
@@ -804,15 +802,18 @@ Tranche 2 is now in.
 Completed changes:
 
 - imported const-expression propagation no longer lives only inside
-  `entry/stages/buildProjectRenderContext.ts`
+  the old `entry/stages/buildProjectRenderContext.ts` seam
 - symbol-resolution now publishes upstream expression-binding summaries used by
   later render work
 - symbol-resolution now also publishes imported-component binding summaries so
   render preparation does not decide for itself which imported bindings are
   component-shaped
-- `buildProjectRenderContext.ts` still exists, but it is thinner for these paths
-  and is acting more as an adaptation/hydration seam than as the primary owner
-  of cross-file meaning
+- helper and namespace binding materialization now lives in
+  `pipeline/render-ir/buildProjectRenderBindings.ts`
+- component availability assembly now lives in
+  `pipeline/render-graph/buildProjectComponentAvailability.ts`
+- `entry/scan.ts` now wires these summaries directly into render graph and
+  render IR stages without a `buildProjectRenderContext.ts` bridge
 
 Why this counts for tranche 2:
 
@@ -825,8 +826,8 @@ What did not change yet:
 
 - same-file component discovery still remains close to render work
 - helper semantics are still not owned by a fuller abstract-values summary layer
-- `buildProjectRenderContext.ts` is still a temporary seam and should continue
-  shrinking in later tranches
+- the project still needs clearer first-class stage contracts for these new
+  project render summaries
 
 This means tranche 2 should now be treated as complete for the bounded scope
 described in this document.
@@ -947,8 +948,8 @@ What did not change yet:
   scanner
 - broader integration coverage, migration gating, and product-rule replacement
   planning still need their own explicit close-out work
-- temporary architectural seams such as `buildProjectRenderContext.ts` and
-  old-engine compatibility at the CSS/rule edge still remain
+- temporary architectural seams such as project render summary stage-shape
+  polish and old-engine compatibility at the CSS/rule edge still remain
 
 This means tranche 5 should now be treated as complete for the bounded scope
 described in this document. Any further work should be planned as explicit

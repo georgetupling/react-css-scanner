@@ -184,7 +184,6 @@ Some current code does not yet satisfy the target boundary rules.
 
 Examples include:
 
-- `buildProjectRenderContext.ts` acting as a temporary bridge
 - old-engine fact/runtime type reuse in experimental rule execution and CSS analysis
 
 These are allowed as migration scaffolding, but they should be documented as temporary and not copied into new target-product design work.
@@ -203,23 +202,20 @@ Using that rule:
 - reachability is a stage
 - selector analysis is a stage
 
-## `buildProjectRenderContext` In The Target Architecture
+## Direct Render Summary Consumption In The Target Architecture
 
-`buildProjectRenderContext` should not be a lasting subsystem boundary.
-
-It is currently acting as a compression seam between:
-
-- symbol/binding knowledge
-- helper/const propagation
-- render preparation
+The target architecture should not rely on a dedicated render-context bridge
+layer between published summaries and render stages.
 
 In the target product:
 
 - symbol-resolution should own symbol and import meaning
 - abstract-values should own bounded expression meaning
-- render stages should consume those outputs directly or through thinner published summaries
+- render stages should consume published project summaries directly
 
-That means `buildProjectRenderContext` should shrink over time and ideally disappear.
+That means project-wide render definitions, render bindings, and component
+availability should be explicit stage outputs rather than being repackaged
+through a bridge file.
 
 ## Policy And Budget Ownership
 

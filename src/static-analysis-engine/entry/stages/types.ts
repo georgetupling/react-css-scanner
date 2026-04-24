@@ -5,8 +5,17 @@ import type { ExperimentalCssFileAnalysis } from "../../pipeline/css-analysis/in
 import type { ExternalCssSummary } from "../../pipeline/external-css/index.js";
 import type { ModuleGraph } from "../../pipeline/module-graph/index.js";
 import type { ReachabilitySummary } from "../../pipeline/reachability/index.js";
-import type { RenderGraph } from "../../pipeline/render-graph/index.js";
-import type { RenderSubtree } from "../../pipeline/render-ir/index.js";
+import type {
+  ProjectComponentAvailability,
+  RenderGraph,
+} from "../../pipeline/render-graph/index.js";
+import type {
+  LocalHelperDefinition,
+  ProjectRenderBindings,
+  ProjectRenderDefinitions,
+  RenderSubtree,
+  SameFileComponentDefinition,
+} from "../../pipeline/render-ir/index.js";
 import type { ExperimentalRuleResult } from "../../pipeline/rule-execution/index.js";
 import type { SelectorQueryResult } from "../../pipeline/selector-analysis/index.js";
 import type {
@@ -16,7 +25,7 @@ import type {
   ResolvedNamespaceImport,
 } from "../../pipeline/symbol-resolution/index.js";
 import type { EngineModuleId, EngineSymbolId } from "../../types/core.js";
-import type { ProjectRenderContext } from "./buildProjectRenderContext.js";
+import type { AnalysisTrace } from "../../types/analysis.js";
 
 export type ParseStageResult = {
   parsedSourceFile: ts.SourceFile;
@@ -67,8 +76,39 @@ export type RenderGraphStageResult = {
   renderGraph: RenderGraph;
 };
 
-export type ProjectRenderContextStageResult = {
-  projectRenderContext: ProjectRenderContext;
+export type ProjectRenderDefinitionsStageResult = ProjectRenderDefinitions;
+
+export type ProjectRenderBindingsStageResult = ProjectRenderBindings;
+
+export type ProjectComponentAvailabilityStageResult = ProjectComponentAvailability;
+
+export type ProjectRenderGraphStageInput = {
+  componentDefinitionsByFilePath: Map<string, SameFileComponentDefinition[]>;
+  componentsByFilePath: Map<string, Map<string, SameFileComponentDefinition>>;
+  importedComponentBindingTracesByFilePath: Map<string, Map<string, AnalysisTrace[]>>;
+  importedNamespaceComponentDefinitionsByFilePath: Map<
+    string,
+    Map<string, Map<string, SameFileComponentDefinition>>
+  >;
+};
+
+export type ProjectRenderIrStageInput = {
+  componentDefinitionsByFilePath: Map<string, SameFileComponentDefinition[]>;
+  componentsByFilePath: Map<string, Map<string, SameFileComponentDefinition>>;
+  importedExpressionBindingsByFilePath: Map<string, Map<string, ts.Expression>>;
+  importedHelperDefinitionsByFilePath: Map<string, Map<string, LocalHelperDefinition>>;
+  importedNamespaceExpressionBindingsByFilePath: Map<
+    string,
+    Map<string, Map<string, ts.Expression>>
+  >;
+  importedNamespaceHelperDefinitionsByFilePath: Map<
+    string,
+    Map<string, Map<string, LocalHelperDefinition>>
+  >;
+  importedNamespaceComponentDefinitionsByFilePath: Map<
+    string,
+    Map<string, Map<string, SameFileComponentDefinition>>
+  >;
 };
 
 export type CssAnalysisStageResult = {

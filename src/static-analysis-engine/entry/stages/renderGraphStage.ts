@@ -1,6 +1,5 @@
 import { buildRenderGraph, collectSameFileComponents } from "../../pipeline/render-graph/index.js";
-import type { RenderGraphStageResult } from "./types.js";
-import type { ProjectRenderContext } from "./buildProjectRenderContext.js";
+import type { ProjectRenderGraphStageInput, RenderGraphStageResult } from "./types.js";
 
 export function runRenderGraphStage(input: {
   filePath: string;
@@ -25,16 +24,18 @@ export function runRenderGraphStage(input: {
 }
 
 export function runProjectRenderGraphStage(input: {
-  projectRenderContext: ProjectRenderContext;
+  componentDefinitionsByFilePath: ProjectRenderGraphStageInput["componentDefinitionsByFilePath"];
+  componentsByFilePath: ProjectRenderGraphStageInput["componentsByFilePath"];
+  importedComponentBindingTracesByFilePath: ProjectRenderGraphStageInput["importedComponentBindingTracesByFilePath"];
+  importedNamespaceComponentDefinitionsByFilePath: ProjectRenderGraphStageInput["importedNamespaceComponentDefinitionsByFilePath"];
 }): RenderGraphStageResult {
   return {
     renderGraph: buildRenderGraph({
-      componentDefinitionsByFilePath: input.projectRenderContext.componentDefinitionsByFilePath,
-      componentsByFilePath: input.projectRenderContext.componentsByFilePath,
-      importedComponentBindingTracesByFilePath:
-        input.projectRenderContext.importedComponentBindingTracesByFilePath,
+      componentDefinitionsByFilePath: input.componentDefinitionsByFilePath,
+      componentsByFilePath: input.componentsByFilePath,
+      importedComponentBindingTracesByFilePath: input.importedComponentBindingTracesByFilePath,
       importedNamespaceComponentDefinitionsByFilePath:
-        input.projectRenderContext.importedNamespaceComponentDefinitionsByFilePath,
+        input.importedNamespaceComponentDefinitionsByFilePath,
     }),
   };
 }

@@ -64,7 +64,7 @@ current:
 ### 1. Architecture And Boundary Readiness
 
 - [ ] all remaining temporary seams are documented in `current-to-target-map.md`
-- [ ] `buildProjectRenderContext.ts` is either removed or reduced to a thin
+- [x] `buildProjectRenderContext.ts` is either removed or reduced to a thin
   adapter with no cross-file semantic ownership
 - [ ] the named `selector input` seam is retired or preserved only as an
   explicit documented adapter

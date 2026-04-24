@@ -350,7 +350,6 @@ The current implementation has useful temporary seams that should not define the
 
 Most importantly:
 
-- `buildProjectRenderContext.ts` is a temporary compression seam, not a final product layer
 - ad hoc cross-file const/helper propagation inside render preparation should move toward symbol/value-owned summaries
 - old-engine type reuse is temporary comparison scaffolding only
 
@@ -409,7 +408,8 @@ To move from current implementation to target architecture, the highest-value cl
 
 1. document the stage contracts and boundary rules clearly
 2. move shared libraries out of `pipeline/`
-3. shrink and eventually remove `buildProjectRenderContext.ts`
+3. expose project render definitions, bindings, and component availability as
+   direct stage outputs
 4. shift cross-file semantic ownership toward symbol-resolution and abstract-values outputs
 5. keep traces concentrated at decision-heavy stages
 

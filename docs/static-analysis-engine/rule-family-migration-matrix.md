@@ -72,7 +72,7 @@ The statuses in this document mean:
 
 | Family | Shipped rules | Current new-engine position | Close-out direction |
 | --- | --- | --- | --- |
-| `definition-and-usage-integrity` | `missing-css-class`, `css-class-missing-in-some-contexts`, `unreachable-css`, `unused-css-class` | A first current-scanner family adapter is now in for three rules; render-context classification now derives from the new engine's native reachability summary first, but class-safe reachability parity still needs a native handoff and `unused-css-class` is still old-engine | Finish class-specific native handoff, then migrate `unused-css-class` |
+| `definition-and-usage-integrity` | `missing-css-class`, `css-class-missing-in-some-contexts`, `unreachable-css`, `unused-css-class` | A full current-scanner family adapter is now in for all four rules; direct/import/render/global/external reachability now comes from a native-backed adapter summary, while current definition lookup and plain-class candidate policy stay adapter-backed for parity | Keep the adapter path as the accepted first replacement shape, then decide when class-safe native rule inputs should replace the remaining parity helpers |
 | `ownership-and-organization` | `component-style-cross-component`, `page-style-used-by-single-component`, `global-css-not-global`, `component-css-should-be-global` | No meaningful new-engine rule slice yet | Probably adapter-first, then selective native migration |
 | `dynamic-analysis` | `dynamic-class-reference`, `dynamic-missing-css-class` | Engine has bounded value-flow support, but no shipped-rule migration yet | Needs migration design after parity contract is written |
 | `css-modules` | `missing-css-module-class`, `unused-css-module-class` | No meaningful new-engine rule slice yet, and no first-class CSS-Module semantic layer is published yet | Likely compatibility adapter first, unless a native CSS-Module layer is added before cutover |
@@ -83,10 +83,10 @@ The statuses in this document mean:
 
 | Family | Rule ID | Current production owner | Target new-engine owner | Current status | Notes |
 | --- | --- | --- | --- | --- | --- |
-| `definition-and-usage-integrity` | `missing-css-class` | current scanner runtime via definition-and-usage migration adapter | `rule-execution` on top of `css-analysis`, `reachability`, `selector-analysis`, and class/value evidence | `adapter seam landed` | The shipped runtime now routes this rule through a family adapter that shares cached new-engine analysis setup, keeps current definition lookup and declared-provider semantics stable, and now prefers native reachability-backed render-context classification before falling back to compatibility status |
-| `definition-and-usage-integrity` | `css-class-missing-in-some-contexts` | current scanner runtime via definition-and-usage migration adapter | `rule-execution` on top of `reachability` and selector/context evidence | `adapter seam landed` | The shipped runtime now routes this rule through the family adapter and derives render-context classification from the native reachability summary first, but the remaining class-safe/native handoff is still not complete enough to retire compatibility fallback entirely |
-| `definition-and-usage-integrity` | `unreachable-css` | current scanner runtime via definition-and-usage migration adapter | `rule-execution` on top of `reachability` and CSS-definition evidence | `adapter seam landed` | The shipped runtime now routes this rule through the family adapter and uses native reachability-backed render-context classification first while preserving compatibility fallback for the remaining native-hand-off gap |
-| `definition-and-usage-integrity` | `unused-css-class` | old rule engine on `ProjectModel` | `rule-execution` on top of `css-analysis`, selector evidence, and bounded usage/reachability evidence | `needs migration design` | New-engine structural reasoning should improve this rule, but the product contract around plain class evidence versus contextual selector evidence must stay aligned with current shipped behavior |
+| `definition-and-usage-integrity` | `missing-css-class` | current scanner runtime via definition-and-usage migration adapter | `rule-execution` on top of `css-analysis`, `reachability`, `selector-analysis`, and class/value evidence | `adapter-backed native slice landed` | The shipped runtime now routes this rule through a family adapter that shares cached new-engine analysis setup, rebuilds direct/import/render/global/external reachability from native engine outputs, and keeps declared-provider semantics stable at the adapter boundary |
+| `definition-and-usage-integrity` | `css-class-missing-in-some-contexts` | current scanner runtime via definition-and-usage migration adapter | `rule-execution` on top of `reachability` and selector/context evidence | `adapter-backed native slice landed` | The shipped runtime now routes this rule through the family adapter and classifies partial-path availability from the native-backed reachability summary rather than the old reachability helper, while still shaping findings to the shipped contract |
+| `definition-and-usage-integrity` | `unreachable-css` | current scanner runtime via definition-and-usage migration adapter | `rule-execution` on top of `reachability` and CSS-definition evidence | `adapter-backed native slice landed` | The shipped runtime now routes this rule through the family adapter and derives its direct/import/render/global/external reachability status from native-backed adapter summaries instead of the old reachability helper |
+| `definition-and-usage-integrity` | `unused-css-class` | current scanner runtime via definition-and-usage migration adapter | `rule-execution` on top of `css-analysis`, selector evidence, and bounded usage/reachability evidence | `adapter-backed native slice landed` | The shipped runtime now routes this rule through the same family adapter, reuses the native-backed reachability classifier for convincing usage checks, and keeps current plain-class versus contextual/partial-template policy stable through adapter-owned candidate matching |
 | `ownership-and-organization` | `component-style-cross-component` | old rule engine on `ProjectModel` ownership model | `rule-execution` on top of ownership data plus new-engine reachability/render evidence | `likely compatibility adapter first` | The engine can strengthen evidence, but parity-first replacement does not require immediate redesign of ownership semantics |
 | `ownership-and-organization` | `page-style-used-by-single-component` | old rule engine on `ProjectModel` ownership model | `rule-execution` on top of ownership data plus usage/reachability evidence | `likely compatibility adapter first` | Probably practical to preserve current ownership logic first, then decide later how much new-engine evidence should reshape the rule |
 | `ownership-and-organization` | `global-css-not-global` | old rule engine on `ProjectModel` ownership model | `rule-execution` on top of ownership data plus usage/reachability evidence | `likely compatibility adapter first` | Parity-first replacement should avoid changing the ownership contract at the same time as engine cutover |
@@ -136,13 +136,15 @@ Those selector-derived experimental rules should be treated as:
 Needed before cutover:
 
 - keep partial-path and deep-ancestor parity scenarios green on the
-  adapter-routed shipped rules until the native class-level reachability handoff
-  lands
-- keep the render-graph-backed adapter summary aligned with those parity
-  scenarios instead of letting route classification drift from shipped behavior
+  adapter-routed shipped rules
+- keep the native-backed direct/import/render/global/external classification
+  aligned with those parity scenarios instead of letting route classification
+  drift from shipped behavior
 - wrapper and ancestor-route scenarios
 - partial-context reachability scenarios
 - direct match, possible match, unknown barrier, and unavailable stylesheet cases
+- partial-template and compound-versus-contextual plain-class evidence cases for
+  `unused-css-class`
 - comparison review against current scanner findings, including intentional
   divergences
 

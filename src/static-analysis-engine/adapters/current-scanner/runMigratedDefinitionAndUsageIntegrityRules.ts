@@ -1,15 +1,18 @@
 import { analyzeProjectModelWithStaticEngine } from "./analyzeProjectModelWithStaticEngine.js";
-import { buildEngineRenderContextReachabilityBySourceFile } from "./buildEngineRenderContextReachability.js";
+import {
+  buildEngineDefinitionReachabilityBySourceFile,
+  type EngineDefinitionReachabilityInfo,
+} from "./buildEngineDefinitionReachability.js";
 import { sortFindings } from "../../../runtime/findings.js";
 import {
   getDeclaredExternalProviderForClass,
   getProjectClassDefinitions,
+  isCssModuleFile,
   isCssModuleReference,
 } from "../../../rules/helpers.js";
-import {
-  getDefinitionReachabilityStatus,
-  type DefinitionReachability,
-} from "../../../rules/reachability.js";
+import { isPlainClassDefinition } from "../../../rules/cssDefinitionUtils.js";
+import { getReferenceDefinitionCandidates } from "../../../rules/referenceMatching.js";
+import { type DefinitionReachability } from "../../../rules/reachability.js";
 import type { ProjectModel } from "../../../model/types.js";
 import type { Finding, FindingSeverity } from "../../../runtime/types.js";
 import type { RuleContext } from "../../../rules/types.js";
@@ -18,6 +21,7 @@ const MIGRATED_RULE_IDS = [
   "missing-css-class",
   "css-class-missing-in-some-contexts",
   "unreachable-css",
+  "unused-css-class",
 ] as const;
 
 type MigratedDefinitionAndUsageIntegrityRuleId = (typeof MIGRATED_RULE_IDS)[number];
@@ -29,6 +33,7 @@ const DEFAULT_RUNTIME_SEVERITIES: Record<
   "missing-css-class": "info",
   "css-class-missing-in-some-contexts": "info",
   "unreachable-css": "info",
+  "unused-css-class": "info",
 };
 
 const migratedDefinitionAndUsageIntegrityRuleCache = new WeakMap<
@@ -56,43 +61,67 @@ function buildMigratedDefinitionAndUsageIntegrityRuleFindings(
   const findingsByRuleId = new Map<MigratedDefinitionAndUsageIntegrityRuleId, Finding[]>(
     MIGRATED_RULE_IDS.map((ruleId) => [ruleId, []]),
   );
-  if (context.model.facts.sourceFacts.length === 0) {
-    return findingsByRuleId;
-  }
-
-  // Warm the shared static-analysis-engine cache for this project while
-  // preserving compatibility fallbacks only where the current native reachability
-  // model still does not publish a safe replacement status.
   const engineResult = analyzeProjectModelWithStaticEngine(context.model, {
     includeExternalCssSources: true,
   });
-  const engineRenderContextReachabilityBySourceFile =
-    buildEngineRenderContextReachabilityBySourceFile(
-      context.model,
-      engineResult.reachabilitySummary,
-    );
+  const engineDefinitionReachabilityBySourceFile = buildEngineDefinitionReachabilityBySourceFile({
+    model: context.model,
+    moduleGraph: engineResult.moduleGraph,
+    reachabilitySummary: engineResult.reachabilitySummary,
+    externalCssSummary: engineResult.externalCssSummary,
+  });
+  const resolveReachability = (
+    model: ProjectModel,
+    sourceFilePath: string,
+    cssFilePath: string,
+    externalSpecifier?: string,
+  ) =>
+    getMigratedDefinitionReachabilityStatus({
+      model,
+      sourceFilePath,
+      cssFilePath,
+      externalSpecifier,
+      engineDefinitionReachabilityBySourceFile,
+    });
+  const reachableCandidateUsageKeys = new Set<string>();
 
   for (const sourceFile of context.model.graph.sourceFiles) {
-    const reachability = context.model.reachability.get(sourceFile.path);
-    if (!reachability) {
-      continue;
-    }
-
     for (const reference of sourceFile.classReferences) {
-      if (!reference.className || isCssModuleReference(reference.kind)) {
+      if (isCssModuleReference(reference.kind)) {
+        continue;
+      }
+
+      for (const candidate of getReferenceDefinitionCandidates(
+        context.model,
+        sourceFile.path,
+        reference,
+        {
+          resolveReachability,
+        },
+      )) {
+        if (candidate.reachability === "unreachable") {
+          continue;
+        }
+
+        reachableCandidateUsageKeys.add(
+          createCandidateUsageKey(candidate.cssFile, candidate.className),
+        );
+      }
+
+      if (!reference.className) {
         continue;
       }
 
       const candidateDefinitions = getProjectClassDefinitions(context.model, reference.className);
       const migratedStatuses = candidateDefinitions.map((definition) =>
-        getMigratedDefinitionReachabilityStatus({
-          model: context.model,
-          sourceFilePath: sourceFile.path,
-          cssFilePath: definition.cssFile,
-          externalSpecifier: definition.externalSpecifier,
-          engineRenderContextReachabilityBySourceFile,
-        }),
+        resolveReachability(
+          context.model,
+          sourceFile.path,
+          definition.cssFile,
+          definition.externalSpecifier,
+        ),
       );
+      const sourceFileReachability = engineDefinitionReachabilityBySourceFile.get(sourceFile.path);
 
       const missingCssClassSeverity = context.getRuleSeverity(
         "missing-css-class",
@@ -103,7 +132,7 @@ function buildMigratedDefinitionAndUsageIntegrityRuleFindings(
           context.model,
           reference.className,
         );
-        const hasReachableRemoteExternalCss = [...reachability.externalCss].some(
+        const hasReachableRemoteExternalCss = [...(sourceFileReachability?.externalCss ?? [])].some(
           (specifier) => specifier.startsWith("http://") || specifier.startsWith("https://"),
         );
         if (!declaredExternalProvider && !hasReachableRemoteExternalCss) {
@@ -214,6 +243,82 @@ function buildMigratedDefinitionAndUsageIntegrityRuleFindings(
     }
   }
 
+  const unusedCssClassSeverity = context.getRuleSeverity(
+    "unused-css-class",
+    DEFAULT_RUNTIME_SEVERITIES["unused-css-class"],
+  );
+  if (unusedCssClassSeverity !== "off") {
+    for (const cssFile of context.model.graph.cssFiles) {
+      if (isCssModuleFile(context.model, cssFile.path)) {
+        continue;
+      }
+
+      for (const definition of cssFile.classDefinitions) {
+        if (!isPlainClassDefinition(definition)) {
+          continue;
+        }
+
+        const references =
+          context.model.indexes.classReferencesByName.get(definition.className) ?? [];
+        const referencesWithStatus = references.flatMap((entry) => {
+          if (isCssModuleReference(entry.reference.kind)) {
+            return [];
+          }
+
+          return [
+            {
+              sourceFile: entry.sourceFile,
+              reference: entry.reference,
+              status: resolveReachability(context.model, entry.sourceFile, cssFile.path),
+            },
+          ];
+        });
+        const convincingReferences = referencesWithStatus.filter(
+          (entry) =>
+            entry.status === "direct" ||
+            entry.status === "import-context" ||
+            entry.status === "render-context-definite",
+        );
+        if (convincingReferences.length > 0) {
+          continue;
+        }
+
+        const possibleRenderContextReferences = referencesWithStatus.filter(
+          (entry) => entry.status === "render-context-possible",
+        );
+        if (possibleRenderContextReferences.length > 0) {
+          continue;
+        }
+
+        if (
+          reachableCandidateUsageKeys.has(
+            createCandidateUsageKey(cssFile.path, definition.className),
+          )
+        ) {
+          continue;
+        }
+
+        findingsByRuleId.get("unused-css-class")?.push(
+          context.createFinding({
+            ruleId: "unused-css-class",
+            family: "definition-and-usage-integrity",
+            severity: unusedCssClassSeverity,
+            confidence: "high",
+            message: `CSS class "${definition.className}" does not have any convincing reachable React usage.`,
+            primaryLocation: {
+              filePath: cssFile.path,
+              line: definition.line,
+            },
+            subject: {
+              className: definition.className,
+              cssFilePath: cssFile.path,
+            },
+          }),
+        );
+      }
+    }
+  }
+
   for (const [ruleId, findings] of findingsByRuleId.entries()) {
     findingsByRuleId.set(ruleId, sortFindings(findings));
   }
@@ -226,49 +331,40 @@ function getMigratedDefinitionReachabilityStatus(input: {
   sourceFilePath: string;
   cssFilePath: string;
   externalSpecifier?: string;
-  engineRenderContextReachabilityBySourceFile: Map<
-    string,
-    {
-      renderContextDefiniteLocalCss: Set<string>;
-      renderContextPossibleLocalCss: Set<string>;
-    }
-  >;
+  engineDefinitionReachabilityBySourceFile: Map<string, EngineDefinitionReachabilityInfo>;
 }): DefinitionReachability {
-  const compatibilityStatus = getDefinitionReachabilityStatus(
-    input.model,
-    input.sourceFilePath,
-    input.cssFilePath,
-    input.externalSpecifier,
-  );
-  if (compatibilityStatus === "direct" || compatibilityStatus === "import-context") {
-    return compatibilityStatus;
+  const reachability = input.engineDefinitionReachabilityBySourceFile.get(input.sourceFilePath);
+  if (!reachability) {
+    return "unreachable";
   }
 
   if (input.externalSpecifier) {
-    return compatibilityStatus;
+    return reachability.externalCss.has(input.externalSpecifier) ? "direct" : "unreachable";
   }
 
   const cssFile = input.model.indexes.cssFileByPath.get(input.cssFilePath);
-  if (cssFile?.category === "global") {
-    return compatibilityStatus;
+  if (!cssFile) {
+    return "unreachable";
   }
 
-  const engineRenderContextReachability = input.engineRenderContextReachabilityBySourceFile.get(
-    input.sourceFilePath,
-  );
-  if (engineRenderContextReachability?.renderContextDefiniteLocalCss.has(input.cssFilePath)) {
+  if (cssFile.category === "global") {
+    return reachability.globalCss.has(input.cssFilePath) ? "direct" : "unreachable";
+  }
+
+  if (reachability.directLocalCss.has(input.cssFilePath)) {
+    return "direct";
+  }
+
+  if (reachability.renderContextDefiniteLocalCss.has(input.cssFilePath)) {
     return "render-context-definite";
   }
 
-  if (engineRenderContextReachability?.renderContextPossibleLocalCss.has(input.cssFilePath)) {
+  if (reachability.renderContextPossibleLocalCss.has(input.cssFilePath)) {
     return "render-context-possible";
   }
 
-  if (
-    compatibilityStatus === "render-context-definite" ||
-    compatibilityStatus === "render-context-possible"
-  ) {
-    return compatibilityStatus;
+  if (reachability.importContextLocalCss.has(input.cssFilePath)) {
+    return "import-context";
   }
 
   return "unreachable";
@@ -276,4 +372,8 @@ function getMigratedDefinitionReachabilityStatus(input: {
 
 function isStrongerReachability(status: DefinitionReachability): boolean {
   return status === "direct" || status === "import-context" || status === "render-context-definite";
+}
+
+function createCandidateUsageKey(cssFilePath: string, className: string): string {
+  return `${cssFilePath}::${className}`;
 }

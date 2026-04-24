@@ -20,6 +20,13 @@ import {
   buildProjectBindingResolution,
   collectTopLevelSymbols,
 } from "../../pipeline/symbol-resolution/index.js";
+import { buildProjectComponentAvailability } from "../../pipeline/render-graph/index.js";
+import {
+  buildProjectRenderBindings,
+  buildProjectRenderDefinitions,
+  type LocalHelperDefinition,
+  type SameFileComponentDefinition,
+} from "../../pipeline/render-ir/index.js";
 import type { ClassExpressionSummary } from "../../pipeline/abstract-values/index.js";
 import type { ModuleGraph } from "../../pipeline/module-graph/index.js";
 import type { ReachabilitySummary } from "../../pipeline/reachability/index.js";
@@ -27,7 +34,12 @@ import type { RenderGraph } from "../../pipeline/render-graph/index.js";
 import type { RenderSubtree } from "../../pipeline/render-ir/index.js";
 import type { ExperimentalCssFileAnalysis } from "../../pipeline/css-analysis/index.js";
 import type { SelectorSourceInput } from "../../pipeline/selector-analysis/index.js";
-import type { EngineSymbol } from "../../pipeline/symbol-resolution/index.js";
+import type {
+  EngineSymbol,
+  ResolvedImportedBinding,
+  ResolvedImportedComponentBinding,
+  ResolvedNamespaceImport,
+} from "../../pipeline/symbol-resolution/index.js";
 import type { EngineModuleId, EngineSymbolId } from "../../types/core.js";
 import type {
   AbstractValueStageResult,
@@ -35,7 +47,10 @@ import type {
   ExternalCssStageResult,
   ModuleGraphStageResult,
   ParseStageResult,
+  ProjectComponentAvailabilityStageResult,
   ProjectBindingResolutionStageResult,
+  ProjectRenderBindingsStageResult,
+  ProjectRenderDefinitionsStageResult,
   ParsedProjectFile,
   ProjectParseStageResult,
   ProjectSymbolResolutionStageResult,
@@ -156,6 +171,34 @@ export function runProjectBindingResolutionStage(input: {
         )
       : undefined,
   });
+}
+
+export function runProjectRenderDefinitionsStage(input: {
+  parsedFiles: ParsedProjectFile[];
+}): ProjectRenderDefinitionsStageResult {
+  return buildProjectRenderDefinitions({
+    parsedFiles: input.parsedFiles,
+  });
+}
+
+export function runProjectRenderBindingsStage(input: {
+  filePaths: string[];
+  exportedExpressionBindingsByFilePath: Map<string, Map<string, ts.Expression>>;
+  exportedHelperDefinitionsByFilePath: Map<string, Map<string, LocalHelperDefinition>>;
+  resolvedImportedBindingsByFilePath: Map<string, ResolvedImportedBinding[]>;
+  resolvedNamespaceImportsByFilePath: Map<string, ResolvedNamespaceImport[]>;
+}): ProjectRenderBindingsStageResult {
+  return buildProjectRenderBindings(input);
+}
+
+export function runProjectComponentAvailabilityStage(input: {
+  filePaths: string[];
+  componentDefinitionsByFilePath: Map<string, SameFileComponentDefinition[]>;
+  exportedComponentsByFilePath: Map<string, Map<string, SameFileComponentDefinition>>;
+  resolvedImportedComponentBindingsByFilePath: Map<string, ResolvedImportedComponentBinding[]>;
+  resolvedNamespaceImportsByFilePath: Map<string, ResolvedNamespaceImport[]>;
+}): ProjectComponentAvailabilityStageResult {
+  return buildProjectComponentAvailability(input);
 }
 
 export function runAbstractValueStage(input: {

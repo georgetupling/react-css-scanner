@@ -7,17 +7,19 @@ import {
   runExternalCssStage,
   runModuleGraphStage,
   runParseStage,
+  runProjectComponentAvailabilityStage,
   runProjectBindingResolutionStage,
   runProjectAbstractValueStage,
   runProjectModuleGraphStage,
   runProjectParseStage,
+  runProjectRenderBindingsStage,
+  runProjectRenderDefinitionsStage,
   runProjectSymbolResolutionStage,
   runReachabilityStage,
   runRuleExecutionStage,
   runSelectorAnalysisStage,
   runSymbolResolutionStage,
 } from "./stages/basicStages.js";
-import { buildProjectRenderContext } from "./stages/buildProjectRenderContext.js";
 import { runProjectRenderGraphStage, runRenderGraphStage } from "./stages/renderGraphStage.js";
 import { runProjectRenderIrStage, runRenderIrStage } from "./stages/renderIrStage.js";
 
@@ -118,22 +120,46 @@ export function analyzeProjectSourceTexts(input: {
     symbolsByFilePath: symbolResolutionStage.symbolsByFilePath,
     parsedFiles: parseStage.parsedFiles,
   });
-  const projectRenderContext = buildProjectRenderContext({
+  const filePaths = parseStage.parsedFiles.map((parsedFile) => parsedFile.filePath);
+  const renderDefinitionsStage = runProjectRenderDefinitionsStage({
     parsedFiles: parseStage.parsedFiles,
+  });
+  const renderBindingsStage = runProjectRenderBindingsStage({
+    filePaths,
     exportedExpressionBindingsByFilePath:
       bindingResolutionStage.exportedExpressionBindingsByFilePath,
-    importedExpressionBindingsByFilePath:
-      bindingResolutionStage.importedExpressionBindingsByFilePath,
+    resolvedImportedBindingsByFilePath: bindingResolutionStage.resolvedImportedBindingsByFilePath,
+    exportedHelperDefinitionsByFilePath: renderDefinitionsStage.exportedHelperDefinitionsByFilePath,
+    resolvedNamespaceImportsByFilePath: bindingResolutionStage.resolvedNamespaceImportsByFilePath,
+  });
+  const componentAvailabilityStage = runProjectComponentAvailabilityStage({
+    filePaths,
+    componentDefinitionsByFilePath: renderDefinitionsStage.componentDefinitionsByFilePath,
+    exportedComponentsByFilePath: renderDefinitionsStage.exportedComponentsByFilePath,
     resolvedImportedComponentBindingsByFilePath:
       bindingResolutionStage.resolvedImportedComponentBindingsByFilePath,
-    resolvedImportedBindingsByFilePath: bindingResolutionStage.resolvedImportedBindingsByFilePath,
     resolvedNamespaceImportsByFilePath: bindingResolutionStage.resolvedNamespaceImportsByFilePath,
   });
   const renderGraphStage = runProjectRenderGraphStage({
-    projectRenderContext,
+    componentDefinitionsByFilePath: renderDefinitionsStage.componentDefinitionsByFilePath,
+    componentsByFilePath: componentAvailabilityStage.componentsByFilePath,
+    importedComponentBindingTracesByFilePath:
+      componentAvailabilityStage.importedComponentBindingTracesByFilePath,
+    importedNamespaceComponentDefinitionsByFilePath:
+      componentAvailabilityStage.importedNamespaceComponentDefinitionsByFilePath,
   });
   const renderIrStage = runProjectRenderIrStage({
-    projectRenderContext,
+    componentDefinitionsByFilePath: renderDefinitionsStage.componentDefinitionsByFilePath,
+    componentsByFilePath: componentAvailabilityStage.componentsByFilePath,
+    importedExpressionBindingsByFilePath:
+      bindingResolutionStage.importedExpressionBindingsByFilePath,
+    importedHelperDefinitionsByFilePath: renderBindingsStage.importedHelperDefinitionsByFilePath,
+    importedNamespaceExpressionBindingsByFilePath:
+      renderBindingsStage.importedNamespaceExpressionBindingsByFilePath,
+    importedNamespaceHelperDefinitionsByFilePath:
+      renderBindingsStage.importedNamespaceHelperDefinitionsByFilePath,
+    importedNamespaceComponentDefinitionsByFilePath:
+      componentAvailabilityStage.importedNamespaceComponentDefinitionsByFilePath,
   });
   const cssAnalysisStage = runCssAnalysisStage({
     selectorCssSources: input.selectorCssSources ?? [],

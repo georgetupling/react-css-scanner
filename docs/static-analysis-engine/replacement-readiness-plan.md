@@ -66,12 +66,12 @@ The current subsystem already has meaningful replacement foundations:
   through a bounded current-scanner adapter backed by cached project facts and
   new-engine analysis
 - a first `definition-and-usage-integrity` family adapter for
-  `missing-css-class`, `css-class-missing-in-some-contexts`, and
-  `unreachable-css`; the shipped runtime now routes those rules through a
-  dedicated adapter seam and shared engine-analysis cache; render-context
-  classification now prefers native reachability-backed adapter summaries,
-  while the remaining class-specific native parity gap still keeps
-  compatibility fallback in place
+  `missing-css-class`, `css-class-missing-in-some-contexts`,
+  `unreachable-css`, and `unused-css-class`; the shipped runtime now routes
+  the whole family through a dedicated adapter seam and shared engine-analysis
+  cache; direct/import/render/global/external reachability classification now
+  comes from native-backed adapter summaries, while current definition lookup
+  and plain-class candidate policy stay adapter-backed for parity
 - native reachability now keeps whole-component stylesheet availability tied to
   renderer ancestry and limits child propagation to region-scoped placement
   evidence, which closes the styled/plain sibling over-credit in the core stage
@@ -97,8 +97,6 @@ Goal:
 
 Still open:
 
-- reduce or remove `entry/stages/buildProjectRenderContext.ts` as a semantic
-  owner
 - remove direct old-engine type leakage from CSS analysis and rule execution
 - continue shifting helper/prop flow and cross-file semantic ownership toward
   reusable symbol-resolution and abstract-value summaries
@@ -191,11 +189,14 @@ Current migration note:
 - the first optimization-family runtime-backed slice is now in through a
   bounded current-scanner adapter
 - the first definition-and-usage family adapter seam is now also in for
-  `missing-css-class`, `css-class-missing-in-some-contexts`, and
-  `unreachable-css`
-- for that family, the shipped runtime now prefers render-graph-backed
-  render-context classification and keeps compatibility fallback for the
-  remaining direct/import/global/external and class-safe native handoff gap
+  all four shipped rules in that family, including `unused-css-class`
+- for that family, the shipped runtime now rebuilds
+  direct/import/render/global/external reachability from native engine outputs
+  instead of calling the old reachability helper
+- the remaining deliberate adapter boundary is narrower:
+  current definition lookup and plain-class candidate policy still stay
+  adapter-backed so shipped contextual/compound/partial-template behavior
+  remains stable
 - that does **not** yet mean the family is fully cut over for replacement
   readiness purposes
 - the remaining work is to write the parity contract, review divergences
@@ -287,20 +288,25 @@ Done when:
 
 These are the main blockers to full replacement today.
 
-### Blocker 1: `buildProjectRenderContext.ts` still owns too much cross-file meaning
+### Blocker 1 (retired): `buildProjectRenderContext.ts` has been removed
 
-Why it blocks close-out:
+What changed:
 
-- the target architecture says later stages should consume normalized upstream
-  summaries
-- this file still performs transitive helper propagation, component availability
-  assembly, and namespace materialization
+- same-file render definition discovery now lives in
+  `pipeline/render-ir/buildProjectRenderDefinitions.ts`
+- helper and namespace binding materialization now lives in
+  `pipeline/render-ir/buildProjectRenderBindings.ts`
+- component availability assembly now lives in
+  `pipeline/render-graph/buildProjectComponentAvailability.ts`
+- `entry/scan.ts` now wires those summaries directly into render graph and
+  render IR
 
-Required close-out action:
+Why this matters:
 
-- move remaining cross-file semantic ownership upward into symbol-resolution or
-  abstract-value-owned summaries instead of leaving it in render-context glue,
-  then leave only a thin render adapter if one is still useful
+- the entry seam is no longer the primary owner of transitive helper
+  propagation, component availability assembly, or namespace materialization
+- remaining close-out work can focus on tightening stage contracts around those
+  direct summary outputs
 
 ### Blocker 2: old-engine type leakage still exists at the CSS/rule edge
 
@@ -399,7 +405,7 @@ Why first:
 
 Deliverables:
 
-- thinner or removed `buildProjectRenderContext.ts`
+- explicit direct project render summary stage outputs
 - reduced temporary seam count
 - new-engine-native CSS/rule boundary contracts
 - more cross-file meaning owned by reusable symbol/value summaries rather than

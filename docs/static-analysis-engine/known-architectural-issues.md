@@ -47,66 +47,64 @@ There is also a real module/import graph layer:
 
 - `pipeline/module-graph/buildModuleGraph.ts`
 
-But later project-wide render stages do not consume a richer symbol/value summary model directly.
+Later project-wide render stages now consume a richer symbol/value summary model
+more directly. The project path currently uses these published summaries:
 
-Instead, `entry/stages/buildProjectRenderContext.ts` assembles a render-oriented bridge object by combining:
+- `pipeline/render-ir/buildProjectRenderDefinitions.ts` for same-file component
+  and helper discovery
+- `pipeline/render-ir/buildProjectRenderBindings.ts` for helper and namespace
+  materialization
+- `pipeline/render-graph/buildProjectComponentAvailability.ts` for component
+  availability assembly
+- `pipeline/symbol-resolution/resolveProjectBindings.ts` for imported binding
+  resolution
 
-- same-file component discovery from `pipeline/render-ir/`
-- resolved imported bindings from `pipeline/symbol-resolution/`
-- ad hoc exported const collection
-- ad hoc exported helper collection
-- transitive import propagation for consts and helpers
-- namespace import expansion for consts, helpers, and components
-
-Then `entry/stages/renderIrStage.ts` and `entry/stages/renderGraphStage.ts` consume that bridge object rather than a normalized symbol-first project model.
+Then `entry/stages/renderIrStage.ts` and `entry/stages/renderGraphStage.ts`
+consume those published summaries directly.
 
 ### Why it matters
 
-- symbol resolution exists, but render-oriented code still owns too much cross-file semantic assembly
+- symbol resolution exists, and the render stages now consume published project
+  summaries directly
 - it becomes harder to explain which layer is authoritative for "what is imported, exported, and usable here"
-- the render stages are harder to refactor because they depend on bridge-specific precomputation
+- the remaining question is whether these summaries should become even more
+  explicit named stage contracts
 
 ### Evidence in code
 
 - `src/static-analysis-engine/entry/scan.ts`
-- `src/static-analysis-engine/entry/stages/buildProjectRenderContext.ts`
 - `src/static-analysis-engine/entry/stages/renderIrStage.ts`
 - `src/static-analysis-engine/entry/stages/renderGraphStage.ts`
 
 ### Likely cleanup direction
 
-Move more cross-file const/helper/component availability into a reusable project summary layer owned closer to symbol/value resolution, then let render stages consume that summary instead of recreating their own import semantics.
+Keep moving toward reusable project summaries and cleaner named stage contracts
+for those summaries.
 
-## Issue 2: `buildProjectRenderContext.ts` Has Become A Catch-All Seam
+## Issue 2 (retired): `buildProjectRenderContext.ts` has been removed
 
 ### What is happening
 
-`buildProjectRenderContext.ts` is doing several different jobs:
+The project no longer routes render preparation through
+`buildProjectRenderContext.ts`.
 
-- local component discovery
-- exported component indexing
-- imported component availability assembly
-- exported const collection
-- exported helper collection
-- transitive const propagation
-- transitive helper propagation
-- namespace import materialization
-
-This is the clearest single "pressure file" in the current implementation.
+Instead, `scan.ts` wires published render definitions, render bindings, and
+component availability summaries directly into the later render stages.
 
 ### Why it matters
 
-- it mixes discovery, resolution, summarization, and render preparation
-- it duplicates some concerns that already partially exist in symbol resolution
-- future cleanup gets harder the more subsystems depend on this exact bridge shape
+- the main ownership split is clearer now, which is good
+- the next cleanup question is about stage contracts, not about removing a
+  catch-all bridge
 
 ### Evidence in code
 
-- `src/static-analysis-engine/entry/stages/buildProjectRenderContext.ts`
+- `src/static-analysis-engine/entry/scan.ts`
 
 ### Likely cleanup direction
 
-Keep a render-context bridge if it is useful, but narrow it so it only adapts already-resolved project summaries into render-stage inputs. The cross-file propagation logic itself should probably live elsewhere.
+Keep the published summaries explicit and avoid reintroducing a convenience
+bridge layer.
 
 ## Issue 3: Pipeline Folder Boundaries Do Not Match Entry-Stage Boundaries
 
@@ -204,10 +202,8 @@ That is not wrong by itself, because reachability is mostly about import availab
   shipped class-level rule contract in some partial render-path scenarios;
   native reachability no longer feeds child availability back into
   whole-component availability across sibling paths, and the new family adapter
-  now narrows the remaining gap by deriving render-context classification from
-  the native reachability summary first, but it still keeps compatibility
-  fallback for `css-class-missing-in-some-contexts` and `unreachable-css`
-  until the class-safe handoff is published
+  no longer depends on the old reachability helper for
+  direct/import/render/global/external classification
 
 ### Evidence in code
 
@@ -219,9 +215,9 @@ That is not wrong by itself, because reachability is mostly about import availab
 This may not need a direct reachability-to-symbol dependency. But the project
 should decide more explicitly which later stages are supposed to consume
 symbol/value summaries and which are intentionally structural. For replacement
-work, the follow-on need is even narrower: publish class-safe reachability
-inputs at the reachability/rule boundary so the shipped definition-and-usage
-adapter can retire its compatibility classifier.
+work, the follow-on need is even narrower: publish class-safe native rule
+inputs so the shipped definition-and-usage adapter can retire the remaining
+adapter-owned definition lookup and plain-class candidate helpers.
 
 ## Issue 6: Shared Policy Ownership Is Better, But Render Seams Still Need Cleanup
 
@@ -234,26 +230,28 @@ The remaining pressure point is different:
 
 - render-IR-specific expansion semantics still live near render-IR, as they
   should
-- but `buildProjectRenderContext.ts` still carries cross-file helper and
-  component availability work that should keep shrinking over time
+- the project now exposes direct render summaries, but their stage contracts are
+  still newer and should continue to settle
 
 ### Why it matters
 
 - policy ownership is clearer now, which is good
-- the next architecture pressure point is no longer shared budgets; it is the
-  remaining render-context bridge responsibility
+- the next architecture pressure point is no longer shared budgets; it is
+  how explicit and durable the new project render summary stage contracts should
+  become
 
 ### Evidence in code
 
 - `src/static-analysis-engine/libraries/policy/analysisBudgets.ts`
 - `src/static-analysis-engine/pipeline/render-ir/shared/expansionSemantics.ts`
-- `src/static-analysis-engine/entry/stages/buildProjectRenderContext.ts`
+- `src/static-analysis-engine/entry/scan.ts`
+- `src/static-analysis-engine/entry/stages/basicStages.ts`
 
 ### Likely cleanup direction
 
 Keep shared budgets in shared policy modules, keep render-specific semantics
-local to render-IR, and continue shrinking `buildProjectRenderContext.ts` so it
-acts more like a thin adapter than a semantic owner.
+local to render-IR, and make the project render summaries feel like explicit,
+stable stage outputs rather than fresh one-off wiring details.
 
 ## Issue 7: Old-Engine Coupling Still Leaks Through Experimental Rule Execution
 
@@ -317,7 +315,7 @@ An architectural cleanup pass looks justified.
 But the likely target is not "turn every helper package into an entry stage". The more useful cleanup is:
 
 1. clarify which `pipeline/` modules are true stages versus shared engine libraries
-2. shrink `buildProjectRenderContext.ts` into a thinner adapter
+2. make the project render summary stages feel explicit and durable
 3. move cross-file summary ownership closer to symbol/value layers
 4. make shared policy knobs live in shared policy modules
 5. document the intended long-term role of selector parsing as shared infrastructure

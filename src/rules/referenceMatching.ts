@@ -8,6 +8,13 @@ import {
 } from "./reachability.js";
 import { getProjectClassDefinitions, isCssModuleFile } from "./helpers.js";
 
+type ReachabilityResolver = (
+  model: ProjectModel,
+  sourceFilePath: string,
+  cssFilePath: string,
+  externalSpecifier?: string,
+) => DefinitionReachability;
+
 export type ReferenceMatchEvidence = "exact" | "partial-template-match";
 
 export type ReferenceDefinitionCandidate = {
@@ -25,13 +32,17 @@ export function getReferenceDefinitionCandidates(
   model: ProjectModel,
   sourceFilePath: string,
   reference: ClassReferenceFact,
+  options: {
+    resolveReachability?: ReachabilityResolver;
+  } = {},
 ): ReferenceDefinitionCandidate[] {
   const candidates: ReferenceDefinitionCandidate[] = [];
   const seen = new Set<string>();
+  const resolveReachability = options.resolveReachability ?? getDefinitionReachabilityStatus;
 
   if (reference.className) {
     for (const definition of getProjectClassDefinitions(model, reference.className)) {
-      const reachability = getDefinitionReachabilityStatus(
+      const reachability = resolveReachability(
         model,
         sourceFilePath,
         definition.cssFile,
@@ -65,6 +76,7 @@ export function getReferenceDefinitionCandidates(
     model,
     sourceFilePath,
     reference,
+    { resolveReachability },
   )) {
     const key = createReferenceDefinitionCandidateKey(
       definition.cssFile,
@@ -86,6 +98,9 @@ export function getPartialTemplateDefinitionCandidates(
   model: ProjectModel,
   sourceFilePath: string,
   reference: ClassReferenceFact,
+  options: {
+    resolveReachability?: ReachabilityResolver;
+  } = {},
 ): ReferenceDefinitionCandidate[] {
   if (
     reference.kind !== "template-literal" ||
@@ -100,6 +115,7 @@ export function getPartialTemplateDefinitionCandidates(
   }
 
   const candidates: ReferenceDefinitionCandidate[] = [];
+  const resolveReachability = options.resolveReachability ?? getDefinitionReachabilityStatus;
 
   for (const [className, definitions] of model.indexes.classDefinitionsByName.entries()) {
     if (!matchesPartialTemplatePattern(className, partialPattern)) {
@@ -114,7 +130,7 @@ export function getPartialTemplateDefinitionCandidates(
         continue;
       }
 
-      const reachability = getDefinitionReachabilityStatus(
+      const reachability = resolveReachability(
         model,
         sourceFilePath,
         definition.cssFile,
