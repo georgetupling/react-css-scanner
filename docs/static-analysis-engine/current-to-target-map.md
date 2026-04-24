@@ -79,9 +79,8 @@ For project analysis, the live flow is:
 8. render IR
 9. CSS analysis
 10. reachability
-11. selector input
-12. selector analysis
-13. rule execution
+11. selector analysis
+12. rule execution
 
 For single-file analysis, the flow is simpler and bypasses some project-wide
 scaffolding, but it still mirrors the same broad pipeline shape.
@@ -129,7 +128,6 @@ That shared-library shape is now partially implemented in code:
 | render IR | `entry/stages/renderIrStage.ts`, `pipeline/render-ir/` | durable | `pipeline/render-ir/` |
 | CSS analysis | `pipeline/css-analysis/`, `parser/` | durable | `pipeline/css-analysis/` plus shared CSS libraries |
 | reachability | `pipeline/reachability/` | durable | `pipeline/reachability/` |
-| selector input | `entry/stages/basicStages.ts` | temporary orchestration seam | folded into parse/css-analysis or selector-analysis inputs |
 | selector parsing | `libraries/selector-parsing/` | shared infrastructure, not a durable stage | `libraries/selector-parsing/` |
 | selector analysis | `pipeline/selector-analysis/` | durable | `pipeline/selector-analysis/` |
 | rule execution | `pipeline/rule-execution/` | durable | `pipeline/rule-execution/` |
@@ -409,19 +407,23 @@ Exit criteria:
 - the file is deleted or reduced to a small adapter that contains no cross-file
   semantic reasoning
 
-### Temporary Seam 3: Selector input as a separate entry step
+### Temporary Seam 3: Selector input as a separate entry step (retired)
 
-Current owner:
+Current state:
 
-- `entry/stages/basicStages.ts`
+- selector query assembly now happens inside selector-analysis stage wiring
+  rather than as a named top-level entry step
 
-What it owns today:
+What changed:
 
-- combining direct selector queries with CSS-derived selector queries
+- direct selector queries and CSS-derived selector queries are still combined
+- that assembly is now local stage input preparation rather than a separately
+  named pipeline seam
 
-Why it is temporary:
+Why this is now considered retired:
 
-- it is orchestration convenience, not a durable semantic stage
+- the pipeline no longer exposes selector-input assembly as a first-class step
+- selector-analysis now owns the last-mile query assembly it consumes
 
 Target end-state:
 
@@ -436,7 +438,7 @@ Exit criteria:
 Migration note:
 
 - selector parsing is no longer a separate top-level orchestration seam
-- the remaining temporary seam is selector-input assembly, not selector parsing
+- selector-input assembly now lives as local selector-analysis preparation
 
 ### Temporary Seam 5: Old-engine compatibility at the rule/CSS edge
 
@@ -857,7 +859,6 @@ Why this counts for tranche 4:
 
 What did not change yet:
 
-- the entry pipeline still has a temporary `selector input` orchestration step
 - render-IR-specific expansion reasons still live with render-IR helpers, which
   is acceptable because they are render-local semantics rather than cross-engine
   policy
@@ -903,9 +904,8 @@ What did not change yet:
   scanner
 - broader integration coverage, migration gating, and product-rule replacement
   planning still need their own explicit close-out work
-- temporary architectural seams such as `buildProjectRenderContext.ts`,
-  selector-input orchestration, and old-engine compatibility at the CSS/rule
-  edge still remain
+- temporary architectural seams such as `buildProjectRenderContext.ts` and
+  old-engine compatibility at the CSS/rule edge still remain
 
 This means tranche 5 should now be treated as complete for the bounded scope
 described in this document. Any further work should be planned as explicit

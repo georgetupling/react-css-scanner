@@ -77,8 +77,9 @@ current:
 - [ ] the CSS Modules story is explicit for cutover:
   first-class native layer or deliberate compatibility adapter
 - [ ] the external CSS story is explicit for cutover:
-  native propagation or deliberate compatibility adapter around the existing
-  provider logic
+  direct imported propagation is covered natively, and remaining provider /
+  declared-global handling is either native or behind a deliberate
+  compatibility adapter
 
 ### 2. Shipped Rule Catalog Coverage
 
@@ -153,8 +154,9 @@ current:
 
 #### `external-css`
 
-- [ ] the current scanner's external stylesheet/provider handling has been
-  ported, or the first replacement release has an explicit compatibility adapter
+- [ ] the current scanner's remaining external stylesheet/provider handling has
+  been ported, or the first replacement release has an explicit compatibility
+  adapter
 - [ ] parity checks exist for imported external CSS behavior
 - [ ] parity checks exist for declared-global/provider behavior
 

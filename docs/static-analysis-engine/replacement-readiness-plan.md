@@ -84,7 +84,6 @@ Still open:
 
 - reduce or remove `entry/stages/buildProjectRenderContext.ts` as a semantic
   owner
-- eliminate the named top-level `selector input` orchestration seam
 - remove direct old-engine type leakage from CSS analysis and rule execution
 - continue shifting helper/prop flow and cross-file semantic ownership toward
   reusable symbol-resolution and abstract-value summaries
@@ -123,9 +122,10 @@ Current capability notes:
   which is acceptable as long as the product contract handles them deliberately
 - the current engine does **not** yet expose a first-class CSS-Module semantic
   layer equivalent to the shipped scanner's CSS-Module import/property model
-- the current engine does **not** yet propagate external CSS natively through
-  reachability in the same way the shipped scanner does, even though the module
-  graph can already classify external CSS imports
+- the current engine **does** now propagate directly imported external CSS
+  through native reachability, but it does **not** yet cover the broader
+  provider and declared-global external CSS behavior the shipped scanner
+  supports
 - broad render-prop or arbitrary component-as-prop support is **not** assumed to
   be part of the current replacement baseline unless a shipped rule truly needs
   it
@@ -137,9 +137,9 @@ Still open:
 - add any missing bounded support required for those rules
 - add a first-class CSS-Module semantic layer before native CSS-Module rule
   cutover
-- port or re-home the current scanner's external stylesheet/provider handling so
-  external CSS can participate in new-engine-native reachability and rule
-  execution
+- port or re-home the remaining external stylesheet/provider handling so
+  provider-backed and declared-global external CSS can participate in
+  new-engine-native reachability and rule execution
 - distinguish "needed for parity-first replacement" from "nice follow-on engine
   expansion"
 
@@ -313,15 +313,17 @@ Why it blocks close-out:
 
 - the shipped CSS-Module rules depend on semantics that the current new engine
   does not yet publish as a first-class layer
-- the shipped external CSS rules depend on external stylesheet/provider logic
-  that has not yet been ported into a durable new-engine-native reachability and
-  rule path
+- the shipped external CSS rules still depend on provider and declared-global
+  external stylesheet logic that has not yet been ported into a durable
+  new-engine-native reachability and rule path, even though direct imported
+  external CSS now reaches native reachability
 
 Required close-out action:
 
 - add the missing CSS-Module semantic layer needed for native rule migration
-- port or explicitly wrap the existing external stylesheet/provider logic so the
-  first replacement release has a deliberate external CSS story
+- port or explicitly wrap the remaining external stylesheet/provider logic so
+  the first replacement release has a deliberate external CSS story beyond
+  directly imported external stylesheets
 
 ### Blocker 6: cutover mechanics are still undefined
 

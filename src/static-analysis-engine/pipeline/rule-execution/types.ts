@@ -1,5 +1,9 @@
-import type { AnalysisDecision, AnalysisTrace } from "../../types/analysis.js";
-import type { FindingConfidence, FindingSeverity } from "../../runtime/compatTypes.js";
+import type {
+  AnalysisConfidence,
+  AnalysisDecision,
+  AnalysisSeverity,
+  AnalysisTrace,
+} from "../../types/analysis.js";
 import type { ExperimentalCssFileAnalysis } from "../css-analysis/types.js";
 import type { SelectorQueryResult } from "../selector-analysis/types.js";
 
@@ -13,12 +17,12 @@ export type ExperimentalRuleId =
   | "duplicate-css-class-definition"
   | "redundant-css-declaration-block";
 
-export type ExperimentalRuleSeverity = FindingSeverity;
+export type ExperimentalRuleSeverity = AnalysisSeverity;
 
 export type ExperimentalRuleResult = {
   ruleId: ExperimentalRuleId;
   severity: ExperimentalRuleSeverity;
-  confidence: FindingConfidence;
+  confidence: AnalysisConfidence;
   summary: string;
   reasons: string[];
   traces: AnalysisTrace[];

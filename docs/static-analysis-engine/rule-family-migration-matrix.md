@@ -70,7 +70,7 @@ The statuses in this document mean:
 | `ownership-and-organization` | `component-style-cross-component`, `page-style-used-by-single-component`, `global-css-not-global`, `component-css-should-be-global` | No meaningful new-engine rule slice yet | Probably adapter-first, then selective native migration |
 | `dynamic-analysis` | `dynamic-class-reference`, `dynamic-missing-css-class` | Engine has bounded value-flow support, but no shipped-rule migration yet | Needs migration design after parity contract is written |
 | `css-modules` | `missing-css-module-class`, `unused-css-module-class` | No meaningful new-engine rule slice yet, and no first-class CSS-Module semantic layer is published yet | Likely compatibility adapter first, unless a native CSS-Module layer is added before cutover |
-| `external-css` | `missing-external-css-class` | No meaningful new-engine rule slice yet, and external CSS/provider handling is not yet propagated natively through reachability | Likely compatibility adapter first, unless existing external stylesheet logic is ported into the new engine before cutover |
+| `external-css` | `missing-external-css-class` | No meaningful new-engine rule slice yet; direct imported external CSS now propagates through native reachability, but provider/declared-global handling does not | Likely compatibility adapter first, unless remaining external stylesheet logic is ported into the new engine before cutover |
 | `optimization-and-migration` | `utility-class-replacement`, `duplicate-css-class-definition`, `empty-css-rule`, `redundant-css-declaration-block`, `unused-compound-selector-branch` | Strongest current new-engine family; several rules already exist experimentally | Best first family for parity-first migration |
 
 ## Rule Matrix
@@ -89,7 +89,7 @@ The statuses in this document mean:
 | `dynamic-analysis` | `dynamic-missing-css-class` | old rule engine on `ProjectModel` plus dynamic matching heuristics | `rule-execution` on top of `abstract-values`, CSS-definition evidence, and bounded unknown/possible outcomes | `needs migration design` | This likely needs explicit policy mapping so the new engine does not silently over-report or under-report dynamic missing cases |
 | `css-modules` | `missing-css-module-class` | old CSS Modules rule engine path | likely `rule-execution` with dedicated CSS Module analysis inputs, or compatibility adapter | `likely compatibility adapter first` | The current new engine does not yet expose a first-class CSS-Module semantic layer comparable to the shipped implementation's import/property model |
 | `css-modules` | `unused-css-module-class` | old CSS Modules rule engine path | likely `rule-execution` with dedicated CSS Module usage inputs, or compatibility adapter | `likely compatibility adapter first` | Same parity-first logic as above; do not block engine cutover on full CSS Modules redesign if an explicit adapter keeps the product contract stable, unless a native CSS-Module layer is added first |
-| `external-css` | `missing-external-css-class` | old external CSS rule engine path | likely compatibility adapter first, with later selective new-engine integration | `likely compatibility adapter first` | The current new engine can classify external CSS imports in the module graph, but it does not yet propagate external CSS/provider handling through native reachability the way the shipped implementation does |
+| `external-css` | `missing-external-css-class` | old external CSS rule engine path | likely compatibility adapter first, with later selective new-engine integration | `likely compatibility adapter first` | The current new engine can classify external CSS imports in the module graph and now propagates directly imported external CSS through native reachability, but provider and declared-global handling are still missing from the durable native path |
 | `optimization-and-migration` | `utility-class-replacement` | old optimization rule engine path | `rule-execution` on top of CSS-definition analysis and configured utility catalogs | `needs migration design` | The new engine can likely support this later, but it is not currently part of the experimental rule slice and may not need to be first-wave |
 | `optimization-and-migration` | `duplicate-css-class-definition` | old optimization rule engine path | `rule-execution` on top of `css-analysis` | `experimental coverage exists` | Already implemented experimentally in the new engine and covered by comparison tests |
 | `optimization-and-migration` | `empty-css-rule` | old optimization rule engine path | `rule-execution` on top of `css-analysis` | `experimental coverage exists` | Already implemented experimentally in the new engine and covered by comparison tests |
@@ -163,8 +163,9 @@ Needed before cutover:
 Needed before cutover:
 
 - explicit decision on adapter-first versus native migration
-- port or wrap the current scanner's external stylesheet/provider handling
-- parity checks for imported and declared-global provider behavior
+- port or wrap the current scanner's remaining external stylesheet/provider
+  handling
+- parity checks for directly imported and declared-global provider behavior
 
 ### `optimization-and-migration`
 

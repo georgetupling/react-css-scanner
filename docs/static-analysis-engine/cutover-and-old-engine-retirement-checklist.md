@@ -152,8 +152,8 @@ These areas should not be retired early:
 
 - [ ] CSS Modules old-path logic stays until either a first-class CSS-Module
   layer exists or a deliberate compatibility adapter is proven
-- [ ] external CSS old-path logic stays until the provider/import handling is
-  ported or wrapped for the new engine
+- [ ] external CSS old-path logic stays until the remaining provider and
+  declared-global handling is ported or wrapped for the new engine
 - [ ] ownership-family old-path logic stays until the project explicitly decides
   whether the first replacement release is adapter-first or native-first there
 - [ ] comparison tooling stays at least through the first default-on

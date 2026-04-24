@@ -7,10 +7,7 @@ import type { ReachabilitySummary } from "../../pipeline/reachability/index.js";
 import type { RenderGraph } from "../../pipeline/render-graph/index.js";
 import type { RenderSubtree } from "../../pipeline/render-ir/index.js";
 import type { ExperimentalRuleResult } from "../../pipeline/rule-execution/index.js";
-import type {
-  ExtractedSelectorQuery,
-  SelectorQueryResult,
-} from "../../pipeline/selector-analysis/index.js";
+import type { SelectorQueryResult } from "../../pipeline/selector-analysis/index.js";
 import type {
   EngineSymbol,
   ResolvedImportedBinding,
@@ -87,8 +84,4 @@ export type SelectorAnalysisStageResult = {
 
 export type RuleExecutionStageResult = {
   experimentalRuleResults: ExperimentalRuleResult[];
-};
-
-export type SelectorInputStageResult = {
-  selectorQueries: ExtractedSelectorQuery[];
 };

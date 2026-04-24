@@ -638,6 +638,58 @@ test("static analysis engine propagates stylesheet availability through render g
   ]);
 });
 
+test("static analysis engine propagates directly imported external css through reachability", () => {
+  const result = analyzeProjectSourceTexts({
+    sourceFiles: [
+      {
+        filePath: "src/App.tsx",
+        sourceText: [
+          'import "bootstrap/dist/css/bootstrap.css";',
+          "export function App() {",
+          '  return <button className="btn primary">Save</button>;',
+          "}",
+        ].join("\n"),
+      },
+    ],
+    selectorCssSources: [
+      {
+        filePath: "bootstrap/dist/css/bootstrap.css",
+        cssText: ".btn.primary { color: red; }",
+      },
+    ],
+  });
+
+  assert.equal(result.selectorQueryResults.length, 1);
+  assert.equal(result.selectorQueryResults[0].outcome, "match");
+  assert.equal(result.reachabilitySummary.stylesheets.length, 1);
+  assert.equal(
+    result.reachabilitySummary.stylesheets[0].cssFilePath,
+    "bootstrap/dist/css/bootstrap.css",
+  );
+  assert.equal(result.reachabilitySummary.stylesheets[0].availability, "definite");
+
+  const sourceFileContext = result.reachabilitySummary.stylesheets[0].contexts.find(
+    (contextRecord) => contextRecord.context.kind === "source-file",
+  );
+  assert.deepEqual(
+    sourceFileContext && {
+      context: sourceFileContext.context,
+      availability: sourceFileContext.availability,
+      reasons: sourceFileContext.reasons,
+      derivations: sourceFileContext.derivations,
+    },
+    {
+      context: {
+        kind: "source-file",
+        filePath: "src/App.tsx",
+      },
+      availability: "definite",
+      reasons: ["source file directly imports this stylesheet"],
+      derivations: [{ kind: "source-file-direct-import" }],
+    },
+  );
+});
+
 test("static analysis engine preserves possible stylesheet availability across conditional render paths", () => {
   const result = analyzeProjectSourceTexts({
     sourceFiles: [

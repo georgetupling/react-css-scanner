@@ -39,7 +39,6 @@ import type {
   ReachabilityStageResult,
   RuleExecutionStageResult,
   SelectorAnalysisStageResult,
-  SelectorInputStageResult,
   SymbolResolutionStageResult,
 } from "./types.js";
 
@@ -202,29 +201,13 @@ export function runReachabilityStage(input: {
   };
 }
 
-export function runSelectorInputStage(input: {
+export function runSelectorAnalysisStage(input: {
   selectorQueries: string[];
   selectorCssSources: SelectorSourceInput[];
-}): SelectorInputStageResult {
-  const directQueries = input.selectorQueries.map((selectorText) => ({
-    selectorText,
-    source: { kind: "direct-query" as const },
-  }));
-  const cssDerivedQueries = input.selectorCssSources.flatMap((selectorSource) =>
-    extractSelectorQueriesFromCssText(selectorSource),
-  );
-
-  return {
-    selectorQueries: [...directQueries, ...cssDerivedQueries],
-  };
-}
-
-export function runSelectorAnalysisStage(input: {
-  selectorQueries: SelectorInputStageResult["selectorQueries"];
   renderSubtrees: RenderSubtree[];
   reachabilitySummary: ReachabilitySummary;
 }): SelectorAnalysisStageResult {
-  const parsedSelectorQueries = buildParsedSelectorQueries(input.selectorQueries);
+  const parsedSelectorQueries = buildParsedSelectorQueries(buildSelectorQueries(input));
 
   return {
     selectorQueryResults: analyzeSelectorQueries({
@@ -233,6 +216,21 @@ export function runSelectorAnalysisStage(input: {
       reachabilitySummary: input.reachabilitySummary,
     }),
   };
+}
+
+function buildSelectorQueries(input: {
+  selectorQueries: string[];
+  selectorCssSources: SelectorSourceInput[];
+}) {
+  const directQueries = input.selectorQueries.map((selectorText) => ({
+    selectorText,
+    source: { kind: "direct-query" as const },
+  }));
+  const cssDerivedQueries = input.selectorCssSources.flatMap((selectorSource) =>
+    extractSelectorQueriesFromCssText(selectorSource),
+  );
+
+  return [...directQueries, ...cssDerivedQueries];
 }
 
 export function runRuleExecutionStage(input: {

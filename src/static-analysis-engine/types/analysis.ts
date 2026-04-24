@@ -13,6 +13,8 @@ export type AnalysisStatus = "resolved" | "unsupported" | "budget-exceeded";
 
 export type AnalysisConfidence = "high" | "medium" | "low";
 
+export type AnalysisSeverity = "debug" | "info" | "warning" | "error";
+
 export type AnalysisTraceCategory =
   | "symbol-resolution"
   | "value-evaluation"

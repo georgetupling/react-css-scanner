@@ -1,17 +1,12 @@
-import type {
-  CompatibilityScanResult,
-  Finding,
-  FindingConfidence,
-  FindingSeverity,
-} from "../runtime/compatTypes.js";
+import type { CompatibilityScanResult, Finding } from "../runtime/compatTypes.js";
 import type { ExperimentalRuleResult } from "../pipeline/rule-execution/types.js";
 import type { StaticAnalysisEngineResult } from "../types/runtime.js";
-import type { AnalysisTrace } from "../types/analysis.js";
+import type { AnalysisConfidence, AnalysisSeverity, AnalysisTrace } from "../types/analysis.js";
 
 export type ExperimentalFindingLike = {
   ruleId: string;
-  severity: FindingSeverity;
-  confidence: FindingConfidence;
+  severity: AnalysisSeverity;
+  confidence: AnalysisConfidence;
   message: string;
   traces: AnalysisTrace[];
   filePath?: string;

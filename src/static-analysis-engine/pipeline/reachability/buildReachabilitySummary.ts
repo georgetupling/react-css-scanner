@@ -67,17 +67,23 @@ function buildStylesheetReachabilityRecord(input: {
     }
 
     const importsCssSource = moduleNode.imports.some((importRecord) => {
-      if (importRecord.importKind !== "css") {
-        return false;
+      if (importRecord.importKind === "css") {
+        return (
+          resolveCssImportPath({
+            fromFilePath: moduleNode.filePath,
+            specifier: importRecord.specifier,
+            knownCssFilePaths: input.knownCssFilePaths,
+          }) === cssFilePath
+        );
       }
 
-      return (
-        resolveCssImportPath({
-          fromFilePath: moduleNode.filePath,
-          specifier: importRecord.specifier,
-          knownCssFilePaths: input.knownCssFilePaths,
-        }) === cssFilePath
-      );
+      if (importRecord.importKind === "external-css") {
+        return (
+          (normalizeProjectPath(importRecord.specifier) ?? importRecord.specifier) === cssFilePath
+        );
+      }
+
+      return false;
     });
 
     if (importsCssSource) {

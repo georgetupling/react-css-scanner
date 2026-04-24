@@ -39,6 +39,7 @@ export type {
   AnalysisConfidence,
   AnalysisDecision,
   AnalysisDimensionState,
+  AnalysisSeverity,
   AnalysisStatus,
   AnalysisTrace,
   AnalysisTraceCategory,
