@@ -74,9 +74,10 @@ test("static analysis engine feature validation tracks definite stylesheet reach
 
     const appContext = result.reachabilitySummary.stylesheets[0].contexts.find(
       (contextRecord) =>
-        contextRecord.context.kind === "component" &&
+        contextRecord.context.kind === "render-region" &&
         contextRecord.context.filePath === "src/App.tsx" &&
-        contextRecord.context.componentName === "App",
+        contextRecord.context.componentName === "App" &&
+        contextRecord.context.regionKind === "subtree-root",
     );
     assert.equal(appContext?.availability, "definite");
     assert.ok(

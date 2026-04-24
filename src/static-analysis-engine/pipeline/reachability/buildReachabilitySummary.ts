@@ -274,7 +274,6 @@ function buildContextRecords(input: {
   const componentAvailabilityByKey = computeComponentAvailability({
     renderGraphNodesByKey,
     incomingEdgesByComponentKey,
-    outgoingEdgesByComponentKey,
     directImportingSourceFilePathSet,
   });
 
@@ -311,10 +310,6 @@ function buildContextRecords(input: {
 
     const wholeComponentRegionAvailability = resolveWholeComponentRegionAvailability({
       componentKey,
-      filePath: normalizeProjectPath(node.filePath) ?? node.filePath,
-      directImportingSourceFilePathSet,
-      incomingEdges: [...(incomingEdgesByComponentKey.get(componentKey) ?? [])].sort(compareEdges),
-      outgoingEdges: [...(outgoingEdgesByComponentKey.get(componentKey) ?? [])].sort(compareEdges),
       componentAvailabilityByKey,
     });
 
@@ -381,10 +376,6 @@ function buildContextRecords(input: {
 
 function resolveWholeComponentRegionAvailability(input: {
   componentKey: string;
-  filePath: string;
-  directImportingSourceFilePathSet: Set<string>;
-  incomingEdges: import("../render-graph/types.js").RenderGraphEdge[];
-  outgoingEdges: import("../render-graph/types.js").RenderGraphEdge[];
   componentAvailabilityByKey: Map<
     string,
     {
@@ -402,84 +393,20 @@ function resolveWholeComponentRegionAvailability(input: {
       traces: AnalysisTrace[];
     }
   | undefined {
-  if (input.directImportingSourceFilePathSet.has(input.filePath)) {
-    return {
-      availability: "definite",
-      reasons: ["component is declared in a source file that directly imports this stylesheet"],
-      derivations: [{ kind: "whole-component-direct-import" }],
-      traces: [],
-    };
-  }
-
-  const definiteChildEdge = input.outgoingEdges.find((edge) => {
-    const childAvailability = input.componentAvailabilityByKey.get(
-      createComponentKey(edge.toFilePath ?? "", edge.toComponentName),
-    );
-    return childAvailability?.availability === "definite" && edge.renderPath === "definite";
-  });
-  if (definiteChildEdge) {
-    return {
-      availability: "definite",
-      reasons: [
-        `component can render ${definiteChildEdge.toComponentName} from ${normalizeProjectPath(definiteChildEdge.toFilePath) ?? definiteChildEdge.toFilePath}, which has definite stylesheet availability`,
-      ],
-      derivations: [
-        {
-          kind: "whole-component-child-availability",
-          toComponentName: definiteChildEdge.toComponentName,
-          toFilePath: definiteChildEdge.toFilePath,
-        },
-      ],
-      traces: [...definiteChildEdge.traces],
-    };
-  }
-
-  const availableIncomingEdges = input.incomingEdges.filter((edge) => {
-    const parentAvailability = input.componentAvailabilityByKey.get(
-      createComponentKey(edge.fromFilePath, edge.fromComponentName),
-    );
-    return (
-      parentAvailability?.availability === "definite" ||
-      parentAvailability?.availability === "possible"
-    );
-  });
-  if (availableIncomingEdges.length === 0) {
+  const availabilityRecord = input.componentAvailabilityByKey.get(input.componentKey);
+  if (
+    !availabilityRecord ||
+    (availabilityRecord.availability !== "definite" &&
+      availabilityRecord.availability !== "possible")
+  ) {
     return undefined;
   }
 
-  const allParentsDefinite = availableIncomingEdges.every((edge) => {
-    const parentAvailability = input.componentAvailabilityByKey.get(
-      createComponentKey(edge.fromFilePath, edge.fromComponentName),
-    );
-    return parentAvailability?.availability === "definite" && edge.renderPath === "definite";
-  });
-  if (allParentsDefinite) {
-    return {
-      availability: "definite",
-      reasons: ["all known renderers of this component have definite stylesheet availability"],
-      derivations: [{ kind: "whole-component-all-known-renderers-definite" }],
-      traces: availableIncomingEdges.flatMap((edge) => edge.traces),
-    };
-  }
-
-  if (availableIncomingEdges.some((edge) => edge.renderPath === "definite")) {
-    return {
-      availability: "possible",
-      reasons: ["at least one known renderer of this component has stylesheet availability"],
-      derivations: [{ kind: "whole-component-at-least-one-renderer" }],
-      traces: availableIncomingEdges
-        .filter((edge) => edge.renderPath === "definite")
-        .flatMap((edge) => edge.traces),
-    };
-  }
-
   return {
-    availability: "possible",
-    reasons: [
-      "this component is only rendered on possible paths beneath a renderer with stylesheet availability",
-    ],
-    derivations: [{ kind: "whole-component-only-possible-renderers" }],
-    traces: availableIncomingEdges.flatMap((edge) => edge.traces),
+    availability: availabilityRecord.availability,
+    reasons: [...availabilityRecord.reasons],
+    derivations: [...availabilityRecord.derivations],
+    traces: [...availabilityRecord.traces],
   };
 }
 
@@ -741,10 +668,17 @@ function findContainingRenderRegionsForEdge(input: {
     }).map((path) => serializeRegionPath(path)),
   );
 
-  return input.renderRegions.filter(
-    (renderRegion) =>
-      renderRegion.kind !== "subtree-root" &&
-      matchingPathKeys.has(serializeRegionPath(renderRegion.path)),
+  if (matchingPathKeys.size === 0) {
+    const rootRegion = input.renderRegions.find(
+      (renderRegion) =>
+        renderRegion.kind === "subtree-root" &&
+        sourceAnchorContains(renderRegion.sourceAnchor, input.sourceAnchor),
+    );
+    return rootRegion ? [rootRegion] : [];
+  }
+
+  return input.renderRegions.filter((renderRegion) =>
+    matchingPathKeys.has(serializeRegionPath(renderRegion.path)),
   );
 }
 
@@ -895,7 +829,6 @@ function toAnchorPositionValue(line: number, column: number): number {
 function computeComponentAvailability(input: {
   renderGraphNodesByKey: Map<string, import("../render-graph/types.js").RenderGraphNode>;
   incomingEdgesByComponentKey: Map<string, import("../render-graph/types.js").RenderGraphEdge[]>;
-  outgoingEdgesByComponentKey: Map<string, import("../render-graph/types.js").RenderGraphEdge[]>;
   directImportingSourceFilePathSet: Set<string>;
 }): Map<
   string,
@@ -969,11 +902,7 @@ function computeComponentAvailability(input: {
       }
 
       const nextAvailabilityRecord = evaluateComponentAvailability({
-        componentKey,
         incomingEdges: [...(input.incomingEdgesByComponentKey.get(componentKey) ?? [])].sort(
-          compareEdges,
-        ),
-        outgoingEdges: [...(input.outgoingEdgesByComponentKey.get(componentKey) ?? [])].sort(
           compareEdges,
         ),
         availabilityByComponentKey,
@@ -1001,9 +930,7 @@ function computeComponentAvailability(input: {
 }
 
 function evaluateComponentAvailability(input: {
-  componentKey: string;
   incomingEdges: import("../render-graph/types.js").RenderGraphEdge[];
-  outgoingEdges: import("../render-graph/types.js").RenderGraphEdge[];
   availabilityByComponentKey: Map<
     string,
     {
@@ -1019,29 +946,6 @@ function evaluateComponentAvailability(input: {
   derivations: ReachabilityDerivation[];
   traces: AnalysisTrace[];
 } {
-  const definiteChildEdge = input.outgoingEdges.find((edge) => {
-    const childAvailability = input.availabilityByComponentKey.get(
-      createComponentKey(edge.toFilePath ?? "", edge.toComponentName),
-    );
-    return childAvailability?.availability === "definite" && edge.renderPath === "definite";
-  });
-  if (definiteChildEdge) {
-    return {
-      availability: "definite",
-      reasons: [
-        `component can render ${definiteChildEdge.toComponentName} from ${normalizeProjectPath(definiteChildEdge.toFilePath) ?? definiteChildEdge.toFilePath}, which has definite stylesheet availability`,
-      ],
-      derivations: [
-        {
-          kind: "whole-component-child-availability",
-          toComponentName: definiteChildEdge.toComponentName,
-          toFilePath: definiteChildEdge.toFilePath,
-        },
-      ],
-      traces: [...definiteChildEdge.traces],
-    };
-  }
-
   if (input.incomingEdges.length > 0) {
     const parentAvailabilities = input.incomingEdges.map((edge) => ({
       edge,
@@ -1063,32 +967,6 @@ function evaluateComponentAvailability(input: {
         traces: parentAvailabilities.flatMap(({ edge }) => edge.traces),
       };
     }
-  }
-
-  const availableChildEdge = input.outgoingEdges.find((edge) => {
-    const childAvailability = input.availabilityByComponentKey.get(
-      createComponentKey(edge.toFilePath ?? "", edge.toComponentName),
-    );
-    return (
-      childAvailability?.availability === "definite" ||
-      childAvailability?.availability === "possible"
-    );
-  });
-  if (availableChildEdge) {
-    return {
-      availability: "possible",
-      reasons: [
-        `component can render ${availableChildEdge.toComponentName} from ${normalizeProjectPath(availableChildEdge.toFilePath) ?? availableChildEdge.toFilePath}, which has stylesheet availability`,
-      ],
-      derivations: [
-        {
-          kind: "whole-component-child-availability",
-          toComponentName: availableChildEdge.toComponentName,
-          toFilePath: availableChildEdge.toFilePath,
-        },
-      ],
-      traces: [...availableChildEdge.traces],
-    };
   }
 
   const availableParentEdges = input.incomingEdges.filter((edge) => {
@@ -1454,8 +1332,6 @@ function serializeDerivation(derivation: ReachabilityDerivation): string {
     case "whole-component-at-least-one-renderer":
     case "whole-component-only-possible-renderers":
       return derivation.kind;
-    case "whole-component-child-availability":
-      return [derivation.kind, derivation.toComponentName, derivation.toFilePath ?? ""].join(":");
     case "whole-component-unknown-barrier":
     case "render-region-unknown-barrier":
       return [derivation.kind, derivation.reason].join(":");

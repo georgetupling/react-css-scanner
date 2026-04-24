@@ -68,9 +68,13 @@ The current subsystem already has meaningful replacement foundations:
 - a first `definition-and-usage-integrity` family adapter for
   `missing-css-class`, `css-class-missing-in-some-contexts`, and
   `unreachable-css`; the shipped runtime now routes those rules through a
-  dedicated adapter seam and shared engine-analysis cache while deliberately
-  preserving compatibility reachability classification until class-specific
-  native parity is ready
+  dedicated adapter seam and shared engine-analysis cache; render-context
+  classification now prefers render-graph-backed adapter summaries, while the
+  remaining class-specific native parity gap still keeps compatibility fallback
+  in place
+- native reachability now keeps whole-component stylesheet availability tied to
+  renderer ancestry and limits child propagation to region-scoped placement
+  evidence, which closes the styled/plain sibling over-credit in the core stage
 - comparison tooling against the current scanner
 - producer-owned trace propagation through the main selector-derived reasoning
   path
@@ -189,10 +193,9 @@ Current migration note:
 - the first definition-and-usage family adapter seam is now also in for
   `missing-css-class`, `css-class-missing-in-some-contexts`, and
   `unreachable-css`
-- for that family, the shipped runtime still intentionally relies on the
-  current compatibility reachability classifier for parity-critical
-  direct/import/render-context decisions until the native reachability handoff
-  is safe
+- for that family, the shipped runtime now prefers render-graph-backed
+  render-context classification and keeps compatibility fallback for the
+  remaining direct/import/global/external and class-safe native handoff gap
 - that does **not** yet mean the family is fully cut over for replacement
   readiness purposes
 - the remaining work is to write the parity contract, review divergences
@@ -328,7 +331,7 @@ Required close-out action:
   adapter decisions, known divergences, and cutover readiness checks
 - finish the native handoff plan for the now-landed
   `definition-and-usage-integrity` adapter seam so the compatibility
-  reachability classifier can be retired deliberately rather than implicitly
+  fallback can be retired deliberately rather than implicitly
 
 ### Blocker 4: replacement-grade validation is still too narrow
 

@@ -504,24 +504,6 @@ test("static analysis engine propagates stylesheet availability through render g
       {
         context: {
           kind: "component",
-          filePath: "src/App.tsx",
-          componentName: "App",
-        },
-        availability: "definite",
-        reasons: [
-          "component can render LayoutShell from src/LayoutShell.tsx, which has definite stylesheet availability",
-        ],
-        derivations: [
-          {
-            kind: "whole-component-child-availability",
-            toComponentName: "LayoutShell",
-            toFilePath: "src/LayoutShell.tsx",
-          },
-        ],
-      },
-      {
-        context: {
-          kind: "component",
           filePath: "src/LayoutShell.tsx",
           componentName: "LayoutShell",
         },
@@ -531,25 +513,28 @@ test("static analysis engine propagates stylesheet availability through render g
       },
       {
         context: {
-          kind: "render-subtree-root",
+          kind: "render-region",
           filePath: "src/App.tsx",
           componentName: "App",
-          rootAnchor: {
+          regionKind: "subtree-root",
+          path: [{ kind: "root" }],
+          sourceAnchor: {
             startLine: 3,
             startColumn: 11,
             endLine: 3,
-            endColumn: 18,
+            endColumn: 22,
           },
         },
         availability: "definite",
         reasons: [
-          "component can render LayoutShell from src/LayoutShell.tsx, which has definite stylesheet availability",
+          "region can render LayoutShell from src/LayoutShell.tsx, which has definite stylesheet availability",
         ],
         derivations: [
           {
-            kind: "whole-component-child-availability",
+            kind: "placement-derived-region",
             toComponentName: "LayoutShell",
             toFilePath: "src/LayoutShell.tsx",
+            renderPath: "definite",
           },
         ],
       },
@@ -580,12 +565,25 @@ test("static analysis engine propagates stylesheet availability through render g
       },
     ],
   );
-  assert.deepEqual(result.reachabilitySummary.stylesheets[0].contexts[0].traces, [
+  const appPlacementContext = result.reachabilitySummary.stylesheets[0].contexts.find(
+    (contextRecord) =>
+      contextRecord.context.kind === "render-region" &&
+      contextRecord.context.filePath === "src/App.tsx" &&
+      contextRecord.context.componentName === "App",
+  );
+  assert.deepEqual(appPlacementContext?.traces, [
     {
-      traceId: "reachability-context:component:definite",
+      traceId: "reachability-context:render-region:definite",
       category: "reachability",
       summary:
-        "component can render LayoutShell from src/LayoutShell.tsx, which has definite stylesheet availability",
+        "region can render LayoutShell from src/LayoutShell.tsx, which has definite stylesheet availability",
+      anchor: {
+        filePath: "src/App.tsx",
+        startLine: 3,
+        startColumn: 11,
+        endLine: 3,
+        endColumn: 22,
+      },
       children: [
         {
           traceId: "render-graph:edge:src/App.tsx:App:LayoutShell:definite:resolved",
@@ -630,9 +628,9 @@ test("static analysis engine propagates stylesheet availability through render g
         },
       ],
       metadata: {
-        contextKind: "component",
+        contextKind: "render-region",
         availability: "definite",
-        derivations: ["whole-component-child-availability:LayoutShell:src/LayoutShell.tsx"],
+        derivations: ["placement-derived-region:LayoutShell:src/LayoutShell.tsx:definite"],
       },
     },
   ]);
@@ -1026,6 +1024,156 @@ test("static analysis engine preserves possible stylesheet availability across c
         ],
       },
     ],
+  );
+});
+
+test("static analysis engine keeps whole-component stylesheet availability possible across sibling render paths", () => {
+  const result = analyzeProjectSourceTexts({
+    sourceFiles: [
+      {
+        filePath: "src/App.tsx",
+        sourceText: [
+          'import { StyledLayout } from "./StyledLayout";',
+          'import { PlainLayout } from "./PlainLayout";',
+          "export function App() { return <><StyledLayout /><PlainLayout /></>; }",
+        ].join("\n"),
+      },
+      {
+        filePath: "src/StyledLayout.tsx",
+        sourceText: [
+          'import "./layout.css";',
+          'import { Child } from "./Child";',
+          "export function StyledLayout() { return <Child />; }",
+        ].join("\n"),
+      },
+      {
+        filePath: "src/PlainLayout.tsx",
+        sourceText: [
+          'import { Child } from "./Child";',
+          "export function PlainLayout() { return <Child />; }",
+        ].join("\n"),
+      },
+      {
+        filePath: "src/Child.tsx",
+        sourceText: 'export function Child() { return <div className="page-flow" />; }',
+      },
+    ],
+    selectorCssSources: [
+      {
+        filePath: "src/layout.css",
+        cssText: ".page-flow {}",
+      },
+    ],
+  });
+
+  const stylesheet = result.reachabilitySummary.stylesheets[0];
+  assert.equal(stylesheet.availability, "definite");
+
+  const childComponent = stylesheet.contexts.find(
+    (contextRecord) =>
+      contextRecord.context.kind === "component" &&
+      contextRecord.context.filePath === "src/Child.tsx" &&
+      contextRecord.context.componentName === "Child",
+  );
+  assert.deepEqual(
+    childComponent && {
+      context: childComponent.context,
+      availability: childComponent.availability,
+      reasons: childComponent.reasons,
+      derivations: childComponent.derivations,
+    },
+    {
+      context: {
+        kind: "component",
+        filePath: "src/Child.tsx",
+        componentName: "Child",
+      },
+      availability: "possible",
+      reasons: ["at least one known renderer of this component has stylesheet availability"],
+      derivations: [{ kind: "whole-component-at-least-one-renderer" }],
+    },
+  );
+
+  const childSubtreeRoot = stylesheet.contexts.find(
+    (contextRecord) =>
+      contextRecord.context.kind === "render-subtree-root" &&
+      contextRecord.context.filePath === "src/Child.tsx" &&
+      contextRecord.context.componentName === "Child",
+  );
+  assert.deepEqual(
+    childSubtreeRoot && {
+      context: childSubtreeRoot.context,
+      availability: childSubtreeRoot.availability,
+      reasons: childSubtreeRoot.reasons,
+      derivations: childSubtreeRoot.derivations,
+    },
+    {
+      context: {
+        kind: "render-subtree-root",
+        filePath: "src/Child.tsx",
+        componentName: "Child",
+        rootAnchor: {
+          startLine: 1,
+          startColumn: 35,
+          endLine: 1,
+          endColumn: 38,
+        },
+      },
+      availability: "possible",
+      reasons: ["at least one known renderer of this component has stylesheet availability"],
+      derivations: [{ kind: "whole-component-at-least-one-renderer" }],
+    },
+  );
+
+  const plainLayoutRegion = stylesheet.contexts.find(
+    (contextRecord) =>
+      contextRecord.context.kind === "render-region" &&
+      contextRecord.context.filePath === "src/PlainLayout.tsx" &&
+      contextRecord.context.componentName === "PlainLayout" &&
+      contextRecord.context.regionKind === "subtree-root",
+  );
+  assert.deepEqual(
+    plainLayoutRegion && {
+      context: plainLayoutRegion.context,
+      availability: plainLayoutRegion.availability,
+      reasons: plainLayoutRegion.reasons,
+      derivations: plainLayoutRegion.derivations,
+    },
+    {
+      context: {
+        kind: "render-region",
+        filePath: "src/PlainLayout.tsx",
+        componentName: "PlainLayout",
+        regionKind: "subtree-root",
+        path: [{ kind: "root" }],
+        sourceAnchor: {
+          startLine: 2,
+          startColumn: 41,
+          endLine: 2,
+          endColumn: 46,
+        },
+      },
+      availability: "possible",
+      reasons: ["region can render Child from src/Child.tsx, which has stylesheet availability"],
+      derivations: [
+        {
+          kind: "placement-derived-region",
+          toComponentName: "Child",
+          toFilePath: "src/Child.tsx",
+          renderPath: "definite",
+        },
+      ],
+    },
+  );
+
+  assert.equal(
+    stylesheet.contexts.some(
+      (contextRecord) =>
+        contextRecord.context.kind === "component" &&
+        contextRecord.context.filePath === "src/Child.tsx" &&
+        contextRecord.availability === "definite",
+    ),
+    false,
   );
 });
 

@@ -1,4 +1,5 @@
 import { analyzeProjectModelWithStaticEngine } from "./analyzeProjectModelWithStaticEngine.js";
+import { buildEngineRenderContextReachabilityBySourceFile } from "./buildEngineRenderContextReachability.js";
 import { sortFindings } from "../../../runtime/findings.js";
 import {
   getDeclaredExternalProviderForClass,
@@ -60,10 +61,13 @@ function buildMigratedDefinitionAndUsageIntegrityRuleFindings(
   }
 
   // Warm the shared static-analysis-engine cache for this project while
-  // preserving current reachability semantics until class-specific parity is ready.
-  analyzeProjectModelWithStaticEngine(context.model, {
+  // preserving compatibility fallbacks only where the current engine route model
+  // still does not publish a safe replacement status.
+  const engineResult = analyzeProjectModelWithStaticEngine(context.model, {
     includeExternalCssSources: true,
   });
+  const engineRenderContextReachabilityBySourceFile =
+    buildEngineRenderContextReachabilityBySourceFile(context.model, engineResult.renderGraph);
 
   for (const sourceFile of context.model.graph.sourceFiles) {
     const reachability = context.model.reachability.get(sourceFile.path);
@@ -83,6 +87,7 @@ function buildMigratedDefinitionAndUsageIntegrityRuleFindings(
           sourceFilePath: sourceFile.path,
           cssFilePath: definition.cssFile,
           externalSpecifier: definition.externalSpecifier,
+          engineRenderContextReachabilityBySourceFile,
         }),
       );
 
@@ -218,13 +223,52 @@ function getMigratedDefinitionReachabilityStatus(input: {
   sourceFilePath: string;
   cssFilePath: string;
   externalSpecifier?: string;
+  engineRenderContextReachabilityBySourceFile: Map<
+    string,
+    {
+      renderContextDefiniteLocalCss: Set<string>;
+      renderContextPossibleLocalCss: Set<string>;
+    }
+  >;
 }): DefinitionReachability {
-  return getDefinitionReachabilityStatus(
+  const compatibilityStatus = getDefinitionReachabilityStatus(
     input.model,
     input.sourceFilePath,
     input.cssFilePath,
     input.externalSpecifier,
   );
+  if (compatibilityStatus === "direct" || compatibilityStatus === "import-context") {
+    return compatibilityStatus;
+  }
+
+  if (input.externalSpecifier) {
+    return compatibilityStatus;
+  }
+
+  const cssFile = input.model.indexes.cssFileByPath.get(input.cssFilePath);
+  if (cssFile?.category === "global") {
+    return compatibilityStatus;
+  }
+
+  const engineRenderContextReachability = input.engineRenderContextReachabilityBySourceFile.get(
+    input.sourceFilePath,
+  );
+  if (engineRenderContextReachability?.renderContextDefiniteLocalCss.has(input.cssFilePath)) {
+    return "render-context-definite";
+  }
+
+  if (engineRenderContextReachability?.renderContextPossibleLocalCss.has(input.cssFilePath)) {
+    return "render-context-possible";
+  }
+
+  if (
+    compatibilityStatus === "render-context-definite" ||
+    compatibilityStatus === "render-context-possible"
+  ) {
+    return compatibilityStatus;
+  }
+
+  return "unreachable";
 }
 
 function isStrongerReachability(status: DefinitionReachability): boolean {

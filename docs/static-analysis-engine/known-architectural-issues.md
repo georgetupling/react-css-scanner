@@ -200,11 +200,14 @@ That is not wrong by itself, because reachability is mostly about import availab
 
 - this is part of why the symbol system feels under-consumed relative to its intended importance
 - it makes the engine feel like "symbol resolution plus a separate render/reachability pipeline" rather than one layered model
-- the current whole-stylesheet reachability summary is still more optimistic
-  than the shipped class-level rule contract in some partial render-path
-  scenarios, so the new family adapter intentionally keeps compatibility
-  reachability classification for `css-class-missing-in-some-contexts` and
-  `unreachable-css`
+- the current whole-stylesheet reachability summary is still broader than the
+  shipped class-level rule contract in some partial render-path scenarios;
+  native reachability no longer feeds child availability back into
+  whole-component availability across sibling paths, and the new family adapter
+  now narrows the remaining gap by deriving render-context classification from
+  render-graph routes first, but it still keeps compatibility fallback for
+  `css-class-missing-in-some-contexts` and `unreachable-css` until the
+  class-safe handoff is published
 
 ### Evidence in code
 

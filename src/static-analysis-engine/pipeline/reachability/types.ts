@@ -14,11 +14,6 @@ export type ReachabilityDerivation =
       kind: "whole-component-direct-import";
     }
   | {
-      kind: "whole-component-child-availability";
-      toComponentName: string;
-      toFilePath?: string;
-    }
-  | {
       kind: "whole-component-all-known-renderers-definite";
     }
   | {
