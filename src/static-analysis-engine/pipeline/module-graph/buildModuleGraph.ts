@@ -11,7 +11,6 @@ import type {
 export function buildModuleGraphFromSource(input: {
   filePath: string;
   parsedSourceFile: ts.SourceFile;
-  topLevelSymbolIds: string[];
   resolveImportSpecifier?: (fromFilePath: string, specifier: string) => EngineModuleId | undefined;
 }): ModuleGraph {
   const moduleId = createModuleId(input.filePath);
@@ -44,7 +43,10 @@ export function buildModuleGraphFromSource(input: {
     kind: "source",
     imports,
     exports,
-    topLevelSymbols: input.topLevelSymbolIds,
+    topLevelSymbols: collectTopLevelSymbolIds({
+      moduleId,
+      parsedSourceFile: input.parsedSourceFile,
+    }),
   };
 
   return {
@@ -70,7 +72,6 @@ export function buildModuleGraphFromSources(
   inputs: Array<{
     filePath: string;
     parsedSourceFile: ts.SourceFile;
-    topLevelSymbolIds: string[];
   }>,
 ): ModuleGraph {
   const modulesById = new Map<EngineModuleId, ModuleNode>();
@@ -340,6 +341,58 @@ function normalizeProjectPath(filePath: string): string {
 
 function createTopLevelSymbolId(moduleId: EngineModuleId, localName: string): string {
   return `symbol:${moduleId}:${localName}`;
+}
+
+function collectTopLevelSymbolIds(input: {
+  moduleId: EngineModuleId;
+  parsedSourceFile: ts.SourceFile;
+}): string[] {
+  const symbolIds = new Set<string>();
+
+  for (const statement of input.parsedSourceFile.statements) {
+    if (ts.isImportDeclaration(statement) && statement.importClause) {
+      collectImportSymbolIds(statement.importClause, input.moduleId, symbolIds);
+      continue;
+    }
+
+    if (ts.isFunctionDeclaration(statement) && statement.name) {
+      symbolIds.add(createTopLevelSymbolId(input.moduleId, statement.name.text));
+      continue;
+    }
+
+    if (ts.isVariableStatement(statement)) {
+      for (const declaration of statement.declarationList.declarations) {
+        if (ts.isIdentifier(declaration.name)) {
+          symbolIds.add(createTopLevelSymbolId(input.moduleId, declaration.name.text));
+        }
+      }
+    }
+  }
+
+  return [...symbolIds].sort((left, right) => left.localeCompare(right));
+}
+
+function collectImportSymbolIds(
+  importClause: ts.ImportClause,
+  moduleId: EngineModuleId,
+  symbolIds: Set<string>,
+): void {
+  if (importClause.name) {
+    symbolIds.add(createTopLevelSymbolId(moduleId, importClause.name.text));
+  }
+
+  if (!importClause.namedBindings) {
+    return;
+  }
+
+  if (ts.isNamedImports(importClause.namedBindings)) {
+    for (const element of importClause.namedBindings.elements) {
+      symbolIds.add(createTopLevelSymbolId(moduleId, element.name.text));
+    }
+    return;
+  }
+
+  symbolIds.add(createTopLevelSymbolId(moduleId, importClause.namedBindings.name.text));
 }
 
 function isExported(

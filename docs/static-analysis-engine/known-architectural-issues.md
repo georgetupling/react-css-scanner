@@ -17,11 +17,10 @@ It is intentionally based on the current code under `src/static-analysis-engine/
 The actual top-level pipeline stages are the ones wired in `src/static-analysis-engine/entry/scan.ts`:
 
 - parse
-- symbol resolution
 - module graph
+- symbol resolution
 - abstract values
-- project binding resolution
-- render context assembly
+- project render summaries
 - render graph
 - render IR
 - CSS analysis
@@ -56,8 +55,8 @@ more directly. The project path currently uses these published summaries:
   materialization
 - `pipeline/render-graph/buildProjectComponentAvailability.ts` for component
   availability assembly
-- `pipeline/symbol-resolution/resolveProjectBindings.ts` for imported binding
-  resolution
+- symbol-resolution stage output from `entry/stages/basicStages.ts` for imported
+  binding, namespace, and expression-binding summaries
 
 Then `entry/stages/renderIrStage.ts` and `entry/stages/renderGraphStage.ts`
 consume those published summaries directly.
@@ -66,6 +65,8 @@ consume those published summaries directly.
 
 - symbol resolution exists, and the render stages now consume published project
   summaries directly
+- the live project flow now also matches the intended
+  `module-graph -> symbol-resolution` ordering more closely
 - it becomes harder to explain which layer is authoritative for "what is imported, exported, and usable here"
 - the remaining question is whether these summaries should become even more
   explicit named stage contracts
@@ -88,8 +89,9 @@ for those summaries.
 The project no longer routes render preparation through
 `buildProjectRenderContext.ts`.
 
-Instead, `scan.ts` wires published render definitions, render bindings, and
-component availability summaries directly into the later render stages.
+Instead, `entry/stages/renderSummaryStage.ts` packages published render
+definitions, render bindings, and component availability summaries into
+explicit later-stage inputs.
 
 ### Why it matters
 
@@ -100,6 +102,7 @@ component availability summaries directly into the later render stages.
 ### Evidence in code
 
 - `src/static-analysis-engine/entry/scan.ts`
+- `src/static-analysis-engine/entry/stages/renderSummaryStage.ts`
 
 ### Likely cleanup direction
 

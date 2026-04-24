@@ -7,13 +7,9 @@ import {
   runExternalCssStage,
   runModuleGraphStage,
   runParseStage,
-  runProjectComponentAvailabilityStage,
-  runProjectBindingResolutionStage,
   runProjectAbstractValueStage,
   runProjectModuleGraphStage,
   runProjectParseStage,
-  runProjectRenderBindingsStage,
-  runProjectRenderDefinitionsStage,
   runProjectSymbolResolutionStage,
   runReachabilityStage,
   runRuleExecutionStage,
@@ -22,6 +18,7 @@ import {
 } from "./stages/basicStages.js";
 import { runProjectRenderGraphStage, runRenderGraphStage } from "./stages/renderGraphStage.js";
 import { runProjectRenderIrStage, runRenderIrStage } from "./stages/renderIrStage.js";
+import { runProjectRenderSummaryStage } from "./stages/renderSummaryStage.js";
 
 export function analyzeSourceText(input: {
   filePath: string;
@@ -38,8 +35,6 @@ export function analyzeSourceText(input: {
   const moduleGraphStage = runModuleGraphStage({
     filePath: input.filePath,
     parsedSourceFile: parseStage.parsedSourceFile,
-    moduleId: symbolResolutionStage.moduleId,
-    symbols: symbolResolutionStage.symbols,
   });
   const abstractValueStage = runAbstractValueStage({
     filePath: input.filePath,
@@ -105,62 +100,22 @@ export function analyzeProjectSourceTexts(input: {
   externalCss?: ExternalCssAnalysisInput;
 }): StaticAnalysisEngineResult {
   const parseStage = runProjectParseStage(input.sourceFiles);
-  const symbolResolutionStage = runProjectSymbolResolutionStage({
-    parsedFiles: parseStage.parsedFiles,
-  });
   const moduleGraphStage = runProjectModuleGraphStage({
     parsedFiles: parseStage.parsedFiles,
-    symbolsByFilePath: symbolResolutionStage.symbolsByFilePath,
+  });
+  const symbolResolutionStage = runProjectSymbolResolutionStage({
+    parsedFiles: parseStage.parsedFiles,
+    moduleGraph: moduleGraphStage.moduleGraph,
   });
   const abstractValueStage = runProjectAbstractValueStage({
     parsedFiles: parseStage.parsedFiles,
   });
-  const bindingResolutionStage = runProjectBindingResolutionStage({
-    moduleGraph: moduleGraphStage.moduleGraph,
-    symbolsByFilePath: symbolResolutionStage.symbolsByFilePath,
+  const renderSummaryStage = runProjectRenderSummaryStage({
     parsedFiles: parseStage.parsedFiles,
+    symbolResolution: symbolResolutionStage,
   });
-  const filePaths = parseStage.parsedFiles.map((parsedFile) => parsedFile.filePath);
-  const renderDefinitionsStage = runProjectRenderDefinitionsStage({
-    parsedFiles: parseStage.parsedFiles,
-  });
-  const renderBindingsStage = runProjectRenderBindingsStage({
-    filePaths,
-    exportedExpressionBindingsByFilePath:
-      bindingResolutionStage.exportedExpressionBindingsByFilePath,
-    resolvedImportedBindingsByFilePath: bindingResolutionStage.resolvedImportedBindingsByFilePath,
-    exportedHelperDefinitionsByFilePath: renderDefinitionsStage.exportedHelperDefinitionsByFilePath,
-    resolvedNamespaceImportsByFilePath: bindingResolutionStage.resolvedNamespaceImportsByFilePath,
-  });
-  const componentAvailabilityStage = runProjectComponentAvailabilityStage({
-    filePaths,
-    componentDefinitionsByFilePath: renderDefinitionsStage.componentDefinitionsByFilePath,
-    exportedComponentsByFilePath: renderDefinitionsStage.exportedComponentsByFilePath,
-    resolvedImportedComponentBindingsByFilePath:
-      bindingResolutionStage.resolvedImportedComponentBindingsByFilePath,
-    resolvedNamespaceImportsByFilePath: bindingResolutionStage.resolvedNamespaceImportsByFilePath,
-  });
-  const renderGraphStage = runProjectRenderGraphStage({
-    componentDefinitionsByFilePath: renderDefinitionsStage.componentDefinitionsByFilePath,
-    componentsByFilePath: componentAvailabilityStage.componentsByFilePath,
-    importedComponentBindingTracesByFilePath:
-      componentAvailabilityStage.importedComponentBindingTracesByFilePath,
-    importedNamespaceComponentDefinitionsByFilePath:
-      componentAvailabilityStage.importedNamespaceComponentDefinitionsByFilePath,
-  });
-  const renderIrStage = runProjectRenderIrStage({
-    componentDefinitionsByFilePath: renderDefinitionsStage.componentDefinitionsByFilePath,
-    componentsByFilePath: componentAvailabilityStage.componentsByFilePath,
-    importedExpressionBindingsByFilePath:
-      bindingResolutionStage.importedExpressionBindingsByFilePath,
-    importedHelperDefinitionsByFilePath: renderBindingsStage.importedHelperDefinitionsByFilePath,
-    importedNamespaceExpressionBindingsByFilePath:
-      renderBindingsStage.importedNamespaceExpressionBindingsByFilePath,
-    importedNamespaceHelperDefinitionsByFilePath:
-      renderBindingsStage.importedNamespaceHelperDefinitionsByFilePath,
-    importedNamespaceComponentDefinitionsByFilePath:
-      componentAvailabilityStage.importedNamespaceComponentDefinitionsByFilePath,
-  });
+  const renderGraphStage = runProjectRenderGraphStage(renderSummaryStage.renderGraphInput);
+  const renderIrStage = runProjectRenderIrStage(renderSummaryStage.renderIrInput);
   const cssAnalysisStage = runCssAnalysisStage({
     selectorCssSources: input.selectorCssSources ?? [],
   });
@@ -191,7 +146,7 @@ export function analyzeProjectSourceTexts(input: {
 
   return {
     moduleGraph: moduleGraphStage.moduleGraph,
-    symbols: bindingResolutionStage.symbols,
+    symbols: symbolResolutionStage.symbols,
     classExpressions: abstractValueStage.classExpressions,
     cssFiles: cssAnalysisStage.cssFiles,
     externalCssSummary: externalCssStage.externalCssSummary,

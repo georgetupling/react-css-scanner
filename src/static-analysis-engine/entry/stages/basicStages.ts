@@ -40,7 +40,7 @@ import type {
   ResolvedImportedComponentBinding,
   ResolvedNamespaceImport,
 } from "../../pipeline/symbol-resolution/index.js";
-import type { EngineModuleId, EngineSymbolId } from "../../types/core.js";
+import type { EngineSymbolId } from "../../types/core.js";
 import type {
   AbstractValueStageResult,
   CssAnalysisStageResult,
@@ -48,7 +48,7 @@ import type {
   ModuleGraphStageResult,
   ParseStageResult,
   ProjectComponentAvailabilityStageResult,
-  ProjectBindingResolutionStageResult,
+  ProjectSymbolCollection,
   ProjectRenderBindingsStageResult,
   ProjectRenderDefinitionsStageResult,
   ParsedProjectFile,
@@ -96,9 +96,9 @@ export function runSymbolResolutionStage(input: {
   };
 }
 
-export function runProjectSymbolResolutionStage(input: {
+function collectProjectSymbols(input: {
   parsedFiles: ParsedProjectFile[];
-}): ProjectSymbolResolutionStageResult {
+}): ProjectSymbolCollection {
   const symbols = new Map<EngineSymbolId, EngineSymbol>();
   const symbolsByFilePath = new Map<string, Map<EngineSymbolId, EngineSymbol>>();
 
@@ -122,55 +122,46 @@ export function runProjectSymbolResolutionStage(input: {
   };
 }
 
+export function runProjectSymbolResolutionStage(input: {
+  parsedFiles: ParsedProjectFile[];
+  moduleGraph: ModuleGraph;
+}): ProjectSymbolResolutionStageResult {
+  const collectedSymbols = collectProjectSymbols({
+    parsedFiles: input.parsedFiles,
+  });
+
+  return buildProjectBindingResolution({
+    moduleGraph: input.moduleGraph,
+    symbolsByFilePath: collectedSymbols.symbolsByFilePath,
+    parsedSourceFilesByFilePath: new Map(
+      input.parsedFiles.map((parsedFile) => [parsedFile.filePath, parsedFile.parsedSourceFile]),
+    ),
+  });
+}
+
 export function runModuleGraphStage(input: {
   filePath: string;
   parsedSourceFile: ts.SourceFile;
-  moduleId: EngineModuleId;
-  symbols: Map<EngineSymbolId, EngineSymbol>;
 }): ModuleGraphStageResult {
-  const topLevelSymbolIds = [...input.symbols.keys()].sort((left, right) =>
-    left.localeCompare(right),
-  );
-
   return {
     moduleGraph: buildModuleGraphFromSource({
       filePath: input.filePath,
       parsedSourceFile: input.parsedSourceFile,
-      topLevelSymbolIds,
     }),
   };
 }
 
 export function runProjectModuleGraphStage(input: {
   parsedFiles: ParsedProjectFile[];
-  symbolsByFilePath: Map<string, Map<EngineSymbolId, EngineSymbol>>;
 }): ModuleGraphStageResult {
   return {
     moduleGraph: buildModuleGraphFromSources(
       input.parsedFiles.map((parsedFile) => ({
         filePath: parsedFile.filePath,
         parsedSourceFile: parsedFile.parsedSourceFile,
-        topLevelSymbolIds: [
-          ...(input.symbolsByFilePath.get(parsedFile.filePath)?.keys() ?? []),
-        ].sort((left, right) => left.localeCompare(right)),
       })),
     ),
   };
-}
-
-export function runProjectBindingResolutionStage(input: {
-  moduleGraph: ModuleGraph;
-  symbolsByFilePath: Map<string, Map<EngineSymbolId, EngineSymbol>>;
-  parsedFiles?: ParsedProjectFile[];
-}): ProjectBindingResolutionStageResult {
-  return buildProjectBindingResolution({
-    ...input,
-    parsedSourceFilesByFilePath: input.parsedFiles
-      ? new Map(
-          input.parsedFiles.map((parsedFile) => [parsedFile.filePath, parsedFile.parsedSourceFile]),
-        )
-      : undefined,
-  });
 }
 
 export function runProjectRenderDefinitionsStage(input: {

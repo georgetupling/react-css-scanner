@@ -20,9 +20,7 @@ import type { ExperimentalRuleResult } from "../../pipeline/rule-execution/index
 import type { SelectorQueryResult } from "../../pipeline/selector-analysis/index.js";
 import type {
   EngineSymbol,
-  ResolvedImportedBinding,
-  ResolvedImportedComponentBinding,
-  ResolvedNamespaceImport,
+  ProjectBindingResolution,
 } from "../../pipeline/symbol-resolution/index.js";
 import type { EngineModuleId, EngineSymbolId } from "../../types/core.js";
 import type { AnalysisTrace } from "../../types/analysis.js";
@@ -45,20 +43,12 @@ export type SymbolResolutionStageResult = {
   symbols: Map<EngineSymbolId, EngineSymbol>;
 };
 
-export type ProjectSymbolResolutionStageResult = {
+export type ProjectSymbolCollection = {
   symbols: Map<EngineSymbolId, EngineSymbol>;
   symbolsByFilePath: Map<string, Map<EngineSymbolId, EngineSymbol>>;
 };
 
-export type ProjectBindingResolutionStageResult = {
-  symbols: Map<EngineSymbolId, EngineSymbol>;
-  symbolsByFilePath: Map<string, Map<EngineSymbolId, EngineSymbol>>;
-  resolvedImportedBindingsByFilePath: Map<string, ResolvedImportedBinding[]>;
-  resolvedImportedComponentBindingsByFilePath: Map<string, ResolvedImportedComponentBinding[]>;
-  resolvedNamespaceImportsByFilePath: Map<string, ResolvedNamespaceImport[]>;
-  exportedExpressionBindingsByFilePath: Map<string, Map<string, ts.Expression>>;
-  importedExpressionBindingsByFilePath: Map<string, Map<string, ts.Expression>>;
-};
+export type ProjectSymbolResolutionStageResult = ProjectBindingResolution;
 
 export type ModuleGraphStageResult = {
   moduleGraph: ModuleGraph;
@@ -109,6 +99,14 @@ export type ProjectRenderIrStageInput = {
     string,
     Map<string, Map<string, SameFileComponentDefinition>>
   >;
+};
+
+export type ProjectRenderSummaryStageResult = {
+  renderDefinitions: ProjectRenderDefinitionsStageResult;
+  renderBindings: ProjectRenderBindingsStageResult;
+  componentAvailability: ProjectComponentAvailabilityStageResult;
+  renderGraphInput: ProjectRenderGraphStageInput;
+  renderIrInput: ProjectRenderIrStageInput;
 };
 
 export type CssAnalysisStageResult = {

@@ -12,15 +12,7 @@ export function runRenderIrStage(input: {
   };
 }
 
-export function runProjectRenderIrStage(input: {
-  componentDefinitionsByFilePath: ProjectRenderIrStageInput["componentDefinitionsByFilePath"];
-  componentsByFilePath: ProjectRenderIrStageInput["componentsByFilePath"];
-  importedExpressionBindingsByFilePath: ProjectRenderIrStageInput["importedExpressionBindingsByFilePath"];
-  importedHelperDefinitionsByFilePath: ProjectRenderIrStageInput["importedHelperDefinitionsByFilePath"];
-  importedNamespaceExpressionBindingsByFilePath: ProjectRenderIrStageInput["importedNamespaceExpressionBindingsByFilePath"];
-  importedNamespaceHelperDefinitionsByFilePath: ProjectRenderIrStageInput["importedNamespaceHelperDefinitionsByFilePath"];
-  importedNamespaceComponentDefinitionsByFilePath: ProjectRenderIrStageInput["importedNamespaceComponentDefinitionsByFilePath"];
-}): RenderIrStageResult {
+export function runProjectRenderIrStage(input: ProjectRenderIrStageInput): RenderIrStageResult {
   return {
     renderSubtrees: [...input.componentDefinitionsByFilePath.entries()].flatMap(
       ([filePath, componentDefinitions]) =>

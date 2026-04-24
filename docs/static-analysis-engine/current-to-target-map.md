@@ -70,18 +70,17 @@ The current top-level orchestration flow is the one wired in:
 For project analysis, the live flow is:
 
 1. parse
-2. symbol resolution
-3. module graph
+2. module graph
+3. symbol resolution
 4. abstract values
-5. project binding resolution
-6. render context assembly
-7. render graph
-8. render IR
-9. CSS analysis
-10. external CSS summary
-11. reachability
-12. selector analysis
-13. rule execution
+5. project render summaries
+6. render graph
+7. render IR
+8. CSS analysis
+9. external CSS summary
+10. reachability
+11. selector analysis
+12. rule execution
 
 For single-file analysis, the flow is simpler and bypasses some project-wide
 scaffolding, but it still mirrors the same broad pipeline shape.
@@ -121,11 +120,10 @@ That shared-library shape is now partially implemented in code:
 | Current live step | Current implementation owner | Target status | Target owner |
 | --- | --- | --- | --- |
 | parse | `entry/stages/basicStages.ts`, `pipeline/source-file-parsing/`, `parser/` | durable | `pipeline/parse/` plus shared parsing libraries |
-| symbol resolution | `pipeline/symbol-resolution/` | durable | `pipeline/symbol-resolution/` |
 | module graph | `pipeline/module-graph/` | durable | `pipeline/module-graph/` |
+| symbol resolution | `entry/stages/basicStages.ts`, `pipeline/symbol-resolution/` | durable | `pipeline/symbol-resolution/` |
 | abstract values | `pipeline/abstract-values/` | durable | `pipeline/abstract-values/` |
-| project binding resolution | `pipeline/symbol-resolution/resolveProjectBindings.ts` | temporary explicit seam | absorbed into published symbol-resolution outputs |
-| project render summaries | `entry/scan.ts`, `entry/stages/basicStages.ts`, `pipeline/render-ir/buildProjectRenderDefinitions.ts`, `pipeline/render-ir/buildProjectRenderBindings.ts`, `pipeline/render-graph/buildProjectComponentAvailability.ts` | temporary explicit seam | promoted into explicit durable stage contracts |
+| project render summaries | `entry/stages/renderSummaryStage.ts`, `entry/stages/basicStages.ts`, `pipeline/render-ir/buildProjectRenderDefinitions.ts`, `pipeline/render-ir/buildProjectRenderBindings.ts`, `pipeline/render-graph/buildProjectComponentAvailability.ts` | temporary explicit seam | promoted into explicit durable stage contracts |
 | render graph | `entry/stages/renderGraphStage.ts`, `pipeline/render-graph/` | durable | `pipeline/render-graph/` |
 | render IR | `entry/stages/renderIrStage.ts`, `pipeline/render-ir/` | durable | `pipeline/render-ir/` |
 | CSS analysis | `pipeline/css-analysis/`, `parser/` | durable | `pipeline/css-analysis/` plus shared CSS libraries |
@@ -368,33 +366,31 @@ authoritative model already exists.
 
 The following seams are allowed today, but are not target-state boundaries.
 
-### Temporary Seam 1: Project binding resolution as a distinct orchestration step
+### Temporary Seam 1 (retired): Project binding resolution is now published through symbol-resolution
 
 Current owner:
 
 - `pipeline/symbol-resolution/resolveProjectBindings.ts`
 
-What it owns today:
+What changed:
 
 - project-wide imported binding resolution
 - namespace import resolution
-- symbol enrichment with resolved imported targets
-
-Why it is temporary:
-
-- it is conceptually part of symbol-resolution rather than a durable extra stage
+- symbol enrichment with resolved imported targets now flow through
+  `entry/stages/basicStages.ts` as part of the symbol-resolution stage result
+- project analysis no longer exposes a distinct top-level
+  `project binding resolution` orchestration step
 
 Target end-state:
 
 - symbol-resolution publishes project-wide binding summaries directly as part of
   its normal stage output
 
-Exit criteria:
+Why this is now considered retired:
 
-- project analysis no longer requires a separate orchestration seam named
-  `project binding resolution`
-- later stages consume a published symbol-resolution output contract rather than
-  a special extra pass
+- the separate orchestration seam is gone from the live project pipeline
+- later stages now consume a published symbol-resolution output contract rather
+  than a special extra pass
 
 ### Temporary Seam 2: `buildProjectRenderContext` (retired)
 
@@ -409,8 +405,8 @@ What it owns today:
 - same-file render definition discovery lives under render-IR
 - helper and namespace binding materialization lives under render-IR
 - component availability assembly lives under render-graph
-- `entry/scan.ts` wires these summaries directly into render graph and render IR
-  stages
+- `entry/stages/renderSummaryStage.ts` packages those published summaries into
+  explicit render-graph and render-IR stage input contracts
 
 Why it is temporary:
 
@@ -419,8 +415,8 @@ Why it is temporary:
 
 Allowed current role:
 
-- no remaining bridge layer; render stages consume the published summaries
-  directly
+- a minimal adapter may package published render-summary outputs into explicit
+  downstream stage inputs, but it must not reclaim cross-file semantic work
 
 Target end-state:
 
@@ -610,6 +606,7 @@ next phase of work:
 
 - `src/static-analysis-engine/entry/scan.ts`
 - `src/static-analysis-engine/entry/stages/basicStages.ts`
+- `src/static-analysis-engine/entry/stages/renderSummaryStage.ts`
 - `src/static-analysis-engine/entry/stages/renderGraphStage.ts`
 - `src/static-analysis-engine/entry/stages/renderIrStage.ts`
 - `src/static-analysis-engine/pipeline/symbol-resolution/resolveProjectBindings.ts`
@@ -812,8 +809,9 @@ Completed changes:
   `pipeline/render-ir/buildProjectRenderBindings.ts`
 - component availability assembly now lives in
   `pipeline/render-graph/buildProjectComponentAvailability.ts`
-- `entry/scan.ts` now wires these summaries directly into render graph and
-  render IR stages without a `buildProjectRenderContext.ts` bridge
+- `entry/stages/renderSummaryStage.ts` now publishes explicit render-graph and
+  render-IR stage inputs without reviving a `buildProjectRenderContext.ts`
+  bridge
 
 Why this counts for tranche 2:
 
@@ -826,8 +824,8 @@ What did not change yet:
 
 - same-file component discovery still remains close to render work
 - helper semantics are still not owned by a fuller abstract-values summary layer
-- the project still needs clearer first-class stage contracts for these new
-  project render summaries
+- durable ownership of the render-summary builders still spans render-IR and
+  render-graph packages even though the entry-stage contract is now explicit
 
 This means tranche 2 should now be treated as complete for the bounded scope
 described in this document.

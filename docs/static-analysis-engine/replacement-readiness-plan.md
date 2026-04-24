@@ -298,8 +298,12 @@ What changed:
   `pipeline/render-ir/buildProjectRenderBindings.ts`
 - component availability assembly now lives in
   `pipeline/render-graph/buildProjectComponentAvailability.ts`
-- `entry/scan.ts` now wires those summaries directly into render graph and
-  render IR
+- project-wide imported binding, namespace, and expression-binding summaries are
+  now published directly through the symbol-resolution stage output rather than
+  a separate top-level binding-resolution step
+- `entry/stages/renderSummaryStage.ts` now packages those summaries into
+  explicit render-graph and render-IR stage inputs without reviving a render-
+  context bridge
 
 Why this matters:
 

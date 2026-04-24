@@ -23,12 +23,9 @@ export function runRenderGraphStage(input: {
   };
 }
 
-export function runProjectRenderGraphStage(input: {
-  componentDefinitionsByFilePath: ProjectRenderGraphStageInput["componentDefinitionsByFilePath"];
-  componentsByFilePath: ProjectRenderGraphStageInput["componentsByFilePath"];
-  importedComponentBindingTracesByFilePath: ProjectRenderGraphStageInput["importedComponentBindingTracesByFilePath"];
-  importedNamespaceComponentDefinitionsByFilePath: ProjectRenderGraphStageInput["importedNamespaceComponentDefinitionsByFilePath"];
-}): RenderGraphStageResult {
+export function runProjectRenderGraphStage(
+  input: ProjectRenderGraphStageInput,
+): RenderGraphStageResult {
   return {
     renderGraph: buildRenderGraph({
       componentDefinitionsByFilePath: input.componentDefinitionsByFilePath,
