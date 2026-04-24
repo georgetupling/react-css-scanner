@@ -86,6 +86,8 @@ Still open:
   owner
 - eliminate the named top-level `selector input` orchestration seam
 - remove direct old-engine type leakage from CSS analysis and rule execution
+- continue shifting helper/prop flow and cross-file semantic ownership toward
+  reusable symbol-resolution and abstract-value summaries
 - keep later stages consuming authoritative upstream outputs instead of
   re-deriving meaning
 
@@ -119,6 +121,11 @@ Current capability notes:
   several bounded cross-file cases
 - unsupported helper argument flows still degrade to explicit unknown outcomes,
   which is acceptable as long as the product contract handles them deliberately
+- the current engine does **not** yet expose a first-class CSS-Module semantic
+  layer equivalent to the shipped scanner's CSS-Module import/property model
+- the current engine does **not** yet propagate external CSS natively through
+  reachability in the same way the shipped scanner does, even though the module
+  graph can already classify external CSS imports
 - broad render-prop or arbitrary component-as-prop support is **not** assumed to
   be part of the current replacement baseline unless a shipped rule truly needs
   it
@@ -128,6 +135,11 @@ Still open:
 - decide exactly which currently shipped rules require additional render/value
   capability before they can migrate cleanly
 - add any missing bounded support required for those rules
+- add a first-class CSS-Module semantic layer before native CSS-Module rule
+  cutover
+- port or re-home the current scanner's external stylesheet/provider handling so
+  external CSS can participate in new-engine-native reachability and rule
+  execution
 - distinguish "needed for parity-first replacement" from "nice follow-on engine
   expansion"
 
@@ -248,8 +260,8 @@ Why it blocks close-out:
 Required close-out action:
 
 - move remaining cross-file semantic ownership upward into symbol-resolution or
-  abstract-value-owned summaries, then leave only a thin render adapter if one
-  is still useful
+  abstract-value-owned summaries instead of leaving it in render-context glue,
+  then leave only a thin render adapter if one is still useful
 
 ### Blocker 2: old-engine type leakage still exists at the CSS/rule edge
 
@@ -265,17 +277,19 @@ Required close-out action:
 - replace reused old-engine shapes with new-engine-native contracts or thin
   compatibility wrappers that live only at deliberate migration boundaries
 
-### Blocker 3: full rule-family replacement planning is not written down
+### Blocker 3: rule-family replacement planning is started but not detailed enough
 
 Why it blocks close-out:
 
-- replacement cannot be approved from engine capability alone
+- the migration matrix establishes the family-level shape, but it is not yet the
+  same thing as family-specific cutover decisions
+- replacement still cannot be approved from engine capability alone
 - the shipped product is defined by its rule behavior and output contract
 
 Required close-out action:
 
-- create a per-rule-family migration matrix with parity status, dependencies,
-  remaining gaps, and validation expectations
+- turn the migration matrix into explicit family-level parity contracts,
+  adapter decisions, known divergences, and cutover readiness checks
 
 ### Blocker 4: replacement-grade validation is still too narrow
 
@@ -289,8 +303,27 @@ Required close-out action:
 
 - expand the validation suite to cover the highest-risk shipped rule families
   and real multi-file project patterns
+- define explicit replacement acceptance criteria and comparison expectations so
+  cutover confidence is measured rather than intuitive
 
-### Blocker 5: cutover mechanics are still undefined
+### Blocker 5: CSS Modules and external CSS are not yet first-class native
+replacement surfaces
+
+Why it blocks close-out:
+
+- the shipped CSS-Module rules depend on semantics that the current new engine
+  does not yet publish as a first-class layer
+- the shipped external CSS rules depend on external stylesheet/provider logic
+  that has not yet been ported into a durable new-engine-native reachability and
+  rule path
+
+Required close-out action:
+
+- add the missing CSS-Module semantic layer needed for native rule migration
+- port or explicitly wrap the existing external stylesheet/provider logic so the
+  first replacement release has a deliberate external CSS story
+
+### Blocker 6: cutover mechanics are still undefined
 
 Why it blocks close-out:
 
@@ -325,6 +358,8 @@ Deliverables:
 - thinner or removed `buildProjectRenderContext.ts`
 - reduced temporary seam count
 - new-engine-native CSS/rule boundary contracts
+- more cross-file meaning owned by reusable symbol/value summaries rather than
+  render-context assembly
 
 Why second:
 
@@ -349,6 +384,7 @@ Deliverables:
 - larger feature suite
 - targeted integration coverage
 - curated comparison baselines and reviewed known divergences
+- written acceptance criteria for parity-first cutover decisions
 
 Why fourth:
 
@@ -380,21 +416,51 @@ necessary for a shipped rule family.
 
 These may become follow-on work once parity-first replacement is complete.
 
-## Immediate Next Documents To Add
+## Documentation Discipline During Close-Out
 
-The next highest-value close-out artifact after this one is:
+The close-out phase still needs explicit documentation discipline while seams
+are moving.
 
-- a rule-family migration matrix under `docs/static-analysis-engine/`
+Required rule:
 
-That document should list, for each shipped rule family:
+- keep the live docs synchronized with the current implementation and target
+  replacement plan
 
-- current production owner
-- target new-engine owner
-- parity status
-- capability dependencies
-- known divergences
-- required tests and comparison checks
-- cutover readiness
+In practice this means:
+
+- keep `current-to-target-map.md` current when a temporary seam changes status
+- keep `replacement-readiness-plan.md` current when the replacement gate or
+  blockers change
+- keep `rule-family-migration-matrix.md` current when a family moves from
+  experimental coverage to native migration or adapter-backed cutover
+- keep "current vs target vs temporary" wording explicit whenever a seam is
+  narrowed, promoted, or retired
+
+The goal is to avoid reintroducing drift between:
+
+- current implementation facts
+- temporary migration seams
+- durable target architecture
+
+## Immediate Next Close-Out Artifacts
+
+The next highest-value close-out artifacts after this plan, the migration
+matrix, the acceptance checklist, and the cutover checklist are:
+
+- a short parity contract for the first native migration wave
+- a family-level divergence log or review record for known comparison
+  differences
+- targeted per-family cutover checklists where a generic global checklist is not
+  precise enough
+
+Those artifacts should make these things explicit:
+
+- which divergences count as blocking regressions versus expected improvements
+- which comparison thresholds and feature/integration scenarios must pass before
+  cutover
+- which family-specific semantics map engine outcomes onto shipped findings
+- which adapters are allowed in the first replacement release and what retires
+  them later
 
 ## Summary
 
@@ -408,6 +474,12 @@ is:
 - migrate the shipped rules deliberately
 - define the replacement gate explicitly
 - cut over on purpose
+
+One important nuance for close-out tracking:
+
+- tranche 5 validation is complete for its bounded scope
+- the remaining work is broader replacement validation, native migration, and
+  cutover planning rather than an uncompleted tranche 5
 
 The core strategic decision is now locked:
 
