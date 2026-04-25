@@ -57,6 +57,7 @@ export type ProjectAnalysisEntities = {
   classDefinitions: ClassDefinitionAnalysis[];
   selectorQueries: SelectorQueryAnalysis[];
   selectorBranches: SelectorBranchAnalysis[];
+  classOwnership: ClassOwnershipAnalysis[];
   components: ComponentAnalysis[];
   renderSubtrees: RenderSubtreeAnalysis[];
   unsupportedClassReferences: UnsupportedClassReferenceAnalysis[];
@@ -154,6 +155,53 @@ export type SelectorBranchAnalysis = {
   confidence: SelectorQueryResult["confidence"];
   traces: AnalysisTrace[];
   sourceQuery: SelectorQueryAnalysis;
+};
+
+export type OwnerCandidateReason =
+  | "single-importing-component"
+  | "single-consuming-component"
+  | "same-directory"
+  | "sibling-basename-convention"
+  | "component-folder-convention"
+  | "feature-folder-convention"
+  | "multi-consumer"
+  | "unknown";
+
+export type OwnerCandidate = {
+  kind: "component" | "source-file" | "directory" | "unknown";
+  id?: ProjectAnalysisId;
+  path?: string;
+  confidence: AnalysisConfidence;
+  reasons: OwnerCandidateReason[];
+  traces: AnalysisTrace[];
+};
+
+export type ClassConsumerSummary = {
+  classDefinitionId: ProjectAnalysisId;
+  className: string;
+  consumerComponentIds: ProjectAnalysisId[];
+  consumerSourceFileIds: ProjectAnalysisId[];
+  referenceIds: ProjectAnalysisId[];
+  matchIds: ProjectAnalysisId[];
+};
+
+export type ClassOwnershipEvidenceKind =
+  | "single-importing-component"
+  | "single-consuming-component"
+  | "multi-consumer"
+  | "path-convention"
+  | "unknown";
+
+export type ClassOwnershipAnalysis = {
+  id: ProjectAnalysisId;
+  classDefinitionId: ProjectAnalysisId;
+  stylesheetId: ProjectAnalysisId;
+  className: string;
+  consumerSummary: ClassConsumerSummary;
+  ownerCandidates: OwnerCandidate[];
+  evidenceKind: ClassOwnershipEvidenceKind;
+  confidence: AnalysisConfidence;
+  traces: AnalysisTrace[];
 };
 
 export type ComponentAnalysis = {
@@ -309,6 +357,8 @@ export type ProjectAnalysisIndexes = {
   classDefinitionsById: Map<ProjectAnalysisId, ClassDefinitionAnalysis>;
   selectorQueriesById: Map<ProjectAnalysisId, SelectorQueryAnalysis>;
   selectorBranchesById: Map<ProjectAnalysisId, SelectorBranchAnalysis>;
+  classOwnershipById: Map<ProjectAnalysisId, ClassOwnershipAnalysis>;
+  componentsById: Map<ProjectAnalysisId, ComponentAnalysis>;
   unsupportedClassReferencesById: Map<ProjectAnalysisId, UnsupportedClassReferenceAnalysis>;
   cssModuleImportsById: Map<ProjectAnalysisId, CssModuleImportAnalysis>;
   cssModuleMemberReferencesById: Map<ProjectAnalysisId, CssModuleMemberReferenceAnalysis>;
@@ -326,6 +376,10 @@ export type ProjectAnalysisIndexes = {
   selectorBranchesByStylesheetId: Map<ProjectAnalysisId, ProjectAnalysisId[]>;
   selectorBranchesByQueryId: Map<ProjectAnalysisId, ProjectAnalysisId[]>;
   selectorBranchesByRuleKey: Map<string, ProjectAnalysisId[]>;
+  classOwnershipByClassDefinitionId: Map<ProjectAnalysisId, ProjectAnalysisId>;
+  classOwnershipByStylesheetId: Map<ProjectAnalysisId, ProjectAnalysisId[]>;
+  classOwnershipByOwnerComponentId: Map<ProjectAnalysisId, ProjectAnalysisId[]>;
+  classOwnershipByConsumerComponentId: Map<ProjectAnalysisId, ProjectAnalysisId[]>;
   referenceMatchesById: Map<ProjectAnalysisId, ClassReferenceMatchRelation>;
   matchesByReferenceId: Map<ProjectAnalysisId, ProjectAnalysisId[]>;
   referenceMatchesByReferenceAndClassName: Map<string, ProjectAnalysisId[]>;

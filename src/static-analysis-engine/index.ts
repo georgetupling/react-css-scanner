@@ -107,6 +107,9 @@ export type {
 export type {
   ClassDefinitionAnalysis,
   ClassDefinitionSelectorKind,
+  ClassConsumerSummary,
+  ClassOwnershipAnalysis,
+  ClassOwnershipEvidenceKind,
   ClassReferenceAnalysis,
   ClassReferenceExpressionKind,
   ClassReferenceMatchRelation,
@@ -118,6 +121,8 @@ export type {
   CssModuleMemberReferenceAnalysis,
   CssModuleReferenceDiagnosticAnalysis,
   ModuleImportRelation,
+  OwnerCandidate,
+  OwnerCandidateReason,
   ProjectAnalysis,
   ProjectAnalysisEntities,
   ProjectAnalysisId,

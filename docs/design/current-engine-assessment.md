@@ -60,12 +60,13 @@ The projection currently covers:
 - class references
 - class definitions
 - selector queries
+- class ownership evidence
 - reachability, match, import, and render relations
 - deterministic indexes over common rule lookup paths
 
 Remaining gaps include:
 
-- ownership and organization records
+- deeper ownership and organization rules beyond the first component-colocation signal
 - richer external CSS ingestion records
 - stronger match semantics for dynamic and unsupported analysis beyond the current class-reference slice
 
@@ -322,18 +323,23 @@ That is a strength. The ambiguous part is product semantics:
 
 The engine should support both, but the intended product behavior should be defined.
 
-### 4. Does ownership belong in the engine?
+### 4. How far should ownership go in the engine?
 
 The deleted scanner had ownership-style concepts such as component, page, global, and utility.
 
-The current engine does not have a strong native ownership model.
+The current engine now exposes evidence-based class ownership records in `ProjectAnalysis`.
+Those records preserve owner candidates, consumer summaries, path-convention reasons, confidence,
+and traces without reviving fixed ownership buckets as the primary model.
 
-Decision still needed:
+Remaining decisions:
 
-- keep ownership outside the engine as configurable product policy
-- or make it a first-class engine analysis layer
+- which ownership rules should become default product policy
+- how much path-convention behavior should become configurable
+- whether broader directory or feature ownership should be modeled beyond component-level evidence
 
-That choice affects the shape of stylesheet records and rule inputs.
+The first implemented rule is `single-component-style-not-colocated`; broader boundary and shared
+ownership rules should continue to consume `ProjectAnalysis` ownership records rather than rebuilding
+import/reference maps.
 
 ### 5. How far should bounded render analysis go?
 

@@ -3,6 +3,9 @@ export { serializeProjectAnalysis } from "./serializeProjectAnalysis.js";
 export type {
   ClassDefinitionAnalysis,
   ClassDefinitionSelectorKind,
+  ClassConsumerSummary,
+  ClassOwnershipAnalysis,
+  ClassOwnershipEvidenceKind,
   ClassReferenceAnalysis,
   ClassReferenceExpressionKind,
   ClassReferenceMatchRelation,
@@ -15,6 +18,8 @@ export type {
   CssModuleReferenceDiagnosticAnalysis,
   CssFileRecord,
   ModuleImportRelation,
+  OwnerCandidate,
+  OwnerCandidateReason,
   ProjectAnalysis,
   ProjectAnalysisBuildInput,
   ProjectAnalysisEntities,

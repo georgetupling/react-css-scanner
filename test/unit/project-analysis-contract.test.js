@@ -117,3 +117,37 @@ test("ProjectAnalysis can be serialized for debug output with populated indexes"
   assert.match(json, /definitionsByClassName/);
   assert.match(json, /stylesheet:src\/App.css/);
 });
+
+test("ProjectAnalysis exposes ownership evidence for class definitions", () => {
+  const result = analyzeProjectSourceTexts({
+    sourceFiles: [
+      {
+        filePath: "src/components/Button.tsx",
+        sourceText:
+          'import "../styles/button.css";\nexport function Button() { return <button className="button">Save</button>; }\n',
+      },
+    ],
+    selectorCssSources: [
+      {
+        filePath: "src/styles/button.css",
+        cssText: ".button { display: block; }\n",
+      },
+    ],
+  });
+
+  const analysis = result.projectAnalysis;
+  const definition = analysis.entities.classDefinitions.find(
+    (candidate) => candidate.className === "button",
+  );
+  assert.ok(definition);
+
+  const ownershipId = analysis.indexes.classOwnershipByClassDefinitionId.get(definition.id);
+  assert.ok(ownershipId);
+  const ownership = analysis.indexes.classOwnershipById.get(ownershipId);
+  assert.ok(ownership);
+  assert.equal(ownership.className, "button");
+  assert.equal(ownership.consumerSummary.consumerComponentIds.length, 1);
+  assert.equal(ownership.ownerCandidates[0].kind, "component");
+  assert.ok(ownership.ownerCandidates[0].reasons.includes("single-importing-component"));
+  assert.ok(ownership.ownerCandidates[0].reasons.includes("single-consuming-component"));
+});

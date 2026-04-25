@@ -1,9 +1,12 @@
 import type {
   ClassDefinitionAnalysis,
+  ClassOwnershipAnalysis,
   ClassDefinitionSelectorKind,
   ClassReferenceAnalysis,
   ClassReferenceExpressionKind,
   ClassReferenceMatchRelation,
+  OwnerCandidate,
+  OwnerCandidateReason,
   ComponentAnalysis,
   ComponentRenderRelation,
   CssModuleImportAnalysis,
@@ -66,6 +69,7 @@ export function buildProjectAnalysis(input: ProjectAnalysisBuildInput): ProjectA
     classDefinitions,
     selectorQueries,
     selectorBranches,
+    components,
     unsupportedClassReferences,
     cssModuleImports,
     cssModuleMemberReferences,
@@ -88,6 +92,15 @@ export function buildProjectAnalysis(input: ProjectAnalysisBuildInput): ProjectA
     references: cssModuleMemberReferences,
     indexes,
   });
+  const classOwnership = buildClassOwnership({
+    input,
+    definitions: classDefinitions,
+    references: classReferences,
+    components,
+    stylesheets,
+    referenceMatches,
+    indexes,
+  });
 
   indexRelations({
     referenceMatches,
@@ -96,6 +109,7 @@ export function buildProjectAnalysis(input: ProjectAnalysisBuildInput): ProjectA
     cssModuleMemberMatches,
     indexes,
   });
+  indexClassOwnership(classOwnership, indexes);
 
   return {
     meta: {
@@ -115,6 +129,7 @@ export function buildProjectAnalysis(input: ProjectAnalysisBuildInput): ProjectA
       classDefinitions,
       selectorQueries,
       selectorBranches,
+      classOwnership,
       components,
       renderSubtrees,
       unsupportedClassReferences,
@@ -883,6 +898,397 @@ function buildSelectorMatches(selectorQueries: SelectorQueryAnalysis[]): Selecto
     .sort(compareById);
 }
 
+function buildClassOwnership(input: {
+  input: ProjectAnalysisBuildInput;
+  definitions: ClassDefinitionAnalysis[];
+  references: ClassReferenceAnalysis[];
+  components: ComponentAnalysis[];
+  stylesheets: StylesheetAnalysis[];
+  referenceMatches: ClassReferenceMatchRelation[];
+  indexes: ProjectAnalysisIndexes;
+}): ClassOwnershipAnalysis[] {
+  const referencesById = new Map(input.references.map((reference) => [reference.id, reference]));
+  const componentsById = new Map(input.components.map((component) => [component.id, component]));
+  const componentsBySourceFileId = new Map<ProjectAnalysisId, ComponentAnalysis[]>();
+  for (const component of input.components) {
+    const sourceFileId = input.indexes.sourceFileIdByPath.get(component.filePath);
+    if (sourceFileId) {
+      pushMapValue(componentsBySourceFileId, sourceFileId, component);
+    }
+  }
+  const importerComponentsByStylesheetId = buildImporterComponentsByStylesheetId({
+    input: input.input,
+    componentsBySourceFileId,
+    indexes: input.indexes,
+  });
+
+  return input.definitions
+    .map((definition) => {
+      const stylesheet = input.stylesheets.find(
+        (candidate) => candidate.id === definition.stylesheetId,
+      );
+      const consumerSummary = buildClassConsumerSummary({
+        definition,
+        referenceMatches: input.referenceMatches,
+        referencesById,
+      });
+      const ownerCandidates = buildOwnerCandidates({
+        definition,
+        stylesheet,
+        consumerSummary,
+        componentsById,
+        importerComponents: importerComponentsByStylesheetId.get(definition.stylesheetId) ?? [],
+      });
+
+      return {
+        id: createClassOwnershipId(definition.id),
+        classDefinitionId: definition.id,
+        stylesheetId: definition.stylesheetId,
+        className: definition.className,
+        consumerSummary,
+        ownerCandidates,
+        evidenceKind: getOwnershipEvidenceKind(ownerCandidates, consumerSummary),
+        confidence: getOwnershipConfidence(ownerCandidates),
+        traces: buildClassOwnershipTraces({
+          definition,
+          stylesheet,
+          consumerSummary,
+          ownerCandidates,
+        }),
+      };
+    })
+    .sort(compareById);
+}
+
+function buildImporterComponentsByStylesheetId(input: {
+  input: ProjectAnalysisBuildInput;
+  componentsBySourceFileId: Map<ProjectAnalysisId, ComponentAnalysis[]>;
+  indexes: ProjectAnalysisIndexes;
+}): Map<ProjectAnalysisId, ComponentAnalysis[]> {
+  const importerComponentsByStylesheetId = new Map<ProjectAnalysisId, ComponentAnalysis[]>();
+  const stylesheetIdByPath = new Map(input.indexes.stylesheetIdByPath);
+
+  for (const moduleNode of input.input.moduleGraph.modulesById.values()) {
+    if (moduleNode.kind !== "source") {
+      continue;
+    }
+
+    const sourceFileId = input.indexes.sourceFileIdByPath.get(
+      normalizeProjectPath(moduleNode.filePath),
+    );
+    if (!sourceFileId) {
+      continue;
+    }
+
+    for (const importRecord of moduleNode.imports) {
+      if (importRecord.importKind !== "css") {
+        continue;
+      }
+
+      const stylesheetId = resolveStylesheetImportId({
+        fromFilePath: moduleNode.filePath,
+        specifier: importRecord.specifier,
+        stylesheetIdByPath,
+      });
+      if (!stylesheetId) {
+        continue;
+      }
+
+      for (const component of input.componentsBySourceFileId.get(sourceFileId) ?? []) {
+        pushUniqueMapValue(importerComponentsByStylesheetId, stylesheetId, component);
+      }
+    }
+  }
+
+  for (const components of importerComponentsByStylesheetId.values()) {
+    components.sort(compareById);
+  }
+
+  return importerComponentsByStylesheetId;
+}
+
+function buildClassConsumerSummary(input: {
+  definition: ClassDefinitionAnalysis;
+  referenceMatches: ClassReferenceMatchRelation[];
+  referencesById: Map<ProjectAnalysisId, ClassReferenceAnalysis>;
+}): ClassOwnershipAnalysis["consumerSummary"] {
+  const matches = input.referenceMatches.filter(
+    (match) =>
+      match.definitionId === input.definition.id && match.matchKind === "reachable-stylesheet",
+  );
+  const referenceIds = uniqueSorted(matches.map((match) => match.referenceId));
+  const references = referenceIds
+    .map((referenceId) => input.referencesById.get(referenceId))
+    .filter((reference): reference is ClassReferenceAnalysis => Boolean(reference));
+
+  return {
+    classDefinitionId: input.definition.id,
+    className: input.definition.className,
+    consumerComponentIds: uniqueSorted(
+      references
+        .map((reference) => reference.componentId)
+        .filter((id): id is string => Boolean(id)),
+    ),
+    consumerSourceFileIds: uniqueSorted(references.map((reference) => reference.sourceFileId)),
+    referenceIds,
+    matchIds: uniqueSorted(matches.map((match) => match.id)),
+  };
+}
+
+function resolveStylesheetImportId(input: {
+  fromFilePath: string;
+  specifier: string;
+  stylesheetIdByPath: Map<string, ProjectAnalysisId>;
+}): ProjectAnalysisId | undefined {
+  if (!input.specifier.startsWith(".")) {
+    return undefined;
+  }
+
+  const fromSegments = normalizeProjectPath(input.fromFilePath).split("/");
+  fromSegments.pop();
+  const specifierSegments = input.specifier.split("/").filter(Boolean);
+  const candidateBasePath = normalizeSegments([...fromSegments, ...specifierSegments]);
+  const candidatePaths = [candidateBasePath, `${candidateBasePath}.css`];
+
+  for (const candidatePath of candidatePaths) {
+    const stylesheetId = input.stylesheetIdByPath.get(candidatePath);
+    if (stylesheetId) {
+      return stylesheetId;
+    }
+  }
+
+  return undefined;
+}
+
+function buildOwnerCandidates(input: {
+  definition: ClassDefinitionAnalysis;
+  stylesheet: StylesheetAnalysis | undefined;
+  consumerSummary: ClassOwnershipAnalysis["consumerSummary"];
+  componentsById: Map<ProjectAnalysisId, ComponentAnalysis>;
+  importerComponents: ComponentAnalysis[];
+}): OwnerCandidate[] {
+  const candidates: OwnerCandidate[] = [];
+
+  if (input.importerComponents.length === 1) {
+    const component = input.importerComponents[0];
+    candidates.push(
+      createComponentOwnerCandidate({
+        component,
+        stylesheet: input.stylesheet,
+        reasons: ["single-importing-component"],
+        confidence: "high",
+        summary: `stylesheet for class "${input.definition.className}" is imported by a single component`,
+      }),
+    );
+  }
+
+  if (input.consumerSummary.consumerComponentIds.length === 1) {
+    const component = input.componentsById.get(input.consumerSummary.consumerComponentIds[0]);
+    if (component) {
+      candidates.push(
+        createComponentOwnerCandidate({
+          component,
+          stylesheet: input.stylesheet,
+          reasons: ["single-consuming-component"],
+          confidence: "medium",
+          summary: `class "${input.definition.className}" is consumed by a single component`,
+        }),
+      );
+    }
+  } else if (input.consumerSummary.consumerComponentIds.length > 1) {
+    candidates.push({
+      kind: "unknown",
+      confidence: "low",
+      reasons: ["multi-consumer"],
+      traces: [
+        {
+          traceId: `ownership:multi-consumer:${input.definition.id}`,
+          category: "rule-evaluation",
+          summary: `class "${input.definition.className}" is consumed by multiple components`,
+          children: [],
+          metadata: {
+            classDefinitionId: input.definition.id,
+            consumerComponentIds: input.consumerSummary.consumerComponentIds,
+          },
+        },
+      ],
+    });
+  }
+
+  return mergeOwnerCandidates(candidates);
+}
+
+function createComponentOwnerCandidate(input: {
+  component: ComponentAnalysis;
+  stylesheet: StylesheetAnalysis | undefined;
+  reasons: OwnerCandidateReason[];
+  confidence: "low" | "medium" | "high";
+  summary: string;
+}): OwnerCandidate {
+  const conventionReasons = getPathConventionReasons({
+    componentFilePath: input.component.filePath,
+    componentName: input.component.componentName,
+    stylesheetFilePath: input.stylesheet?.filePath,
+  });
+  const reasons = uniqueSorted([...input.reasons, ...conventionReasons]) as OwnerCandidateReason[];
+
+  return {
+    kind: "component",
+    id: input.component.id,
+    path: input.component.filePath,
+    confidence: input.confidence,
+    reasons,
+    traces: [
+      {
+        traceId: `ownership:component-candidate:${input.component.id}:${stableHash(reasons.join("|"))}`,
+        category: "rule-evaluation",
+        summary: input.summary,
+        anchor: input.component.location,
+        children: [],
+        metadata: {
+          componentId: input.component.id,
+          componentName: input.component.componentName,
+          componentFilePath: input.component.filePath,
+          stylesheetFilePath: input.stylesheet?.filePath,
+          reasons,
+        },
+      },
+    ],
+  };
+}
+
+function mergeOwnerCandidates(candidates: OwnerCandidate[]): OwnerCandidate[] {
+  const byKey = new Map<string, OwnerCandidate>();
+  for (const candidate of candidates) {
+    const key = `${candidate.kind}:${candidate.id ?? candidate.path ?? "unknown"}`;
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, candidate);
+      continue;
+    }
+
+    byKey.set(key, {
+      ...existing,
+      confidence: maxConfidence(existing.confidence, candidate.confidence),
+      reasons: uniqueSorted([...existing.reasons, ...candidate.reasons]) as OwnerCandidateReason[],
+      traces: [...existing.traces, ...candidate.traces],
+    });
+  }
+
+  return [...byKey.values()].sort((left, right) =>
+    `${left.kind}:${left.id ?? left.path ?? ""}`.localeCompare(
+      `${right.kind}:${right.id ?? right.path ?? ""}`,
+    ),
+  );
+}
+
+function getPathConventionReasons(input: {
+  componentFilePath: string;
+  componentName: string;
+  stylesheetFilePath?: string;
+}): OwnerCandidateReason[] {
+  if (!input.stylesheetFilePath) {
+    return [];
+  }
+
+  const componentDir = getDirectoryName(input.componentFilePath);
+  const stylesheetDir = getDirectoryName(input.stylesheetFilePath);
+  const componentBaseName = getBaseNameWithoutExtension(input.componentFilePath);
+  const stylesheetBaseName = getBaseNameWithoutExtension(input.stylesheetFilePath);
+  const reasons: OwnerCandidateReason[] = [];
+
+  if (componentDir === stylesheetDir) {
+    reasons.push("same-directory");
+    if (componentBaseName === stylesheetBaseName) {
+      reasons.push("sibling-basename-convention");
+    }
+    if (
+      componentBaseName === "index" &&
+      (stylesheetBaseName === input.componentName || stylesheetBaseName === "styles")
+    ) {
+      reasons.push("component-folder-convention");
+    }
+  }
+
+  const componentFeatureRoot = getFeatureRoot(input.componentFilePath);
+  const stylesheetFeatureRoot = getFeatureRoot(input.stylesheetFilePath);
+  if (
+    componentFeatureRoot &&
+    stylesheetFeatureRoot &&
+    componentFeatureRoot === stylesheetFeatureRoot
+  ) {
+    reasons.push("feature-folder-convention");
+  }
+
+  return uniqueSorted(reasons) as OwnerCandidateReason[];
+}
+
+function getOwnershipEvidenceKind(
+  candidates: OwnerCandidate[],
+  consumerSummary: ClassOwnershipAnalysis["consumerSummary"],
+): ClassOwnershipAnalysis["evidenceKind"] {
+  if (candidates.some((candidate) => candidate.reasons.includes("single-importing-component"))) {
+    return "single-importing-component";
+  }
+  if (candidates.some((candidate) => candidate.reasons.includes("single-consuming-component"))) {
+    return "single-consuming-component";
+  }
+  if (consumerSummary.consumerComponentIds.length > 1) {
+    return "multi-consumer";
+  }
+  if (
+    candidates.some((candidate) =>
+      candidate.reasons.some((reason) =>
+        [
+          "same-directory",
+          "sibling-basename-convention",
+          "component-folder-convention",
+          "feature-folder-convention",
+        ].includes(reason),
+      ),
+    )
+  ) {
+    return "path-convention";
+  }
+  return "unknown";
+}
+
+function getOwnershipConfidence(candidates: OwnerCandidate[]): "low" | "medium" | "high" {
+  return candidates.reduce(
+    (confidence, candidate) => maxConfidence(confidence, candidate.confidence),
+    "low" as "low" | "medium" | "high",
+  );
+}
+
+function buildClassOwnershipTraces(input: {
+  definition: ClassDefinitionAnalysis;
+  stylesheet: StylesheetAnalysis | undefined;
+  consumerSummary: ClassOwnershipAnalysis["consumerSummary"];
+  ownerCandidates: OwnerCandidate[];
+}): AnalysisTrace[] {
+  return [
+    {
+      traceId: `ownership:class:${input.definition.id}`,
+      category: "rule-evaluation",
+      summary: `ownership evidence was collected for class "${input.definition.className}"`,
+      anchor: input.stylesheet?.filePath
+        ? {
+            filePath: input.stylesheet.filePath,
+            startLine: input.definition.line,
+            startColumn: 1,
+          }
+        : undefined,
+      children: input.ownerCandidates.flatMap((candidate) => candidate.traces),
+      metadata: {
+        classDefinitionId: input.definition.id,
+        className: input.definition.className,
+        consumerComponentIds: input.consumerSummary.consumerComponentIds,
+        consumerSourceFileIds: input.consumerSummary.consumerSourceFileIds,
+      },
+    },
+  ];
+}
+
 function buildCssModuleMemberMatches(input: {
   references: CssModuleMemberReferenceAnalysis[];
   indexes: ProjectAnalysisIndexes;
@@ -988,6 +1394,7 @@ function indexEntities(input: {
   classDefinitions: ClassDefinitionAnalysis[];
   selectorQueries: SelectorQueryAnalysis[];
   selectorBranches: SelectorBranchAnalysis[];
+  components: ComponentAnalysis[];
   unsupportedClassReferences: UnsupportedClassReferenceAnalysis[];
   cssModuleImports: CssModuleImportAnalysis[];
   cssModuleMemberReferences: CssModuleMemberReferenceAnalysis[];
@@ -1028,6 +1435,9 @@ function indexEntities(input: {
         selectorBranch.id,
       );
     }
+  }
+  for (const component of input.components) {
+    input.indexes.componentsById.set(component.id, component);
   }
   for (const unsupportedReference of input.unsupportedClassReferences) {
     input.indexes.unsupportedClassReferencesById.set(unsupportedReference.id, unsupportedReference);
@@ -1075,6 +1485,31 @@ function indexEntities(input: {
   sortIndexValues(input.indexes.cssModuleMemberReferencesByImportId);
   sortIndexValues(input.indexes.cssModuleMemberReferencesByStylesheetAndClassName);
   sortIndexValues(input.indexes.cssModuleReferenceDiagnosticsByImportId);
+}
+
+function indexClassOwnership(
+  ownershipRecords: ClassOwnershipAnalysis[],
+  indexes: ProjectAnalysisIndexes,
+): void {
+  for (const ownership of ownershipRecords) {
+    indexes.classOwnershipById.set(ownership.id, ownership);
+    indexes.classOwnershipByClassDefinitionId.set(ownership.classDefinitionId, ownership.id);
+    pushMapValue(indexes.classOwnershipByStylesheetId, ownership.stylesheetId, ownership.id);
+
+    for (const candidate of ownership.ownerCandidates) {
+      if (candidate.kind === "component" && candidate.id) {
+        pushMapValue(indexes.classOwnershipByOwnerComponentId, candidate.id, ownership.id);
+      }
+    }
+
+    for (const consumerComponentId of ownership.consumerSummary.consumerComponentIds) {
+      pushMapValue(indexes.classOwnershipByConsumerComponentId, consumerComponentId, ownership.id);
+    }
+  }
+
+  sortIndexValues(indexes.classOwnershipByStylesheetId);
+  sortIndexValues(indexes.classOwnershipByOwnerComponentId);
+  sortIndexValues(indexes.classOwnershipByConsumerComponentId);
 }
 
 function buildModuleImports(
@@ -1380,6 +1815,8 @@ function createEmptyIndexes(): ProjectAnalysisIndexes {
     classDefinitionsById: new Map(),
     selectorQueriesById: new Map(),
     selectorBranchesById: new Map(),
+    classOwnershipById: new Map(),
+    componentsById: new Map(),
     unsupportedClassReferencesById: new Map(),
     cssModuleImportsById: new Map(),
     cssModuleMemberReferencesById: new Map(),
@@ -1397,6 +1834,10 @@ function createEmptyIndexes(): ProjectAnalysisIndexes {
     selectorBranchesByStylesheetId: new Map(),
     selectorBranchesByQueryId: new Map(),
     selectorBranchesByRuleKey: new Map(),
+    classOwnershipByClassDefinitionId: new Map(),
+    classOwnershipByStylesheetId: new Map(),
+    classOwnershipByOwnerComponentId: new Map(),
+    classOwnershipByConsumerComponentId: new Map(),
     referenceMatchesById: new Map(),
     matchesByReferenceId: new Map(),
     referenceMatchesByReferenceAndClassName: new Map(),
@@ -1501,6 +1942,10 @@ function createReferenceClassKey(referenceId: ProjectAnalysisId, className: stri
   return `${referenceId}:${className}`;
 }
 
+function createClassOwnershipId(classDefinitionId: ProjectAnalysisId): string {
+  return `class-ownership:${classDefinitionId}`;
+}
+
 function createStylesheetClassKey(stylesheetId: ProjectAnalysisId, className: string): string {
   return `${stylesheetId}:${className}`;
 }
@@ -1566,6 +2011,65 @@ function normalizeProjectPath(filePath: string): string {
 
 function normalizeOptionalProjectPath(filePath: string | undefined): string | undefined {
   return filePath ? normalizeProjectPath(filePath) : undefined;
+}
+
+function uniqueSorted(values: string[]): string[] {
+  return [...new Set(values)].sort((left, right) => left.localeCompare(right));
+}
+
+function maxConfidence(
+  left: "low" | "medium" | "high",
+  right: "low" | "medium" | "high",
+): "low" | "medium" | "high" {
+  const rank = {
+    low: 0,
+    medium: 1,
+    high: 2,
+  };
+
+  return rank[left] >= rank[right] ? left : right;
+}
+
+function getDirectoryName(filePath: string): string {
+  const normalized = normalizeProjectPath(filePath);
+  const separatorIndex = normalized.lastIndexOf("/");
+  return separatorIndex === -1 ? "" : normalized.slice(0, separatorIndex);
+}
+
+function getBaseNameWithoutExtension(filePath: string): string {
+  const normalized = normalizeProjectPath(filePath);
+  const baseName = normalized.slice(normalized.lastIndexOf("/") + 1);
+  const dotIndex = baseName.indexOf(".");
+  return dotIndex === -1 ? baseName : baseName.slice(0, dotIndex);
+}
+
+function getFeatureRoot(filePath: string): string | undefined {
+  const segments = normalizeProjectPath(filePath).split("/");
+  const featureIndex = segments.findIndex((segment) => segment === "features");
+  if (featureIndex === -1 || !segments[featureIndex + 1]) {
+    return undefined;
+  }
+
+  return segments.slice(0, featureIndex + 2).join("/");
+}
+
+function normalizeSegments(segments: string[]): string {
+  const normalized: string[] = [];
+
+  for (const segment of segments) {
+    if (segment === ".") {
+      continue;
+    }
+
+    if (segment === "..") {
+      normalized.pop();
+      continue;
+    }
+
+    normalized.push(segment);
+  }
+
+  return normalized.join("/");
 }
 
 function normalizeAnchor(anchor: SourceAnchor): SourceAnchor {

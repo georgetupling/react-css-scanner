@@ -3,6 +3,7 @@ import { cssClassUnreachableRule } from "./rules/cssClassUnreachable.js";
 import { compoundSelectorNeverMatchedRule } from "./rules/compoundSelectorNeverMatched.js";
 import { dynamicClassReferenceRule } from "./rules/dynamicClassReference.js";
 import { missingCssModuleClassRule } from "./rules/missingCssModuleClass.js";
+import { singleComponentStyleNotColocatedRule } from "./rules/singleComponentStyleNotColocated.js";
 import { unsupportedSyntaxAffectingAnalysisRule } from "./rules/unsupportedSyntaxAffectingAnalysis.js";
 import { unusedCssClassRule } from "./rules/unusedCssClass.js";
 import { unusedCssModuleClassRule } from "./rules/unusedCssModuleClass.js";
@@ -19,6 +20,7 @@ export const RULE_DEFINITIONS: RuleDefinition[] = [
   unsatisfiableSelectorRule,
   compoundSelectorNeverMatchedRule,
   unusedCompoundSelectorBranchRule,
+  singleComponentStyleNotColocatedRule,
   dynamicClassReferenceRule,
   unsupportedSyntaxAffectingAnalysisRule,
 ];
@@ -32,6 +34,7 @@ export const DEFAULT_RULE_SEVERITIES: Record<RuleId, RuleSeverity> = {
   "unsatisfiable-selector": "warn",
   "compound-selector-never-matched": "warn",
   "unused-compound-selector-branch": "warn",
+  "single-component-style-not-colocated": "info",
   "dynamic-class-reference": "info",
   "unsupported-syntax-affecting-analysis": "debug",
 };

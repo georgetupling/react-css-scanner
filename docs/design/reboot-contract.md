@@ -37,6 +37,7 @@ Responsibilities:
 - analyze stylesheet reachability
 - analyze CSS Module imports and member references
 - analyze class references
+- analyze class ownership evidence from imports, consumers, and path conventions
 - build direct reference-to-definition and selector-to-context evidence
 - expose stable indexes over the analyzed project
 
@@ -126,10 +127,11 @@ This first slice intentionally covers the rule-facing contract that current stag
 
 - source files, stylesheets, components, render subtrees, class references, class definitions, and selector queries
 - selector branches for branch-level selector-list findings
+- class ownership records with consumer summaries and owner candidates
 - module imports, component render edges, stylesheet reachability, class-reference matches, selector matches, and declared-provider class satisfactions
-- deterministic indexes for class names, source files, stylesheets, reachability, selector queries, and matches
+- deterministic indexes for class names, source files, stylesheets, reachability, selector queries, matches, and ownership lookups
 
-It does not yet claim full CSS Module binding semantics, ownership classification, or a complete external CSS ingestion contract.
+It does not yet claim full CSS Module binding semantics, fixed ownership classification, or a complete external CSS ingestion contract.
 
 The current CSS Module slice supports relative CSS Module imports, static member reads such as
 `styles.root` and `styles["root"]`, member-to-class-definition match relations, missing module
@@ -198,6 +200,7 @@ type ProjectAnalysisEntities = {
   cssModuleReferenceDiagnostics: CssModuleReferenceDiagnosticAnalysis[];
   components: ComponentAnalysis[];
   renderSubtrees: RenderSubtreeAnalysis[];
+  classOwnership: ClassOwnershipAnalysis[];
 };
 ```
 
@@ -247,6 +250,10 @@ type ProjectAnalysisIndexes = {
   selectorQueriesByStylesheetId: Map<string, string[]>;
   matchesByReferenceId: Map<string, string[]>;
   selectorMatchesByQueryId: Map<string, string[]>;
+  classOwnershipByClassDefinitionId: Map<string, string>;
+  classOwnershipByStylesheetId: Map<string, string[]>;
+  classOwnershipByOwnerComponentId: Map<string, string[]>;
+  classOwnershipByConsumerComponentId: Map<string, string[]>;
 };
 ```
 
