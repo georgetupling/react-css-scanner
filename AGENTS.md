@@ -1,79 +1,78 @@
 # AGENTS.md
 
-## Project purpose
+## Project Purpose
 
 `scan-react-css` is a standalone npm tool for auditing how React code uses CSS.
 
-The implemented product includes:
+The current rebooted product includes:
 
-- a CLI and Node API
+- a CLI and one stable Node API, `scanProject()`
 - JSON config discovery and validation
-- fact extraction for source files, CSS files, CSS Modules, and imported external CSS
-- a normalized project model with ownership and reachability
-- deterministic findings with severity and confidence
-- CI-friendly reporting and exit-code behavior
+- source and CSS discovery
+- static-analysis-engine based project analysis
+- CSS Module analysis
+- deterministic rule findings with severity and confidence
+- text and JSON CLI reporting
+- focus-path filtering
+- CI-friendly exit-code behavior
 
-## Current status
+## Current Status
 
-The MVP implementation is complete.
+The rebooted product shell is active. Treat `src/`, tests, and durable docs as the source of truth.
+Extend the implementation carefully instead of re-planning the architecture from scratch each session.
 
-Work should now treat the codebase and the durable design docs as the source of truth. Extend the implementation carefully instead of re-planning the architecture from scratch each session.
+The static-analysis-engine under `src/static-analysis-engine` is now the analysis core for the
+rebooted shell. Keep its staged pipeline and internal reasoning model coherent, and do not pull in
+legacy scanner structure.
 
-There is also in-flight work on a replacement static-analysis-engine track.
-That subsystem is intentionally being developed beside the current scanner rather than merged into the production analysis path yet.
-
-## Doc map
+## Doc Map
 
 Start here:
 
 - [README.md](./README.md)
+- [docs/user-guide.md](./docs/user-guide.md)
 - [docs/README.md](./docs/README.md)
 
 Design docs:
 
-- [docs/design/architecture.md](./docs/design/architecture.md)
-- [docs/design/runtime-contracts.md](./docs/design/runtime-contracts.md)
-- [docs/design/config-contract.md](./docs/design/config-contract.md)
-- [docs/design/config-schema.md](./docs/design/config-schema.md)
-- [docs/design/rules.md](./docs/design/rules.md)
-- [docs/design/testing-plan.md](./docs/design/testing-plan.md)
+- [docs/design/reboot-contract.md](./docs/design/reboot-contract.md)
+- [docs/design/rules-catalogue.md](./docs/design/rules-catalogue.md)
+- [docs/design/css-modules-contract.md](./docs/design/css-modules-contract.md)
+- [docs/design/current-product-assessment.md](./docs/design/current-product-assessment.md)
+- [docs/design/current-engine-assessment.md](./docs/design/current-engine-assessment.md)
 
-Future-only docs:
+Temporary plans:
 
-- [docs/future-work/post-mvp-ideas.md](./docs/future-work/post-mvp-ideas.md)
-- [docs/future-work/future-notes.md](./docs/future-work/future-notes.md)
+- [docs/temp](./docs/temp)
 
-Static-analysis-engine docs:
-
-- [docs/static-analysis-engine/architecture.md](./docs/static-analysis-engine/architecture.md)
-- [docs/static-analysis-engine/subsystem-boundaries.md](./docs/static-analysis-engine/subsystem-boundaries.md)
-- [docs/static-analysis-engine/end-to-end-traceability.md](./docs/static-analysis-engine/end-to-end-traceability.md)
-- [docs/static-analysis-engine/current-to-target-map.md](./docs/static-analysis-engine/current-to-target-map.md)
-- [docs/static-analysis-engine/replacement-readiness-plan.md](./docs/static-analysis-engine/replacement-readiness-plan.md)
-- [docs/static-analysis-engine/rule-family-migration-matrix.md](./docs/static-analysis-engine/rule-family-migration-matrix.md)
-- [docs/static-analysis-engine/replacement-acceptance-criteria-checklist.md](./docs/static-analysis-engine/replacement-acceptance-criteria-checklist.md)
-- [docs/static-analysis-engine/cutover-and-old-engine-retirement-checklist.md](./docs/static-analysis-engine/cutover-and-old-engine-retirement-checklist.md)
-- [docs/static-analysis-engine/known-architectural-issues.md](./docs/static-analysis-engine/known-architectural-issues.md)
-- [docs/static-analysis-engine/archive/requirements.md](./docs/static-analysis-engine/archive/requirements.md)
-- [docs/static-analysis-engine/archive/progress-snapshot-2026-04-19.md](./docs/static-analysis-engine/archive/progress-snapshot-2026-04-19.md)
-- [docs/static-analysis-engine/archive/directory-structure-and-boundaries.md](./docs/static-analysis-engine/archive/directory-structure-and-boundaries.md)
-- [docs/static-analysis-engine/archive/core-irs-and-type-shapes.md](./docs/static-analysis-engine/archive/core-irs-and-type-shapes.md)
-
-## Source of truth hierarchy
+## Source Of Truth Hierarchy
 
 When working on product behavior, use this priority order:
 
 1. `src/` and the tests
-2. `docs/design/runtime-contracts.md`
-3. `docs/design/config-contract.md`
-4. `docs/design/rules.md`
-5. `docs/design/architecture.md`
-6. `docs/design/config-schema.md`
-7. `docs/design/testing-plan.md`
+2. [docs/design/reboot-contract.md](./docs/design/reboot-contract.md)
+3. [docs/design/rules-catalogue.md](./docs/design/rules-catalogue.md)
+4. [docs/design/css-modules-contract.md](./docs/design/css-modules-contract.md)
+5. [docs/user-guide.md](./docs/user-guide.md)
+6. assessment docs under `docs/design`
 
 If docs disagree with code and tests, do not silently guess. Either align them in the same change or call out the mismatch explicitly.
 
-## Important product decisions
+## Important Product Decisions
+
+### Public API
+
+- `scanProject()` is the stable package API.
+- Raw `ProjectAnalysis` and engine stages are not public product output.
+- Explicit `sourceFilePaths` or `cssFilePaths` replace default discovery for that file kind.
+
+### CLI
+
+- Current command shape is `scan-react-css [rootDir] [--config path] [--focus path] [--json]`.
+- `--focus` filters emitted findings and diagnostics while preserving full-project analysis.
+- Text and JSON formatting lives under `src/cli/`.
+- JSON output must stay deterministic and human-readable.
+- Debug diagnostics and traces are shown only when config `verbosity` is `high`.
 
 ### Config
 
@@ -86,33 +85,49 @@ If docs disagree with code and tests, do not silently guess. Either align them i
   5. built-in defaults
 - Only one config source is loaded.
 - No config merging.
-- If no config is found, built-in defaults are used and the CLI warns.
+- `failOnSeverity` defaults to `error`.
+- `verbosity` defaults to `medium`.
+- `cssModules.localsConvention` defaults to `camelCase`.
 
-### Ownership model
+### Rules
 
-CSS ownership kinds are:
+The rule catalog is described in [docs/design/rules-catalogue.md](./docs/design/rules-catalogue.md).
 
-- `component`
-- `page`
-- `global`
-- `utility`
-- `external`
-- `unclassified`
+Current implemented rules include:
 
-`unclassified` is important. Do not force a stronger classification if the scanner cannot justify it.
+- `missing-css-class`
+- `css-class-unreachable`
+- `unused-css-class`
+- `missing-css-module-class`
+- `unused-css-module-class`
+- `unsatisfiable-selector`
+- `compound-selector-never-matched`
+- `unused-compound-selector-branch`
+- `single-component-style-not-colocated`
+- `style-used-outside-owner`
+- `style-shared-without-shared-owner`
+- `dynamic-class-reference`
+- `unsupported-syntax-affecting-analysis`
 
-### Reachability model
+Rules should consume `ProjectAnalysis` and stay thin. If a rule needs a project-wide map, that map probably belongs in the analysis layer.
 
-Current reachability focuses on:
+### CSS Modules
 
-- direct CSS imports
-- configured global CSS
-- imported external CSS
-- inheritance through the source import graph
+The durable CSS Module contract is [docs/design/css-modules-contract.md](./docs/design/css-modules-contract.md).
 
-Do not quietly introduce post-MVP render-tree ancestry heuristics into the main analysis path.
+Supported behavior includes default, namespace, and named CSS Module imports; static member reads;
+string-literal element reads; simple destructuring; simple same-file aliases; `localsConvention`
+matching; and projection of CSS Module reads into generic class-reference evidence.
 
-### Confidence model
+Unsupported CSS Module patterns should usually produce debug diagnostics instead of broad guesses.
+
+### Ownership
+
+Ownership rules are evidence-based. Do not force a stronger classification when the scanner cannot justify it.
+
+Do not reintroduce `shared` as a separate ownership tier unless docs and code are intentionally changed together.
+
+### Confidence
 
 Confidence is:
 
@@ -122,126 +137,45 @@ Confidence is:
 
 Severity and confidence are separate.
 
-### Runtime behavior
-
-- `--output-min-severity` is for human-readable output only.
-- It must error if used with `--json`.
-- `--output-file` requires `--json`.
-- `--output-file` must not overwrite by default.
-- Use suffixed filenames like `-1`, `-2`, and so on unless `--overwrite-output` is provided.
-
-### Rules
-
-The rule catalog is described in:
-
-- [docs/design/rules.md](./docs/design/rules.md)
-
-Tier 1 rules:
-
-- `missing-css-class`
-- `unreachable-css`
-- `unused-css-class`
-- `component-style-cross-component`
-- `global-css-not-global`
-- `utility-class-replacement`
-- `dynamic-class-reference`
-- `missing-css-module-class`
-
-Tier 2 rules:
-
-- `page-style-used-by-single-component`
-- `dynamic-missing-css-class`
-- `unused-css-module-class`
-- `missing-external-css-class`
-- `duplicate-css-class-definition`
-- `component-css-should-be-global`
-
-`unused-css-class` remains `warning` by default.
-
-## Current code structure
-
-The current implementation is organized around:
+## Current Code Structure
 
 - `src/config`: config loading and validation
-- `src/files`: file discovery
-- `src/facts`: raw source and CSS fact extraction
-- `src/model`: normalized graph, indexes, ownership, reachability
-- `src/rules`: rule catalog and execution
-- `src/runtime`: scan result and finding helpers
-- `src/cli`: CLI parsing, formatting, and output handling
+- `src/project`: project discovery and `scanProject()`
+- `src/static-analysis-engine`: staged analysis core
+- `src/rules`: rule catalog, rule execution, and finding suppression
+- `src/cli.ts`: CLI argument parsing and process behavior
+- `src/cli`: JSON/text/filter/trace formatting helpers
+- `test/unit`: file-oriented unit and integration-style coverage
 
-The in-flight static-analysis-engine work is organized separately under:
+## Testing Expectations
 
-- `src/static-analysis-engine`
-- `test/static-analysis-engine`
-- `docs/static-analysis-engine`
+Use the existing Node test runner setup and generated fake React projects.
 
-Treat that subsystem as a project-within-the-project.
-Its staged pipeline, types, and internal reasoning model should remain coherent and should not casually depend on old-engine internals.
+Common checks:
 
-## Legacy code warning
+```bash
+npm.cmd run check
+npm.cmd run lint
+npm.cmd test
+```
 
-There is legacy reference material in:
+On non-Windows shells, use the equivalent `npm` commands.
 
-- `legacy-code-not-part-of-mvp/`
+## When Editing Docs
 
-Treat it as reference material only unless explicitly needed. Do not let legacy structure dictate the new architecture.
+- Keep durable implementation docs under `docs/design` or `docs/user-guide.md`.
+- Keep non-implemented or exploratory work under `docs/temp` until it graduates.
+- Do not mix future ideas into durable docs unless they become real product behavior.
+- If you add or change operational behavior, update the relevant user and design docs in the same change.
 
-## Testing expectations
+When returning a completed block of work, suggest a concise commit message that summarizes it.
 
-Testing is intentionally integration-heavy.
+## Things To Be Careful About
 
-Read:
-
-- [docs/design/testing-plan.md](./docs/design/testing-plan.md)
-
-Important testing decisions:
-
-- no Docker for the main test strategy
-- use generated fake React projects
-- use a file-oriented `TestProjectBuilder`
-- support resource-file loading helpers
-- keep deterministic golden-output coverage selective and stable
-
-## When editing docs
-
-- Keep durable implementation docs under `docs/design`
-- Keep non-implemented ideas under `docs/future-work`
-- Do not mix future-work ideas back into the design docs unless they become real product behavior
-- When returning a completed block of work, suggest a concise commit message that summarizes it
-
-If you add or change operational behavior, update the relevant docs in `docs/design`.
-
-## Things to be careful about
-
-- Do not reintroduce `shared` as a separate ownership tier unless the docs and code are intentionally changed.
-- Do not treat rule thresholds as top-level ownership config.
 - Do not silently merge config files.
-- Do not make output filtering affect JSON unless the runtime contract is intentionally changed.
-- Do not assume every non-page thing is a component; `unclassified` exists for a reason.
-- Do not regress determinism in findings, summary output, or exit-code behavior.
-- Do not blur the in-flight static-analysis-engine work back into the old scanner architecture without an explicit migration decision.
-- Do not import deep old-engine helpers into `src/static-analysis-engine`; follow the boundary rules in `docs/static-analysis-engine/subsystem-boundaries.md`.
-
-## If you need to reorient quickly
-
-Read in this order:
-
-1. [docs/design/runtime-contracts.md](./docs/design/runtime-contracts.md)
-2. [docs/design/config-contract.md](./docs/design/config-contract.md)
-3. [docs/design/rules.md](./docs/design/rules.md)
-4. [docs/design/architecture.md](./docs/design/architecture.md)
-5. [docs/design/testing-plan.md](./docs/design/testing-plan.md)
-
-If you are working on the static-analysis-engine track, read in this order:
-
-1. [docs/static-analysis-engine/architecture.md](./docs/static-analysis-engine/architecture.md)
-2. [docs/static-analysis-engine/subsystem-boundaries.md](./docs/static-analysis-engine/subsystem-boundaries.md)
-3. [docs/static-analysis-engine/end-to-end-traceability.md](./docs/static-analysis-engine/end-to-end-traceability.md)
-4. [docs/static-analysis-engine/current-to-target-map.md](./docs/static-analysis-engine/current-to-target-map.md)
-5. [docs/static-analysis-engine/replacement-readiness-plan.md](./docs/static-analysis-engine/replacement-readiness-plan.md)
-6. [docs/static-analysis-engine/rule-family-migration-matrix.md](./docs/static-analysis-engine/rule-family-migration-matrix.md)
-7. [docs/static-analysis-engine/replacement-acceptance-criteria-checklist.md](./docs/static-analysis-engine/replacement-acceptance-criteria-checklist.md)
-8. [docs/static-analysis-engine/cutover-and-old-engine-retirement-checklist.md](./docs/static-analysis-engine/cutover-and-old-engine-retirement-checklist.md)
-9. [docs/static-analysis-engine/known-architectural-issues.md](./docs/static-analysis-engine/known-architectural-issues.md)
-10. [docs/static-analysis-engine/archive/progress-snapshot-2026-04-19.md](./docs/static-analysis-engine/archive/progress-snapshot-2026-04-19.md)
+- Do not expose raw engine internals in public CLI JSON.
+- Do not make output formatting nondeterministic.
+- Do not make `--focus` narrow analysis inputs; it is an output and failure filter.
+- Do not assume unsupported syntax means a correctness finding should be emitted.
+- Do not regress finding suppression for more-specific CSS Module findings.
+- Do not use legacy code as architecture unless explicitly asked.

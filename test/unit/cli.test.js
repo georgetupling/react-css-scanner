@@ -75,12 +75,88 @@ test("CLI hides debug findings unless debug output is requested", async () => {
     assert.deepEqual(defaultOutput.findings, []);
     assert.equal(defaultOutput.summary.findingCount, 0);
     assert.equal(defaultOutput.summary.findingsBySeverity.debug, 0);
+  } finally {
+    await project.cleanup();
+  }
 
-    const debugRun = await runCli([project.rootDir, "--json", "--debug"]);
+  const debugProject = await new TestProjectBuilder()
+    .withConfig({
+      verbosity: "high",
+    })
+    .withSourceFile(
+      "src/App.tsx",
+      'export function App() { return <Unknown render={() => <div className="hidden" />} />; }\n',
+    )
+    .build();
+
+  try {
+    const debugRun = await runCli([debugProject.rootDir, "--json"]);
     const debugOutput = JSON.parse(debugRun.stdout);
     assert.equal(debugOutput.findings[0].ruleId, "unsupported-syntax-affecting-analysis");
     assert.equal(debugOutput.findings[0].severity, "debug");
     assert.equal(debugOutput.summary.findingsBySeverity.debug, 1);
+  } finally {
+    await debugProject.cleanup();
+  }
+});
+
+test("CLI supports focus path filtering", async () => {
+  const project = await new TestProjectBuilder()
+    .withConfig({
+      failOnSeverity: "warn",
+      rules: {
+        "missing-css-class": "warn",
+      },
+    })
+    .withSourceFile(
+      "src/App.tsx",
+      'export function App() { return <main className="missing-app">Hello</main>; }\n',
+    )
+    .withSourceFile(
+      "src/components/Button.tsx",
+      'export function Button() { return <button className="missing-button">Button</button>; }\n',
+    )
+    .build();
+
+  try {
+    const error = await captureRejectedCliRun([
+      project.rootDir,
+      "--json",
+      "--focus",
+      "src/components",
+    ]);
+    const output = JSON.parse(error.stdout);
+
+    assert.equal(output.focusPath, "src/components");
+    assert.equal(output.summary.sourceFileCount, 2);
+    assert.equal(output.findings.length, 1);
+    assert.equal(output.findings[0].location.filePath, "src/components/Button.tsx");
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("CLI low verbosity prints one row per finding", async () => {
+  const project = await new TestProjectBuilder()
+    .withConfig({
+      failOnSeverity: "warn",
+      verbosity: "low",
+      rules: {
+        "missing-css-class": "warn",
+      },
+    })
+    .withSourceFile(
+      "src/App.tsx",
+      'export function App() { return <main className="missing">Hello</main>; }\n',
+    )
+    .build();
+
+  try {
+    const error = await captureRejectedCliRun([project.rootDir]);
+
+    assert.match(error.stdout, /^Severity\s+Rule\s+Location\s+Message/m);
+    assert.match(error.stdout, /warn\s+missing-css-class\s+src\/App\.tsx:1/m);
+    assert.equal(error.stdout.includes("Class references:"), false);
   } finally {
     await project.cleanup();
   }

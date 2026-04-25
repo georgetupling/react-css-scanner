@@ -4,6 +4,7 @@ import type { RuleSeverity } from "../rules/index.js";
 
 export type ScanProjectInput = {
   rootDir?: string;
+  focusPath?: string;
   sourceFilePaths?: string[];
   cssFilePaths?: string[];
   configPath?: string;
@@ -51,6 +52,7 @@ export type ScanSummary = {
 
 export type ScanProjectResult = {
   rootDir: string;
+  focusPath?: string;
   config: ResolvedScannerConfig;
   findings: Finding[];
   diagnostics: ScanDiagnostic[];

@@ -8,8 +8,11 @@ export type CssModulesConfig = {
   localsConvention: CssModuleLocalsConvention;
 };
 
+export type OutputVerbosity = "low" | "medium" | "high";
+
 export type ScannerConfig = {
   failOnSeverity: RuleSeverity;
+  verbosity: OutputVerbosity;
   rules: Record<string, RuleConfigSeverity>;
   cssModules: CssModulesConfig;
 };

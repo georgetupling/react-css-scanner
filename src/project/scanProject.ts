@@ -2,8 +2,10 @@ import { readFile } from "node:fs/promises";
 import { loadScannerConfig } from "../config/index.js";
 import { runRules } from "../rules/index.js";
 import { severityMeetsThreshold } from "../rules/severity.js";
+import type { Finding } from "../rules/index.js";
 import { analyzeProjectSourceTexts } from "../static-analysis-engine/index.js";
 import { discoverProjectFiles } from "./discovery.js";
+import { normalizeProjectPath, resolveProjectFile } from "./pathUtils.js";
 import type {
   ProjectFileRecord,
   ScanDiagnostic,
@@ -34,16 +36,23 @@ export async function scanProject(input: ScanProjectInput = {}): Promise<ScanPro
     analysis: engineResult.projectAnalysis,
     config,
   });
+  const focusPath = normalizeFocusPath(discovered.rootDir, input.focusPath);
+  const focusedFindings = focusPath
+    ? ruleResult.findings.filter((finding) => findingIsInFocus(finding, focusPath))
+    : ruleResult.findings;
+  const focusedDiagnostics = focusPath
+    ? diagnostics.filter((diagnostic) => diagnosticIsInFocus(diagnostic, focusPath))
+    : diagnostics;
   const failed =
-    diagnostics.some((diagnostic) => diagnostic.severity === "error") ||
-    ruleResult.findings.some((finding) =>
+    focusedDiagnostics.some((diagnostic) => diagnostic.severity === "error") ||
+    focusedFindings.some((finding) =>
       severityMeetsThreshold(finding.severity, config.failOnSeverity),
     );
   const summary = buildScanSummary({
     sourceFileCount: discovered.sourceFiles.length,
     cssFileCount: discovered.cssFiles.length,
-    findings: ruleResult.findings,
-    diagnostics,
+    findings: focusedFindings,
+    diagnostics: focusedDiagnostics,
     classReferenceCount: engineResult.projectAnalysis.entities.classReferences.length,
     classDefinitionCount: engineResult.projectAnalysis.entities.classDefinitions.length,
     selectorQueryCount: engineResult.projectAnalysis.entities.selectorQueries.length,
@@ -52,9 +61,10 @@ export async function scanProject(input: ScanProjectInput = {}): Promise<ScanPro
 
   return {
     rootDir: discovered.rootDir,
+    focusPath,
     config,
-    findings: ruleResult.findings,
-    diagnostics,
+    findings: focusedFindings,
+    diagnostics: focusedDiagnostics,
     summary,
     failed,
     files: {
@@ -62,6 +72,23 @@ export async function scanProject(input: ScanProjectInput = {}): Promise<ScanPro
       cssFiles: discovered.cssFiles,
     },
   };
+}
+
+function normalizeFocusPath(rootDir: string, focusPath: string | undefined): string | undefined {
+  return focusPath ? resolveProjectFile(rootDir, focusPath).filePath : undefined;
+}
+
+function findingIsInFocus(finding: Finding, focusPath: string): boolean {
+  return finding.location?.filePath ? pathIsInFocus(finding.location.filePath, focusPath) : true;
+}
+
+function diagnosticIsInFocus(diagnostic: ScanDiagnostic, focusPath: string): boolean {
+  return diagnostic.filePath ? pathIsInFocus(diagnostic.filePath, focusPath) : true;
+}
+
+function pathIsInFocus(filePath: string, focusPath: string): boolean {
+  const normalizedFilePath = normalizeProjectPath(filePath);
+  return normalizedFilePath === focusPath || normalizedFilePath.startsWith(`${focusPath}/`);
 }
 
 async function readSourceFiles(

@@ -78,6 +78,7 @@ The package should expose one stable public entry point.
 ```ts
 type ScanProjectInput = {
   rootDir?: string;
+  focusPath?: string;
   sourceFilePaths?: string[];
   cssFilePaths?: string[];
   configPath?: string;
@@ -95,6 +96,10 @@ Recommended intent:
 `rootDir` drives default discovery. Explicit `sourceFilePaths` or `cssFilePaths` replace default
 discovery for that file kind; they are not additive include lists. This keeps targeted tests and
 programmatic scans deterministic while preserving a simple project-scan default.
+
+`focusPath` filters user-facing output and failure state to a path after full-project analysis has
+run. It should not narrow discovery or analysis inputs, because reachability, ownership, and
+cross-file evidence often depend on files outside the focused path.
 
 The root package export should not expose `analyzeProject`, discovery helpers, rule runners, config
 loaders, or raw analysis types as part of the stable product API.
@@ -413,6 +418,7 @@ The first reboot shell exposes a narrower interim contract:
 ```ts
 type ScanProjectInput = {
   rootDir?: string;
+  focusPath?: string;
   sourceFilePaths?: string[];
   cssFilePaths?: string[];
   configPath?: string;
@@ -420,6 +426,7 @@ type ScanProjectInput = {
 
 type ScanProjectResult = {
   rootDir: string;
+  focusPath?: string;
   config: ResolvedScannerConfig;
   diagnostics: ScanDiagnostic[];
   findings: Finding[];
@@ -434,6 +441,10 @@ type ScanProjectResult = {
 
 The implementation uses raw analysis internally to run rules and build summary counts, but it does
 not include `analysis` in the public `ScanProjectResult`.
+
+When `focusPath` is present, `findings`, `diagnostics`, focused summary counts, `failed`, and CLI
+exit-code behavior are based on the focused output. File and analysis input counts still describe
+the full project inputs.
 
 ## Diagnostics
 
@@ -475,6 +486,7 @@ The first stable reboot config should stay intentionally small.
 ```ts
 type ScanConfig = {
   failOnSeverity?: "debug" | "info" | "warn" | "error";
+  verbosity?: "low" | "medium" | "high";
   rules?: Record<RuleId, RuleSeverity | "off">;
   cssModules?: {
     localsConvention?: "asIs" | "camelCase" | "camelCaseOnly";
@@ -486,6 +498,7 @@ Design rules:
 
 - config format is JSON
 - no config merging
+- `verbosity` defaults to `medium`
 - CSS Module `localsConvention` defaults to `camelCase`
 - default rule severities come from `docs/design/rules-catalogue.md` and the rule catalogue code
 - rule ids follow the reboot catalogue; old scanner rule ids are not part of the clean contract
@@ -502,6 +515,7 @@ CLI JSON should be deterministic and readable by a person reviewing CI output.
 The JSON object should contain:
 
 - `rootDir`
+- `focusPath` when provided
 - `config`
 - `diagnostics`
 - `findings`
@@ -515,9 +529,28 @@ It should not contain:
 - compatibility fields for the deleted scanner
 - old rule id aliases
 
-## Rebuild Scope Around The Core
+Debug diagnostics and debug summary counts are omitted unless config `verbosity` is `high`.
 
-The following deleted product capabilities need to be rebuilt outside the engine:
+## CLI Text Contract
+
+The CLI command shape is:
+
+```bash
+scan-react-css [rootDir] [--config path] [--focus path] [--json]
+```
+
+Text output is controlled by config `verbosity`:
+
+- `low`: one table row per finding
+- `medium`: summary, non-debug diagnostics, and findings
+- `high`: medium output plus debug diagnostics and finding traces
+
+`--focus` should remain part of the reboot contract. It filters emitted findings, diagnostics,
+summary failure state, and exit-code behavior without narrowing the analysis graph.
+
+## Product Shell Around The Core
+
+The following product capabilities live outside the engine:
 
 - package entrypoint
 - CLI entrypoint
@@ -535,19 +568,15 @@ The following deleted product capabilities need to be rebuilt outside the engine
 
 ## Safe Trims For The Reboot
 
-The following should be treated as optional until the new contract is stable. The first two have already been removed from `src/static-analysis-engine`:
+The following should be treated as optional until the new contract needs them:
 
 - current-scanner comparison mode
 - current-scanner migration adapters
 - public `experimental` naming
 - shadow or baseline reporting
-- PATH-based config discovery
-- `SCAN_REACT_CSS_CONFIG_DIR`
 - `print-config`
-- multiple verbosity tiers
 - remote external CSS fetching
 - advanced output-file suffix behavior
-- ownership-style rules
 - public raw-analysis JSON output
 - old scanner rule id compatibility aliases
 

@@ -5,6 +5,7 @@ import type { RuleSeverity } from "../rules/types.js";
 import { DEFAULT_RULE_SEVERITIES } from "../rules/catalogue.js";
 import type {
   CssModuleLocalsConvention,
+  OutputVerbosity,
   ResolvedScannerConfig,
   RuleConfigSeverity,
   ScannerConfig,
@@ -15,6 +16,7 @@ const CONFIG_DIR_ENV_VAR = "SCAN_REACT_CSS_CONFIG_DIR";
 
 const RULE_SEVERITIES = new Set<RuleSeverity>(["debug", "info", "warn", "error"]);
 const RULE_CONFIG_VALUES = new Set<RuleConfigSeverity>(["off", "debug", "info", "warn", "error"]);
+const OUTPUT_VERBOSITIES = new Set<OutputVerbosity>(["low", "medium", "high"]);
 const CSS_MODULE_LOCALS_CONVENTIONS = new Set<CssModuleLocalsConvention>([
   "asIs",
   "camelCase",
@@ -23,6 +25,7 @@ const CSS_MODULE_LOCALS_CONVENTIONS = new Set<CssModuleLocalsConvention>([
 
 export const DEFAULT_SCANNER_CONFIG: ScannerConfig = {
   failOnSeverity: "error",
+  verbosity: "medium",
   rules: {
     ...DEFAULT_RULE_SEVERITIES,
   },
@@ -157,6 +160,7 @@ function parseConfig(
 
   return {
     failOnSeverity: parseFailOnSeverity(parsed.failOnSeverity, filePath, diagnostics),
+    verbosity: parseVerbosity(parsed.verbosity, filePath, diagnostics),
     rules: {
       ...DEFAULT_RULE_SEVERITIES,
       ...parseRules(parsed.rules, filePath, diagnostics),
@@ -186,6 +190,29 @@ function parseFailOnSeverity(
     message: 'failOnSeverity must be one of "debug", "info", "warn", or "error"',
   });
   return DEFAULT_SCANNER_CONFIG.failOnSeverity;
+}
+
+function parseVerbosity(
+  value: unknown,
+  filePath: string,
+  diagnostics: ScanDiagnostic[],
+): OutputVerbosity {
+  if (value === undefined) {
+    return DEFAULT_SCANNER_CONFIG.verbosity;
+  }
+
+  if (typeof value === "string" && OUTPUT_VERBOSITIES.has(value as OutputVerbosity)) {
+    return value as OutputVerbosity;
+  }
+
+  diagnostics.push({
+    code: "config.invalid-verbosity",
+    severity: "error",
+    phase: "config",
+    filePath,
+    message: 'verbosity must be one of "low", "medium", or "high"',
+  });
+  return DEFAULT_SCANNER_CONFIG.verbosity;
 }
 
 function parseRules(

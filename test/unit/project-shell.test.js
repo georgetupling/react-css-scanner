@@ -82,6 +82,7 @@ test("scanProject returns deterministic public summary from discovered files", a
     assert.equal(result.diagnostics.length, 0);
     assert.equal(result.config.source.kind, "default");
     assert.equal(result.config.failOnSeverity, "error");
+    assert.equal(result.config.verbosity, "medium");
     assert.equal(result.config.rules["missing-css-class"], "error");
     assert.equal(result.config.rules["css-class-unreachable"], "error");
     assert.equal(result.config.rules["unused-css-class"], "warn");
@@ -114,6 +115,33 @@ test("scanProject returns deterministic public summary from discovered files", a
       selectorQueryCount: 1,
       failed: false,
     });
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("scanProject supports focus path output filtering without narrowing analysis inputs", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'export function App() { return <main className="missing-app">Hello</main>; }\n',
+    )
+    .withSourceFile(
+      "src/components/Button.tsx",
+      'export function Button() { return <button className="missing-button">Button</button>; }\n',
+    )
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      focusPath: "src/components",
+    });
+
+    assert.equal(result.focusPath, "src/components");
+    assert.equal(result.summary.sourceFileCount, 2);
+    assert.equal(result.findings.length, 1);
+    assert.equal(result.findings[0].location?.filePath, "src/components/Button.tsx");
   } finally {
     await project.cleanup();
   }

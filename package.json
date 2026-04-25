@@ -15,7 +15,9 @@
   "types": "./dist/index.d.ts",
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "docs/user-guide.md",
+    "docs/design"
   ],
   "engines": {
     "node": ">=20"
