@@ -1,4 +1,4 @@
-import type { CssSelectorBranchFact } from "../../facts/types.js";
+import type { CssSelectorBranchFact } from "../../types/css.js";
 import type { ParsedSelectorBranch } from "./types.js";
 
 export function projectToCssSelectorBranchFact(

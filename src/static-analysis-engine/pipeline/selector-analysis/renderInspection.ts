@@ -1,4 +1,4 @@
-import type { RenderElementNode, RenderNode } from "../render-ir/types.js";
+import type { RenderElementNode, RenderNode } from "../render-model/render-ir/types.js";
 
 export type InspectionEvaluation = "match" | "possible-match" | "unsupported" | "no-match";
 

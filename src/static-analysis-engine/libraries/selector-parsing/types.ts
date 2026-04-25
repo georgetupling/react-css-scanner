@@ -41,6 +41,10 @@ export type ParsedCssAtRuleContext = {
 
 export type ParsedCssSelectorEntry = {
   selectorText: string;
+  selectorListText: string;
+  branchIndex: number;
+  branchCount: number;
+  ruleKey: string;
   parsedBranch: ParsedSelectorBranch;
   selectorAnchor?: {
     filePath: string;

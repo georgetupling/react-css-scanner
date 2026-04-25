@@ -62,8 +62,8 @@ export type StylesheetReachabilityContext =
       kind: "render-region";
       filePath: string;
       componentName?: string;
-      regionKind: import("../render-ir/types.js").RenderRegionKind;
-      path: import("../render-ir/types.js").RenderRegionPathSegment[];
+      regionKind: import("../render-model/render-ir/types.js").RenderRegionKind;
+      path: import("../render-model/render-ir/types.js").RenderRegionPathSegment[];
       sourceAnchor: {
         startLine: number;
         startColumn: number;

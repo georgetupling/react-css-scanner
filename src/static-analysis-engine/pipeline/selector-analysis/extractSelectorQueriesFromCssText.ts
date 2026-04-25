@@ -9,6 +9,10 @@ export function extractSelectorQueriesFromCssText(
     source: {
       kind: "css-source",
       selectorAnchor: entry.selectorAnchor,
+      selectorListText: entry.selectorListText,
+      branchIndex: entry.branchIndex,
+      branchCount: entry.branchCount,
+      ruleKey: entry.ruleKey,
       ...(entry.atRuleContext
         ? {
             atRuleContext: entry.atRuleContext as CssAtRuleContext[],

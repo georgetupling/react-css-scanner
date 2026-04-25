@@ -1,4 +1,5 @@
 export { extractSelectorQueriesFromCssText } from "./extractSelectorQueriesFromCssText.js";
+export { buildSelectorQueries } from "./buildSelectorQueries.js";
 export { buildParsedSelectorQueries } from "./buildParsedSelectorQueries.js";
 export { analyzeSelectorQueries } from "./analyzeSelectorQueries.js";
 export { buildSelectorQueryResult } from "./resultUtils.js";

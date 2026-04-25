@@ -1,25 +1,23 @@
 import ts from "typescript";
 
-import type { ClassExpressionSummary } from "../../pipeline/abstract-values/index.js";
 import type { ExperimentalCssFileAnalysis } from "../../pipeline/css-analysis/index.js";
+import type { CssModuleAnalysis } from "../../pipeline/css-modules/index.js";
+import type { UnsupportedClassReferenceDiagnostic } from "../../pipeline/render-model/class-reference-diagnostics/index.js";
 import type { ExternalCssSummary } from "../../pipeline/external-css/index.js";
 import type { ModuleGraph } from "../../pipeline/module-graph/index.js";
 import type { ReachabilitySummary } from "../../pipeline/reachability/index.js";
-import type { RenderGraph } from "../../pipeline/render-graph/index.js";
-import type { RenderSubtree } from "../../pipeline/render-ir/index.js";
-import type { ExperimentalRuleResult } from "../../pipeline/rule-execution/index.js";
+import type { ProjectAnalysis } from "../../pipeline/project-analysis/index.js";
+import type { RenderGraph } from "../../pipeline/render-model/render-graph/index.js";
+import type { RenderSubtree } from "../../pipeline/render-model/render-ir/index.js";
 import type { SelectorQueryResult } from "../../pipeline/selector-analysis/index.js";
 import type {
   EngineSymbol,
-  ResolvedImportedBinding,
-  ResolvedImportedComponentBinding,
-  ResolvedNamespaceImport,
+  ProjectBindingResolution,
 } from "../../pipeline/symbol-resolution/index.js";
-import type { EngineModuleId, EngineSymbolId } from "../../types/core.js";
-import type { ProjectRenderContext } from "./buildProjectRenderContext.js";
+import type { EngineSymbolId } from "../../types/core.js";
 
 export type ParseStageResult = {
-  parsedSourceFile: ts.SourceFile;
+  parsedFiles: ParsedProjectFile[];
 };
 
 export type ParsedProjectFile = {
@@ -27,52 +25,23 @@ export type ParsedProjectFile = {
   parsedSourceFile: ts.SourceFile;
 };
 
-export type ProjectParseStageResult = {
-  parsedFiles: ParsedProjectFile[];
-};
-
-export type SymbolResolutionStageResult = {
-  moduleId: EngineModuleId;
-  symbols: Map<EngineSymbolId, EngineSymbol>;
-};
-
-export type ProjectSymbolResolutionStageResult = {
+export type ProjectSymbolCollection = {
   symbols: Map<EngineSymbolId, EngineSymbol>;
   symbolsByFilePath: Map<string, Map<EngineSymbolId, EngineSymbol>>;
 };
 
-export type ProjectBindingResolutionStageResult = {
-  symbols: Map<EngineSymbolId, EngineSymbol>;
-  symbolsByFilePath: Map<string, Map<EngineSymbolId, EngineSymbol>>;
-  resolvedImportedBindingsByFilePath: Map<string, ResolvedImportedBinding[]>;
-  resolvedImportedComponentBindingsByFilePath: Map<string, ResolvedImportedComponentBinding[]>;
-  resolvedNamespaceImportsByFilePath: Map<string, ResolvedNamespaceImport[]>;
-  exportedExpressionBindingsByFilePath: Map<string, Map<string, ts.Expression>>;
-  importedExpressionBindingsByFilePath: Map<string, Map<string, ts.Expression>>;
-};
+export type SymbolResolutionStageResult = ProjectBindingResolution;
 
 export type ModuleGraphStageResult = {
   moduleGraph: ModuleGraph;
 };
 
-export type AbstractValueStageResult = {
-  classExpressions: ClassExpressionSummary[];
-};
-
-export type RenderIrStageResult = {
-  renderSubtrees: RenderSubtree[];
-};
-
-export type RenderGraphStageResult = {
-  renderGraph: RenderGraph;
-};
-
-export type ProjectRenderContextStageResult = {
-  projectRenderContext: ProjectRenderContext;
-};
-
 export type CssAnalysisStageResult = {
   cssFiles: ExperimentalCssFileAnalysis[];
+};
+
+export type CssModuleAnalysisStageResult = {
+  cssModules: CssModuleAnalysis;
 };
 
 export type ExternalCssStageResult = {
@@ -87,6 +56,12 @@ export type SelectorAnalysisStageResult = {
   selectorQueryResults: SelectorQueryResult[];
 };
 
-export type RuleExecutionStageResult = {
-  experimentalRuleResults: ExperimentalRuleResult[];
+export type RenderModelStageResult = {
+  renderSubtrees: RenderSubtree[];
+  renderGraph: RenderGraph;
+  unsupportedClassReferences: UnsupportedClassReferenceDiagnostic[];
+};
+
+export type ProjectAnalysisStageResult = {
+  projectAnalysis: ProjectAnalysis;
 };

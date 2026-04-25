@@ -1,5 +1,5 @@
-import { extractCssStyleRules } from "../../parser/parseCssStyleRules.js";
-import type { CssAtRuleContextFact, CssStyleRuleFact } from "../../facts/types.js";
+import { extractCssStyleRules } from "../../libraries/css-parsing/index.js";
+import type { CssAtRuleContextFact, CssStyleRuleFact } from "../../types/css.js";
 import type { SelectorSourceInput } from "../selector-analysis/types.js";
 import type { ExperimentalCssFileAnalysis } from "./types.js";
 

@@ -1,80 +1,152 @@
 #!/usr/bin/env node
+import { scanProject } from "./project/index.js";
+import type { AnalysisTrace } from "./static-analysis-engine/index.js";
+import type { Finding } from "./rules/index.js";
+import type { ScanDiagnostic, ScanProjectResult } from "./project/index.js";
 
-import path from "node:path";
-import { scanReactCss } from "./index.js";
-import { formatHumanReadableOutput, formatJsonOutput } from "./cli/format.js";
-import { CliArgumentError, parseCliArgs } from "./cli/parseArgs.js";
-import { writeOutputFile } from "./cli/output.js";
+type CliArgs = {
+  rootDir?: string;
+  configPath?: string;
+  json: boolean;
+  trace: boolean;
+  help: boolean;
+};
 
-void runCli(process.argv);
+const args = parseArgs(process.argv.slice(2));
 
-export async function runCli(argv: string[]): Promise<void> {
-  try {
-    const parsedArgs = parseCliArgs(argv);
-    const cliCwd = process.cwd();
-    const scanRoot = parsedArgs.targetPath ? path.resolve(cliCwd, parsedArgs.targetPath) : cliCwd;
-    const result = await scanReactCss({
-      focusPath: parsedArgs.focusPath,
-      configPath: parsedArgs.configPath ? path.resolve(cliCwd, parsedArgs.configPath) : undefined,
-      cwd: scanRoot,
-      outputMinSeverity: parsedArgs.outputMinSeverity,
-    });
+if (args.help) {
+  printHelp();
+  process.exit(0);
+}
 
-    for (const warning of result.operationalWarnings ?? []) {
-      console.warn(`Warning: ${warning}`);
-    }
+const result = await scanProject({
+  rootDir: args.rootDir,
+  configPath: args.configPath,
+});
 
-    if (parsedArgs.json) {
-      const content = formatJsonOutput(result, parsedArgs.printConfig);
+if (args.json) {
+  console.log(JSON.stringify(formatJsonResult(result, args.trace), null, 2));
+} else {
+  const visibleDiagnostics = filterDiagnostics(result.diagnostics, args.trace);
+  const visibleFindings = filterFindings(result.findings, args.trace);
 
-      if (parsedArgs.outputFile) {
-        const writtenPath = await writeOutputFile({
-          filePath: parsedArgs.outputFile,
-          content,
-          overwrite: parsedArgs.overwriteOutput,
-          cwd: cliCwd,
-        });
-        console.log(writtenPath);
-      } else {
-        console.log(content);
+  console.log(`scan-react-css reboot scan`);
+  console.log(`Root: ${result.rootDir}`);
+  console.log(`Source files: ${result.summary.sourceFileCount}`);
+  console.log(`CSS files: ${result.summary.cssFileCount}`);
+  console.log(`Findings: ${visibleFindings.length}`);
+  console.log(`Failed: ${result.failed ? "yes" : "no"}`);
+  console.log(`Fail on severity: ${result.config.failOnSeverity}`);
+  console.log(`Class references: ${result.summary.classReferenceCount}`);
+  console.log(`Class definitions: ${result.summary.classDefinitionCount}`);
+  console.log(`Selector queries: ${result.summary.selectorQueryCount}`);
+
+  for (const diagnostic of visibleDiagnostics) {
+    console.log(`[${diagnostic.severity}] ${diagnostic.code}: ${diagnostic.message}`);
+  }
+
+  for (const finding of visibleFindings) {
+    const location = finding.location
+      ? ` (${finding.location.filePath}:${finding.location.startLine})`
+      : "";
+    console.log(`[${finding.severity}] ${finding.ruleId}: ${finding.message}${location}`);
+    if (args.trace) {
+      for (const trace of finding.traces) {
+        printTrace(trace, "  ");
       }
-    } else {
-      const output = formatHumanReadableOutput({
-        result,
-        verbosity: parsedArgs.verbosity,
-        scanTarget: parsedArgs.targetPath ?? cliCwd,
-        focusPath: parsedArgs.focusPath,
-        printConfig: parsedArgs.printConfig,
-      });
-      console.log(output);
     }
-
-    process.exitCode = shouldFailFromPolicy(result) ? 1 : 0;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown CLI failure occurred.";
-    if (error instanceof CliArgumentError) {
-      console.error(message);
-      process.exitCode = 1;
-      return;
-    }
-
-    console.error(message);
-    process.exitCode = 1;
   }
 }
 
-function shouldFailFromPolicy(result: Awaited<ReturnType<typeof scanReactCss>>): boolean {
-  const threshold = result.config.policy.failOnSeverity;
+process.exit(result.failed ? 1 : 0);
 
-  if (threshold === "error") {
-    return result.summary.errorCount > 0;
+function parseArgs(rawArgs: string[]): CliArgs {
+  const args: CliArgs = {
+    json: false,
+    trace: false,
+    help: false,
+  };
+
+  for (let index = 0; index < rawArgs.length; index += 1) {
+    const arg = rawArgs[index];
+
+    if (arg === "--json") {
+      args.json = true;
+      continue;
+    }
+
+    if (arg === "--config") {
+      args.configPath = rawArgs[index + 1];
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--trace" || arg === "--debug") {
+      args.trace = true;
+      continue;
+    }
+
+    if (arg === "--help" || arg === "-h") {
+      args.help = true;
+      continue;
+    }
+
+    if (!args.rootDir) {
+      args.rootDir = arg;
+    }
   }
 
-  if (threshold === "warning") {
-    return result.summary.errorCount > 0 || result.summary.warningCount > 0;
-  }
+  return args;
+}
 
-  return (
-    result.summary.errorCount > 0 || result.summary.warningCount > 0 || result.summary.infoCount > 0
-  );
+function printHelp(): void {
+  console.log(`Usage: scan-react-css [rootDir] [--config path] [--json] [--trace]`);
+}
+
+function formatJsonResult(result: ScanProjectResult, includeDebug: boolean): object {
+  return {
+    rootDir: result.rootDir,
+    config: {
+      source: result.config.source,
+      failOnSeverity: result.config.failOnSeverity,
+      rules: result.config.rules,
+    },
+    diagnostics: filterDiagnostics(result.diagnostics, includeDebug),
+    findings: filterFindings(result.findings, includeDebug),
+    summary: includeDebug ? result.summary : withoutDebugCounts(result.summary),
+    failed: result.failed,
+  };
+}
+
+function filterDiagnostics(diagnostics: ScanDiagnostic[], includeDebug: boolean): ScanDiagnostic[] {
+  return includeDebug
+    ? diagnostics
+    : diagnostics.filter((diagnostic) => diagnostic.severity !== "debug");
+}
+
+function filterFindings(findings: Finding[], includeDebug: boolean): Finding[] {
+  return includeDebug ? findings : findings.filter((finding) => finding.severity !== "debug");
+}
+
+function withoutDebugCounts(summary: ScanProjectResult["summary"]): ScanProjectResult["summary"] {
+  return {
+    ...summary,
+    findingCount: summary.findingCount - summary.findingsBySeverity.debug,
+    findingsBySeverity: {
+      ...summary.findingsBySeverity,
+      debug: 0,
+    },
+    diagnosticCount: summary.diagnosticCount - summary.diagnosticsBySeverity.debug,
+    diagnosticsBySeverity: {
+      ...summary.diagnosticsBySeverity,
+      debug: 0,
+    },
+  };
+}
+
+function printTrace(trace: AnalysisTrace, indent: string): void {
+  console.log(`${indent}- ${trace.summary}`);
+  for (const child of trace.children) {
+    printTrace(child, `${indent}  `);
+  }
 }

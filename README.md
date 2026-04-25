@@ -4,6 +4,18 @@
 
 It scans source files, project CSS, CSS Modules, imported external CSS, and matching HTML-linked external stylesheets, then reports deterministic findings for local development and CI.
 
+## Reboot Status
+
+The repository is currently being rebuilt around the static analysis engine that remains under `src/static-analysis-engine`.
+
+Current design and assessment docs:
+
+- [Reboot Contract](./docs/design/reboot-contract.md)
+- [Current Engine Assessment](./docs/design/current-engine-assessment.md)
+- [Current Product Assessment](./docs/design/current-product-assessment.md)
+
+The detailed CLI, config, and API sections below describe the pre-reboot package surface and should be treated as historical reference until the new product shell is rebuilt.
+
 ## What It Checks
 
 The current rules cover:
@@ -39,7 +51,7 @@ npm install -g scan-react-css
 scan-react-css
 ```
 
-For full usage and configuration docs, start at [docs/user-guide/README.md](./docs/user-guide/README.md).
+For the current reboot docs, start with the [Reboot Contract](./docs/design/reboot-contract.md).
 
 ## Quick Start
 
@@ -169,7 +181,7 @@ Example:
 }
 ```
 
-For full configuration docs, see [user-guide/README.md](./user-guide/README.md).
+For the current config direction, see the [Reboot Contract](./docs/design/reboot-contract.md) and [Current Product Assessment](./docs/design/current-product-assessment.md).
 
 ## Output And CI
 

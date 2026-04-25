@@ -1,11 +1,11 @@
 import type { ModuleGraph } from "../module-graph/types.js";
-import type { RenderGraph } from "../render-graph/types.js";
+import type { RenderGraph } from "../render-model/render-graph/types.js";
 import {
   collectRenderRegionsFromSubtrees,
   type RenderRegion,
   type RenderNode,
   type RenderSubtree,
-} from "../render-ir/index.js";
+} from "../render-model/render-ir/index.js";
 import type { ExternalCssSummary } from "../external-css/types.js";
 import type { SelectorSourceInput } from "../selector-analysis/types.js";
 import type { AnalysisTrace } from "../../types/analysis.js";
@@ -414,7 +414,7 @@ function addPlacedChildRenderRegionContexts(input: {
   contextRecordsByKey: Map<string, StylesheetReachabilityContextRecord>;
   renderSubtree?: RenderSubtree;
   renderRegions: RenderRegion[];
-  outgoingEdges: import("../render-graph/types.js").RenderGraphEdge[];
+  outgoingEdges: import("../render-model/render-graph/types.js").RenderGraphEdge[];
   componentAvailabilityByKey: Map<
     string,
     {
@@ -487,7 +487,7 @@ function addPlacedChildRenderRegionContexts(input: {
 }
 
 type UnknownReachabilityBarrier = {
-  path: import("../render-ir/types.js").RenderRegionPathSegment[];
+  path: import("../render-model/render-ir/types.js").RenderRegionPathSegment[];
   reason: string;
   sourceAnchor: import("../../types/core.js").SourceAnchor;
 };
@@ -506,7 +506,7 @@ function collectUnknownReachabilityBarriersFromSubtree(
 
 function collectUnknownReachabilityBarriers(input: {
   node: RenderNode;
-  path: import("../render-ir/types.js").RenderRegionPathSegment[];
+  path: import("../render-model/render-ir/types.js").RenderRegionPathSegment[];
   barriers: UnknownReachabilityBarrier[];
 }): void {
   if (input.node.kind === "unknown") {
@@ -683,7 +683,7 @@ function findContainingRenderRegionsForEdge(input: {
 }
 
 function resolvePlacementRegionPaths(input: {
-  node: import("../render-ir/types.js").RenderNode;
+  node: import("../render-model/render-ir/types.js").RenderNode;
   sourceAnchor: import("../../types/core.js").SourceAnchor;
   path: RenderRegion["path"];
 }): RenderRegion["path"][] {
@@ -749,8 +749,8 @@ function resolvePlacementRegionPaths(input: {
 
 function resolveConditionalBranchPlacementPaths(input: {
   branch: "when-true" | "when-false";
-  branchNode: import("../render-ir/types.js").RenderNode;
-  siblingBranchNode: import("../render-ir/types.js").RenderNode;
+  branchNode: import("../render-model/render-ir/types.js").RenderNode;
+  siblingBranchNode: import("../render-model/render-ir/types.js").RenderNode;
   sourceAnchor: import("../../types/core.js").SourceAnchor;
   path: RenderRegion["path"];
 }): RenderRegion["path"][] {
@@ -786,7 +786,7 @@ function resolveConditionalBranchPlacementPaths(input: {
 }
 
 function isRenderNodePlacementCandidate(
-  node: import("../render-ir/types.js").RenderNode,
+  node: import("../render-model/render-ir/types.js").RenderNode,
   sourceAnchor: import("../../types/core.js").SourceAnchor,
 ): boolean {
   const normalizedNodeFilePath = normalizeProjectPath(node.sourceAnchor.filePath);
@@ -827,8 +827,14 @@ function toAnchorPositionValue(line: number, column: number): number {
 }
 
 function computeComponentAvailability(input: {
-  renderGraphNodesByKey: Map<string, import("../render-graph/types.js").RenderGraphNode>;
-  incomingEdgesByComponentKey: Map<string, import("../render-graph/types.js").RenderGraphEdge[]>;
+  renderGraphNodesByKey: Map<
+    string,
+    import("../render-model/render-graph/types.js").RenderGraphNode
+  >;
+  incomingEdgesByComponentKey: Map<
+    string,
+    import("../render-model/render-graph/types.js").RenderGraphEdge[]
+  >;
   directImportingSourceFilePathSet: Set<string>;
 }): Map<
   string,
@@ -930,7 +936,7 @@ function computeComponentAvailability(input: {
 }
 
 function evaluateComponentAvailability(input: {
-  incomingEdges: import("../render-graph/types.js").RenderGraphEdge[];
+  incomingEdges: import("../render-model/render-graph/types.js").RenderGraphEdge[];
   availabilityByComponentKey: Map<
     string,
     {
@@ -1346,8 +1352,8 @@ function serializeDerivation(derivation: ReachabilityDerivation): string {
 }
 
 function isRegionPathPrefix(
-  prefix: import("../render-ir/types.js").RenderRegionPathSegment[],
-  full: import("../render-ir/types.js").RenderRegionPathSegment[],
+  prefix: import("../render-model/render-ir/types.js").RenderRegionPathSegment[],
+  full: import("../render-model/render-ir/types.js").RenderRegionPathSegment[],
 ): boolean {
   if (prefix.length > full.length) {
     return false;
@@ -1431,8 +1437,8 @@ function serializeRegionPath(path: RenderRegion["path"]): string {
 }
 
 function compareEdges(
-  left: import("../render-graph/types.js").RenderGraphEdge,
-  right: import("../render-graph/types.js").RenderGraphEdge,
+  left: import("../render-model/render-graph/types.js").RenderGraphEdge,
+  right: import("../render-model/render-graph/types.js").RenderGraphEdge,
 ): number {
   return (
     left.fromFilePath.localeCompare(right.fromFilePath) ||

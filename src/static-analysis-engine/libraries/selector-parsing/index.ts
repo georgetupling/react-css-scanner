@@ -1,5 +1,6 @@
 export { extractParsedSelectorEntriesFromCssText } from "./extractParsedSelectorEntriesFromCssText.js";
 export { extractParsedSelectorEntriesFromSelectorPrelude } from "./extractParsedSelectorEntriesFromSelectorPrelude.js";
+export { extractSelectorBranchFacts } from "./extractSelectorBranchFacts.js";
 export { parseSelectorBranch } from "./parseSelectorBranch.js";
 export { parseSelectorBranches } from "./parseSelectorBranches.js";
 export { projectToCssSelectorBranchFact } from "./projectToCssSelectorBranchFact.js";

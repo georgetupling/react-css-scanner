@@ -1,4 +1,8 @@
-import type { RenderNode, RenderRegionPathSegment, RenderSubtree } from "../render-ir/types.js";
+import type {
+  RenderNode,
+  RenderRegionPathSegment,
+  RenderSubtree,
+} from "../render-model/render-ir/types.js";
 import type {
   ReachabilitySummary,
   StylesheetReachabilityContextRecord,

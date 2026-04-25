@@ -1,4 +1,4 @@
-import type { RenderNode } from "../../render-ir/types.js";
+import type { RenderNode } from "../../render-model/render-ir/types.js";
 import type { ParsedSelectorQuery, SelectorAnalysisTarget, SelectorQueryResult } from "../types.js";
 import { buildSelectorQueryResult } from "../resultUtils.js";
 import type { RenderNodeInspectionAdapter } from "../renderInspection.js";
