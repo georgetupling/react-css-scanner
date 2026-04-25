@@ -1,10 +1,12 @@
 import { missingCssClassRule } from "./rules/missingCssClass.js";
 import { cssClassUnreachableRule } from "./rules/cssClassUnreachable.js";
+import { compoundSelectorNeverMatchedRule } from "./rules/compoundSelectorNeverMatched.js";
 import { dynamicClassReferenceRule } from "./rules/dynamicClassReference.js";
 import { missingCssModuleClassRule } from "./rules/missingCssModuleClass.js";
 import { unsupportedSyntaxAffectingAnalysisRule } from "./rules/unsupportedSyntaxAffectingAnalysis.js";
 import { unusedCssClassRule } from "./rules/unusedCssClass.js";
 import { unusedCssModuleClassRule } from "./rules/unusedCssModuleClass.js";
+import { unsatisfiableSelectorRule } from "./rules/unsatisfiableSelector.js";
 import type { RuleDefinition, RuleId, RuleSeverity } from "./types.js";
 
 export const RULE_DEFINITIONS: RuleDefinition[] = [
@@ -13,6 +15,8 @@ export const RULE_DEFINITIONS: RuleDefinition[] = [
   unusedCssClassRule,
   missingCssModuleClassRule,
   unusedCssModuleClassRule,
+  unsatisfiableSelectorRule,
+  compoundSelectorNeverMatchedRule,
   dynamicClassReferenceRule,
   unsupportedSyntaxAffectingAnalysisRule,
 ];
@@ -23,6 +27,8 @@ export const DEFAULT_RULE_SEVERITIES: Record<RuleId, RuleSeverity> = {
   "unused-css-class": "warn",
   "missing-css-module-class": "error",
   "unused-css-module-class": "warn",
+  "unsatisfiable-selector": "warn",
+  "compound-selector-never-matched": "warn",
   "dynamic-class-reference": "info",
   "unsupported-syntax-affecting-analysis": "debug",
 };

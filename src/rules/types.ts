@@ -14,6 +14,8 @@ export type RuleId =
   | "unused-css-class"
   | "missing-css-module-class"
   | "unused-css-module-class"
+  | "unsatisfiable-selector"
+  | "compound-selector-never-matched"
   | "dynamic-class-reference"
   | "unsupported-syntax-affecting-analysis";
 
