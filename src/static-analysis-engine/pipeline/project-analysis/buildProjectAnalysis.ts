@@ -1761,7 +1761,7 @@ function isExternalStylesheet(filePath: string, input: ProjectAnalysisBuildInput
     }
   }
 
-  return input.externalCssSummary.projectWideStylesheetFilePaths
+  return input.externalCssSummary.externalStylesheetFilePaths
     .map(normalizeProjectPath)
     .includes(normalizedFilePath);
 }

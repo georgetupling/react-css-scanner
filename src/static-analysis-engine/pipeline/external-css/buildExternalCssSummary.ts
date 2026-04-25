@@ -23,28 +23,32 @@ export function buildExternalCssSummary(
       modes,
       activeProviders: [],
       projectWideStylesheetFilePaths: [],
+      externalStylesheetFilePaths: [],
     };
   }
+
+  const activeProviders =
+    declaredGlobalsEnabled && htmlLinksEnabled
+      ? buildActiveProviders({
+          globalProviders,
+          htmlStylesheetLinks,
+        })
+      : [];
 
   return {
     enabled,
     modes,
-    activeProviders:
-      declaredGlobalsEnabled && htmlLinksEnabled
-        ? buildActiveProviders({
-            globalProviders,
-            htmlStylesheetLinks,
-          })
-        : [],
-    projectWideStylesheetFilePaths: fetchRemoteEnabled
-      ? [
-          ...new Set(
-            htmlStylesheetLinks
-              .filter((stylesheetLink) => stylesheetLink.isRemote)
-              .map((stylesheetLink) => stylesheetLink.href),
-          ),
-        ].sort((left, right) => left.localeCompare(right))
-      : [],
+    activeProviders,
+    projectWideStylesheetFilePaths: collectProjectWideStylesheetFilePaths({
+      htmlStylesheetLinks,
+      htmlLinksEnabled,
+      fetchRemoteEnabled,
+    }),
+    externalStylesheetFilePaths: collectExternalStylesheetFilePaths({
+      activeProviders,
+      htmlStylesheetLinks,
+      fetchRemoteEnabled,
+    }),
   };
 }
 
@@ -56,7 +60,10 @@ function buildActiveProviders(input: {
 
   for (const stylesheetLink of input.htmlStylesheetLinks) {
     for (const provider of input.globalProviders) {
-      if (!matchesAnyGlob(stylesheetLink.href, provider.match)) {
+      if (
+        !matchesAnyGlob(stylesheetLink.href, provider.match) &&
+        !matchesOptionalPath(stylesheetLink.resolvedFilePath, provider.match)
+      ) {
         continue;
       }
 
@@ -122,6 +129,9 @@ function normalizeHtmlStylesheetLinks(
       filePath: stylesheetLink.filePath.replace(/\\/g, "/"),
       href: stylesheetLink.href,
       isRemote: stylesheetLink.isRemote,
+      ...(stylesheetLink.resolvedFilePath
+        ? { resolvedFilePath: stylesheetLink.resolvedFilePath.replace(/\\/g, "/") }
+        : {}),
     }))
     .sort(compareStylesheetLinks);
 }
@@ -146,9 +156,66 @@ function uniqueStylesheetLinks(
 ): HtmlStylesheetLinkInput[] {
   const linksByKey = new Map<string, HtmlStylesheetLinkInput>();
   for (const stylesheetLink of stylesheetLinks) {
-    linksByKey.set(`${stylesheetLink.filePath}:${stylesheetLink.href}`, stylesheetLink);
+    linksByKey.set(
+      `${stylesheetLink.filePath}:${stylesheetLink.href}:${stylesheetLink.resolvedFilePath ?? ""}`,
+      stylesheetLink,
+    );
   }
   return [...linksByKey.values()].sort(compareStylesheetLinks);
+}
+
+function collectProjectWideStylesheetFilePaths(input: {
+  htmlStylesheetLinks: HtmlStylesheetLinkInput[];
+  htmlLinksEnabled: boolean;
+  fetchRemoteEnabled: boolean;
+}): string[] {
+  const projectWideStylesheetFilePaths = new Set<string>();
+
+  if (input.htmlLinksEnabled) {
+    for (const stylesheetLink of input.htmlStylesheetLinks) {
+      if (stylesheetLink.resolvedFilePath) {
+        projectWideStylesheetFilePaths.add(stylesheetLink.resolvedFilePath);
+      }
+    }
+  }
+
+  if (input.fetchRemoteEnabled) {
+    for (const stylesheetLink of input.htmlStylesheetLinks) {
+      if (stylesheetLink.isRemote) {
+        projectWideStylesheetFilePaths.add(stylesheetLink.href);
+      }
+    }
+  }
+
+  return [...projectWideStylesheetFilePaths].sort((left, right) => left.localeCompare(right));
+}
+
+function collectExternalStylesheetFilePaths(input: {
+  activeProviders: ActiveExternalCssProvider[];
+  htmlStylesheetLinks: HtmlStylesheetLinkInput[];
+  fetchRemoteEnabled: boolean;
+}): string[] {
+  const externalStylesheetFilePaths = new Set<string>();
+
+  for (const provider of input.activeProviders) {
+    for (const stylesheetLink of provider.matchedStylesheets) {
+      externalStylesheetFilePaths.add(stylesheetLink.resolvedFilePath ?? stylesheetLink.href);
+    }
+  }
+
+  if (input.fetchRemoteEnabled) {
+    for (const stylesheetLink of input.htmlStylesheetLinks) {
+      if (stylesheetLink.isRemote) {
+        externalStylesheetFilePaths.add(stylesheetLink.href);
+      }
+    }
+  }
+
+  return [...externalStylesheetFilePaths].sort((left, right) => left.localeCompare(right));
+}
+
+function matchesOptionalPath(value: string | undefined, patterns: readonly string[]): boolean {
+  return value ? matchesAnyGlob(value, patterns) : false;
 }
 
 function matchesAnyGlob(value: string, patterns: readonly string[]): boolean {

@@ -52,6 +52,57 @@ test("unused-css-class does not report referenced classes", async () => {
   }
 });
 
+test("unused-css-class reports unreferenced local CSS linked by HTML", async () => {
+  const project = await new TestProjectBuilder()
+    .withFile("index.html", '<link rel="stylesheet" href="/public/app.css">\n')
+    .withSourceFile("src/App.tsx", "export function App() { return <main>Hello</main>; }\n")
+    .withCssFile("public/app.css", ".unused { display: block; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
+    });
+
+    const finding = result.findings.find(
+      (candidate) =>
+        candidate.ruleId === "unused-css-class" && candidate.data?.className === "unused",
+    );
+    assert.ok(finding);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unused-css-class ignores local HTML-linked CSS that matches an external provider", async () => {
+  const project = await new TestProjectBuilder()
+    .withFile("index.html", '<link rel="stylesheet" href="/vendor/font-awesome/6/css/all.css">\n')
+    .withSourceFile("src/App.tsx", 'export function App() { return <i className="fa-check" />; }\n')
+    .withCssFile(
+      "vendor/font-awesome/6/css/all.css",
+      ".fa-check { display: inline-block; }\n.fa-unused { display: inline-block; }\n",
+    )
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
+    });
+
+    assert.deepEqual(
+      result.findings.filter(
+        (finding) =>
+          finding.ruleId === "unused-css-class" && finding.data?.className === "fa-unused",
+      ),
+      [],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("unused-css-class lowers confidence when dynamic class references exist", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(

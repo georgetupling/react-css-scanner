@@ -115,6 +115,63 @@ test("missing-css-class accepts Font Awesome classes when HTML links a matching 
   }
 });
 
+test("missing-css-class accepts classes from local CSS linked by HTML", async () => {
+  const project = await new TestProjectBuilder()
+    .withFile("index.html", '<link rel="stylesheet" href="/public/app.css">\n')
+    .withCssFile("public/app.css", ".linked { color: green; }\n")
+    .withSourceFile(
+      "src/App.tsx",
+      'export function App() { return <main className="linked" />; }\n',
+    )
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
+    });
+
+    assert.deepEqual(
+      result.findings.filter(
+        (finding) =>
+          finding.ruleId === "missing-css-class" || finding.ruleId === "css-class-unreachable",
+      ),
+      [],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("missing-css-class loads local HTML-linked CSS outside explicit CSS paths", async () => {
+  const project = await new TestProjectBuilder()
+    .withFile("public/index.html", '<link rel="stylesheet" href="./app.css?v=1">\n')
+    .withCssFile("public/app.css", ".linked { color: green; }\n")
+    .withSourceFile(
+      "src/App.tsx",
+      'export function App() { return <main className="linked" />; }\n',
+    )
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
+      cssFilePaths: [],
+    });
+
+    assert.deepEqual(
+      result.findings.filter(
+        (finding) =>
+          finding.ruleId === "missing-css-class" || finding.ruleId === "css-class-unreachable",
+      ),
+      [],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("missing-css-class ignores provider defaults when HTML links do not match them", async () => {
   const project = await new TestProjectBuilder()
     .withFile("index.html", '<link rel="stylesheet" href="https://cdn.example/assets/icons.css">\n')

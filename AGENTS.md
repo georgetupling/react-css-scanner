@@ -71,8 +71,9 @@ If docs disagree with code and tests, align them in the same change or call out 
 - Unknown config keys, unknown nested keys, and unknown rule IDs are config errors. Do not silently
   accept legacy keys such as `css`, `source`, or `classComposition`.
 - `externalCss` resolves provider declarations and built-in defaults. Static HTML stylesheet links
-  can activate matching provider declarations; package CSS loading and remote fetch behavior are
-  staged follow-up work unless implemented in the same change.
+  can activate matching provider declarations, and local HTML-linked `.css` files are loaded as
+  project-wide stylesheets. Package CSS loading and remote fetch behavior are staged follow-up work
+  unless implemented in the same change.
 
 ### CLI
 

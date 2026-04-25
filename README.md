@@ -195,8 +195,9 @@ External CSS config is accepted as the first slice of rebuilt provider support. 
 currently include Font Awesome, Material Design Icons, Bootstrap Icons, Animate.css, UIkit, and
 Pure.css provider declarations; custom `externalCss.globals` entries are appended to those defaults.
 Static HTML/CDN stylesheet links activate matching declared providers, so a Font Awesome CDN link
-can satisfy `fa-*` references without an HTTP fetch. Package CSS loading and remote fetching remain
-staged follow-up work; remote fetching is opt-in by adding `fetch-remote` to `externalCss.modes`.
+can satisfy `fa-*` references without an HTTP fetch. Local HTML-linked `.css` files are loaded,
+parsed, and treated as project-wide reachable. Package CSS loading and remote fetching remain staged
+follow-up work; remote fetching is opt-in by adding `fetch-remote` to `externalCss.modes`.
 
 ## Rules
 

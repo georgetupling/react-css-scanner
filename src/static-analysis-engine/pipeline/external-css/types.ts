@@ -15,6 +15,7 @@ export type HtmlStylesheetLinkInput = {
   filePath: string;
   href: string;
   isRemote: boolean;
+  resolvedFilePath?: string;
 };
 
 export type ExternalCssAnalysisInput = {
@@ -37,4 +38,5 @@ export type ExternalCssSummary = {
   modes: ExternalCssSourceMode[];
   activeProviders: ActiveExternalCssProvider[];
   projectWideStylesheetFilePaths: string[];
+  externalStylesheetFilePaths: string[];
 };

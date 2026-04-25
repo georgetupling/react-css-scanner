@@ -536,6 +536,9 @@ Design rules:
 - user-supplied `externalCss.globals` entries append to built-in providers
 - declared-provider matching and static HTML stylesheet-link ingestion are active; matching
   HTML/CDN links can satisfy configured provider classes without an HTTP fetch
+- local `.css` files linked from HTML are loaded, parsed, and treated as project-wide reachable;
+  provider-matched linked CSS is classified as external, while ordinary local linked CSS remains
+  project CSS
 - package CSS loading and remote fetch behavior are staged follow-up work
 - default rule severities come from `docs/design/rules-catalogue.md` and the rule catalogue code
 - rule ids follow the reboot catalogue; old scanner rule ids are not part of the clean contract
