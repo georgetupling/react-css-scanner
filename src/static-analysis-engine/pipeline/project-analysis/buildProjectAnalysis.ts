@@ -310,7 +310,9 @@ function buildClassReferences(
   indexes: ProjectAnalysisIndexes,
 ): ClassReferenceAnalysis[] {
   const classExpressions = deduplicateRenderClassExpressions(
-    renderSubtrees.flatMap((renderSubtree) => collectRenderClassExpressions(renderSubtree)),
+    renderSubtrees.flatMap((renderSubtree) =>
+      collectRenderClassExpressions(renderSubtree, indexes),
+    ),
   );
 
   const references = classExpressions.map((entry, index) => {
@@ -551,24 +553,36 @@ type RenderClassExpressionEntry = {
   placementLocation?: SourceAnchor;
 };
 
-function collectRenderClassExpressions(input: RenderSubtreeAnalysis): RenderClassExpressionEntry[] {
+function collectRenderClassExpressions(
+  input: RenderSubtreeAnalysis,
+  indexes: ProjectAnalysisIndexes,
+): RenderClassExpressionEntry[] {
   const entries: RenderClassExpressionEntry[] = [];
 
-  visitRenderNode(input.sourceSubtree.root, undefined, (node, inheritedPlacementLocation) => {
-    if (!node.className) {
-      return;
-    }
+  visitRenderNode(
+    input.sourceSubtree.root,
+    undefined,
+    undefined,
+    (node, inheritedPlacementLocation, inheritedExpansion) => {
+      if (!node.className) {
+        return;
+      }
 
-    entries.push({
-      classExpression: node.className,
-      componentId: input.componentId,
-      renderSubtreeId: input.id,
-      emittedElementLocation: normalizeAnchor(node.sourceAnchor),
-      placementLocation: normalizeOptionalAnchor(
-        node.placementAnchor ?? inheritedPlacementLocation,
-      ),
-    });
-  });
+      entries.push({
+        classExpression: node.className,
+        componentId: resolveEffectiveComponentId({
+          renderSubtree: input,
+          inheritedExpansion,
+          indexes,
+        }),
+        renderSubtreeId: input.id,
+        emittedElementLocation: normalizeAnchor(node.sourceAnchor),
+        placementLocation: normalizeOptionalAnchor(
+          node.placementAnchor ?? inheritedPlacementLocation,
+        ),
+      });
+    },
+  );
 
   return entries.sort((left, right) =>
     `${left.classExpression.sourceAnchor.filePath}:${left.classExpression.sourceAnchor.startLine}:${left.classExpression.sourceAnchor.startColumn}`.localeCompare(
@@ -604,6 +618,7 @@ function createRenderClassExpressionDedupeKey(entry: RenderClassExpressionEntry)
     classExpression.classes.definite.join(" "),
     classExpression.classes.possible.join(" "),
     classExpression.classes.unknownDynamic ? "dynamic" : "static",
+    entry.componentId ?? "",
   ].join(":");
 }
 
@@ -622,6 +637,25 @@ function compareRenderClassExpressionEntries(
           ? 1
           : 0) ||
     left.renderSubtreeId.localeCompare(right.renderSubtreeId)
+  );
+}
+
+function resolveEffectiveComponentId(input: {
+  renderSubtree: RenderSubtreeAnalysis;
+  inheritedExpansion?: NonNullable<RenderNode["expandedFromComponentReference"]>;
+  indexes: ProjectAnalysisIndexes;
+}): ProjectAnalysisId | undefined {
+  if (!input.inheritedExpansion) {
+    return input.renderSubtree.componentId;
+  }
+
+  return (
+    input.indexes.componentIdByFilePathAndName.get(
+      createComponentKey(
+        normalizeProjectPath(input.inheritedExpansion.filePath),
+        input.inheritedExpansion.componentName,
+      ),
+    ) ?? input.renderSubtree.componentId
   );
 }
 
@@ -649,36 +683,39 @@ function buildClassReferenceTraces(entry: RenderClassExpressionEntry): AnalysisT
 function visitRenderNode(
   node: RenderNode,
   inheritedPlacementLocation: SourceAnchor | undefined,
+  inheritedExpansion: NonNullable<RenderNode["expandedFromComponentReference"]> | undefined,
   visitElement: (
     node: RenderElementNode,
     inheritedPlacementLocation: SourceAnchor | undefined,
+    inheritedExpansion: NonNullable<RenderNode["expandedFromComponentReference"]> | undefined,
   ) => void,
 ): void {
   const placementLocation = node.placementAnchor ?? inheritedPlacementLocation;
+  const expansion = node.expandedFromComponentReference ?? inheritedExpansion;
 
   if (node.kind === "element") {
-    visitElement(node, inheritedPlacementLocation);
+    visitElement(node, inheritedPlacementLocation, expansion);
     for (const child of node.children) {
-      visitRenderNode(child, placementLocation, visitElement);
+      visitRenderNode(child, placementLocation, expansion, visitElement);
     }
     return;
   }
 
   if (node.kind === "fragment") {
     for (const child of node.children) {
-      visitRenderNode(child, placementLocation, visitElement);
+      visitRenderNode(child, placementLocation, expansion, visitElement);
     }
     return;
   }
 
   if (node.kind === "conditional") {
-    visitRenderNode(node.whenTrue, placementLocation, visitElement);
-    visitRenderNode(node.whenFalse, placementLocation, visitElement);
+    visitRenderNode(node.whenTrue, placementLocation, expansion, visitElement);
+    visitRenderNode(node.whenFalse, placementLocation, expansion, visitElement);
     return;
   }
 
   if (node.kind === "repeated-region") {
-    visitRenderNode(node.template, placementLocation, visitElement);
+    visitRenderNode(node.template, placementLocation, expansion, visitElement);
   }
 }
 

@@ -289,6 +289,10 @@ type ClassReferenceAnalysis = {
 };
 ```
 
+`componentId` identifies the component that emitted the class expression. When a parent render tree
+expands a child component, class references from the child's implementation are attributed to the
+child component, while placement and render-subtree fields preserve the parent render context.
+
 ### ClassDefinitionAnalysis
 
 ```ts

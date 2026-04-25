@@ -112,6 +112,49 @@ test("style-used-outside-owner reports classes consumed outside a single importi
   }
 });
 
+test("style-used-outside-owner attributes child component classes to the child, not the parent render root", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/pages/HomePage.tsx",
+      [
+        'import { GuestLogin } from "../features/auth/GuestLogin";',
+        "export function HomePage() { return <main><GuestLogin /></main>; }",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/features/auth/GuestLogin.tsx",
+      [
+        'import "./GuestLogin.css";',
+        'export function GuestLogin() { return <section className="guest-login">Sign in</section>; }',
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/features/auth/GuestLogin.css", ".guest-login { display: block; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/pages/HomePage.tsx", "src/features/auth/GuestLogin.tsx"],
+      cssFilePaths: ["src/features/auth/GuestLogin.css"],
+    });
+
+    assert.deepEqual(
+      result.findings.filter((finding) => finding.ruleId === "style-used-outside-owner"),
+      [],
+    );
+    assert.deepEqual(
+      result.findings
+        .filter((finding) => finding.ruleId === "single-component-style-not-colocated")
+        .map((finding) => finding.data?.componentName),
+      [],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("style-used-outside-owner does not report without a single importing component owner", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(
