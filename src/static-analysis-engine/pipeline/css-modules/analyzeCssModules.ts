@@ -7,6 +7,7 @@ import type { ModuleGraph } from "../module-graph/types.js";
 import type {
   CssModuleAnalysis,
   CssModuleAnalysisOptions,
+  CssModuleDestructuredBindingRecord,
   CssModuleImportRecord,
   CssModuleMemberReferenceRecord,
   CssModuleReferenceDiagnosticRecord,
@@ -20,7 +21,7 @@ export function analyzeCssModules(input: {
 }): CssModuleAnalysis {
   const options = normalizeCssModuleAnalysisOptions(input.options);
   const imports = buildCssModuleImports(input);
-  const { memberReferences, diagnostics } = buildCssModuleMemberReferences({
+  const { destructuredBindings, memberReferences, diagnostics } = buildCssModuleMemberReferences({
     parsedFiles: input.parsedFiles,
     imports,
   });
@@ -28,6 +29,7 @@ export function analyzeCssModules(input: {
   return {
     options,
     imports,
+    destructuredBindings,
     memberReferences,
     diagnostics,
   };
@@ -98,6 +100,7 @@ function buildCssModuleMemberReferences(input: {
   parsedFiles: ParsedProjectFile[];
   imports: CssModuleImportRecord[];
 }): {
+  destructuredBindings: CssModuleDestructuredBindingRecord[];
   memberReferences: CssModuleMemberReferenceRecord[];
   diagnostics: CssModuleReferenceDiagnosticRecord[];
 } {
@@ -109,6 +112,7 @@ function buildCssModuleMemberReferences(input: {
     );
   }
 
+  const destructuredBindings: CssModuleDestructuredBindingRecord[] = [];
   const memberReferences: CssModuleMemberReferenceRecord[] = [];
   const diagnostics: CssModuleReferenceDiagnosticRecord[] = [];
 
@@ -129,6 +133,18 @@ function buildCssModuleMemberReferences(input: {
         diagnostics.push(memberAccess.diagnostic);
       }
 
+      const destructuring = getCssModuleDestructuring({
+        node,
+        parsedSourceFile: parsedFile.parsedSourceFile,
+        sourceFilePath,
+        importsBySourceAndLocalName,
+      });
+      if (destructuring) {
+        destructuredBindings.push(...destructuring.bindings);
+        memberReferences.push(...destructuring.references);
+        diagnostics.push(...destructuring.diagnostics);
+      }
+
       ts.forEachChild(node, visit);
     };
 
@@ -136,6 +152,9 @@ function buildCssModuleMemberReferences(input: {
   }
 
   return {
+    destructuredBindings: deduplicateByKey(destructuredBindings, createDestructuredBindingKey).sort(
+      compareDestructuredBindings,
+    ),
     memberReferences: deduplicateByKey(memberReferences, createMemberReferenceKey).sort(
       compareMemberReferences,
     ),
@@ -250,6 +269,177 @@ function getCssModuleMemberAccess(input: {
   return undefined;
 }
 
+function getCssModuleDestructuring(input: {
+  node: ts.Node;
+  parsedSourceFile: ts.SourceFile;
+  sourceFilePath: string;
+  importsBySourceAndLocalName: Map<string, CssModuleImportRecord>;
+}):
+  | {
+      bindings: CssModuleDestructuredBindingRecord[];
+      references: CssModuleMemberReferenceRecord[];
+      diagnostics: CssModuleReferenceDiagnosticRecord[];
+    }
+  | undefined {
+  if (
+    !ts.isVariableDeclaration(input.node) ||
+    !ts.isObjectBindingPattern(input.node.name) ||
+    !input.node.initializer ||
+    !ts.isIdentifier(input.node.initializer)
+  ) {
+    return undefined;
+  }
+
+  const cssModuleImport = input.importsBySourceAndLocalName.get(
+    createCssModuleLocalKey(input.sourceFilePath, input.node.initializer.text),
+  );
+  if (!cssModuleImport) {
+    return undefined;
+  }
+
+  const bindings: CssModuleDestructuredBindingRecord[] = [];
+  const references: CssModuleMemberReferenceRecord[] = [];
+  const diagnostics: CssModuleReferenceDiagnosticRecord[] = [];
+
+  for (const element of input.node.name.elements) {
+    if (element.dotDotDotToken) {
+      diagnostics.push(
+        createCssModuleDestructuringDiagnostic({
+          reason: "rest-css-module-destructuring",
+          element,
+          parsedSourceFile: input.parsedSourceFile,
+          sourceFilePath: input.sourceFilePath,
+          cssModuleImport,
+          summary:
+            "CSS Module destructuring used a rest binding that cannot be resolved statically",
+        }),
+      );
+      continue;
+    }
+
+    const memberName = getBindingElementMemberName(element);
+    if (memberName.kind === "computed") {
+      diagnostics.push(
+        createCssModuleDestructuringDiagnostic({
+          reason: "computed-css-module-destructuring",
+          element,
+          parsedSourceFile: input.parsedSourceFile,
+          sourceFilePath: input.sourceFilePath,
+          cssModuleImport,
+          summary:
+            "CSS Module destructuring used a computed member name that cannot be resolved statically",
+        }),
+      );
+      continue;
+    }
+
+    if (!ts.isIdentifier(element.name)) {
+      diagnostics.push(
+        createCssModuleDestructuringDiagnostic({
+          reason: "nested-css-module-destructuring",
+          element,
+          parsedSourceFile: input.parsedSourceFile,
+          sourceFilePath: input.sourceFilePath,
+          cssModuleImport,
+          summary:
+            "CSS Module destructuring used a nested binding pattern that cannot be resolved statically",
+        }),
+      );
+      continue;
+    }
+
+    const location = toSourceAnchor(element, input.parsedSourceFile, input.sourceFilePath);
+    const trace = createCssModuleTrace({
+      traceId: `css-module:destructured-binding:${location.filePath}:${location.startLine}:${location.startColumn}`,
+      summary: `CSS Module member "${memberName.text}" was destructured from import "${cssModuleImport.localName}"`,
+      anchor: location,
+      metadata: {
+        stylesheetFilePath: cssModuleImport.stylesheetFilePath,
+        memberName: memberName.text,
+        bindingName: element.name.text,
+      },
+    });
+    const rawExpressionText = element.getText(input.parsedSourceFile);
+
+    bindings.push({
+      sourceFilePath: input.sourceFilePath,
+      stylesheetFilePath: cssModuleImport.stylesheetFilePath,
+      localName: cssModuleImport.localName,
+      memberName: memberName.text,
+      bindingName: element.name.text,
+      location,
+      rawExpressionText,
+      traces: [trace],
+    });
+    references.push({
+      sourceFilePath: input.sourceFilePath,
+      stylesheetFilePath: cssModuleImport.stylesheetFilePath,
+      localName: cssModuleImport.localName,
+      memberName: memberName.text,
+      accessKind: "destructured-binding",
+      location,
+      rawExpressionText,
+      traces: [trace],
+    });
+  }
+
+  return { bindings, references, diagnostics };
+}
+
+function getBindingElementMemberName(
+  element: ts.BindingElement,
+): { kind: "static"; text: string } | { kind: "computed" } {
+  if (!element.propertyName) {
+    return ts.isIdentifier(element.name)
+      ? { kind: "static", text: element.name.text }
+      : { kind: "computed" };
+  }
+
+  if (ts.isComputedPropertyName(element.propertyName)) {
+    return { kind: "computed" };
+  }
+
+  if (
+    ts.isIdentifier(element.propertyName) ||
+    ts.isStringLiteral(element.propertyName) ||
+    ts.isNumericLiteral(element.propertyName)
+  ) {
+    return { kind: "static", text: element.propertyName.text };
+  }
+
+  return { kind: "computed" };
+}
+
+function createCssModuleDestructuringDiagnostic(input: {
+  reason: CssModuleReferenceDiagnosticRecord["reason"];
+  element: ts.BindingElement;
+  parsedSourceFile: ts.SourceFile;
+  sourceFilePath: string;
+  cssModuleImport: CssModuleImportRecord;
+  summary: string;
+}): CssModuleReferenceDiagnosticRecord {
+  const location = toSourceAnchor(input.element, input.parsedSourceFile, input.sourceFilePath);
+  return {
+    sourceFilePath: input.sourceFilePath,
+    stylesheetFilePath: input.cssModuleImport.stylesheetFilePath,
+    localName: input.cssModuleImport.localName,
+    reason: input.reason,
+    location,
+    rawExpressionText: input.element.getText(input.parsedSourceFile),
+    traces: [
+      createCssModuleTrace({
+        traceId: `css-module:diagnostic:${input.reason}:${location.filePath}:${location.startLine}:${location.startColumn}`,
+        summary: input.summary,
+        anchor: location,
+        metadata: {
+          stylesheetFilePath: input.cssModuleImport.stylesheetFilePath,
+          reason: input.reason,
+        },
+      }),
+    ],
+  };
+}
+
 function resolveCssModuleSpecifier(input: {
   fromFilePath: string;
   specifier: string;
@@ -309,6 +499,17 @@ function createMemberReferenceKey(reference: CssModuleMemberReferenceRecord): st
   ].join(":");
 }
 
+function createDestructuredBindingKey(binding: CssModuleDestructuredBindingRecord): string {
+  return [
+    binding.sourceFilePath,
+    binding.stylesheetFilePath,
+    binding.memberName,
+    binding.bindingName,
+    binding.location.startLine,
+    binding.location.startColumn,
+  ].join(":");
+}
+
 function createDiagnosticKey(diagnostic: CssModuleReferenceDiagnosticRecord): string {
   return [
     diagnostic.sourceFilePath,
@@ -328,6 +529,13 @@ function compareMemberReferences(
   right: CssModuleMemberReferenceRecord,
 ): number {
   return createMemberReferenceKey(left).localeCompare(createMemberReferenceKey(right));
+}
+
+function compareDestructuredBindings(
+  left: CssModuleDestructuredBindingRecord,
+  right: CssModuleDestructuredBindingRecord,
+): number {
+  return createDestructuredBindingKey(left).localeCompare(createDestructuredBindingKey(right));
 }
 
 function compareDiagnostics(

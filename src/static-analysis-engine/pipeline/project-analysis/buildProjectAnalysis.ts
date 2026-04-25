@@ -9,6 +9,7 @@ import type {
   OwnerCandidateReason,
   ComponentAnalysis,
   ComponentRenderRelation,
+  CssModuleDestructuredBindingAnalysis,
   CssModuleImportAnalysis,
   CssModuleMemberMatchRelation,
   CssModuleMemberReferenceAnalysis,
@@ -55,6 +56,7 @@ export function buildProjectAnalysis(input: ProjectAnalysisBuildInput): ProjectA
   const selectorBranches = buildSelectorBranches(selectorQueries);
   const cssModuleImports = buildCssModuleImports(input, indexes);
   const {
+    destructuredBindings: cssModuleDestructuredBindings,
     memberReferences: cssModuleMemberReferences,
     diagnostics: cssModuleReferenceDiagnostics,
   } = buildCssModuleMemberReferences({
@@ -72,6 +74,7 @@ export function buildProjectAnalysis(input: ProjectAnalysisBuildInput): ProjectA
     components,
     unsupportedClassReferences,
     cssModuleImports,
+    cssModuleDestructuredBindings,
     cssModuleMemberReferences,
     cssModuleReferenceDiagnostics,
     indexes,
@@ -135,6 +138,7 @@ export function buildProjectAnalysis(input: ProjectAnalysisBuildInput): ProjectA
       renderSubtrees,
       unsupportedClassReferences,
       cssModuleImports,
+      cssModuleDestructuredBindings,
       cssModuleMemberReferences,
       cssModuleReferenceDiagnostics,
     },
@@ -409,6 +413,7 @@ function buildCssModuleMemberReferences(input: {
   imports: CssModuleImportAnalysis[];
   indexes: ProjectAnalysisIndexes;
 }): {
+  destructuredBindings: CssModuleDestructuredBindingAnalysis[];
   memberReferences: CssModuleMemberReferenceAnalysis[];
   diagnostics: CssModuleReferenceDiagnosticAnalysis[];
 } {
@@ -425,6 +430,35 @@ function buildCssModuleMemberReferences(input: {
   }
 
   return {
+    destructuredBindings: input.projectInput.cssModules.destructuredBindings
+      .map((binding) => {
+        const cssModuleImport = importsBySourceStylesheetAndLocalName.get(
+          createCssModuleImportLookupKey(binding),
+        );
+        if (!cssModuleImport) {
+          return undefined;
+        }
+
+        return {
+          id: createCssModuleDestructuredBindingId(
+            binding.location,
+            cssModuleImport.id,
+            binding.memberName,
+            binding.bindingName,
+          ),
+          importId: cssModuleImport.id,
+          sourceFileId: cssModuleImport.sourceFileId,
+          stylesheetId: cssModuleImport.stylesheetId,
+          localName: binding.localName,
+          memberName: binding.memberName,
+          bindingName: binding.bindingName,
+          location: normalizeAnchor(binding.location),
+          rawExpressionText: binding.rawExpressionText,
+          traces: [...binding.traces],
+        };
+      })
+      .filter((binding): binding is CssModuleDestructuredBindingAnalysis => Boolean(binding))
+      .sort(compareById),
     memberReferences: input.projectInput.cssModules.memberReferences
       .map((reference) => {
         const cssModuleImport = importsBySourceStylesheetAndLocalName.get(
@@ -1430,6 +1464,7 @@ function indexEntities(input: {
   components: ComponentAnalysis[];
   unsupportedClassReferences: UnsupportedClassReferenceAnalysis[];
   cssModuleImports: CssModuleImportAnalysis[];
+  cssModuleDestructuredBindings: CssModuleDestructuredBindingAnalysis[];
   cssModuleMemberReferences: CssModuleMemberReferenceAnalysis[];
   cssModuleReferenceDiagnostics: CssModuleReferenceDiagnosticAnalysis[];
   indexes: ProjectAnalysisIndexes;
@@ -1488,6 +1523,14 @@ function indexEntities(input: {
       cssModuleImport.id,
     );
   }
+  for (const binding of input.cssModuleDestructuredBindings) {
+    input.indexes.cssModuleDestructuredBindingsById.set(binding.id, binding);
+    pushMapValue(
+      input.indexes.cssModuleDestructuredBindingsByImportId,
+      binding.importId,
+      binding.id,
+    );
+  }
   for (const reference of input.cssModuleMemberReferences) {
     input.indexes.cssModuleMemberReferencesById.set(reference.id, reference);
     pushMapValue(
@@ -1515,6 +1558,7 @@ function indexEntities(input: {
   sortIndexValues(input.indexes.selectorBranchesByRuleKey);
   sortIndexValues(input.indexes.selectorBranchesByStylesheetId);
   sortIndexValues(input.indexes.cssModuleImportsByStylesheetId);
+  sortIndexValues(input.indexes.cssModuleDestructuredBindingsByImportId);
   sortIndexValues(input.indexes.cssModuleMemberReferencesByImportId);
   sortIndexValues(input.indexes.cssModuleMemberReferencesByStylesheetAndClassName);
   sortIndexValues(input.indexes.cssModuleReferenceDiagnosticsByImportId);
@@ -1852,6 +1896,7 @@ function createEmptyIndexes(): ProjectAnalysisIndexes {
     componentsById: new Map(),
     unsupportedClassReferencesById: new Map(),
     cssModuleImportsById: new Map(),
+    cssModuleDestructuredBindingsById: new Map(),
     cssModuleMemberReferencesById: new Map(),
     cssModuleReferenceDiagnosticsById: new Map(),
     sourceFileIdByPath: new Map(),
@@ -1882,6 +1927,7 @@ function createEmptyIndexes(): ProjectAnalysisIndexes {
     cssModuleMemberMatchesById: new Map(),
     cssModuleImportsBySourceFileId: new Map(),
     cssModuleImportsByStylesheetId: new Map(),
+    cssModuleDestructuredBindingsByImportId: new Map(),
     cssModuleMemberReferencesByImportId: new Map(),
     cssModuleMemberReferencesByStylesheetAndClassName: new Map(),
     cssModuleMemberMatchesByReferenceId: new Map(),
@@ -2005,6 +2051,22 @@ function createCssModuleMemberReferenceId(
     "css-module-member-reference",
     importId,
     memberName,
+    location.startLine,
+    location.startColumn,
+  ].join(":");
+}
+
+function createCssModuleDestructuredBindingId(
+  location: SourceAnchor,
+  importId: ProjectAnalysisId,
+  memberName: string,
+  bindingName: string,
+): ProjectAnalysisId {
+  return [
+    "css-module-destructured-binding",
+    importId,
+    memberName,
+    bindingName,
     location.startLine,
     location.startColumn,
   ].join(":");

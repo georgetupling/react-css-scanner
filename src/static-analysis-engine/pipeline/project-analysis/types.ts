@@ -62,6 +62,7 @@ export type ProjectAnalysisEntities = {
   renderSubtrees: RenderSubtreeAnalysis[];
   unsupportedClassReferences: UnsupportedClassReferenceAnalysis[];
   cssModuleImports: CssModuleImportAnalysis[];
+  cssModuleDestructuredBindings: CssModuleDestructuredBindingAnalysis[];
   cssModuleMemberReferences: CssModuleMemberReferenceAnalysis[];
   cssModuleReferenceDiagnostics: CssModuleReferenceDiagnosticAnalysis[];
 };
@@ -250,7 +251,20 @@ export type CssModuleMemberReferenceAnalysis = {
   stylesheetId: ProjectAnalysisId;
   localName: string;
   memberName: string;
-  accessKind: "property" | "string-literal-element";
+  accessKind: "property" | "string-literal-element" | "destructured-binding";
+  location: SourceAnchor;
+  rawExpressionText: string;
+  traces: AnalysisTrace[];
+};
+
+export type CssModuleDestructuredBindingAnalysis = {
+  id: ProjectAnalysisId;
+  importId: ProjectAnalysisId;
+  sourceFileId: ProjectAnalysisId;
+  stylesheetId: ProjectAnalysisId;
+  localName: string;
+  memberName: string;
+  bindingName: string;
   location: SourceAnchor;
   rawExpressionText: string;
   traces: AnalysisTrace[];
@@ -262,7 +276,7 @@ export type CssModuleReferenceDiagnosticAnalysis = {
   sourceFileId: ProjectAnalysisId;
   stylesheetId: ProjectAnalysisId;
   localName: string;
-  reason: "computed-css-module-member";
+  reason: import("../css-modules/types.js").CssModuleReferenceDiagnosticRecord["reason"];
   location: SourceAnchor;
   rawExpressionText: string;
   traces: AnalysisTrace[];
@@ -362,6 +376,7 @@ export type ProjectAnalysisIndexes = {
   componentsById: Map<ProjectAnalysisId, ComponentAnalysis>;
   unsupportedClassReferencesById: Map<ProjectAnalysisId, UnsupportedClassReferenceAnalysis>;
   cssModuleImportsById: Map<ProjectAnalysisId, CssModuleImportAnalysis>;
+  cssModuleDestructuredBindingsById: Map<ProjectAnalysisId, CssModuleDestructuredBindingAnalysis>;
   cssModuleMemberReferencesById: Map<ProjectAnalysisId, CssModuleMemberReferenceAnalysis>;
   cssModuleReferenceDiagnosticsById: Map<ProjectAnalysisId, CssModuleReferenceDiagnosticAnalysis>;
   sourceFileIdByPath: Map<string, ProjectAnalysisId>;
@@ -392,6 +407,7 @@ export type ProjectAnalysisIndexes = {
   cssModuleMemberMatchesById: Map<ProjectAnalysisId, CssModuleMemberMatchRelation>;
   cssModuleImportsBySourceFileId: Map<ProjectAnalysisId, ProjectAnalysisId[]>;
   cssModuleImportsByStylesheetId: Map<ProjectAnalysisId, ProjectAnalysisId[]>;
+  cssModuleDestructuredBindingsByImportId: Map<ProjectAnalysisId, ProjectAnalysisId[]>;
   cssModuleMemberReferencesByImportId: Map<ProjectAnalysisId, ProjectAnalysisId[]>;
   cssModuleMemberReferencesByStylesheetAndClassName: Map<string, ProjectAnalysisId[]>;
   cssModuleMemberMatchesByReferenceId: Map<ProjectAnalysisId, ProjectAnalysisId[]>;

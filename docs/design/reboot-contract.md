@@ -137,8 +137,9 @@ The current CSS Module contract is defined in `docs/design/css-modules-contract.
 current slice supports relative CSS Module imports, static member reads such as `styles.root` and
 `styles["root"]`, member-to-class-definition match relations, missing module member findings,
 unused module class findings, computed member diagnostics, and `localsConvention` matching for
-`asIs`, `camelCase`, and `camelCaseOnly`. It does not yet claim `composes`, destructured member
-patterns, generic class-reference projection, or re-exported CSS Module semantics.
+`asIs`, `camelCase`, and `camelCaseOnly`. It also supports simple same-file destructured member
+bindings such as `const { root, button: buttonClass } = styles`. It does not yet claim `composes`,
+generic class-reference projection, or re-exported CSS Module semantics.
 
 Rule execution now lives outside the static-analysis engine in `src/rules`.
 The engine entry points return analysis only; rule runners should be invoked as a layer above

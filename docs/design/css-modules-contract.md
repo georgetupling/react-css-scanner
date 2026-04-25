@@ -66,33 +66,52 @@ The analysis supports direct static member reads from a known imported module ob
 ```ts
 styles.root;
 styles["root"];
+const { root, button: buttonClass } = styles;
 ```
 
 These produce `CssModuleMemberReferenceAnalysis` records with:
 
 - `accessKind: "property"` for `styles.root`
 - `accessKind: "string-literal-element"` for `styles["root"]`
+- `accessKind: "destructured-binding"` for supported object binding elements
 - `memberName` set to the requested export/member name
 - source location, raw expression text, and traces
+
+Supported destructuring is intentionally local and declaration-based:
+
+```ts
+const { root } = styles;
+const { button: buttonClass } = styles;
+```
+
+These also produce `CssModuleDestructuredBindingAnalysis` records that preserve:
+
+- the imported module object name
+- the exported member name
+- the local binding name
+- the source location, raw binding text, and traces
 
 Computed element access is unsupported but diagnosed:
 
 ```ts
 styles[name];
 styles[prefix + "Root"];
+const { [name]: root } = styles;
+const { ...rest } = styles;
 ```
 
 These produce `CssModuleReferenceDiagnosticAnalysis` records with:
 
 - `reason: "computed-css-module-member"`
+- `reason: "computed-css-module-destructuring"` for computed destructured member names
+- `reason: "rest-css-module-destructuring"` for rest bindings
+- `reason: "nested-css-module-destructuring"` for nested binding patterns
 - source location, raw expression text, and traces
 
 Unsupported for now:
 
-- destructuring, such as `const { root } = styles`
 - alias reads, such as `const s = styles; s.root`
 - optional chaining, such as `styles?.root`
-- spread/rest patterns involving CSS Module objects
 - passing module objects into helpers and reading members elsewhere
 
 ## Export Name Semantics
@@ -175,11 +194,13 @@ identify a concrete unsupported pattern.
 Currently diagnosed:
 
 - computed member access from a known imported module object
+- computed destructured member names from a known imported module object
+- rest destructuring from a known imported module object
+- nested destructuring from a known imported module object
 
 Not yet diagnosed consistently:
 
 - unsupported named import semantics
-- destructuring
 - alias reassignment
 - unresolved CSS Module import targets
 - re-exports
