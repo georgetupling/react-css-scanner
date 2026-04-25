@@ -1,4 +1,8 @@
-export type ExternalCssMode = "imported-only" | "declared-globals" | "fetch-remote";
+export type ExternalCssSourceMode =
+  | "declared-globals"
+  | "imported-packages"
+  | "html-links"
+  | "fetch-remote";
 
 export type ExternalCssGlobalProviderConfig = {
   provider: string;
@@ -15,7 +19,7 @@ export type HtmlStylesheetLinkInput = {
 
 export type ExternalCssAnalysisInput = {
   enabled?: boolean;
-  mode?: ExternalCssMode;
+  modes?: ExternalCssSourceMode[];
   globalProviders?: ExternalCssGlobalProviderConfig[];
   htmlStylesheetLinks?: HtmlStylesheetLinkInput[];
 };
@@ -30,7 +34,7 @@ export type ActiveExternalCssProvider = {
 
 export type ExternalCssSummary = {
   enabled: boolean;
-  mode: ExternalCssMode;
+  modes: ExternalCssSourceMode[];
   activeProviders: ActiveExternalCssProvider[];
   projectWideStylesheetFilePaths: string[];
 };

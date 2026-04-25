@@ -34,6 +34,7 @@ test("discoverProjectFiles scans source and CSS under a root directory", async (
       discovered.cssFiles.map((file) => file.filePath),
       ["src/components/Card.css"],
     );
+    assert.deepEqual(discovered.htmlFiles, []);
     assert.deepEqual(discovered.diagnostics, []);
   } finally {
     await project.cleanup();
@@ -60,6 +61,28 @@ test("explicit file paths override default discovery for that file kind", async 
       discovered.cssFiles.map((file) => file.filePath),
       ["src/components/Card.css"],
     );
+    assert.deepEqual(discovered.htmlFiles, []);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("discoverProjectFiles discovers HTML files for stylesheet link analysis", async () => {
+  const project = await new TestProjectBuilder()
+    .withFile("index.html", '<link rel="stylesheet" href="/assets/app.css">\n')
+    .withFile("public/nested/page.html", "<main></main>\n")
+    .withNodeModuleFile("library/ignored.html", "<html></html>\n")
+    .build();
+
+  try {
+    const discovered = await discoverProjectFiles({
+      rootDir: project.rootDir,
+    });
+
+    assert.deepEqual(
+      discovered.htmlFiles.map((file) => file.filePath),
+      ["index.html", "public/nested/page.html"],
+    );
   } finally {
     await project.cleanup();
   }
@@ -75,6 +98,7 @@ test("discoverProjectFiles reports file roots without traversing them", async ()
 
     assert.deepEqual(discovered.sourceFiles, []);
     assert.deepEqual(discovered.cssFiles, []);
+    assert.deepEqual(discovered.htmlFiles, []);
     assert.equal(discovered.diagnostics.length, 1);
     assert.equal(discovered.diagnostics[0].code, "discovery.root-not-directory");
     assert.equal(discovered.diagnostics[0].severity, "error");
@@ -98,6 +122,7 @@ test("scanProject reports missing roots as deterministic diagnostics", async () 
     assert.equal(result.diagnostics[0].severity, "error");
     assert.deepEqual(result.files.sourceFiles, []);
     assert.deepEqual(result.files.cssFiles, []);
+    assert.deepEqual(result.files.htmlFiles, []);
     assert.equal(result.summary.sourceFileCount, 0);
     assert.equal(result.summary.cssFileCount, 0);
     assert.equal(result.summary.diagnosticsBySeverity.error, 1);
@@ -130,6 +155,16 @@ test("scanProject returns deterministic public summary from discovered files", a
     assert.equal(result.config.rules["unused-css-module-class"], "warn");
     assert.equal(result.config.rules["dynamic-class-reference"], "info");
     assert.equal(result.config.rules["unsupported-syntax-affecting-analysis"], "debug");
+    assert.equal(result.config.externalCss.enabled, true);
+    assert.deepEqual(result.config.externalCss.modes, [
+      "declared-globals",
+      "imported-packages",
+      "html-links",
+    ]);
+    assert.equal(result.config.externalCss.remoteTimeoutMs, 5000);
+    assert.ok(
+      result.config.externalCss.globals.some((provider) => provider.provider === "font-awesome"),
+    );
     assert.equal(result.failed, false);
     assert.deepEqual(result.findings, []);
     assert.equal("analysis" in result, false);
@@ -383,6 +418,125 @@ test("scanProject fails on unknown cssModules config keys", async () => {
     assert.equal(result.failed, true);
     assert.equal(result.diagnostics[0].code, "config.unknown-css-modules-key");
     assert.match(result.diagnostics[0].message, /unknown cssModules key "namedExports"/);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("scanProject accepts external CSS provider config and appends built-ins", async () => {
+  const project = await new TestProjectBuilder()
+    .withConfig({
+      externalCss: {
+        enabled: true,
+        modes: ["declared-globals", "fetch-remote"],
+        remoteTimeoutMs: 2500,
+        globals: [
+          {
+            provider: "custom-icons",
+            match: ["**/custom-icons.css"],
+            classPrefixes: ["ci-"],
+            classNames: ["ci"],
+          },
+        ],
+      },
+    })
+    .withSourceFile("src/App.tsx", "export function App() { return null; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+    });
+
+    assert.equal(result.failed, false);
+    assert.equal(result.config.externalCss.enabled, true);
+    assert.deepEqual(result.config.externalCss.modes, ["declared-globals", "fetch-remote"]);
+    assert.equal(result.config.externalCss.remoteTimeoutMs, 2500);
+    assert.ok(
+      result.config.externalCss.globals.some((provider) => provider.provider === "font-awesome"),
+    );
+    assert.ok(
+      result.config.externalCss.globals.some((provider) => provider.provider === "custom-icons"),
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("scanProject fails on unknown externalCss config keys", async () => {
+  const project = await new TestProjectBuilder()
+    .withConfig({
+      externalCss: {
+        providers: [],
+      },
+    })
+    .withSourceFile("src/App.tsx", "export function App() { return null; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+    });
+
+    assert.equal(result.failed, true);
+    assert.equal(result.diagnostics[0].code, "config.unknown-external-css-key");
+    assert.match(result.diagnostics[0].message, /unknown externalCss key "providers"/);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("scanProject rejects singular externalCss mode config", async () => {
+  const project = await new TestProjectBuilder()
+    .withConfig({
+      externalCss: {
+        mode: "declared-globals",
+      },
+    })
+    .withSourceFile("src/App.tsx", "export function App() { return null; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+    });
+
+    assert.equal(result.failed, true);
+    assert.equal(result.diagnostics[0].code, "config.unknown-external-css-key");
+    assert.match(result.diagnostics[0].message, /unknown externalCss key "mode"/);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("scanProject fails on malformed externalCss provider globals", async () => {
+  const project = await new TestProjectBuilder()
+    .withConfig({
+      externalCss: {
+        globals: [
+          {
+            provider: "custom-icons",
+            match: ["**/custom-icons.css"],
+            classPrefixes: "ci-",
+            classNames: [],
+          },
+        ],
+      },
+    })
+    .withSourceFile("src/App.tsx", "export function App() { return null; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+    });
+
+    assert.equal(result.failed, true);
+    assert.equal(result.diagnostics[0].code, "config.invalid-external-css-provider-prefixes");
+    assert.match(
+      result.diagnostics[0].message,
+      /externalCss\.globals\[0\]\.classPrefixes must be an array of strings/,
+    );
   } finally {
     await project.cleanup();
   }

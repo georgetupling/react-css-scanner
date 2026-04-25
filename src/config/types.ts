@@ -8,10 +8,31 @@ export type CssModulesConfig = {
   localsConvention: CssModuleLocalsConvention;
 };
 
+export type ExternalCssSourceMode =
+  | "declared-globals"
+  | "imported-packages"
+  | "html-links"
+  | "fetch-remote";
+
+export type ExternalCssGlobalProviderConfig = {
+  provider: string;
+  match: string[];
+  classPrefixes: string[];
+  classNames: string[];
+};
+
+export type ExternalCssConfig = {
+  enabled: boolean;
+  modes: ExternalCssSourceMode[];
+  globals: ExternalCssGlobalProviderConfig[];
+  remoteTimeoutMs: number;
+};
+
 export type ScannerConfig = {
   failOnSeverity: RuleSeverity;
   rules: Record<string, RuleConfigSeverity>;
   cssModules: CssModulesConfig;
+  externalCss: ExternalCssConfig;
 };
 
 export type ResolvedScannerConfig = ScannerConfig & {

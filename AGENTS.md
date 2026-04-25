@@ -66,9 +66,13 @@ If docs disagree with code and tests, align them in the same change or call out 
   discovery. If omitted, `configBaseDir` defaults to `rootDir`.
 - Only one config source is loaded.
 - No config merging.
-- Current config keys are `failOnSeverity`, `rules`, and `cssModules.localsConvention`.
+- Current config keys are `failOnSeverity`, `rules`, `cssModules.localsConvention`, and
+  `externalCss`.
 - Unknown config keys, unknown nested keys, and unknown rule IDs are config errors. Do not silently
-  accept legacy keys such as `css`, `source`, `externalCss`, or `classComposition`.
+  accept legacy keys such as `css`, `source`, or `classComposition`.
+- `externalCss` resolves provider declarations and built-in defaults. Static HTML stylesheet links
+  can activate matching provider declarations; package CSS loading and remote fetch behavior are
+  staged follow-up work unless implemented in the same change.
 
 ### CLI
 

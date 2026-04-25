@@ -508,6 +508,17 @@ type ScanConfig = {
   cssModules?: {
     localsConvention?: "asIs" | "camelCase" | "camelCaseOnly";
   };
+  externalCss?: {
+    enabled?: boolean;
+    modes?: Array<"declared-globals" | "imported-packages" | "html-links" | "fetch-remote">;
+    globals?: Array<{
+      provider: string;
+      match: string[];
+      classPrefixes: string[];
+      classNames: string[];
+    }>;
+    remoteTimeoutMs?: number;
+  };
 };
 ```
 
@@ -518,14 +529,22 @@ Design rules:
 - CLI config discovery checks the command directory before env and PATH fallbacks
 - API config discovery uses `configBaseDir`, defaulting to `rootDir`
 - CSS Module `localsConvention` defaults to `camelCase`
+- `externalCss` defaults to enabled with `declared-globals`, `imported-packages`, and `html-links`
+  modes, plus built-in provider declarations for Font Awesome, Material Design Icons, Bootstrap
+  Icons, Animate.css, UIkit, and Pure.css
+- `fetch-remote` is an opt-in `externalCss.modes` entry
+- user-supplied `externalCss.globals` entries append to built-in providers
+- declared-provider matching and static HTML stylesheet-link ingestion are active; matching
+  HTML/CDN links can satisfy configured provider classes without an HTTP fetch
+- package CSS loading and remote fetch behavior are staged follow-up work
 - default rule severities come from `docs/design/rules-catalogue.md` and the rule catalogue code
 - rule ids follow the reboot catalogue; old scanner rule ids are not part of the clean contract
 - missing config should resolve to built-in defaults
 - unsupported or unknown config keys should produce error diagnostics rather than silently changing behavior
 - unknown rule IDs should produce error diagnostics rather than being ignored
 
-Additional include/exclude behavior, external provider declarations, and ownership conventions can
-be added once the public result shape and CLI output are stable.
+Additional include/exclude behavior and ownership conventions can be added once the public result
+shape and CLI output are stable.
 
 ## CLI JSON Contract
 

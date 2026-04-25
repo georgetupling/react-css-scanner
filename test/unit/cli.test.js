@@ -203,8 +203,8 @@ test("CLI reports unknown config keys as errors", async () => {
 
     assert.equal(error.code, 1);
     assert.equal(output.failed, true);
-    assert.equal(output.diagnostics[0].code, "config.unknown-key");
-    assert.match(output.diagnostics[0].message, /unknown config key "externalCss"/);
+    assert.equal(output.diagnostics[0].code, "config.unknown-external-css-key");
+    assert.match(output.diagnostics[0].message, /unknown externalCss key "providers"/);
   } finally {
     await project.cleanup();
   }

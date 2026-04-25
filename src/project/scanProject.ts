@@ -4,6 +4,7 @@ import { runRules } from "../rules/index.js";
 import { severityMeetsThreshold } from "../rules/severity.js";
 import { analyzeProjectSourceTexts } from "../static-analysis-engine/index.js";
 import { discoverProjectFiles } from "./discovery.js";
+import { extractHtmlStylesheetLinks } from "./htmlStylesheetLinks.js";
 import type {
   ProjectFileRecord,
   ScanDiagnostic,
@@ -21,15 +22,28 @@ export async function scanProject(input: ScanProjectInput = {}): Promise<ScanPro
     configPath: input.configPath,
     diagnostics,
   });
-  const [sourceFiles, cssFiles] = await Promise.all([
+  const [sourceFiles, cssFiles, htmlFiles] = await Promise.all([
     readSourceFiles(discovered.sourceFiles, diagnostics),
     readCssFiles(discovered.cssFiles, diagnostics),
+    readHtmlFiles(discovered.htmlFiles, diagnostics),
   ]);
+  const htmlStylesheetLinks = htmlFiles.flatMap((htmlFile) =>
+    extractHtmlStylesheetLinks({
+      filePath: htmlFile.filePath,
+      htmlText: htmlFile.htmlText,
+    }),
+  );
 
   const engineResult = analyzeProjectSourceTexts({
     sourceFiles,
     selectorCssSources: cssFiles,
     cssModules: config.cssModules,
+    externalCss: {
+      enabled: config.externalCss.enabled,
+      modes: config.externalCss.modes,
+      globalProviders: config.externalCss.globals,
+      htmlStylesheetLinks,
+    },
   });
   const ruleResult = runRules({
     analysis: engineResult.projectAnalysis,
@@ -61,6 +75,7 @@ export async function scanProject(input: ScanProjectInput = {}): Promise<ScanPro
     files: {
       sourceFiles: discovered.sourceFiles,
       cssFiles: discovered.cssFiles,
+      htmlFiles: discovered.htmlFiles,
     },
   };
 }
@@ -151,6 +166,27 @@ async function readCssFiles(
   );
 
   return loadedFiles.filter((file): file is { filePath: string; cssText: string } => Boolean(file));
+}
+
+async function readHtmlFiles(
+  htmlFiles: ProjectFileRecord[],
+  diagnostics: ScanDiagnostic[],
+): Promise<Array<{ filePath: string; htmlText: string }>> {
+  const loadedFiles = await Promise.all(
+    htmlFiles.map(async (htmlFile) => {
+      const content = await readProjectFile(htmlFile, diagnostics);
+      return content
+        ? {
+            filePath: htmlFile.filePath,
+            htmlText: content,
+          }
+        : undefined;
+    }),
+  );
+
+  return loadedFiles.filter((file): file is { filePath: string; htmlText: string } =>
+    Boolean(file),
+  );
 }
 
 async function readProjectFile(

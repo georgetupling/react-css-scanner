@@ -6,6 +6,7 @@ export type ScanProjectInput = {
   rootDir?: string;
   sourceFilePaths?: string[];
   cssFilePaths?: string[];
+  htmlFilePaths?: string[];
   configPath?: string;
   configBaseDir?: string;
 };
@@ -31,6 +32,7 @@ export type ProjectDiscoveryResult = {
   rootDir: string;
   sourceFiles: ProjectFileRecord[];
   cssFiles: ProjectFileRecord[];
+  htmlFiles: ProjectFileRecord[];
   diagnostics: ScanDiagnostic[];
 };
 
@@ -60,5 +62,6 @@ export type ScanProjectResult = {
   files: {
     sourceFiles: ProjectFileRecord[];
     cssFiles: ProjectFileRecord[];
+    htmlFiles: ProjectFileRecord[];
   };
 };

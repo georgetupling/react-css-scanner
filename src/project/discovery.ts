@@ -11,6 +11,7 @@ export async function discoverProjectFiles(input: {
   rootDir?: string;
   sourceFilePaths?: string[];
   cssFilePaths?: string[];
+  htmlFilePaths?: string[];
 }): Promise<ProjectDiscoveryResult> {
   const rootDir = resolveRootDir(input.rootDir);
   const diagnostics: ScanDiagnostic[] = [];
@@ -21,6 +22,7 @@ export async function discoverProjectFiles(input: {
       rootDir,
       sourceFiles: [],
       cssFiles: [],
+      htmlFiles: [],
       diagnostics,
     };
   }
@@ -31,6 +33,9 @@ export async function discoverProjectFiles(input: {
   const cssFiles = input.cssFilePaths
     ? normalizeExplicitFiles(rootDir, input.cssFilePaths)
     : await discoverFilesByPredicate(rootDir, isCssFilePath);
+  const htmlFiles = input.htmlFilePaths
+    ? normalizeExplicitFiles(rootDir, input.htmlFilePaths)
+    : await discoverFilesByPredicate(rootDir, isHtmlFilePath);
 
   if (sourceFiles.length === 0) {
     diagnostics.push({
@@ -45,6 +50,7 @@ export async function discoverProjectFiles(input: {
     rootDir,
     sourceFiles,
     cssFiles,
+    htmlFiles,
     diagnostics,
   };
 }
@@ -127,4 +133,8 @@ function isSourceFilePath(filePath: string): boolean {
 
 function isCssFilePath(filePath: string): boolean {
   return path.extname(filePath) === ".css";
+}
+
+function isHtmlFilePath(filePath: string): boolean {
+  return path.extname(filePath) === ".html";
 }

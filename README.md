@@ -150,7 +150,7 @@ If `configBaseDir` is omitted, it defaults to `rootDir`.
 
 Only one config source is loaded. There is no config merging.
 Unknown config keys and unknown rule IDs are errors. Legacy scanner keys such as `css`, `source`,
-`externalCss`, and `classComposition` must be removed or migrated before the scan can pass.
+and `classComposition` must be removed or migrated before the scan can pass.
 
 Current config shape:
 
@@ -164,6 +164,19 @@ Current config shape:
   },
   "cssModules": {
     "localsConvention": "camelCase"
+  },
+  "externalCss": {
+    "enabled": true,
+    "modes": ["declared-globals", "imported-packages", "html-links"],
+    "remoteTimeoutMs": 5000,
+    "globals": [
+      {
+        "provider": "custom-icons",
+        "match": ["**/custom-icons.css"],
+        "classPrefixes": ["ci-"],
+        "classNames": ["ci"]
+      }
+    ]
   }
 }
 ```
@@ -177,6 +190,13 @@ CSS Module `localsConvention` accepts:
 - `asIs`
 - `camelCase`
 - `camelCaseOnly`
+
+External CSS config is accepted as the first slice of rebuilt provider support. Built-in defaults
+currently include Font Awesome, Material Design Icons, Bootstrap Icons, Animate.css, UIkit, and
+Pure.css provider declarations; custom `externalCss.globals` entries are appended to those defaults.
+Static HTML/CDN stylesheet links activate matching declared providers, so a Font Awesome CDN link
+can satisfy `fa-*` references without an HTTP fetch. Package CSS loading and remote fetching remain
+staged follow-up work; remote fetching is opt-in by adding `fetch-remote` to `externalCss.modes`.
 
 ## Rules
 

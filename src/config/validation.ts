@@ -1,0 +1,633 @@
+import type { ScanDiagnostic } from "../project/types.js";
+import { DEFAULT_RULE_SEVERITIES } from "../rules/catalogue.js";
+import type { RuleSeverity } from "../rules/types.js";
+import type {
+  CssModuleLocalsConvention,
+  ExternalCssGlobalProviderConfig,
+  ExternalCssSourceMode,
+  RuleConfigSeverity,
+  ScannerConfig,
+} from "./types.js";
+
+const RULE_SEVERITIES = new Set<RuleSeverity>(["debug", "info", "warn", "error"]);
+const RULE_CONFIG_VALUES = new Set<RuleConfigSeverity>(["off", "debug", "info", "warn", "error"]);
+const CSS_MODULE_LOCALS_CONVENTIONS = new Set<CssModuleLocalsConvention>([
+  "asIs",
+  "camelCase",
+  "camelCaseOnly",
+]);
+const EXTERNAL_CSS_SOURCE_MODES = new Set<ExternalCssSourceMode>([
+  "declared-globals",
+  "imported-packages",
+  "html-links",
+  "fetch-remote",
+]);
+const TOP_LEVEL_CONFIG_KEYS = new Set(["failOnSeverity", "rules", "cssModules", "externalCss"]);
+const CSS_MODULES_CONFIG_KEYS = new Set(["localsConvention"]);
+const EXTERNAL_CSS_CONFIG_KEYS = new Set(["enabled", "modes", "globals", "remoteTimeoutMs"]);
+const EXTERNAL_CSS_GLOBAL_CONFIG_KEYS = new Set([
+  "provider",
+  "match",
+  "classPrefixes",
+  "classNames",
+]);
+const RULE_IDS = new Set(Object.keys(DEFAULT_RULE_SEVERITIES));
+
+export const DEFAULT_EXTERNAL_CSS_GLOBALS: ExternalCssGlobalProviderConfig[] = [
+  {
+    provider: "font-awesome",
+    match: [
+      "**/font-awesome/**/css/*.css",
+      "**/fontawesome/**/css/*.css",
+      "**/cdnjs.cloudflare.com/ajax/libs/font-awesome/**/css/*.css",
+      "**/use.fontawesome.com/**.css",
+    ],
+    classPrefixes: ["fa-"],
+    classNames: ["fa", "fa-solid", "fa-regular", "fa-brands", "fa-light", "fa-thin", "fa-duotone"],
+  },
+  {
+    provider: "material-design-icons",
+    match: [
+      "**/@mdi/font@*/css/materialdesignicons*.css",
+      "**/npm/@mdi/font@*/css/materialdesignicons*.css",
+      "**/unpkg.com/@mdi/font@*/css/materialdesignicons*.css",
+      "**/materialdesignicons*.css",
+    ],
+    classPrefixes: ["mdi-"],
+    classNames: ["mdi", "mdi-set"],
+  },
+  {
+    provider: "bootstrap-icons",
+    match: [
+      "**/bootstrap-icons@*/font/bootstrap-icons*.css",
+      "**/npm/bootstrap-icons@*/font/bootstrap-icons*.css",
+      "**/unpkg.com/bootstrap-icons@*/font/bootstrap-icons*.css",
+      "**/bootstrap-icons/font/bootstrap-icons*.css",
+    ],
+    classPrefixes: ["bi-"],
+    classNames: ["bi"],
+  },
+  {
+    provider: "animate.css",
+    match: [
+      "**/cdnjs.cloudflare.com/ajax/libs/animate.css/**/animate*.css",
+      "**/animate.css@*/animate*.css",
+      "**/npm/animate.css@*/animate*.css",
+      "**/animate.css/**/animate*.css",
+    ],
+    classPrefixes: ["animate__"],
+    classNames: ["animate__animated"],
+  },
+  {
+    provider: "uikit",
+    match: [
+      "**/uikit@*/dist/css/uikit*.css",
+      "**/npm/uikit@*/dist/css/uikit*.css",
+      "**/unpkg.com/uikit@*/dist/css/uikit*.css",
+      "**/uikit/dist/css/uikit*.css",
+    ],
+    classPrefixes: ["uk-"],
+    classNames: [],
+  },
+  {
+    provider: "pure.css",
+    match: [
+      "**/purecss@*/build/pure*.css",
+      "**/npm/purecss@*/build/pure*.css",
+      "**/unpkg.com/purecss@*/build/pure*.css",
+      "**/purecss/build/pure*.css",
+    ],
+    classPrefixes: ["pure-"],
+    classNames: [],
+  },
+];
+
+export const DEFAULT_SCANNER_CONFIG: ScannerConfig = {
+  failOnSeverity: "error",
+  rules: {
+    ...DEFAULT_RULE_SEVERITIES,
+  },
+  cssModules: {
+    localsConvention: "camelCase",
+  },
+  externalCss: {
+    enabled: true,
+    modes: ["declared-globals", "imported-packages", "html-links"],
+    globals: cloneExternalCssGlobals(DEFAULT_EXTERNAL_CSS_GLOBALS),
+    remoteTimeoutMs: 5_000,
+  },
+};
+
+export function parseConfig(
+  content: string,
+  filePath: string,
+  diagnostics: ScanDiagnostic[],
+): ScannerConfig {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch (error) {
+    diagnostics.push({
+      code: "config.invalid-json",
+      severity: "error",
+      phase: "config",
+      filePath,
+      message: `failed to parse config ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
+    });
+    return cloneScannerConfig(DEFAULT_SCANNER_CONFIG);
+  }
+
+  if (!isRecord(parsed)) {
+    diagnostics.push({
+      code: "config.invalid-shape",
+      severity: "error",
+      phase: "config",
+      filePath,
+      message: "config must be a JSON object",
+    });
+    return cloneScannerConfig(DEFAULT_SCANNER_CONFIG);
+  }
+
+  reportUnknownKeys({
+    value: parsed,
+    allowedKeys: TOP_LEVEL_CONFIG_KEYS,
+    filePath,
+    diagnostics,
+    objectName: "config",
+    code: "config.unknown-key",
+  });
+
+  return {
+    failOnSeverity: parseFailOnSeverity(parsed.failOnSeverity, filePath, diagnostics),
+    rules: {
+      ...DEFAULT_RULE_SEVERITIES,
+      ...parseRules(parsed.rules, filePath, diagnostics),
+    },
+    cssModules: parseCssModules(parsed.cssModules, filePath, diagnostics),
+    externalCss: parseExternalCss(parsed.externalCss, filePath, diagnostics),
+  };
+}
+
+export function cloneScannerConfig(config: ScannerConfig): ScannerConfig {
+  return {
+    failOnSeverity: config.failOnSeverity,
+    rules: { ...config.rules },
+    cssModules: { ...config.cssModules },
+    externalCss: cloneExternalCssConfig(config.externalCss),
+  };
+}
+
+function parseFailOnSeverity(
+  value: unknown,
+  filePath: string,
+  diagnostics: ScanDiagnostic[],
+): RuleSeverity {
+  if (value === undefined) {
+    return DEFAULT_SCANNER_CONFIG.failOnSeverity;
+  }
+
+  if (typeof value === "string" && RULE_SEVERITIES.has(value as RuleSeverity)) {
+    return value as RuleSeverity;
+  }
+
+  diagnostics.push({
+    code: "config.invalid-fail-threshold",
+    severity: "error",
+    phase: "config",
+    filePath,
+    message: 'failOnSeverity must be one of "debug", "info", "warn", or "error"',
+  });
+  return DEFAULT_SCANNER_CONFIG.failOnSeverity;
+}
+
+function parseRules(
+  value: unknown,
+  filePath: string,
+  diagnostics: ScanDiagnostic[],
+): Record<string, RuleConfigSeverity> {
+  if (value === undefined) {
+    return {};
+  }
+
+  if (!isRecord(value)) {
+    diagnostics.push({
+      code: "config.invalid-rules",
+      severity: "error",
+      phase: "config",
+      filePath,
+      message: "rules must be an object mapping rule IDs to severity strings",
+    });
+    return {};
+  }
+
+  const rules: Record<string, RuleConfigSeverity> = {};
+  for (const [ruleId, ruleValue] of Object.entries(value)) {
+    if (!RULE_IDS.has(ruleId)) {
+      diagnostics.push({
+        code: "config.unknown-rule",
+        severity: "error",
+        phase: "config",
+        filePath,
+        message: `unknown rule "${ruleId}" in rules config`,
+      });
+      continue;
+    }
+
+    if (typeof ruleValue === "string" && RULE_CONFIG_VALUES.has(ruleValue as RuleConfigSeverity)) {
+      rules[ruleId] = ruleValue as RuleConfigSeverity;
+      continue;
+    }
+
+    diagnostics.push({
+      code: "config.invalid-rule-severity",
+      severity: "error",
+      phase: "config",
+      filePath,
+      message: `rule "${ruleId}" must be "off", "debug", "info", "warn", or "error"`,
+    });
+  }
+
+  return rules;
+}
+
+function parseCssModules(
+  value: unknown,
+  filePath: string,
+  diagnostics: ScanDiagnostic[],
+): ScannerConfig["cssModules"] {
+  if (value === undefined) {
+    return { ...DEFAULT_SCANNER_CONFIG.cssModules };
+  }
+
+  if (!isRecord(value)) {
+    diagnostics.push({
+      code: "config.invalid-css-modules",
+      severity: "error",
+      phase: "config",
+      filePath,
+      message: "cssModules must be an object",
+    });
+    return { ...DEFAULT_SCANNER_CONFIG.cssModules };
+  }
+
+  reportUnknownKeys({
+    value,
+    allowedKeys: CSS_MODULES_CONFIG_KEYS,
+    filePath,
+    diagnostics,
+    objectName: "cssModules",
+    code: "config.unknown-css-modules-key",
+  });
+
+  const localsConvention = value.localsConvention;
+  if (
+    localsConvention === undefined ||
+    (typeof localsConvention === "string" &&
+      CSS_MODULE_LOCALS_CONVENTIONS.has(localsConvention as CssModuleLocalsConvention))
+  ) {
+    return {
+      localsConvention:
+        localsConvention === undefined
+          ? DEFAULT_SCANNER_CONFIG.cssModules.localsConvention
+          : (localsConvention as CssModuleLocalsConvention),
+    };
+  }
+
+  diagnostics.push({
+    code: "config.invalid-css-modules-locals-convention",
+    severity: "error",
+    phase: "config",
+    filePath,
+    message: 'cssModules.localsConvention must be "asIs", "camelCase", or "camelCaseOnly"',
+  });
+  return { ...DEFAULT_SCANNER_CONFIG.cssModules };
+}
+
+function parseExternalCss(
+  value: unknown,
+  filePath: string,
+  diagnostics: ScanDiagnostic[],
+): ScannerConfig["externalCss"] {
+  if (value === undefined) {
+    return cloneExternalCssConfig(DEFAULT_SCANNER_CONFIG.externalCss);
+  }
+
+  if (!isRecord(value)) {
+    diagnostics.push({
+      code: "config.invalid-external-css",
+      severity: "error",
+      phase: "config",
+      filePath,
+      message: "externalCss must be an object",
+    });
+    return cloneExternalCssConfig(DEFAULT_SCANNER_CONFIG.externalCss);
+  }
+
+  reportUnknownKeys({
+    value,
+    allowedKeys: EXTERNAL_CSS_CONFIG_KEYS,
+    filePath,
+    diagnostics,
+    objectName: "externalCss",
+    code: "config.unknown-external-css-key",
+  });
+
+  return {
+    enabled: parseOptionalBoolean({
+      value: value.enabled,
+      fallback: DEFAULT_SCANNER_CONFIG.externalCss.enabled,
+      filePath,
+      diagnostics,
+      code: "config.invalid-external-css-enabled",
+      message: "externalCss.enabled must be a boolean",
+    }),
+    modes: parseExternalCssModes(value.modes, filePath, diagnostics),
+    globals: parseExternalCssGlobals(value.globals, filePath, diagnostics),
+    remoteTimeoutMs: parseOptionalPositiveNumber({
+      value: value.remoteTimeoutMs,
+      fallback: DEFAULT_SCANNER_CONFIG.externalCss.remoteTimeoutMs,
+      filePath,
+      diagnostics,
+      code: "config.invalid-external-css-timeout",
+      message: "externalCss.remoteTimeoutMs must be a positive number",
+    }),
+  };
+}
+
+function parseExternalCssModes(
+  value: unknown,
+  filePath: string,
+  diagnostics: ScanDiagnostic[],
+): ExternalCssSourceMode[] {
+  if (value === undefined) {
+    return [...DEFAULT_SCANNER_CONFIG.externalCss.modes];
+  }
+
+  if (
+    Array.isArray(value) &&
+    value.every(
+      (entry) =>
+        typeof entry === "string" && EXTERNAL_CSS_SOURCE_MODES.has(entry as ExternalCssSourceMode),
+    )
+  ) {
+    return [...new Set(value as ExternalCssSourceMode[])];
+  }
+
+  diagnostics.push({
+    code: "config.invalid-external-css-modes",
+    severity: "error",
+    phase: "config",
+    filePath,
+    message:
+      'externalCss.modes must be an array containing "declared-globals", "imported-packages", "html-links", or "fetch-remote"',
+  });
+  return [...DEFAULT_SCANNER_CONFIG.externalCss.modes];
+}
+
+function parseExternalCssGlobals(
+  value: unknown,
+  filePath: string,
+  diagnostics: ScanDiagnostic[],
+): ExternalCssGlobalProviderConfig[] {
+  if (value === undefined) {
+    return cloneExternalCssGlobals(DEFAULT_SCANNER_CONFIG.externalCss.globals);
+  }
+
+  if (!Array.isArray(value)) {
+    diagnostics.push({
+      code: "config.invalid-external-css-globals",
+      severity: "error",
+      phase: "config",
+      filePath,
+      message: "externalCss.globals must be an array",
+    });
+    return cloneExternalCssGlobals(DEFAULT_SCANNER_CONFIG.externalCss.globals);
+  }
+
+  return [
+    ...cloneExternalCssGlobals(DEFAULT_SCANNER_CONFIG.externalCss.globals),
+    ...value.flatMap((entry, index) =>
+      parseExternalCssGlobalProvider(entry, index, filePath, diagnostics),
+    ),
+  ];
+}
+
+function parseExternalCssGlobalProvider(
+  value: unknown,
+  index: number,
+  filePath: string,
+  diagnostics: ScanDiagnostic[],
+): ExternalCssGlobalProviderConfig[] {
+  if (!isRecord(value)) {
+    diagnostics.push({
+      code: "config.invalid-external-css-global",
+      severity: "error",
+      phase: "config",
+      filePath,
+      message: `externalCss.globals[${index}] must be an object`,
+    });
+    return [];
+  }
+
+  reportUnknownKeys({
+    value,
+    allowedKeys: EXTERNAL_CSS_GLOBAL_CONFIG_KEYS,
+    filePath,
+    diagnostics,
+    objectName: `externalCss.globals[${index}]`,
+    code: "config.unknown-external-css-global-key",
+  });
+
+  const provider = parseRequiredString({
+    value: value.provider,
+    filePath,
+    diagnostics,
+    code: "config.invalid-external-css-provider",
+    message: `externalCss.globals[${index}].provider must be a non-empty string`,
+  });
+  const match = parseStringArray({
+    value: value.match,
+    fallback: [],
+    filePath,
+    diagnostics,
+    code: "config.invalid-external-css-provider-match",
+    message: `externalCss.globals[${index}].match must be an array of strings`,
+  });
+  const classPrefixes = parseStringArray({
+    value: value.classPrefixes,
+    fallback: [],
+    filePath,
+    diagnostics,
+    code: "config.invalid-external-css-provider-prefixes",
+    message: `externalCss.globals[${index}].classPrefixes must be an array of strings`,
+  });
+  const classNames = parseStringArray({
+    value: value.classNames,
+    fallback: [],
+    filePath,
+    diagnostics,
+    code: "config.invalid-external-css-provider-class-names",
+    message: `externalCss.globals[${index}].classNames must be an array of strings`,
+  });
+
+  if (!provider) {
+    return [];
+  }
+
+  return [
+    {
+      provider,
+      match,
+      classPrefixes,
+      classNames,
+    },
+  ];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function reportUnknownKeys(input: {
+  value: Record<string, unknown>;
+  allowedKeys: Set<string>;
+  filePath: string;
+  diagnostics: ScanDiagnostic[];
+  objectName: string;
+  code: string;
+}): void {
+  for (const key of Object.keys(input.value)) {
+    if (input.allowedKeys.has(key)) {
+      continue;
+    }
+
+    input.diagnostics.push({
+      code: input.code,
+      severity: "error",
+      phase: "config",
+      filePath: input.filePath,
+      message: `unknown ${input.objectName} key "${key}"`,
+    });
+  }
+}
+
+function parseRequiredString(input: {
+  value: unknown;
+  filePath: string;
+  diagnostics: ScanDiagnostic[];
+  code: string;
+  message: string;
+}): string | undefined {
+  if (typeof input.value === "string" && input.value.trim()) {
+    return input.value;
+  }
+
+  input.diagnostics.push({
+    code: input.code,
+    severity: "error",
+    phase: "config",
+    filePath: input.filePath,
+    message: input.message,
+  });
+  return undefined;
+}
+
+function parseStringArray(input: {
+  value: unknown;
+  fallback: string[];
+  filePath: string;
+  diagnostics: ScanDiagnostic[];
+  code: string;
+  message: string;
+}): string[] {
+  if (input.value === undefined) {
+    return input.fallback;
+  }
+
+  if (Array.isArray(input.value) && input.value.every((entry) => typeof entry === "string")) {
+    return input.value;
+  }
+
+  input.diagnostics.push({
+    code: input.code,
+    severity: "error",
+    phase: "config",
+    filePath: input.filePath,
+    message: input.message,
+  });
+  return input.fallback;
+}
+
+function parseOptionalBoolean(input: {
+  value: unknown;
+  fallback: boolean;
+  filePath: string;
+  diagnostics: ScanDiagnostic[];
+  code: string;
+  message: string;
+}): boolean {
+  if (input.value === undefined) {
+    return input.fallback;
+  }
+
+  if (typeof input.value === "boolean") {
+    return input.value;
+  }
+
+  input.diagnostics.push({
+    code: input.code,
+    severity: "error",
+    phase: "config",
+    filePath: input.filePath,
+    message: input.message,
+  });
+  return input.fallback;
+}
+
+function parseOptionalPositiveNumber(input: {
+  value: unknown;
+  fallback: number;
+  filePath: string;
+  diagnostics: ScanDiagnostic[];
+  code: string;
+  message: string;
+}): number {
+  if (input.value === undefined) {
+    return input.fallback;
+  }
+
+  if (typeof input.value === "number" && Number.isFinite(input.value) && input.value > 0) {
+    return input.value;
+  }
+
+  input.diagnostics.push({
+    code: input.code,
+    severity: "error",
+    phase: "config",
+    filePath: input.filePath,
+    message: input.message,
+  });
+  return input.fallback;
+}
+
+function cloneExternalCssConfig(
+  config: ScannerConfig["externalCss"],
+): ScannerConfig["externalCss"] {
+  return {
+    enabled: config.enabled,
+    modes: [...config.modes],
+    globals: cloneExternalCssGlobals(config.globals),
+    remoteTimeoutMs: config.remoteTimeoutMs,
+  };
+}
+
+function cloneExternalCssGlobals(
+  globals: ExternalCssGlobalProviderConfig[],
+): ExternalCssGlobalProviderConfig[] {
+  return globals.map((global) => ({
+    provider: global.provider,
+    match: [...global.match],
+    classPrefixes: [...global.classPrefixes],
+    classNames: [...global.classNames],
+  }));
+}

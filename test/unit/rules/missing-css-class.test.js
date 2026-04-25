@@ -59,6 +59,199 @@ test("missing-css-class does not report defined classes", async () => {
   }
 });
 
+test("missing-css-class reports provider classes without matching stylesheet evidence", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'export function App() { return <i className="fa-solid fa-check" />; }\n',
+    )
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
+      cssFilePaths: [],
+    });
+
+    const classNames = result.findings
+      .filter((finding) => finding.ruleId === "missing-css-class")
+      .map((finding) => finding.data?.className)
+      .sort();
+
+    assert.deepEqual(classNames, ["fa-check", "fa-solid"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("missing-css-class accepts Font Awesome classes when HTML links a matching provider stylesheet", async () => {
+  const project = await new TestProjectBuilder()
+    .withFile(
+      "index.html",
+      '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">\n',
+    )
+    .withSourceFile(
+      "src/App.tsx",
+      'export function App() { return <i className="fa-solid fa-check" />; }\n',
+    )
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
+      cssFilePaths: [],
+    });
+
+    const classNames = result.findings
+      .filter((finding) => finding.ruleId === "missing-css-class")
+      .map((finding) => finding.data?.className)
+      .sort();
+
+    assert.deepEqual(classNames, []);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("missing-css-class ignores provider defaults when HTML links do not match them", async () => {
+  const project = await new TestProjectBuilder()
+    .withFile("index.html", '<link rel="stylesheet" href="https://cdn.example/assets/icons.css">\n')
+    .withSourceFile(
+      "src/App.tsx",
+      'export function App() { return <i className="fa-solid fa-check" />; }\n',
+    )
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
+      cssFilePaths: [],
+    });
+
+    const classNames = result.findings
+      .filter((finding) => finding.ruleId === "missing-css-class")
+      .map((finding) => finding.data?.className)
+      .sort();
+
+    assert.deepEqual(classNames, ["fa-check", "fa-solid"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("missing-css-class reports configured provider classes without matching stylesheet evidence", async () => {
+  const project = await new TestProjectBuilder()
+    .withConfig({
+      externalCss: {
+        modes: ["declared-globals"],
+        globals: [
+          {
+            provider: "custom-icons",
+            match: [],
+            classPrefixes: ["ci-"],
+            classNames: ["icon"],
+          },
+        ],
+      },
+    })
+    .withSourceFile(
+      "src/App.tsx",
+      'export function App() { return <i className="icon ci-check" />; }\n',
+    )
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
+      cssFilePaths: [],
+    });
+
+    const classNames = result.findings
+      .filter((finding) => finding.ruleId === "missing-css-class")
+      .map((finding) => finding.data?.className)
+      .sort();
+
+    assert.deepEqual(classNames, ["ci-check", "icon"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("missing-css-class accepts configured provider classes when an HTML link matches provider evidence", async () => {
+  const project = await new TestProjectBuilder()
+    .withConfig({
+      externalCss: {
+        modes: ["declared-globals", "html-links"],
+        globals: [
+          {
+            provider: "custom-icons",
+            match: ["https://cdn.example/*.css"],
+            classPrefixes: ["ci-"],
+            classNames: ["icon"],
+          },
+        ],
+      },
+    })
+    .withFile(
+      "index.html",
+      '<link rel="stylesheet" href="https://cdn.example/custom-icons.css?v=1">\n',
+    )
+    .withSourceFile(
+      "src/App.tsx",
+      'export function App() { return <i className="icon ci-check" />; }\n',
+    )
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
+      cssFilePaths: [],
+    });
+
+    const classNames = result.findings
+      .filter((finding) => finding.ruleId === "missing-css-class")
+      .map((finding) => finding.data?.className)
+      .sort();
+
+    assert.deepEqual(classNames, []);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("missing-css-class reports provider classes when external CSS is disabled", async () => {
+  const project = await new TestProjectBuilder()
+    .withConfig({
+      externalCss: {
+        enabled: false,
+      },
+    })
+    .withSourceFile("src/App.tsx", 'export function App() { return <i className="fa-solid" />; }\n')
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
+      cssFilePaths: [],
+    });
+
+    const finding = result.findings.find(
+      (candidate) =>
+        candidate.ruleId === "missing-css-class" && candidate.data?.className === "fa-solid",
+    );
+
+    assert.ok(finding);
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("missing-css-class reports prop-passed classes from the call site", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(

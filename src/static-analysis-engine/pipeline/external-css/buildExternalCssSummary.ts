@@ -10,14 +10,17 @@ export function buildExternalCssSummary(
   input: ExternalCssAnalysisInput | undefined,
 ): ExternalCssSummary {
   const enabled = input?.enabled ?? false;
-  const mode = input?.mode ?? "imported-only";
+  const modes = [...new Set(input?.modes ?? [])];
+  const declaredGlobalsEnabled = modes.includes("declared-globals");
+  const htmlLinksEnabled = modes.includes("html-links");
+  const fetchRemoteEnabled = modes.includes("fetch-remote");
   const htmlStylesheetLinks = normalizeHtmlStylesheetLinks(input?.htmlStylesheetLinks ?? []);
   const globalProviders = normalizeGlobalProviders(input?.globalProviders ?? []);
 
   if (!enabled) {
     return {
       enabled,
-      mode,
+      modes,
       activeProviders: [],
       projectWideStylesheetFilePaths: [],
     };
@@ -25,24 +28,23 @@ export function buildExternalCssSummary(
 
   return {
     enabled,
-    mode,
+    modes,
     activeProviders:
-      mode === "declared-globals" || mode === "fetch-remote"
+      declaredGlobalsEnabled && htmlLinksEnabled
         ? buildActiveProviders({
             globalProviders,
             htmlStylesheetLinks,
           })
         : [],
-    projectWideStylesheetFilePaths:
-      mode === "fetch-remote"
-        ? [
-            ...new Set(
-              htmlStylesheetLinks
-                .filter((stylesheetLink) => stylesheetLink.isRemote)
-                .map((stylesheetLink) => stylesheetLink.href),
-            ),
-          ].sort((left, right) => left.localeCompare(right))
-        : [],
+    projectWideStylesheetFilePaths: fetchRemoteEnabled
+      ? [
+          ...new Set(
+            htmlStylesheetLinks
+              .filter((stylesheetLink) => stylesheetLink.isRemote)
+              .map((stylesheetLink) => stylesheetLink.href),
+          ),
+        ].sort((left, right) => left.localeCompare(right))
+      : [],
   };
 }
 
@@ -58,26 +60,45 @@ function buildActiveProviders(input: {
         continue;
       }
 
-      const existingProvider = activeProviders.get(provider.provider);
-      if (existingProvider) {
-        existingProvider.matchedStylesheets.push(stylesheetLink);
-        existingProvider.matchedStylesheets.sort(compareStylesheetLinks);
-        continue;
-      }
-
-      activeProviders.set(provider.provider, {
-        provider: provider.provider,
-        match: [...provider.match],
-        classPrefixes: [...provider.classPrefixes],
-        classNames: [...provider.classNames],
-        matchedStylesheets: [stylesheetLink],
-      });
+      upsertActiveProvider(activeProviders, provider, stylesheetLink);
     }
   }
 
   return [...activeProviders.values()].sort((left, right) =>
     left.provider.localeCompare(right.provider),
   );
+}
+
+function upsertActiveProvider(
+  activeProviders: Map<string, ActiveExternalCssProvider>,
+  provider: ExternalCssGlobalProviderConfig,
+  matchedStylesheet: HtmlStylesheetLinkInput,
+): void {
+  const existingProvider = activeProviders.get(provider.provider);
+  if (existingProvider) {
+    existingProvider.match = uniqueSorted([...existingProvider.match, ...provider.match]);
+    existingProvider.classPrefixes = uniqueSorted([
+      ...existingProvider.classPrefixes,
+      ...provider.classPrefixes,
+    ]);
+    existingProvider.classNames = uniqueSorted([
+      ...existingProvider.classNames,
+      ...provider.classNames,
+    ]);
+    existingProvider.matchedStylesheets = uniqueStylesheetLinks([
+      ...existingProvider.matchedStylesheets,
+      matchedStylesheet,
+    ]);
+    return;
+  }
+
+  activeProviders.set(provider.provider, {
+    provider: provider.provider,
+    match: uniqueSorted(provider.match),
+    classPrefixes: uniqueSorted(provider.classPrefixes),
+    classNames: uniqueSorted(provider.classNames),
+    matchedStylesheets: [matchedStylesheet],
+  });
 }
 
 function normalizeGlobalProviders(
@@ -114,6 +135,20 @@ function compareStylesheetLinks(
   }
 
   return left.filePath.localeCompare(right.filePath);
+}
+
+function uniqueSorted(values: string[]): string[] {
+  return [...new Set(values)].sort((left, right) => left.localeCompare(right));
+}
+
+function uniqueStylesheetLinks(
+  stylesheetLinks: HtmlStylesheetLinkInput[],
+): HtmlStylesheetLinkInput[] {
+  const linksByKey = new Map<string, HtmlStylesheetLinkInput>();
+  for (const stylesheetLink of stylesheetLinks) {
+    linksByKey.set(`${stylesheetLink.filePath}:${stylesheetLink.href}`, stylesheetLink);
+  }
+  return [...linksByKey.values()].sort(compareStylesheetLinks);
 }
 
 function matchesAnyGlob(value: string, patterns: readonly string[]): boolean {
