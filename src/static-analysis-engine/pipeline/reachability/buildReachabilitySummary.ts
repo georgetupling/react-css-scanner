@@ -51,6 +51,11 @@ export function buildReachabilitySummary(input: {
     renderGraph: input.renderGraph,
     renderSubtrees: input.renderSubtrees,
   });
+  const componentAvailability = computeBatchedComponentAvailability({
+    cssSources: input.cssSources,
+    directCssImportersByStylesheetPath,
+    reachabilityGraphContext,
+  });
 
   const stylesheets = input.cssSources.map((cssSource) =>
     buildStylesheetReachabilityRecord({
@@ -64,6 +69,7 @@ export function buildReachabilitySummary(input: {
       directCssImportersByStylesheetPath,
       reachabilityGraphContext,
       analyzedSourceFilePaths,
+      componentAvailability,
     }),
   );
 
@@ -86,6 +92,7 @@ function buildStylesheetReachabilityRecord(input: {
   directCssImportersByStylesheetPath: Map<string, string[]>;
   reachabilityGraphContext: ReachabilityGraphContext;
   analyzedSourceFilePaths: string[];
+  componentAvailability: BatchedComponentAvailability;
 }): StylesheetReachabilityRecord {
   const cssFilePath = normalizeProjectPath(input.cssSource.filePath);
   if (!cssFilePath) {
@@ -107,9 +114,10 @@ function buildStylesheetReachabilityRecord(input: {
   if (sortedImportingSourceFilePaths.length > 0) {
     for (const contextRecord of buildContextRecords({
       importingSourceFilePaths: sortedImportingSourceFilePaths,
-      renderGraph: input.renderGraph,
-      renderSubtrees: input.renderSubtrees,
       reachabilityGraphContext: input.reachabilityGraphContext,
+      componentAvailabilityByKey:
+        input.componentAvailability.componentAvailabilityByStylesheetPath.get(cssFilePath) ??
+        new Map(),
     })) {
       contextRecordsByKey.set(serializeContextKey(contextRecord), contextRecord);
     }
@@ -342,6 +350,17 @@ type ReachabilityGraphContext = {
   componentKeysByFilePath: Map<string, string[]>;
 };
 
+type ComponentAvailabilityRecord = {
+  availability: StylesheetReachabilityContextRecord["availability"];
+  reasons: string[];
+  derivations: ReachabilityDerivation[];
+  traces: AnalysisTrace[];
+};
+
+type BatchedComponentAvailability = {
+  componentAvailabilityByStylesheetPath: Map<string, Map<string, ComponentAvailabilityRecord>>;
+};
+
 function buildReachabilityGraphContext(input: {
   renderGraph: RenderGraph;
   renderSubtrees: RenderSubtree[];
@@ -445,14 +464,209 @@ function buildReachabilityGraphContext(input: {
   };
 }
 
+function computeBatchedComponentAvailability(input: {
+  cssSources: SelectorSourceInput[];
+  directCssImportersByStylesheetPath: Map<string, string[]>;
+  reachabilityGraphContext: ReachabilityGraphContext;
+}): BatchedComponentAvailability {
+  const stylesheetPaths = [
+    ...new Set(
+      input.cssSources
+        .map((cssSource) => normalizeProjectPath(cssSource.filePath))
+        .filter((filePath): filePath is string => Boolean(filePath)),
+    ),
+  ].sort((left, right) => left.localeCompare(right));
+  const stylesheetIndexByPath = new Map(
+    stylesheetPaths.map((stylesheetPath, index) => [stylesheetPath, index]),
+  );
+  const allStylesheetBits = createBitMask(stylesheetPaths.length);
+  const directDefiniteBitsByComponentKey = new Map<string, bigint>();
+  const definiteBitsByComponentKey = new Map<string, bigint>();
+  const possibleBitsByComponentKey = new Map<string, bigint>();
+  const sortedComponentKeys = [...input.reachabilityGraphContext.renderGraphNodesByKey.keys()].sort(
+    (left, right) => left.localeCompare(right),
+  );
+
+  for (const [
+    stylesheetPath,
+    importingSourceFilePaths,
+  ] of input.directCssImportersByStylesheetPath) {
+    const stylesheetIndex = stylesheetIndexByPath.get(stylesheetPath);
+    if (stylesheetIndex === undefined) {
+      continue;
+    }
+
+    const stylesheetBit = 1n << BigInt(stylesheetIndex);
+    for (const importingSourceFilePath of importingSourceFilePaths) {
+      for (const componentKey of input.reachabilityGraphContext.componentKeysByFilePath.get(
+        importingSourceFilePath,
+      ) ?? []) {
+        const currentBits = directDefiniteBitsByComponentKey.get(componentKey) ?? 0n;
+        directDefiniteBitsByComponentKey.set(componentKey, currentBits | stylesheetBit);
+      }
+    }
+  }
+
+  for (const componentKey of sortedComponentKeys) {
+    definiteBitsByComponentKey.set(
+      componentKey,
+      directDefiniteBitsByComponentKey.get(componentKey) ?? 0n,
+    );
+    possibleBitsByComponentKey.set(componentKey, 0n);
+  }
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+
+    for (const componentKey of sortedComponentKeys) {
+      const directBits = directDefiniteBitsByComponentKey.get(componentKey) ?? 0n;
+      const incomingEdges =
+        input.reachabilityGraphContext.incomingEdgesByComponentKey.get(componentKey) ?? [];
+      const currentDefiniteBits = definiteBitsByComponentKey.get(componentKey) ?? 0n;
+      const currentPossibleBits = possibleBitsByComponentKey.get(componentKey) ?? 0n;
+      let nextDefiniteBits = directBits;
+      let nextPossibleBits = 0n;
+
+      if (incomingEdges.length > 0) {
+        let allParentsDefiniteBits = allStylesheetBits;
+        let allParentEdgesAreDefinite = true;
+        let availableParentBits = 0n;
+
+        for (const edge of incomingEdges) {
+          const parentKey = createComponentKey(edge.fromFilePath, edge.fromComponentName);
+          const parentDefiniteBits = definiteBitsByComponentKey.get(parentKey) ?? 0n;
+          const parentPossibleBits = possibleBitsByComponentKey.get(parentKey) ?? 0n;
+          const parentAvailableBits = parentDefiniteBits | parentPossibleBits;
+          availableParentBits |= parentAvailableBits;
+          allParentsDefiniteBits &= parentDefiniteBits;
+          if (edge.renderPath !== "definite") {
+            allParentEdgesAreDefinite = false;
+          }
+        }
+
+        if (allParentEdgesAreDefinite) {
+          nextDefiniteBits |= allParentsDefiniteBits;
+        }
+        nextPossibleBits = availableParentBits & ~nextDefiniteBits;
+      }
+
+      if (nextDefiniteBits !== currentDefiniteBits || nextPossibleBits !== currentPossibleBits) {
+        definiteBitsByComponentKey.set(componentKey, nextDefiniteBits);
+        possibleBitsByComponentKey.set(componentKey, nextPossibleBits);
+        changed = true;
+      }
+    }
+  }
+
+  const componentAvailabilityByStylesheetPath = new Map<
+    string,
+    Map<string, ComponentAvailabilityRecord>
+  >();
+  for (const stylesheetPath of stylesheetPaths) {
+    const stylesheetIndex = stylesheetIndexByPath.get(stylesheetPath);
+    if (stylesheetIndex === undefined) {
+      continue;
+    }
+
+    const stylesheetBit = 1n << BigInt(stylesheetIndex);
+    const componentAvailabilityByKey = new Map<string, ComponentAvailabilityRecord>();
+    for (const componentKey of sortedComponentKeys) {
+      componentAvailabilityByKey.set(
+        componentKey,
+        buildComponentAvailabilityRecordForStylesheet({
+          componentKey,
+          stylesheetBit,
+          directDefiniteBitsByComponentKey,
+          definiteBitsByComponentKey,
+          possibleBitsByComponentKey,
+          incomingEdges:
+            input.reachabilityGraphContext.incomingEdgesByComponentKey.get(componentKey) ?? [],
+        }),
+      );
+    }
+    componentAvailabilityByStylesheetPath.set(stylesheetPath, componentAvailabilityByKey);
+  }
+
+  return { componentAvailabilityByStylesheetPath };
+}
+
+function createBitMask(bitCount: number): bigint {
+  return bitCount === 0 ? 0n : (1n << BigInt(bitCount)) - 1n;
+}
+
+function buildComponentAvailabilityRecordForStylesheet(input: {
+  componentKey: string;
+  stylesheetBit: bigint;
+  directDefiniteBitsByComponentKey: Map<string, bigint>;
+  definiteBitsByComponentKey: Map<string, bigint>;
+  possibleBitsByComponentKey: Map<string, bigint>;
+  incomingEdges: import("../render-model/render-graph/types.js").RenderGraphEdge[];
+}): ComponentAvailabilityRecord {
+  const directBits = input.directDefiniteBitsByComponentKey.get(input.componentKey) ?? 0n;
+  if ((directBits & input.stylesheetBit) !== 0n) {
+    return {
+      availability: "definite",
+      reasons: ["component is declared in a source file that directly imports this stylesheet"],
+      derivations: [{ kind: "whole-component-direct-import" }],
+      traces: [],
+    };
+  }
+
+  const definiteBits = input.definiteBitsByComponentKey.get(input.componentKey) ?? 0n;
+  if ((definiteBits & input.stylesheetBit) !== 0n) {
+    return {
+      availability: "definite",
+      reasons: ["all known renderers of this component have definite stylesheet availability"],
+      derivations: [{ kind: "whole-component-all-known-renderers-definite" }],
+      traces: input.incomingEdges.flatMap((edge) => edge.traces),
+    };
+  }
+
+  const possibleBits = input.possibleBitsByComponentKey.get(input.componentKey) ?? 0n;
+  if ((possibleBits & input.stylesheetBit) === 0n) {
+    return {
+      availability: "unavailable",
+      reasons: [],
+      derivations: [],
+      traces: [],
+    };
+  }
+
+  const availableParentEdges = input.incomingEdges.filter((edge) => {
+    const parentKey = createComponentKey(edge.fromFilePath, edge.fromComponentName);
+    const parentDefiniteBits = input.definiteBitsByComponentKey.get(parentKey) ?? 0n;
+    const parentPossibleBits = input.possibleBitsByComponentKey.get(parentKey) ?? 0n;
+    return ((parentDefiniteBits | parentPossibleBits) & input.stylesheetBit) !== 0n;
+  });
+  const definitePathParentEdges = availableParentEdges.filter(
+    (edge) => edge.renderPath === "definite",
+  );
+  if (definitePathParentEdges.length > 0) {
+    return {
+      availability: "possible",
+      reasons: ["at least one known renderer of this component has stylesheet availability"],
+      derivations: [{ kind: "whole-component-at-least-one-renderer" }],
+      traces: definitePathParentEdges.flatMap((edge) => edge.traces),
+    };
+  }
+
+  return {
+    availability: "possible",
+    reasons: [
+      "this component is only rendered on possible paths beneath a renderer with stylesheet availability",
+    ],
+    derivations: [{ kind: "whole-component-only-possible-renderers" }],
+    traces: availableParentEdges.flatMap((edge) => edge.traces),
+  };
+}
+
 function buildContextRecords(input: {
   importingSourceFilePaths: string[];
-  renderGraph: RenderGraph;
-  renderSubtrees: RenderSubtree[];
   reachabilityGraphContext: ReachabilityGraphContext;
+  componentAvailabilityByKey: Map<string, ComponentAvailabilityRecord>;
 }): StylesheetReachabilityContextRecord[] {
   const contextRecordsByKey = new Map<string, StylesheetReachabilityContextRecord>();
-  const directImportingSourceFilePathSet = new Set(input.importingSourceFilePaths);
 
   for (const filePath of input.importingSourceFilePaths) {
     addContextRecord(contextRecordsByKey, {
@@ -465,12 +679,6 @@ function buildContextRecords(input: {
       derivations: [{ kind: "source-file-direct-import" }],
     });
   }
-
-  const componentAvailabilityByKey = computeComponentAvailability({
-    renderGraphNodesByKey: input.reachabilityGraphContext.renderGraphNodesByKey,
-    incomingEdgesByComponentKey: input.reachabilityGraphContext.incomingEdgesByComponentKey,
-    directImportingSourceFilePathSet,
-  });
 
   const importingComponentKeySet = new Set(
     input.importingSourceFilePaths.flatMap(
@@ -499,7 +707,7 @@ function buildContextRecords(input: {
     });
   }
 
-  for (const [componentKey, availabilityRecord] of componentAvailabilityByKey.entries()) {
+  for (const [componentKey, availabilityRecord] of input.componentAvailabilityByKey.entries()) {
     const node = input.reachabilityGraphContext.renderGraphNodesByKey.get(componentKey);
     if (!node) {
       continue;
@@ -507,7 +715,7 @@ function buildContextRecords(input: {
 
     const wholeComponentRegionAvailability = resolveWholeComponentRegionAvailability({
       componentKey,
-      componentAvailabilityByKey,
+      componentAvailabilityByKey: input.componentAvailabilityByKey,
     });
 
     if (wholeComponentRegionAvailability && !importingComponentKeys.includes(componentKey)) {
@@ -563,7 +771,7 @@ function buildContextRecords(input: {
         new Map(),
       outgoingEdges:
         input.reachabilityGraphContext.outgoingEdgesByComponentKey.get(componentKey) ?? [],
-      componentAvailabilityByKey,
+      componentAvailabilityByKey: input.componentAvailabilityByKey,
     });
 
     if (availabilityRecord.availability === "unavailable") {
@@ -1053,213 +1261,6 @@ function sourceAnchorContains(
 
 function toAnchorPositionValue(line: number, column: number): number {
   return line * 1_000_000 + column;
-}
-
-function computeComponentAvailability(input: {
-  renderGraphNodesByKey: Map<
-    string,
-    import("../render-model/render-graph/types.js").RenderGraphNode
-  >;
-  incomingEdgesByComponentKey: Map<
-    string,
-    import("../render-model/render-graph/types.js").RenderGraphEdge[]
-  >;
-  directImportingSourceFilePathSet: Set<string>;
-}): Map<
-  string,
-  {
-    availability: StylesheetReachabilityContextRecord["availability"];
-    reasons: string[];
-    derivations: ReachabilityDerivation[];
-    traces: AnalysisTrace[];
-  }
-> {
-  const availabilityByComponentKey = new Map<
-    string,
-    {
-      availability: StylesheetReachabilityContextRecord["availability"];
-      reasons: string[];
-      derivations: ReachabilityDerivation[];
-      traces: AnalysisTrace[];
-    }
-  >();
-
-  const sortedComponentKeys = [...input.renderGraphNodesByKey.keys()].sort((left, right) =>
-    left.localeCompare(right),
-  );
-  const directImportingComponentKeySet = new Set<string>();
-
-  for (const componentKey of sortedComponentKeys) {
-    const node = input.renderGraphNodesByKey.get(componentKey);
-    if (!node) {
-      continue;
-    }
-
-    if (
-      input.directImportingSourceFilePathSet.has(
-        normalizeProjectPath(node.filePath) ?? node.filePath,
-      )
-    ) {
-      directImportingComponentKeySet.add(componentKey);
-    }
-  }
-
-  for (const componentKey of sortedComponentKeys) {
-    if (directImportingComponentKeySet.has(componentKey)) {
-      availabilityByComponentKey.set(componentKey, {
-        availability: "definite",
-        reasons: ["component is declared in a source file that directly imports this stylesheet"],
-        derivations: [{ kind: "whole-component-direct-import" }],
-        traces: [],
-      });
-      continue;
-    }
-
-    availabilityByComponentKey.set(componentKey, {
-      availability: "unavailable",
-      reasons: [],
-      derivations: [],
-      traces: [],
-    });
-  }
-
-  let changed = true;
-  while (changed) {
-    changed = false;
-
-    for (const componentKey of sortedComponentKeys) {
-      const currentAvailabilityRecord = availabilityByComponentKey.get(componentKey);
-      if (
-        directImportingComponentKeySet.has(componentKey) &&
-        currentAvailabilityRecord?.availability === "definite"
-      ) {
-        continue;
-      }
-
-      const nextAvailabilityRecord = evaluateComponentAvailability({
-        incomingEdges: input.incomingEdgesByComponentKey.get(componentKey) ?? [],
-        availabilityByComponentKey,
-      });
-
-      if (
-        currentAvailabilityRecord?.availability !== nextAvailabilityRecord.availability ||
-        !areReasonsEqual(
-          currentAvailabilityRecord?.reasons ?? [],
-          nextAvailabilityRecord.reasons,
-        ) ||
-        !areDerivationsEqual(
-          currentAvailabilityRecord?.derivations ?? [],
-          nextAvailabilityRecord.derivations,
-        )
-      ) {
-        availabilityByComponentKey.set(componentKey, nextAvailabilityRecord);
-        changed = true;
-      }
-    }
-  }
-
-  return availabilityByComponentKey;
-}
-
-function evaluateComponentAvailability(input: {
-  incomingEdges: import("../render-model/render-graph/types.js").RenderGraphEdge[];
-  availabilityByComponentKey: Map<
-    string,
-    {
-      availability: StylesheetReachabilityContextRecord["availability"];
-      reasons: string[];
-      derivations: ReachabilityDerivation[];
-      traces: AnalysisTrace[];
-    }
-  >;
-}): {
-  availability: StylesheetReachabilityContextRecord["availability"];
-  reasons: string[];
-  derivations: ReachabilityDerivation[];
-  traces: AnalysisTrace[];
-} {
-  if (input.incomingEdges.length > 0) {
-    const parentAvailabilities = input.incomingEdges.map((edge) => ({
-      edge,
-      availability: input.availabilityByComponentKey.get(
-        createComponentKey(edge.fromFilePath, edge.fromComponentName),
-      ),
-    }));
-    const allParentsDefinite =
-      parentAvailabilities.length > 0 &&
-      parentAvailabilities.every(
-        ({ edge, availability }) =>
-          availability?.availability === "definite" && edge.renderPath === "definite",
-      );
-    if (allParentsDefinite) {
-      return {
-        availability: "definite",
-        reasons: ["all known renderers of this component have definite stylesheet availability"],
-        derivations: [{ kind: "whole-component-all-known-renderers-definite" }],
-        traces: parentAvailabilities.flatMap(({ edge }) => edge.traces),
-      };
-    }
-  }
-
-  const availableParentEdges = input.incomingEdges.filter((edge) => {
-    const parentAvailability = input.availabilityByComponentKey.get(
-      createComponentKey(edge.fromFilePath, edge.fromComponentName),
-    );
-    return (
-      parentAvailability?.availability === "definite" ||
-      parentAvailability?.availability === "possible"
-    );
-  });
-  if (availableParentEdges.length > 0) {
-    const definitePathParentEdges = availableParentEdges.filter(
-      (edge) => edge.renderPath === "definite",
-    );
-    if (definitePathParentEdges.length > 0) {
-      return {
-        availability: "possible",
-        reasons: ["at least one known renderer of this component has stylesheet availability"],
-        derivations: [{ kind: "whole-component-at-least-one-renderer" }],
-        traces: definitePathParentEdges.flatMap((edge) => edge.traces),
-      };
-    }
-
-    return {
-      availability: "possible",
-      reasons: [
-        "this component is only rendered on possible paths beneath a renderer with stylesheet availability",
-      ],
-      derivations: [{ kind: "whole-component-only-possible-renderers" }],
-      traces: availableParentEdges.flatMap((edge) => edge.traces),
-    };
-  }
-
-  return {
-    availability: "unavailable",
-    reasons: [],
-    derivations: [],
-    traces: [],
-  };
-}
-
-function areReasonsEqual(left: string[], right: string[]): boolean {
-  if (left.length !== right.length) {
-    return false;
-  }
-
-  return left.every((reason, index) => reason === right[index]);
-}
-
-function areDerivationsEqual(
-  left: ReachabilityDerivation[],
-  right: ReachabilityDerivation[],
-): boolean {
-  if (left.length !== right.length) {
-    return false;
-  }
-
-  const sortedLeft = left.map(serializeDerivation).sort((a, b) => a.localeCompare(b));
-  const sortedRight = right.map(serializeDerivation).sort((a, b) => a.localeCompare(b));
-  return sortedLeft.every((derivationKey, index) => derivationKey === sortedRight[index]);
 }
 
 function addRenderSubtreeRootContexts(input: {
