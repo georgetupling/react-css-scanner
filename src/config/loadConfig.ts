@@ -20,6 +20,9 @@ const CSS_MODULE_LOCALS_CONVENTIONS = new Set<CssModuleLocalsConvention>([
   "camelCase",
   "camelCaseOnly",
 ]);
+const TOP_LEVEL_CONFIG_KEYS = new Set(["failOnSeverity", "rules", "cssModules"]);
+const CSS_MODULES_CONFIG_KEYS = new Set(["localsConvention"]);
+const RULE_IDS = new Set(Object.keys(DEFAULT_RULE_SEVERITIES));
 
 export const DEFAULT_SCANNER_CONFIG: ScannerConfig = {
   failOnSeverity: "error",
@@ -157,6 +160,15 @@ function parseConfig(
     return DEFAULT_SCANNER_CONFIG;
   }
 
+  reportUnknownKeys({
+    value: parsed,
+    allowedKeys: TOP_LEVEL_CONFIG_KEYS,
+    filePath,
+    diagnostics,
+    objectName: "config",
+    code: "config.unknown-key",
+  });
+
   return {
     failOnSeverity: parseFailOnSeverity(parsed.failOnSeverity, filePath, diagnostics),
     rules: {
@@ -212,6 +224,17 @@ function parseRules(
 
   const rules: Record<string, RuleConfigSeverity> = {};
   for (const [ruleId, ruleValue] of Object.entries(value)) {
+    if (!RULE_IDS.has(ruleId)) {
+      diagnostics.push({
+        code: "config.unknown-rule",
+        severity: "error",
+        phase: "config",
+        filePath,
+        message: `unknown rule "${ruleId}" in rules config`,
+      });
+      continue;
+    }
+
     if (typeof ruleValue === "string" && RULE_CONFIG_VALUES.has(ruleValue as RuleConfigSeverity)) {
       rules[ruleId] = ruleValue as RuleConfigSeverity;
       continue;
@@ -248,6 +271,15 @@ function parseCssModules(
     });
     return DEFAULT_SCANNER_CONFIG.cssModules;
   }
+
+  reportUnknownKeys({
+    value,
+    allowedKeys: CSS_MODULES_CONFIG_KEYS,
+    filePath,
+    diagnostics,
+    objectName: "cssModules",
+    code: "config.unknown-css-modules-key",
+  });
 
   const localsConvention = value.localsConvention;
   if (
@@ -300,6 +332,29 @@ async function findConfigOnOsPath(): Promise<string | undefined> {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function reportUnknownKeys(input: {
+  value: Record<string, unknown>;
+  allowedKeys: Set<string>;
+  filePath: string;
+  diagnostics: ScanDiagnostic[];
+  objectName: string;
+  code: string;
+}): void {
+  for (const key of Object.keys(input.value)) {
+    if (input.allowedKeys.has(key)) {
+      continue;
+    }
+
+    input.diagnostics.push({
+      code: input.code,
+      severity: "error",
+      phase: "config",
+      filePath: input.filePath,
+      message: `unknown ${input.objectName} key "${key}"`,
+    });
+  }
 }
 
 function normalizeProjectPath(filePath: string): string {

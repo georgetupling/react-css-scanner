@@ -183,6 +183,33 @@ test("CLI resolves relative --config paths from the command directory", async ()
   }
 });
 
+test("CLI reports unknown config keys as errors", async () => {
+  const project = await new TestProjectBuilder()
+    .withConfig({
+      externalCss: {
+        providers: [],
+      },
+    })
+    .withSourceFile("src/App.tsx", "export function App() { return null; }\n")
+    .build();
+
+  try {
+    const outputPath = project.filePath("report.json");
+    const error = await captureRejectedCliRun(
+      [project.rootDir, "--json", "--output-file", outputPath],
+      { cwd: project.rootDir },
+    );
+    const output = await readJsonFile(outputPath);
+
+    assert.equal(error.code, 1);
+    assert.equal(output.failed, true);
+    assert.equal(output.diagnostics[0].code, "config.unknown-key");
+    assert.match(output.diagnostics[0].message, /unknown config key "externalCss"/);
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("CLI groups human-readable findings by file and prints summary last", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(

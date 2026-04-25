@@ -521,7 +521,8 @@ Design rules:
 - default rule severities come from `docs/design/rules-catalogue.md` and the rule catalogue code
 - rule ids follow the reboot catalogue; old scanner rule ids are not part of the clean contract
 - missing config should resolve to built-in defaults
-- unsupported or unknown config keys should produce diagnostics rather than silently changing behavior
+- unsupported or unknown config keys should produce error diagnostics rather than silently changing behavior
+- unknown rule IDs should produce error diagnostics rather than being ignored
 
 Additional include/exclude behavior, external provider declarations, and ownership conventions can
 be added once the public result shape and CLI output are stable.

@@ -67,6 +67,8 @@ If docs disagree with code and tests, align them in the same change or call out 
 - Only one config source is loaded.
 - No config merging.
 - Current config keys are `failOnSeverity`, `rules`, and `cssModules.localsConvention`.
+- Unknown config keys, unknown nested keys, and unknown rule IDs are config errors. Do not silently
+  accept legacy keys such as `css`, `source`, `externalCss`, or `classComposition`.
 
 ### CLI
 

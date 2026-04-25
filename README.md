@@ -149,6 +149,8 @@ The Node API uses `configBaseDir` for explicit `configPath` resolution and proje
 If `configBaseDir` is omitted, it defaults to `rootDir`.
 
 Only one config source is loaded. There is no config merging.
+Unknown config keys and unknown rule IDs are errors. Legacy scanner keys such as `css`, `source`,
+`externalCss`, and `classComposition` must be removed or migrated before the scan can pass.
 
 Current config shape:
 

@@ -318,6 +318,76 @@ test("scanProject applies project config rule severity overrides", async () => {
   }
 });
 
+test("scanProject fails on unknown top-level config keys", async () => {
+  const project = await new TestProjectBuilder()
+    .withConfig({
+      css: {
+        global: ["src/global.css"],
+      },
+    })
+    .withSourceFile("src/App.tsx", "export function App() { return null; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+    });
+
+    assert.equal(result.failed, true);
+    assert.equal(result.diagnostics[0].code, "config.unknown-key");
+    assert.match(result.diagnostics[0].message, /unknown config key "css"/);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("scanProject fails on unknown rule ids in config", async () => {
+  const project = await new TestProjectBuilder()
+    .withConfig({
+      rules: {
+        "legacy-rule-id": "off",
+      },
+    })
+    .withSourceFile("src/App.tsx", "export function App() { return null; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+    });
+
+    assert.equal(result.failed, true);
+    assert.equal(result.diagnostics[0].code, "config.unknown-rule");
+    assert.match(result.diagnostics[0].message, /unknown rule "legacy-rule-id"/);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("scanProject fails on unknown cssModules config keys", async () => {
+  const project = await new TestProjectBuilder()
+    .withConfig({
+      cssModules: {
+        localsConvention: "camelCase",
+        namedExports: true,
+      },
+    })
+    .withSourceFile("src/App.tsx", "export function App() { return null; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+    });
+
+    assert.equal(result.failed, true);
+    assert.equal(result.diagnostics[0].code, "config.unknown-css-modules-key");
+    assert.match(result.diagnostics[0].message, /unknown cssModules key "namedExports"/);
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("scanProject can discover project config from an explicit config base directory", async () => {
   const project = await new TestProjectBuilder()
     .withConfig({
