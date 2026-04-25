@@ -465,6 +465,27 @@ behavior should keep bounded-analysis detail out of normal finding lists.
 CLI text output should hide `debug` diagnostics by default. CLI JSON may include debug diagnostics
 when debug output is explicitly requested, but it should still avoid raw analysis snapshots.
 
+## Focused CLI Output
+
+`--focus` is a reporting filter, not a scan-root shortcut. The CLI must still discover and analyze
+the full `rootDir` project so imports, global CSS, external stylesheets, render relationships, and
+reachability context remain available to rules.
+
+Focused output semantics:
+
+- `--focus path-or-glob` may be provided more than once.
+- A single `--focus` value may contain comma-separated paths or globs.
+- Non-glob values match the exact file or directory subtree.
+- Glob values use project-relative `/` paths and support `*`, `?`, and `**`.
+- CLI `findings` are filtered to findings whose primary location, subject/evidence path, or trace
+  anchor is inside one of the focus paths.
+- Source file, CSS file, class reference, class definition, and selector query counts continue to
+  describe the full project context.
+- Finding counts and finding severity counts describe the visible focused findings.
+- Error diagnostics are not hidden by focus and still affect `failed`.
+- The CLI exit code follows the focused `failed` value, so findings outside focus do not fail a
+  focused run.
+
 ## Minimal Config Contract
 
 The first stable reboot config should stay intentionally small.

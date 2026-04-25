@@ -97,7 +97,6 @@ test("CLI rejects unknown options before scanning", async () => {
 
 test("CLI rejects historical options that are recognized but not yet restored", async () => {
   const historicalOptions = [
-    ["--focus", "src/components"],
     ["--output-file", "report.json"],
     ["--overwrite-output"],
     ["--print-config", "on"],
@@ -117,6 +116,97 @@ test("CLI rejects historical options that are recognized but not yet restored", 
     );
     assert.equal(error.stdout, "");
   }
+});
+
+test("CLI --focus filters findings after full project analysis", async () => {
+  const project = await new TestProjectBuilder()
+    .withConfig({
+      rules: {
+        "single-component-style-not-colocated": "off",
+      },
+    })
+    .withSourceFile(
+      "src/components/Button.tsx",
+      'import "../styles/global.css";\nexport function Button() { return <button className="global utility">Button</button>; }\n',
+    )
+    .withSourceFile(
+      "src/pages/Home.tsx",
+      'export function Home() { return <main className="missing-page">Home</main>; }\n',
+    )
+    .withCssFile(
+      "src/styles/global.css",
+      ".global { display: block; }\n.utility { display: inline-flex; }\n",
+    )
+    .build();
+
+  try {
+    const focusedRun = await runCli([project.rootDir, "--focus", "src/components", "--json"]);
+    const focusedOutput = JSON.parse(focusedRun.stdout);
+
+    assert.equal(focusedOutput.failed, false);
+    assert.equal(focusedOutput.summary.sourceFileCount, 3);
+    assert.equal(focusedOutput.summary.findingCount, 0);
+    assert.deepEqual(focusedOutput.findings, []);
+
+    const pageError = await captureRejectedCliRun([
+      project.rootDir,
+      "--focus",
+      "src/pages",
+      "--json",
+    ]);
+    const pageOutput = JSON.parse(pageError.stdout);
+
+    assert.equal(pageError.code, 1);
+    assert.equal(pageOutput.failed, true);
+    assert.equal(pageOutput.summary.sourceFileCount, 3);
+    assert.equal(pageOutput.findings.length, 1);
+    assert.equal(pageOutput.findings[0].data.className, "missing-page");
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("CLI --focus accepts comma-separated and repeated focus values", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/components/Button.tsx",
+      'export function Button() { return <button className="missing-button">Button</button>; }\n',
+    )
+    .withSourceFile(
+      "src/pages/Home.tsx",
+      'export function Home() { return <main className="missing-page">Home</main>; }\n',
+    )
+    .withSourceFile(
+      "src/layout/Shell.tsx",
+      'export function Shell() { return <div className="missing-shell" />; }\n',
+    )
+    .build();
+
+  try {
+    const error = await captureRejectedCliRun([
+      project.rootDir,
+      "--focus",
+      "src/components,src/pages",
+      "--focus",
+      "src/layout",
+      "--json",
+    ]);
+    const output = JSON.parse(error.stdout);
+    const classNames = output.findings.map((finding) => finding.data.className).sort();
+
+    assert.equal(error.code, 1);
+    assert.deepEqual(classNames, ["missing-button", "missing-page", "missing-shell"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("CLI rejects --focus without a value", async () => {
+  const error = await captureRejectedCliRun([".", "--focus", "--json"]);
+
+  assert.equal(error.code, 2);
+  assert.match(error.stderr, /--focus requires a path or glob value\./);
+  assert.equal(error.stdout, "");
 });
 
 test("CLI rejects missing option values before scanning", async () => {
