@@ -81,7 +81,7 @@ export type StylesheetAnalysis = CssFileRecord & {
   selectors: ProjectAnalysisId[];
 };
 
-export type ClassReferenceOrigin = "render-ir" | "unknown";
+export type ClassReferenceOrigin = "render-ir" | "css-module-member" | "unknown";
 
 export type ClassReferenceExpressionKind =
   | "exact-string"
@@ -105,7 +105,8 @@ export type ClassReferenceAnalysis = {
   unknownDynamic: boolean;
   confidence: AnalysisConfidence;
   traces: AnalysisTrace[];
-  sourceSummary: ClassExpressionSummary;
+  sourceSummary?: ClassExpressionSummary;
+  sourceCssModuleMemberReferenceId?: ProjectAnalysisId;
 };
 
 export type ClassDefinitionSelectorKind =
@@ -353,7 +354,7 @@ export type ClassReferenceMatchRelation = {
   className: string;
   referenceClassKind: "definite" | "possible";
   reachability: ReachabilityAvailability;
-  matchKind: "reachable-stylesheet" | "unreachable-stylesheet";
+  matchKind: "reachable-stylesheet" | "unreachable-stylesheet" | "css-module";
   reasons: string[];
   traces: AnalysisTrace[];
 };

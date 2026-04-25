@@ -40,6 +40,14 @@ function runMissingCssClassRule(context: RuleContext): UnresolvedFinding[] {
             kind: "source-file",
             id: reference.sourceFileId,
           },
+          ...(reference.sourceCssModuleMemberReferenceId
+            ? [
+                {
+                  kind: "css-module-member-reference" as const,
+                  id: reference.sourceCssModuleMemberReferenceId,
+                },
+              ]
+            : []),
         ],
         traces: buildMissingClassTraces({
           reference,
@@ -49,6 +57,7 @@ function runMissingCssClassRule(context: RuleContext): UnresolvedFinding[] {
           className,
           rawExpressionText: reference.rawExpressionText,
           expressionKind: reference.expressionKind,
+          sourceCssModuleMemberReferenceId: reference.sourceCssModuleMemberReferenceId,
         },
       });
     }

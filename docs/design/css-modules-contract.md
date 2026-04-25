@@ -211,19 +211,29 @@ These relations are the source of truth for CSS Module rules:
 
 ## Generic Class Reference Evidence
 
-CSS Module member reads are not currently projected into generic `ClassReferenceAnalysis` records.
+CSS Module member reads are projected into generic `ClassReferenceAnalysis` records with
+`origin: "css-module-member"`.
 
-That means:
+Projected references include:
 
-- generic `missing-css-class`, `css-class-unreachable`, and `unused-css-class` do not reason about
-  CSS Module member reads through `relations.referenceMatches`
+- `sourceCssModuleMemberReferenceId` pointing back to the CSS Module member reference
+- `definiteClassNames` containing the matched authored class name when the member resolves
+- `definiteClassNames` containing the requested member name when the member is missing
+- `rawExpressionText`, location, and traces from the CSS Module evidence
+
+`ProjectAnalysis` also emits generic `referenceMatches` with `matchKind: "css-module"` for resolved
+CSS Module member references. These matches point at the CSS Module class definition and use
+`reachability: "definite"` because module export matching, not stylesheet reachability, establishes
+the relation.
+
+The CSS Module-specific entities and relations remain the canonical user-facing evidence for CSS
+Module rules:
+
 - CSS Module rules use `entities.cssModuleMemberReferences` and
   `relations.cssModuleMemberMatches`
-- this avoids double-reporting while the CSS Module-specific rules remain the canonical behavior
-
-Future work may add generic class references with `origin: "css-module-member"` and a CSS
-Module-specific reference match kind. That should include an explicit de-duplication policy so users
-do not receive both generic and CSS Module-specific findings for the same evidence.
+- generic rules may consume projected class references for shared summaries or broad analysis
+- final finding output suppresses generic `missing-css-class` findings when a
+  `missing-css-module-class` finding covers the same CSS Module member reference
 
 ## Diagnostics Behavior
 

@@ -84,6 +84,7 @@ Implemented:
 - named CSS Module import binding records
 - simple destructured CSS Module binding records
 - simple same-file CSS Module alias records
+- CSS Module member projection into generic class references
 - module member-to-class-definition match relations
 - `localsConvention` transformations for `asIs`, `camelCase`, and `camelCaseOnly`
 - computed member access diagnostics

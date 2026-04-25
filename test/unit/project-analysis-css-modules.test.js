@@ -138,6 +138,41 @@ test("ProjectAnalysis records named CSS Module imports as member references", ()
   );
 });
 
+test("ProjectAnalysis projects CSS Module members into generic class references", () => {
+  const result = analyzeProjectSourceTexts({
+    sourceFiles: [
+      {
+        filePath: "src/Button.tsx",
+        sourceText:
+          'import styles from "./Button.module.css";\nexport function Button() { return <button className={styles.fooBar}>Button</button>; }\n',
+      },
+    ],
+    selectorCssSources: [
+      {
+        filePath: "src/Button.module.css",
+        cssText: ".foo-bar { display: block; }\n",
+      },
+    ],
+  });
+
+  const analysis = result.projectAnalysis;
+  const memberReference = analysis.entities.cssModuleMemberReferences[0];
+  const classReference = analysis.entities.classReferences.find(
+    (reference) => reference.origin === "css-module-member",
+  );
+  const referenceMatch = analysis.relations.referenceMatches.find(
+    (match) => match.referenceId === classReference?.id,
+  );
+
+  assert.ok(classReference);
+  assert.equal(classReference.sourceCssModuleMemberReferenceId, memberReference.id);
+  assert.deepEqual(classReference.definiteClassNames, ["foo-bar"]);
+  assert.equal(classReference.rawExpressionText, "styles.fooBar");
+  assert.equal(referenceMatch?.matchKind, "css-module");
+  assert.equal(referenceMatch?.className, "foo-bar");
+  assert.equal(referenceMatch?.reachability, "definite");
+});
+
 test("ProjectAnalysis can require exact CSS Module export names", () => {
   const result = analyzeProjectSourceTexts({
     sourceFiles: [
@@ -164,6 +199,37 @@ test("ProjectAnalysis can require exact CSS Module export names", () => {
   assert.equal(match.className, "fooBar");
   assert.equal(match.exportName, "fooBar");
   assert.equal(match.definitionId, undefined);
+});
+
+test("ProjectAnalysis projects missing CSS Module members as generic class references", () => {
+  const result = analyzeProjectSourceTexts({
+    sourceFiles: [
+      {
+        filePath: "src/Button.tsx",
+        sourceText:
+          'import styles from "./Button.module.css";\nexport function Button() { return <button className={styles.missing}>Button</button>; }\n',
+      },
+    ],
+    selectorCssSources: [
+      {
+        filePath: "src/Button.module.css",
+        cssText: ".root { display: block; }\n",
+      },
+    ],
+  });
+
+  const classReference = result.projectAnalysis.entities.classReferences.find(
+    (reference) => reference.origin === "css-module-member",
+  );
+
+  assert.ok(classReference);
+  assert.deepEqual(classReference.definiteClassNames, ["missing"]);
+  assert.equal(
+    result.projectAnalysis.relations.referenceMatches.some(
+      (match) => match.referenceId === classReference.id,
+    ),
+    false,
+  );
 });
 
 test("ProjectAnalysis records CSS Module destructured bindings as member references", () => {

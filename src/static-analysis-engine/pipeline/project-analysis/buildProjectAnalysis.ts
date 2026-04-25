@@ -52,7 +52,6 @@ export function buildProjectAnalysis(input: ProjectAnalysisBuildInput): ProjectA
   const renderSubtrees = buildRenderSubtrees(input.renderSubtrees, indexes);
   const stylesheets = buildStylesheets(input, indexes);
   const classDefinitions = buildClassDefinitions(input, stylesheets, indexes);
-  const classReferences = buildClassReferences(renderSubtrees, indexes);
   const unsupportedClassReferences = buildUnsupportedClassReferences(input, indexes);
   const selectorQueries = buildSelectorQueries(input.selectorQueryResults, stylesheets, indexes);
   const selectorBranches = buildSelectorBranches(selectorQueries);
@@ -68,6 +67,19 @@ export function buildProjectAnalysis(input: ProjectAnalysisBuildInput): ProjectA
     imports: cssModuleImports,
     indexes,
   });
+  const cssModuleMemberMatches = buildCssModuleMemberMatches({
+    references: cssModuleMemberReferences,
+    indexes,
+    localsConvention: input.cssModules.options.localsConvention,
+  });
+  const classReferences = [
+    ...buildClassReferences(renderSubtrees, indexes),
+    ...buildCssModuleClassReferences({
+      memberReferences: cssModuleMemberReferences,
+      memberMatches: cssModuleMemberMatches,
+      indexes,
+    }),
+  ].sort(compareById);
   indexEntities({
     sourceFiles,
     stylesheets,
@@ -90,6 +102,7 @@ export function buildProjectAnalysis(input: ProjectAnalysisBuildInput): ProjectA
     references: classReferences,
     definitions: classDefinitions,
     reachability: stylesheetReachability,
+    cssModuleMemberMatches,
     indexes,
   });
   const providerClassSatisfactions = buildProviderClassSatisfactions({
@@ -97,11 +110,6 @@ export function buildProjectAnalysis(input: ProjectAnalysisBuildInput): ProjectA
     input,
   });
   const selectorMatches = buildSelectorMatches(selectorQueries);
-  const cssModuleMemberMatches = buildCssModuleMemberMatches({
-    references: cssModuleMemberReferences,
-    indexes,
-    localsConvention: input.cssModules.options.localsConvention,
-  });
   const classOwnership = buildClassOwnership({
     input,
     definitions: classDefinitions,
@@ -299,6 +307,7 @@ function buildClassDefinitions(
 
       definitions.push(analysis);
       stylesheet.definitions.push(id);
+      indexes.classDefinitionsById.set(id, analysis);
       pushMapValue(indexes.definitionsByClassName, definition.className, id);
       pushMapValue(indexes.definitionsByStylesheetId, stylesheet.id, id);
     }
@@ -353,6 +362,48 @@ function buildClassReferences(
 
   sortIndexValues(indexes.referencesBySourceFileId);
   sortIndexValues(indexes.referencesByClassName);
+  return references.sort(compareById);
+}
+
+function buildCssModuleClassReferences(input: {
+  memberReferences: CssModuleMemberReferenceAnalysis[];
+  memberMatches: CssModuleMemberMatchRelation[];
+  indexes: ProjectAnalysisIndexes;
+}): ClassReferenceAnalysis[] {
+  const matchesByReferenceId = new Map<ProjectAnalysisId, CssModuleMemberMatchRelation>();
+  for (const match of input.memberMatches) {
+    matchesByReferenceId.set(match.referenceId, match);
+  }
+
+  const references = input.memberReferences.map((memberReference) => {
+    const match = matchesByReferenceId.get(memberReference.id);
+    const className = match?.className ?? memberReference.memberName;
+    const reference: ClassReferenceAnalysis = {
+      id: `class-reference:css-module-member:${memberReference.id}`,
+      sourceFileId: memberReference.sourceFileId,
+      location: normalizeAnchor(memberReference.location),
+      origin: "css-module-member",
+      expressionKind: "exact-string",
+      rawExpressionText: memberReference.rawExpressionText,
+      definiteClassNames: [className],
+      possibleClassNames: [],
+      unknownDynamic: false,
+      confidence: "high",
+      traces: buildCssModuleClassReferenceTraces({
+        memberReference,
+        className,
+      }),
+      sourceCssModuleMemberReferenceId: memberReference.id,
+    };
+
+    pushMapValue(input.indexes.referencesBySourceFileId, reference.sourceFileId, reference.id);
+    pushMapValue(input.indexes.referencesByClassName, className, reference.id);
+
+    return reference;
+  });
+
+  sortIndexValues(input.indexes.referencesBySourceFileId);
+  sortIndexValues(input.indexes.referencesByClassName);
   return references.sort(compareById);
 }
 
@@ -681,6 +732,28 @@ function buildClassReferenceTraces(entry: RenderClassExpressionEntry): AnalysisT
   ];
 }
 
+function buildCssModuleClassReferenceTraces(input: {
+  memberReference: CssModuleMemberReferenceAnalysis;
+  className: string;
+}): AnalysisTrace[] {
+  return [
+    {
+      traceId: `css-module:class-reference:${input.memberReference.id}:${input.className}`,
+      category: "value-evaluation",
+      summary: `CSS Module member "${input.memberReference.memberName}" was projected as class reference "${input.className}"`,
+      anchor: input.memberReference.location,
+      children: [...input.memberReference.traces],
+      metadata: {
+        origin: "css-module-member",
+        memberReferenceId: input.memberReference.id,
+        memberName: input.memberReference.memberName,
+        className: input.className,
+        accessKind: input.memberReference.accessKind,
+      },
+    },
+  ];
+}
+
 function visitRenderNode(
   node: RenderNode,
   inheritedPlacementLocation: SourceAnchor | undefined,
@@ -861,6 +934,7 @@ function buildReferenceMatches(input: {
   references: ClassReferenceAnalysis[];
   definitions: ClassDefinitionAnalysis[];
   reachability: StylesheetReachabilityRelation[];
+  cssModuleMemberMatches: CssModuleMemberMatchRelation[];
   indexes: ProjectAnalysisIndexes;
 }): ClassReferenceMatchRelation[] {
   const reachabilityByStylesheetAndSource = new Map<string, StylesheetReachabilityRelation[]>();
@@ -887,8 +961,36 @@ function buildReferenceMatches(input: {
   }
 
   const matches: ClassReferenceMatchRelation[] = [];
+  const cssModuleMemberMatchesByReferenceId = new Map(
+    input.cssModuleMemberMatches.map((match) => [match.referenceId, match]),
+  );
 
   for (const reference of input.references) {
+    if (reference.origin === "css-module-member") {
+      const memberReferenceId = reference.sourceCssModuleMemberReferenceId;
+      const cssModuleMatch = memberReferenceId
+        ? cssModuleMemberMatchesByReferenceId.get(memberReferenceId)
+        : undefined;
+      if (!cssModuleMatch?.definitionId || cssModuleMatch.status !== "matched") {
+        continue;
+      }
+
+      matches.push({
+        id: `reference-match:${reference.id}:${cssModuleMatch.definitionId}`,
+        referenceId: reference.id,
+        definitionId: cssModuleMatch.definitionId,
+        className: cssModuleMatch.className,
+        referenceClassKind: "definite",
+        reachability: "definite",
+        matchKind: "css-module",
+        reasons: [
+          `class "${cssModuleMatch.className}" was matched through CSS Module export "${cssModuleMatch.exportName}"`,
+        ],
+        traces: mergeTraces([...reference.traces, ...cssModuleMatch.traces]),
+      });
+      continue;
+    }
+
     for (const className of collectReferenceClassNames(reference)) {
       const candidateDefinitionIds = input.indexes.definitionsByClassName.get(className) ?? [];
       for (const definitionId of candidateDefinitionIds) {
@@ -941,6 +1043,10 @@ function buildProviderClassSatisfactions(input: {
   const relations: ProviderClassSatisfactionRelation[] = [];
 
   for (const reference of input.references) {
+    if (reference.origin === "css-module-member") {
+      continue;
+    }
+
     for (const className of collectReferenceClassNames(reference)) {
       for (const provider of input.input.externalCssSummary.activeProviders) {
         const satisfied =

@@ -141,8 +141,9 @@ unused module class findings, computed member diagnostics, and `localsConvention
 bindings such as `const { root, button: buttonClass } = styles` and simple same-file aliases such
 as `const s = styles; s.root`. Named imports such as
 `import { root, button as buttonClass } from "./Button.module.css"` are direct member bindings. It
-does not yet claim `composes`, generic class-reference projection, or re-exported CSS Module
-semantics.
+projects CSS Module member reads into generic class references with `origin: "css-module-member"`
+and suppresses generic missing-class findings when a more specific CSS Module finding covers the
+same evidence. It does not yet claim `composes` or re-exported CSS Module semantics.
 
 Rule execution now lives outside the static-analysis engine in `src/rules`.
 The engine entry points return analysis only; rule runners should be invoked as a layer above

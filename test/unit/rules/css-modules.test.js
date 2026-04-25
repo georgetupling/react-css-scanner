@@ -59,6 +59,10 @@ test("missing-css-module-class reports missing module members", async () => {
     assert.equal(finding.evidence[0].kind, "css-module-import");
     assert.equal(finding.data?.memberName, "missing");
     assert.equal(finding.data?.stylesheetFilePath, "src/Button.module.css");
+    assert.equal(
+      result.findings.some((candidate) => candidate.ruleId === "missing-css-class"),
+      false,
+    );
   } finally {
     await project.cleanup();
   }
