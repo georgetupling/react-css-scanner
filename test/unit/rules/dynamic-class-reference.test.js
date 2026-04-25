@@ -284,6 +284,38 @@ test("dynamic-class-reference still reports helper calls that cannot be bounded"
   }
 });
 
+test("dynamic-class-reference degrades recursive helper-bound class arrays without overflowing", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        "function joinClasses(...classes) {",
+        "  return classes.filter(Boolean).join(' ');",
+        "}",
+        "",
+        "export function App() {",
+        "  const className = joinClasses('root', className);",
+        "  return <main className={className}>Hello</main>;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".root { display: block; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
+      cssFilePaths: ["src/App.css"],
+    });
+
+    assert.ok(result.findings.some((finding) => finding.ruleId === "dynamic-class-reference"));
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("dynamic-class-reference can be disabled from config", async () => {
   const project = await new TestProjectBuilder()
     .withConfig({

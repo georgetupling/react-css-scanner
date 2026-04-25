@@ -21,6 +21,19 @@ import {
 } from "../resolution/resolveExactValues.js";
 import type { RenderNode } from "../types.js";
 
+const MAX_CLASS_NAME_RESOLUTION_DEPTH = 100;
+const MAX_EXACT_CLASS_ARRAY_RESOLUTION_DEPTH = 100;
+
+type ClassNameResolutionState = {
+  activeExpressions: Set<string>;
+  depth: number;
+};
+
+type ExactClassArrayResolutionState = {
+  activeExpressions: Set<string>;
+  depth: number;
+};
+
 export function buildElementNode(input: {
   tagNameNode: ts.JsxTagNameExpression;
   attributes: ts.JsxAttributes;
@@ -145,90 +158,139 @@ function unwrapJsxAttributeInitializer(
 function summarizeBoundClassNameExpression(
   expression: ts.Expression,
   context: BuildContext,
+  state: ClassNameResolutionState = {
+    activeExpressions: new Set(),
+    depth: 0,
+  },
 ): {
   value: ReturnType<typeof summarizeClassNameExpression>;
   sourceExpression?: ts.Expression;
 } {
-  const foundExpression = ts.isCallExpression(expression)
-    ? resolveExactFoundClassExpression(expression, context)
-    : undefined;
-  if (foundExpression !== undefined) {
-    if (foundExpression === null) {
-      return { value: { kind: "string-exact", value: "" }, sourceExpression: expression };
-    }
-
-    return summarizeBoundClassNameExpression(foundExpression, context);
-  }
-
-  const joinedClassArraySummary = ts.isCallExpression(expression)
-    ? summarizeJoinedClassArrayExpression(expression, context)
-    : undefined;
-  if (joinedClassArraySummary) {
-    return joinedClassArraySummary;
-  }
-
-  const helperResolution = ts.isCallExpression(expression)
-    ? resolveHelperCallContext(expression, context)
-    : undefined;
-  if (helperResolution) {
-    return summarizeBoundClassNameExpression(helperResolution.expression, helperResolution.context);
-  }
-
-  const boundExpression = resolveBoundExpression(expression, context);
-  if (boundExpression) {
-    return summarizeBoundClassNameExpression(boundExpression, context);
-  }
-
-  if (ts.isConditionalExpression(expression)) {
-    const whenTrue = summarizeBoundClassNameExpression(expression.whenTrue, context);
-    const whenFalse = summarizeBoundClassNameExpression(expression.whenFalse, context);
-    const values = new Set<string>();
-
-    for (const candidate of [whenTrue, whenFalse]) {
-      if (candidate.value.kind === "string-exact") {
-        values.add(candidate.value.value);
-        continue;
-      }
-
-      if (candidate.value.kind === "string-set") {
-        for (const value of candidate.value.values) {
-          values.add(value);
-        }
-        continue;
-      }
-
-      return {
-        value: { kind: "unknown", reason: "unsupported-conditional-branch" },
-        sourceExpression: expression,
-      };
-    }
-
+  if (state.depth > MAX_CLASS_NAME_RESOLUTION_DEPTH) {
     return {
-      value: {
-        kind: "string-set",
-        values: [...values].sort((left, right) => left.localeCompare(right)),
-      },
+      value: { kind: "unknown", reason: "class-name-resolution-budget-exceeded" },
       sourceExpression: expression,
     };
   }
 
-  if (
-    ts.isParenthesizedExpression(expression) ||
-    ts.isAsExpression(expression) ||
-    ts.isSatisfiesExpression(expression)
-  ) {
-    return summarizeBoundClassNameExpression(expression.expression, context);
+  const expressionKey = getExpressionResolutionKey(expression, context);
+  if (state.activeExpressions.has(expressionKey)) {
+    return {
+      value: { kind: "unknown", reason: "class-name-resolution-cycle" },
+      sourceExpression: expression,
+    };
   }
 
-  return {
-    value: summarizeClassNameExpression(expression),
-    sourceExpression: expression,
-  };
+  state.activeExpressions.add(expressionKey);
+  try {
+    const foundExpression = ts.isCallExpression(expression)
+      ? resolveExactFoundClassExpression(expression, context)
+      : undefined;
+    if (foundExpression !== undefined) {
+      if (foundExpression === null) {
+        return { value: { kind: "string-exact", value: "" }, sourceExpression: expression };
+      }
+
+      return summarizeBoundClassNameExpression(
+        foundExpression,
+        context,
+        nextClassNameResolutionState(state),
+      );
+    }
+
+    const joinedClassArraySummary = ts.isCallExpression(expression)
+      ? summarizeJoinedClassArrayExpression(expression, context, state)
+      : undefined;
+    if (joinedClassArraySummary) {
+      return joinedClassArraySummary;
+    }
+
+    const helperResolution = ts.isCallExpression(expression)
+      ? resolveHelperCallContext(expression, context)
+      : undefined;
+    if (helperResolution) {
+      return summarizeBoundClassNameExpression(
+        helperResolution.expression,
+        helperResolution.context,
+        nextClassNameResolutionState(state),
+      );
+    }
+
+    const boundExpression = resolveBoundExpression(expression, context);
+    if (boundExpression) {
+      return summarizeBoundClassNameExpression(
+        boundExpression,
+        context,
+        nextClassNameResolutionState(state),
+      );
+    }
+
+    if (ts.isConditionalExpression(expression)) {
+      const whenTrue = summarizeBoundClassNameExpression(
+        expression.whenTrue,
+        context,
+        nextClassNameResolutionState(state),
+      );
+      const whenFalse = summarizeBoundClassNameExpression(
+        expression.whenFalse,
+        context,
+        nextClassNameResolutionState(state),
+      );
+      const values = new Set<string>();
+
+      for (const candidate of [whenTrue, whenFalse]) {
+        if (candidate.value.kind === "string-exact") {
+          values.add(candidate.value.value);
+          continue;
+        }
+
+        if (candidate.value.kind === "string-set") {
+          for (const value of candidate.value.values) {
+            values.add(value);
+          }
+          continue;
+        }
+
+        return {
+          value: { kind: "unknown", reason: "unsupported-conditional-branch" },
+          sourceExpression: expression,
+        };
+      }
+
+      return {
+        value: {
+          kind: "string-set",
+          values: [...values].sort((left, right) => left.localeCompare(right)),
+        },
+        sourceExpression: expression,
+      };
+    }
+
+    if (
+      ts.isParenthesizedExpression(expression) ||
+      ts.isAsExpression(expression) ||
+      ts.isSatisfiesExpression(expression)
+    ) {
+      return summarizeBoundClassNameExpression(
+        expression.expression,
+        context,
+        nextClassNameResolutionState(state),
+      );
+    }
+
+    return {
+      value: summarizeClassNameExpression(expression),
+      sourceExpression: expression,
+    };
+  } finally {
+    state.activeExpressions.delete(expressionKey);
+  }
 }
 
 function summarizeJoinedClassArrayExpression(
   expression: ts.CallExpression,
   context: BuildContext,
+  state: ClassNameResolutionState,
 ):
   | {
       value: ReturnType<typeof summarizeClassNameExpression>;
@@ -250,7 +312,11 @@ function summarizeJoinedClassArrayExpression(
 
   return {
     value: mergeClassNameValues(
-      sourceElements.map((element) => summarizeBoundClassNameExpression(element, context).value),
+      sourceElements.map(
+        (element) =>
+          summarizeBoundClassNameExpression(element, context, nextClassNameResolutionState(state))
+            .value,
+      ),
       "class array join",
     ),
     sourceExpression: expression,
@@ -326,71 +392,102 @@ function resolveExactFoundClassExpression(
 function resolveExactClassArrayElements(
   expression: ts.Expression,
   context: BuildContext,
+  state: ExactClassArrayResolutionState = {
+    activeExpressions: new Set(),
+    depth: 0,
+  },
 ): ts.Expression[] | undefined {
-  const helperResolution = ts.isCallExpression(expression)
-    ? resolveHelperCallContext(expression, context)
-    : undefined;
-  if (helperResolution) {
-    return resolveExactClassArrayElements(helperResolution.expression, helperResolution.context);
+  if (state.depth > MAX_EXACT_CLASS_ARRAY_RESOLUTION_DEPTH) {
+    return undefined;
   }
 
-  const boundExpression = resolveBoundExpression(expression, context);
-  if (boundExpression) {
-    return resolveExactClassArrayElements(boundExpression, context);
+  const expressionKey = getExpressionResolutionKey(expression, context);
+  if (state.activeExpressions.has(expressionKey)) {
+    return undefined;
   }
 
-  if (ts.isArrayLiteralExpression(expression)) {
-    const elements: ts.Expression[] = [];
-    for (const element of expression.elements) {
-      if (ts.isOmittedExpression(element) || ts.isSpreadElement(element)) {
-        return undefined;
-      }
-
-      elements.push(element);
+  state.activeExpressions.add(expressionKey);
+  try {
+    const helperResolution = ts.isCallExpression(expression)
+      ? resolveHelperCallContext(expression, context)
+      : undefined;
+    if (helperResolution) {
+      return resolveExactClassArrayElements(
+        helperResolution.expression,
+        helperResolution.context,
+        nextExactClassArrayResolutionState(state),
+      );
     }
 
-    return elements;
-  }
-
-  if (
-    ts.isCallExpression(expression) &&
-    ts.isPropertyAccessExpression(expression.expression) &&
-    expression.expression.name.text === "filter" &&
-    expression.arguments.length === 1
-  ) {
-    const callback = unwrapExpression(expression.arguments[0]);
-    if (ts.isIdentifier(callback) && callback.text === "Boolean") {
-      const sourceElements = resolveExactClassArrayElements(
-        expression.expression.expression,
+    const boundExpression = resolveBoundExpression(expression, context);
+    if (boundExpression) {
+      return resolveExactClassArrayElements(
+        boundExpression,
         context,
+        nextExactClassArrayResolutionState(state),
       );
-      if (!sourceElements) {
-        return undefined;
-      }
+    }
 
-      const filteredElements: ts.Expression[] = [];
-      for (const element of sourceElements) {
-        const isTruthy = resolveExactTruthyExpression(element, context);
-        if (isTruthy === false) {
-          continue;
+    if (ts.isArrayLiteralExpression(expression)) {
+      const elements: ts.Expression[] = [];
+      for (const element of expression.elements) {
+        if (ts.isOmittedExpression(element) || ts.isSpreadElement(element)) {
+          return undefined;
         }
 
-        filteredElements.push(element);
+        elements.push(element);
       }
 
-      return filteredElements;
+      return elements;
     }
-  }
 
-  if (
-    ts.isParenthesizedExpression(expression) ||
-    ts.isAsExpression(expression) ||
-    ts.isSatisfiesExpression(expression)
-  ) {
-    return resolveExactClassArrayElements(expression.expression, context);
-  }
+    if (
+      ts.isCallExpression(expression) &&
+      ts.isPropertyAccessExpression(expression.expression) &&
+      expression.expression.name.text === "filter" &&
+      expression.arguments.length === 1
+    ) {
+      const callback = unwrapExpression(expression.arguments[0]);
+      if (ts.isIdentifier(callback) && callback.text === "Boolean") {
+        const sourceElements = resolveExactClassArrayElements(
+          expression.expression.expression,
+          context,
+          nextExactClassArrayResolutionState(state),
+        );
+        if (!sourceElements) {
+          return undefined;
+        }
 
-  return undefined;
+        const filteredElements: ts.Expression[] = [];
+        for (const element of sourceElements) {
+          const isTruthy = resolveExactTruthyExpression(element, context);
+          if (isTruthy === false) {
+            continue;
+          }
+
+          filteredElements.push(element);
+        }
+
+        return filteredElements;
+      }
+    }
+
+    if (
+      ts.isParenthesizedExpression(expression) ||
+      ts.isAsExpression(expression) ||
+      ts.isSatisfiesExpression(expression)
+    ) {
+      return resolveExactClassArrayElements(
+        expression.expression,
+        context,
+        nextExactClassArrayResolutionState(state),
+      );
+    }
+
+    return undefined;
+  } finally {
+    state.activeExpressions.delete(expressionKey);
+  }
 }
 
 function summarizeArrayCallbackBody(body: ts.ConciseBody): ts.Expression | undefined {
@@ -428,4 +525,24 @@ function buildArrayCallbackContext(input: {
     ...input.context,
     expressionBindings: mergeExpressionBindings(input.context.expressionBindings, callbackBindings),
   };
+}
+
+function nextClassNameResolutionState(state: ClassNameResolutionState): ClassNameResolutionState {
+  return {
+    activeExpressions: state.activeExpressions,
+    depth: state.depth + 1,
+  };
+}
+
+function nextExactClassArrayResolutionState(
+  state: ExactClassArrayResolutionState,
+): ExactClassArrayResolutionState {
+  return {
+    activeExpressions: state.activeExpressions,
+    depth: state.depth + 1,
+  };
+}
+
+function getExpressionResolutionKey(expression: ts.Expression, context: BuildContext): string {
+  return `${context.filePath}:${expression.pos}:${expression.end}:${expression.kind}`;
 }
