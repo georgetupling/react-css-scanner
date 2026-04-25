@@ -122,6 +122,7 @@ function summarizeClassAttribute(
         sourceAnchor,
         sourceText,
         value: summary.value,
+        includeTraces: context.includeTraces,
       }),
     };
   }

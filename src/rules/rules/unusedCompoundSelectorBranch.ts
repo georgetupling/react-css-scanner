@@ -60,10 +60,13 @@ function runUnusedCompoundSelectorBranchRule(context: RuleContext): UnresolvedFi
             id: usefulBranch.id,
           })),
         ],
-        traces: buildUnusedBranchTraces({
-          branch,
-          usefulBranches,
-        }),
+        traces:
+          context.includeTraces === false
+            ? []
+            : buildUnusedBranchTraces({
+                branch,
+                usefulBranches,
+              }),
         data: {
           selectorText: branch.selectorText,
           selectorListText: branch.selectorListText,

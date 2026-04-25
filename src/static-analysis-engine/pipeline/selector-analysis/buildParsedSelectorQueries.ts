@@ -12,31 +12,37 @@ const UNSUPPORTED_SELECTOR_REASON =
 
 export function buildParsedSelectorQueries(
   selectorQueries: ExtractedSelectorQuery[],
+  options: { includeTraces?: boolean } = {},
 ): ParsedSelectorQuery[] {
+  const includeTraces = options.includeTraces ?? true;
   return selectorQueries.map((selectorQuery) => {
     const normalizedSelectorText = selectorQuery.selectorText.trim().replace(/\s+/g, " ");
     const parsedBranches = parseSelectorBranches(normalizedSelectorText);
     const normalizedSelector =
       parsedBranches.length === 1
-        ? projectToNormalizedSelector(parsedBranches[0])
+        ? projectToNormalizedSelector(parsedBranches[0], { includeTraces })
         : {
             kind: "unsupported" as const,
             reason: UNSUPPORTED_SELECTOR_REASON,
-            traces: [
-              {
-                traceId: "selector-parsing:normalized-selector:multiple-branches",
-                category: "selector-parsing" as const,
-                summary:
-                  "could not normalize selector because comma-separated or multi-branch selectors are not yet supported for bounded selector analysis",
-                children: [],
-                metadata: {
-                  branchCount: parsedBranches.length,
-                },
-              },
-            ],
+            traces: includeTraces
+              ? [
+                  {
+                    traceId: "selector-parsing:normalized-selector:multiple-branches",
+                    category: "selector-parsing" as const,
+                    summary:
+                      "could not normalize selector because comma-separated or multi-branch selectors are not yet supported for bounded selector analysis",
+                    children: [],
+                    metadata: {
+                      branchCount: parsedBranches.length,
+                    },
+                  },
+                ]
+              : [],
           };
-    const constraint = projectToSelectorConstraint(normalizedSelector);
-    const parseTraces = collectSelectorParseTraces(normalizedSelector, constraint);
+    const constraint = projectToSelectorConstraint(normalizedSelector, { includeTraces });
+    const parseTraces = includeTraces
+      ? collectSelectorParseTraces(normalizedSelector, constraint)
+      : [];
 
     return {
       selectorText: selectorQuery.selectorText,

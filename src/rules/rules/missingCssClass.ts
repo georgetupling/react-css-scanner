@@ -41,10 +41,13 @@ function runMissingCssClassRule(context: RuleContext): UnresolvedFinding[] {
             id: reference.sourceFileId,
           },
         ],
-        traces: buildMissingClassTraces({
-          reference,
-          className,
-        }),
+        traces:
+          context.includeTraces === false
+            ? []
+            : buildMissingClassTraces({
+                reference,
+                className,
+              }),
         data: {
           className,
           rawExpressionText: reference.rawExpressionText,

@@ -42,11 +42,14 @@ function runMissingCssModuleClassRule(context: RuleContext): UnresolvedFinding[]
           id: cssModuleImport.stylesheetId,
         },
       ],
-      traces: buildMissingCssModuleClassTraces({
-        reference,
-        cssModuleImport,
-        match,
-      }),
+      traces:
+        context.includeTraces === false
+          ? []
+          : buildMissingCssModuleClassTraces({
+              reference,
+              cssModuleImport,
+              match,
+            }),
       data: {
         memberName: reference.memberName,
         rawExpressionText: reference.rawExpressionText,

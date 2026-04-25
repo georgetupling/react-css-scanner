@@ -7,7 +7,11 @@ import type {
   RenderSubtree,
 } from "../render-ir/types.js";
 
-export function buildRenderGraph(input: { renderSubtrees: RenderSubtree[] }): RenderGraph {
+export function buildRenderGraph(input: {
+  renderSubtrees: RenderSubtree[];
+  includeTraces?: boolean;
+}): RenderGraph {
+  const includeTraces = input.includeTraces ?? true;
   const nodes = input.renderSubtrees
     .filter((renderSubtree) => renderSubtree.componentName)
     .map<RenderGraphNode>((renderSubtree) => ({
@@ -25,6 +29,7 @@ export function buildRenderGraph(input: { renderSubtrees: RenderSubtree[] }): Re
         renderSubtree,
         fromComponentName: renderSubtree.componentName ?? "",
         fromFilePath: normalizeProjectPath(renderSubtree.sourceAnchor.filePath),
+        includeTraces,
       }),
     )
     .sort(compareEdges);
@@ -36,6 +41,7 @@ function collectRenderEdgesFromSubtree(input: {
   renderSubtree: RenderSubtree;
   fromComponentName: string;
   fromFilePath: string;
+  includeTraces: boolean;
 }): RenderGraphEdge[] {
   const edges: RenderGraphEdge[] = [];
 
@@ -52,28 +58,30 @@ function collectRenderEdgesFromSubtree(input: {
         resolution: "resolved",
         traversal: "render-ir",
         renderPath,
-        traces: [
-          createRenderGraphTrace({
-            traceId: `render-graph:edge:${input.fromFilePath}:${input.fromComponentName}:${expansion.componentName}:${renderPath}:resolved`,
-            summary: summarizeRenderEdge({
-              fromComponentName: input.fromComponentName,
-              toComponentName: expansion.componentName,
-              resolution: "resolved",
-              renderPath,
-            }),
-            anchor: normalizeAnchor(expansion.sourceAnchor),
-            children: expansion.traces,
-            metadata: {
-              fromComponentName: input.fromComponentName,
-              fromFilePath: input.fromFilePath,
-              toComponentName: expansion.componentName,
-              toFilePath: normalizeProjectPath(expansion.filePath),
-              resolution: "resolved",
-              renderPath,
-              traversal: "render-ir",
-            },
-          }),
-        ],
+        traces: input.includeTraces
+          ? [
+              createRenderGraphTrace({
+                traceId: `render-graph:edge:${input.fromFilePath}:${input.fromComponentName}:${expansion.componentName}:${renderPath}:resolved`,
+                summary: summarizeRenderEdge({
+                  fromComponentName: input.fromComponentName,
+                  toComponentName: expansion.componentName,
+                  resolution: "resolved",
+                  renderPath,
+                }),
+                anchor: normalizeAnchor(expansion.sourceAnchor),
+                children: expansion.traces,
+                metadata: {
+                  fromComponentName: input.fromComponentName,
+                  fromFilePath: input.fromFilePath,
+                  toComponentName: expansion.componentName,
+                  toFilePath: normalizeProjectPath(expansion.filePath),
+                  resolution: "resolved",
+                  renderPath,
+                  traversal: "render-ir",
+                },
+              }),
+            ]
+          : [],
       });
       return;
     }
@@ -91,6 +99,7 @@ function buildUnresolvedRenderEdge(input: {
   renderSubtree: RenderSubtree;
   fromComponentName: string;
   fromFilePath: string;
+  includeTraces: boolean;
 }): RenderGraphEdge {
   const sourceAnchor = normalizeAnchor(input.node.sourceAnchor);
 
@@ -102,28 +111,30 @@ function buildUnresolvedRenderEdge(input: {
     resolution: "unresolved",
     traversal: "render-ir",
     renderPath: "unknown",
-    traces: [
-      createRenderGraphTrace({
-        traceId: `render-graph:edge:${input.fromFilePath}:${input.fromComponentName}:${input.node.componentName}:unknown:unresolved`,
-        summary: summarizeRenderEdge({
-          fromComponentName: input.fromComponentName,
-          toComponentName: input.node.componentName,
-          resolution: "unresolved",
-          renderPath: "unknown",
-        }),
-        anchor: sourceAnchor,
-        children: input.node.traces ?? [],
-        metadata: {
-          fromComponentName: input.fromComponentName,
-          fromFilePath: input.fromFilePath,
-          toComponentName: input.node.componentName,
-          resolution: "unresolved",
-          renderPath: "unknown",
-          traversal: "render-ir",
-          reason: input.node.reason,
-        },
-      }),
-    ],
+    traces: input.includeTraces
+      ? [
+          createRenderGraphTrace({
+            traceId: `render-graph:edge:${input.fromFilePath}:${input.fromComponentName}:${input.node.componentName}:unknown:unresolved`,
+            summary: summarizeRenderEdge({
+              fromComponentName: input.fromComponentName,
+              toComponentName: input.node.componentName,
+              resolution: "unresolved",
+              renderPath: "unknown",
+            }),
+            anchor: sourceAnchor,
+            children: input.node.traces ?? [],
+            metadata: {
+              fromComponentName: input.fromComponentName,
+              fromFilePath: input.fromFilePath,
+              toComponentName: input.node.componentName,
+              resolution: "unresolved",
+              renderPath: "unknown",
+              traversal: "render-ir",
+              reason: input.node.reason,
+            },
+          }),
+        ]
+      : [],
   };
 }
 

@@ -45,15 +45,21 @@ import type { AnalysisTrace } from "../../types/analysis.js";
 import type { SourceAnchor } from "../../types/core.js";
 
 export function buildProjectAnalysis(input: ProjectAnalysisBuildInput): ProjectAnalysis {
+  const includeTraces = input.includeTraces ?? true;
   const indexes = createEmptyIndexes();
   const sourceFiles = buildSourceFiles(input, indexes);
   const components = buildComponents(input.renderGraph.nodes, indexes);
   const renderSubtrees = buildRenderSubtrees(input.renderSubtrees, indexes);
   const stylesheets = buildStylesheets(input, indexes);
   const classDefinitions = buildClassDefinitions(input, stylesheets, indexes);
-  const classReferences = buildClassReferences(renderSubtrees, indexes);
-  const unsupportedClassReferences = buildUnsupportedClassReferences(input, indexes);
-  const selectorQueries = buildSelectorQueries(input.selectorQueryResults, stylesheets, indexes);
+  const classReferences = buildClassReferences(renderSubtrees, indexes, includeTraces);
+  const unsupportedClassReferences = buildUnsupportedClassReferences(input, indexes, includeTraces);
+  const selectorQueries = buildSelectorQueries(
+    input.selectorQueryResults,
+    stylesheets,
+    indexes,
+    includeTraces,
+  );
   const selectorBranches = buildSelectorBranches(selectorQueries);
   const cssModuleImports = buildCssModuleImports(input, indexes);
   const {
@@ -65,6 +71,7 @@ export function buildProjectAnalysis(input: ProjectAnalysisBuildInput): ProjectA
     projectInput: input,
     imports: cssModuleImports,
     indexes,
+    includeTraces,
   });
   indexEntities({
     sourceFiles,
@@ -82,22 +89,25 @@ export function buildProjectAnalysis(input: ProjectAnalysisBuildInput): ProjectA
     cssModuleReferenceDiagnostics,
     indexes,
   });
-  const stylesheetReachability = buildStylesheetReachability(input, indexes);
+  const stylesheetReachability = buildStylesheetReachability(input, indexes, includeTraces);
   const referenceMatches = buildReferenceMatches({
     references: classReferences,
     definitions: classDefinitions,
     reachability: stylesheetReachability,
     indexes,
+    includeTraces,
   });
   const providerClassSatisfactions = buildProviderClassSatisfactions({
     references: classReferences,
     input,
+    includeTraces,
   });
-  const selectorMatches = buildSelectorMatches(selectorQueries);
+  const selectorMatches = buildSelectorMatches(selectorQueries, includeTraces);
   const cssModuleMemberMatches = buildCssModuleMemberMatches({
     references: cssModuleMemberReferences,
     indexes,
     localsConvention: input.cssModules.options.localsConvention,
+    includeTraces,
   });
   const classOwnership = buildClassOwnership({
     input,
@@ -107,6 +117,7 @@ export function buildProjectAnalysis(input: ProjectAnalysisBuildInput): ProjectA
     stylesheets,
     referenceMatches,
     indexes,
+    includeTraces,
   });
 
   indexRelations({
@@ -148,7 +159,7 @@ export function buildProjectAnalysis(input: ProjectAnalysisBuildInput): ProjectA
     },
     relations: {
       moduleImports: buildModuleImports(input, indexes),
-      componentRenders: buildComponentRenders(input.renderGraph.edges, indexes),
+      componentRenders: buildComponentRenders(input.renderGraph.edges, indexes, includeTraces),
       stylesheetReachability,
       referenceMatches,
       selectorMatches,
@@ -308,6 +319,7 @@ function buildClassDefinitions(
 function buildClassReferences(
   renderSubtrees: RenderSubtreeAnalysis[],
   indexes: ProjectAnalysisIndexes,
+  includeTraces: boolean,
 ): ClassReferenceAnalysis[] {
   const classExpressions = deduplicateRenderClassExpressions(
     renderSubtrees.flatMap((renderSubtree) =>
@@ -337,7 +349,7 @@ function buildClassReferences(
       possibleClassNames: [...classExpression.classes.possible],
       unknownDynamic: classExpression.classes.unknownDynamic,
       confidence: getReferenceConfidence(classExpression),
-      traces: buildClassReferenceTraces(entry),
+      traces: includeTraces ? buildClassReferenceTraces(entry) : [],
       sourceSummary: classExpression,
     };
 
@@ -357,6 +369,7 @@ function buildClassReferences(
 function buildUnsupportedClassReferences(
   input: ProjectAnalysisBuildInput,
   indexes: ProjectAnalysisIndexes,
+  includeTraces: boolean,
 ): UnsupportedClassReferenceAnalysis[] {
   return input.unsupportedClassReferences
     .map((diagnostic, index) => {
@@ -371,7 +384,7 @@ function buildUnsupportedClassReferences(
         location,
         rawExpressionText: diagnostic.rawExpressionText,
         reason: diagnostic.reason,
-        traces: [...diagnostic.traces],
+        traces: includeTraces ? [...diagnostic.traces] : [],
         sourceDiagnostic: diagnostic,
       };
     })
@@ -418,6 +431,7 @@ function buildCssModuleMemberReferences(input: {
   projectInput: ProjectAnalysisBuildInput;
   imports: CssModuleImportAnalysis[];
   indexes: ProjectAnalysisIndexes;
+  includeTraces: boolean;
 }): {
   aliases: CssModuleAliasAnalysis[];
   destructuredBindings: CssModuleDestructuredBindingAnalysis[];
@@ -455,7 +469,7 @@ function buildCssModuleMemberReferences(input: {
           aliasName: alias.aliasName,
           location: normalizeAnchor(alias.location),
           rawExpressionText: alias.rawExpressionText,
-          traces: [...alias.traces],
+          traces: input.includeTraces ? [...alias.traces] : [],
         };
       })
       .filter((alias): alias is CssModuleAliasAnalysis => Boolean(alias))
@@ -484,7 +498,7 @@ function buildCssModuleMemberReferences(input: {
           bindingName: binding.bindingName,
           location: normalizeAnchor(binding.location),
           rawExpressionText: binding.rawExpressionText,
-          traces: [...binding.traces],
+          traces: input.includeTraces ? [...binding.traces] : [],
         };
       })
       .filter((binding): binding is CssModuleDestructuredBindingAnalysis => Boolean(binding))
@@ -512,7 +526,7 @@ function buildCssModuleMemberReferences(input: {
           accessKind: reference.accessKind,
           location: normalizeAnchor(reference.location),
           rawExpressionText: reference.rawExpressionText,
-          traces: [...reference.traces],
+          traces: input.includeTraces ? [...reference.traces] : [],
         };
       })
       .filter((reference): reference is CssModuleMemberReferenceAnalysis => Boolean(reference))
@@ -535,7 +549,7 @@ function buildCssModuleMemberReferences(input: {
           reason: diagnostic.reason,
           location: normalizeAnchor(diagnostic.location),
           rawExpressionText: diagnostic.rawExpressionText,
-          traces: [...diagnostic.traces],
+          traces: input.includeTraces ? [...diagnostic.traces] : [],
         };
       })
       .filter((diagnostic): diagnostic is CssModuleReferenceDiagnosticAnalysis =>
@@ -723,6 +737,7 @@ function buildSelectorQueries(
   selectorQueryResults: SelectorQueryResult[],
   stylesheets: StylesheetAnalysis[],
   indexes: ProjectAnalysisIndexes,
+  includeTraces: boolean,
 ): SelectorQueryAnalysis[] {
   const stylesheetById = new Map(stylesheets.map((stylesheet) => [stylesheet.id, stylesheet]));
 
@@ -747,7 +762,7 @@ function buildSelectorQueries(
       outcome: selectorQueryResult.outcome,
       status: selectorQueryResult.status,
       confidence: selectorQueryResult.confidence,
-      traces: [...selectorQueryResult.decision.traces],
+      traces: includeTraces ? [...selectorQueryResult.decision.traces] : [],
       sourceResult: selectorQueryResult,
     };
 
@@ -802,6 +817,7 @@ function buildSelectorBranches(selectorQueries: SelectorQueryAnalysis[]): Select
 function buildStylesheetReachability(
   input: ProjectAnalysisBuildInput,
   indexes: ProjectAnalysisIndexes,
+  includeTraces: boolean,
 ): StylesheetReachabilityRelation[] {
   const relations: StylesheetReachabilityRelation[] = [];
 
@@ -819,7 +835,7 @@ function buildStylesheetReachability(
         availability: stylesheet.availability,
         contexts: [],
         reasons: [...stylesheet.reasons],
-        traces: [...stylesheet.traces],
+        traces: includeTraces ? [...stylesheet.traces] : [],
       });
       continue;
     }
@@ -834,7 +850,7 @@ function buildStylesheetReachability(
         availability: contextRecord.availability,
         contexts: [contextRecord],
         reasons: [...contextRecord.reasons],
-        traces: [...contextRecord.traces],
+        traces: includeTraces ? [...contextRecord.traces] : [],
       };
 
       relations.push(relation);
@@ -864,6 +880,7 @@ function buildReferenceMatches(input: {
   definitions: ClassDefinitionAnalysis[];
   reachability: StylesheetReachabilityRelation[];
   indexes: ProjectAnalysisIndexes;
+  includeTraces: boolean;
 }): ClassReferenceMatchRelation[] {
   const reachabilityByStylesheetAndSource = new Map<string, StylesheetReachabilityRelation[]>();
   const reachabilityByStylesheet = new Map<ProjectAnalysisId, StylesheetReachabilityRelation[]>();
@@ -927,7 +944,9 @@ function buildReferenceMatches(input: {
             reachability.availability === "unknown"
               ? [`class "${className}" is defined in a stylesheet reachable from this reference`]
               : [`class "${className}" is defined, but the defining stylesheet is not reachable`],
-          traces: mergeTraces([...reference.traces, ...reachability.traces]),
+          traces: input.includeTraces
+            ? mergeTraces([...reference.traces, ...reachability.traces])
+            : [],
         });
       }
     }
@@ -939,6 +958,7 @@ function buildReferenceMatches(input: {
 function buildProviderClassSatisfactions(input: {
   references: ClassReferenceAnalysis[];
   input: ProjectAnalysisBuildInput;
+  includeTraces: boolean;
 }): ProviderClassSatisfactionRelation[] {
   const relations: ProviderClassSatisfactionRelation[] = [];
 
@@ -961,7 +981,7 @@ function buildProviderClassSatisfactions(input: {
             : "possible",
           provider: provider.provider,
           reasons: [`class "${className}" is declared by active external CSS provider`],
-          traces: [...reference.traces],
+          traces: input.includeTraces ? [...reference.traces] : [],
         });
       }
     }
@@ -970,7 +990,10 @@ function buildProviderClassSatisfactions(input: {
   return relations.sort(compareById);
 }
 
-function buildSelectorMatches(selectorQueries: SelectorQueryAnalysis[]): SelectorMatchRelation[] {
+function buildSelectorMatches(
+  selectorQueries: SelectorQueryAnalysis[],
+  includeTraces: boolean,
+): SelectorMatchRelation[] {
   return selectorQueries
     .filter((selectorQuery) => selectorQuery.sourceResult.reachability?.kind === "css-source")
     .map((selectorQuery) => {
@@ -988,11 +1011,13 @@ function buildSelectorMatches(selectorQueries: SelectorQueryAnalysis[]): Selecto
         contextCount: reachability?.contexts.length ?? 0,
         matchedContextCount: reachability?.matchedContexts?.length ?? 0,
         reasons: reachability?.reasons ?? selectorQuery.sourceResult.reasons,
-        traces: mergeTraces([
-          ...selectorQuery.traces,
-          ...(reachability?.contexts.flatMap((context) => context.traces) ?? []),
-          ...(reachability?.matchedContexts?.flatMap((context) => context.traces) ?? []),
-        ]),
+        traces: includeTraces
+          ? mergeTraces([
+              ...selectorQuery.traces,
+              ...(reachability?.contexts.flatMap((context) => context.traces) ?? []),
+              ...(reachability?.matchedContexts?.flatMap((context) => context.traces) ?? []),
+            ])
+          : [],
       };
     })
     .sort(compareById);
@@ -1006,6 +1031,7 @@ function buildClassOwnership(input: {
   stylesheets: StylesheetAnalysis[];
   referenceMatches: ClassReferenceMatchRelation[];
   indexes: ProjectAnalysisIndexes;
+  includeTraces: boolean;
 }): ClassOwnershipAnalysis[] {
   const referencesById = new Map(input.references.map((reference) => [reference.id, reference]));
   const componentsById = new Map(input.components.map((component) => [component.id, component]));
@@ -1038,6 +1064,7 @@ function buildClassOwnership(input: {
         consumerSummary,
         componentsById,
         importerComponents: importerComponentsByStylesheetId.get(definition.stylesheetId) ?? [],
+        includeTraces: input.includeTraces,
       });
 
       return {
@@ -1049,12 +1076,14 @@ function buildClassOwnership(input: {
         ownerCandidates,
         evidenceKind: getOwnershipEvidenceKind(ownerCandidates, consumerSummary),
         confidence: getOwnershipConfidence(ownerCandidates),
-        traces: buildClassOwnershipTraces({
-          definition,
-          stylesheet,
-          consumerSummary,
-          ownerCandidates,
-        }),
+        traces: input.includeTraces
+          ? buildClassOwnershipTraces({
+              definition,
+              stylesheet,
+              consumerSummary,
+              ownerCandidates,
+            })
+          : [],
       };
     })
     .sort(compareById);
@@ -1166,6 +1195,7 @@ function buildOwnerCandidates(input: {
   consumerSummary: ClassOwnershipAnalysis["consumerSummary"];
   componentsById: Map<ProjectAnalysisId, ComponentAnalysis>;
   importerComponents: ComponentAnalysis[];
+  includeTraces: boolean;
 }): OwnerCandidate[] {
   const candidates: OwnerCandidate[] = [];
 
@@ -1178,6 +1208,7 @@ function buildOwnerCandidates(input: {
         reasons: ["single-importing-component"],
         confidence: "high",
         summary: `stylesheet for class "${input.definition.className}" is imported by a single component`,
+        includeTraces: input.includeTraces,
       }),
     );
   }
@@ -1192,6 +1223,7 @@ function buildOwnerCandidates(input: {
           reasons: ["single-consuming-component"],
           confidence: "medium",
           summary: `class "${input.definition.className}" is consumed by a single component`,
+          includeTraces: input.includeTraces,
         }),
       );
     }
@@ -1200,18 +1232,20 @@ function buildOwnerCandidates(input: {
       kind: "unknown",
       confidence: "low",
       reasons: ["multi-consumer"],
-      traces: [
-        {
-          traceId: `ownership:multi-consumer:${input.definition.id}`,
-          category: "rule-evaluation",
-          summary: `class "${input.definition.className}" is consumed by multiple components`,
-          children: [],
-          metadata: {
-            classDefinitionId: input.definition.id,
-            consumerComponentIds: input.consumerSummary.consumerComponentIds,
-          },
-        },
-      ],
+      traces: input.includeTraces
+        ? [
+            {
+              traceId: `ownership:multi-consumer:${input.definition.id}`,
+              category: "rule-evaluation",
+              summary: `class "${input.definition.className}" is consumed by multiple components`,
+              children: [],
+              metadata: {
+                classDefinitionId: input.definition.id,
+                consumerComponentIds: input.consumerSummary.consumerComponentIds,
+              },
+            },
+          ]
+        : [],
     });
   }
 
@@ -1224,6 +1258,7 @@ function createComponentOwnerCandidate(input: {
   reasons: OwnerCandidateReason[];
   confidence: "low" | "medium" | "high";
   summary: string;
+  includeTraces: boolean;
 }): OwnerCandidate {
   const conventionReasons = getPathConventionReasons({
     componentFilePath: input.component.filePath,
@@ -1238,22 +1273,24 @@ function createComponentOwnerCandidate(input: {
     path: input.component.filePath,
     confidence: input.confidence,
     reasons,
-    traces: [
-      {
-        traceId: `ownership:component-candidate:${input.component.id}:${stableHash(reasons.join("|"))}`,
-        category: "rule-evaluation",
-        summary: input.summary,
-        anchor: input.component.location,
-        children: [],
-        metadata: {
-          componentId: input.component.id,
-          componentName: input.component.componentName,
-          componentFilePath: input.component.filePath,
-          stylesheetFilePath: input.stylesheet?.filePath,
-          reasons,
-        },
-      },
-    ],
+    traces: input.includeTraces
+      ? [
+          {
+            traceId: `ownership:component-candidate:${input.component.id}:${stableHash(reasons.join("|"))}`,
+            category: "rule-evaluation",
+            summary: input.summary,
+            anchor: input.component.location,
+            children: [],
+            metadata: {
+              componentId: input.component.id,
+              componentName: input.component.componentName,
+              componentFilePath: input.component.filePath,
+              stylesheetFilePath: input.stylesheet?.filePath,
+              reasons,
+            },
+          },
+        ]
+      : [],
   };
 }
 
@@ -1393,6 +1430,7 @@ function buildCssModuleMemberMatches(input: {
   references: CssModuleMemberReferenceAnalysis[];
   indexes: ProjectAnalysisIndexes;
   localsConvention: ProjectAnalysisBuildInput["cssModules"]["options"]["localsConvention"];
+  includeTraces: boolean;
 }): CssModuleMemberMatchRelation[] {
   const matches: CssModuleMemberMatchRelation[] = [];
 
@@ -1423,7 +1461,7 @@ function buildCssModuleMemberMatches(input: {
         reasons: [
           `CSS Module member "${reference.memberName}" matched exported class "${originalClassName}"`,
         ],
-        traces: mergeTraces(reference.traces),
+        traces: input.includeTraces ? mergeTraces(reference.traces) : [],
       });
       continue;
     }
@@ -1437,7 +1475,7 @@ function buildCssModuleMemberMatches(input: {
       exportName: reference.memberName,
       status: "missing",
       reasons: [`CSS Module member "${reference.memberName}" has no exported class`],
-      traces: mergeTraces(reference.traces),
+      traces: input.includeTraces ? mergeTraces(reference.traces) : [],
     });
   }
 
@@ -1696,6 +1734,7 @@ function buildModuleImports(
 function buildComponentRenders(
   edges: RenderGraphEdge[],
   indexes: ProjectAnalysisIndexes,
+  includeTraces: boolean,
 ): ComponentRenderRelation[] {
   const relations: ComponentRenderRelation[] = [];
 
@@ -1719,7 +1758,7 @@ function buildComponentRenders(
       renderPath: edge.renderPath,
       resolution: edge.resolution,
       location: normalizeAnchor(edge.sourceAnchor),
-      traces: [...edge.traces],
+      traces: includeTraces ? [...edge.traces] : [],
     });
   }
 

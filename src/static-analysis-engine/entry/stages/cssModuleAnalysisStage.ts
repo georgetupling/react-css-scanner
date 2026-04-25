@@ -10,6 +10,7 @@ export function runCssModuleAnalysisStage(input: {
   moduleGraph: ModuleGraph;
   cssFiles: ExperimentalCssFileAnalysis[];
   options?: CssModuleAnalysisOptions;
+  includeTraces?: boolean;
 }): CssModuleAnalysisStageResult {
   return {
     cssModules: analyzeCssModules(input),

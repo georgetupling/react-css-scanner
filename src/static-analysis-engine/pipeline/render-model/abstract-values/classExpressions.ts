@@ -153,7 +153,12 @@ export function buildClassExpressionTraces(input: {
   sourceAnchor: SourceAnchor;
   sourceText: string;
   value: AbstractValue;
+  includeTraces?: boolean;
 }): AnalysisTrace[] {
+  if (input.includeTraces === false) {
+    return [];
+  }
+
   return [
     {
       traceId: `value-evaluation:class-expression:${input.sourceAnchor.filePath}:${input.sourceAnchor.startLine}:${input.sourceAnchor.startColumn}`,

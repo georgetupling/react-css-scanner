@@ -19,6 +19,7 @@ export function runProjectAnalysisStage(input: {
   renderSubtrees: RenderSubtree[];
   unsupportedClassReferences: UnsupportedClassReferenceDiagnostic[];
   selectorQueryResults: SelectorAnalysisStageResult["selectorQueryResults"];
+  includeTraces?: boolean;
 }): ProjectAnalysisStageResult {
   return {
     projectAnalysis: buildProjectAnalysis(input),

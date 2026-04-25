@@ -22,6 +22,7 @@ export type RenderModelBuildInput = {
     parsedSourceFile: ts.SourceFile;
   }>;
   symbolResolution: ProjectBindingResolution;
+  includeTraces?: boolean;
 };
 
 export type RenderModel = {
@@ -31,6 +32,7 @@ export type RenderModel = {
 };
 
 export function buildRenderModel(input: RenderModelBuildInput): RenderModel {
+  const includeTraces = input.includeTraces ?? true;
   const filePaths = input.parsedFiles.map((parsedFile) => parsedFile.filePath);
   const renderDefinitions = buildProjectRenderDefinitions({
     parsedFiles: input.parsedFiles,
@@ -64,13 +66,16 @@ export function buildRenderModel(input: RenderModelBuildInput): RenderModel {
       renderBindings.importedNamespaceHelperDefinitionsByFilePath,
     importedNamespaceComponentDefinitionsByFilePath:
       componentAvailability.importedNamespaceComponentDefinitionsByFilePath,
+    includeTraces,
   });
   const renderGraph = buildRenderGraph({
     renderSubtrees,
+    includeTraces,
   });
   const unsupportedClassReferences = collectUnsupportedClassReferences({
     parsedFiles: input.parsedFiles,
     renderSubtrees,
+    includeTraces,
   });
 
   return {
@@ -98,6 +103,7 @@ function buildRenderSubtrees(input: {
     string,
     Map<string, Map<string, SameFileComponentDefinition>>
   >;
+  includeTraces: boolean;
 }): RenderSubtree[] {
   return [...input.componentDefinitionsByFilePath.entries()].flatMap(
     ([filePath, componentDefinitions]) =>
@@ -120,6 +126,7 @@ function buildRenderSubtrees(input: {
           input.importedNamespaceHelperDefinitionsByFilePath.get(filePath) ?? new Map(),
         importedNamespaceComponentDefinitions:
           input.importedNamespaceComponentDefinitionsByFilePath.get(filePath) ?? new Map(),
+        includeTraces: input.includeTraces,
       }),
   );
 }

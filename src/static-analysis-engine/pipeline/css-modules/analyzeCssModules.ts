@@ -19,13 +19,16 @@ export function analyzeCssModules(input: {
   moduleGraph: ModuleGraph;
   cssFiles: ExperimentalCssFileAnalysis[];
   options?: CssModuleAnalysisOptions;
+  includeTraces?: boolean;
 }): CssModuleAnalysis {
   const options = normalizeCssModuleAnalysisOptions(input.options);
+  const includeTraces = input.includeTraces ?? true;
   const imports = buildCssModuleImports(input);
   const { aliases, destructuredBindings, memberReferences, diagnostics } =
     buildCssModuleMemberReferences({
       parsedFiles: input.parsedFiles,
       imports,
+      includeTraces,
     });
 
   return {
@@ -102,6 +105,7 @@ function buildCssModuleImports(input: {
 function buildCssModuleMemberReferences(input: {
   parsedFiles: ParsedProjectFile[];
   imports: CssModuleImportRecord[];
+  includeTraces: boolean;
 }): {
   aliases: CssModuleAliasRecord[];
   destructuredBindings: CssModuleDestructuredBindingRecord[];
@@ -127,6 +131,7 @@ function buildCssModuleMemberReferences(input: {
       parsedSourceFile: parsedFile.parsedSourceFile,
       sourceFilePath,
       importsBySourceAndLocalName,
+      includeTraces: input.includeTraces,
     });
     aliases.push(...aliasAnalysis.aliases);
     diagnostics.push(...aliasAnalysis.diagnostics);
@@ -150,6 +155,7 @@ function buildCssModuleMemberReferences(input: {
         parsedSourceFile: parsedFile.parsedSourceFile,
         sourceFilePath,
         importsBySourceAndLocalName: importsBySourceLocalOrAliasName,
+        includeTraces: input.includeTraces,
       });
 
       if (memberAccess?.kind === "reference") {
@@ -163,6 +169,7 @@ function buildCssModuleMemberReferences(input: {
         parsedSourceFile: parsedFile.parsedSourceFile,
         sourceFilePath,
         importsBySourceAndLocalName: importsBySourceLocalOrAliasName,
+        includeTraces: input.includeTraces,
       });
       if (destructuring) {
         destructuredBindings.push(...destructuring.bindings);
@@ -196,6 +203,7 @@ function buildCssModuleAliases(input: {
   parsedSourceFile: ts.SourceFile;
   sourceFilePath: string;
   importsBySourceAndLocalName: Map<string, CssModuleImportRecord>;
+  includeTraces: boolean;
 }): {
   aliases: CssModuleAliasRecord[];
   diagnostics: CssModuleReferenceDiagnosticRecord[];
@@ -224,6 +232,7 @@ function buildCssModuleAliases(input: {
               sourceFilePath: input.sourceFilePath,
               cssModuleImport,
               summary: "CSS Module alias declaration referenced itself and cannot be resolved",
+              includeTraces: input.includeTraces,
             }),
           );
         } else if (!isConstVariableDeclaration(node)) {
@@ -236,6 +245,7 @@ function buildCssModuleAliases(input: {
               cssModuleImport,
               summary:
                 "CSS Module alias declaration used a reassignable binding and cannot be resolved safely",
+              includeTraces: input.includeTraces,
             }),
           );
         } else {
@@ -247,18 +257,20 @@ function buildCssModuleAliases(input: {
             aliasName: node.name.text,
             location,
             rawExpressionText: node.getText(input.parsedSourceFile),
-            traces: [
-              createCssModuleTrace({
-                traceId: `css-module:alias:${location.filePath}:${location.startLine}:${location.startColumn}`,
-                summary: `CSS Module import "${cssModuleImport.localName}" was aliased as "${node.name.text}"`,
-                anchor: location,
-                metadata: {
-                  stylesheetFilePath: cssModuleImport.stylesheetFilePath,
-                  localName: cssModuleImport.localName,
-                  aliasName: node.name.text,
-                },
-              }),
-            ],
+            traces: input.includeTraces
+              ? [
+                  createCssModuleTrace({
+                    traceId: `css-module:alias:${location.filePath}:${location.startLine}:${location.startColumn}`,
+                    summary: `CSS Module import "${cssModuleImport.localName}" was aliased as "${node.name.text}"`,
+                    anchor: location,
+                    metadata: {
+                      stylesheetFilePath: cssModuleImport.stylesheetFilePath,
+                      localName: cssModuleImport.localName,
+                      aliasName: node.name.text,
+                    },
+                  }),
+                ]
+              : [],
           });
         }
       }
@@ -277,6 +289,7 @@ function getCssModuleMemberAccess(input: {
   parsedSourceFile: ts.SourceFile;
   sourceFilePath: string;
   importsBySourceAndLocalName: Map<string, CssModuleImportRecord>;
+  includeTraces: boolean;
 }): CssModuleMemberAccess | undefined {
   if (ts.isPropertyAccessExpression(input.node) && ts.isIdentifier(input.node.expression)) {
     const cssModuleImport = input.importsBySourceAndLocalName.get(
@@ -297,17 +310,19 @@ function getCssModuleMemberAccess(input: {
         accessKind: "property",
         location,
         rawExpressionText: input.node.getText(input.parsedSourceFile),
-        traces: [
-          createCssModuleTrace({
-            traceId: `css-module:member-reference:${location.filePath}:${location.startLine}:${location.startColumn}`,
-            summary: `CSS Module member "${input.node.name.text}" was read from import "${cssModuleImport.localName}"`,
-            anchor: location,
-            metadata: {
-              stylesheetFilePath: cssModuleImport.stylesheetFilePath,
-              memberName: input.node.name.text,
-            },
-          }),
-        ],
+        traces: input.includeTraces
+          ? [
+              createCssModuleTrace({
+                traceId: `css-module:member-reference:${location.filePath}:${location.startLine}:${location.startColumn}`,
+                summary: `CSS Module member "${input.node.name.text}" was read from import "${cssModuleImport.localName}"`,
+                anchor: location,
+                metadata: {
+                  stylesheetFilePath: cssModuleImport.stylesheetFilePath,
+                  memberName: input.node.name.text,
+                },
+              }),
+            ]
+          : [],
       },
     };
   }
@@ -332,17 +347,19 @@ function getCssModuleMemberAccess(input: {
           accessKind: "string-literal-element",
           location,
           rawExpressionText: input.node.getText(input.parsedSourceFile),
-          traces: [
-            createCssModuleTrace({
-              traceId: `css-module:member-reference:${location.filePath}:${location.startLine}:${location.startColumn}`,
-              summary: `CSS Module member "${input.node.argumentExpression.text}" was read from import "${cssModuleImport.localName}"`,
-              anchor: location,
-              metadata: {
-                stylesheetFilePath: cssModuleImport.stylesheetFilePath,
-                memberName: input.node.argumentExpression.text,
-              },
-            }),
-          ],
+          traces: input.includeTraces
+            ? [
+                createCssModuleTrace({
+                  traceId: `css-module:member-reference:${location.filePath}:${location.startLine}:${location.startColumn}`,
+                  summary: `CSS Module member "${input.node.argumentExpression.text}" was read from import "${cssModuleImport.localName}"`,
+                  anchor: location,
+                  metadata: {
+                    stylesheetFilePath: cssModuleImport.stylesheetFilePath,
+                    memberName: input.node.argumentExpression.text,
+                  },
+                }),
+              ]
+            : [],
         },
       };
     }
@@ -356,18 +373,20 @@ function getCssModuleMemberAccess(input: {
         reason: "computed-css-module-member",
         location,
         rawExpressionText: input.node.getText(input.parsedSourceFile),
-        traces: [
-          createCssModuleTrace({
-            traceId: `css-module:diagnostic:computed-member:${location.filePath}:${location.startLine}:${location.startColumn}`,
-            summary:
-              "CSS Module member access used a computed expression that cannot be resolved statically",
-            anchor: location,
-            metadata: {
-              stylesheetFilePath: cssModuleImport.stylesheetFilePath,
-              reason: "computed-css-module-member",
-            },
-          }),
-        ],
+        traces: input.includeTraces
+          ? [
+              createCssModuleTrace({
+                traceId: `css-module:diagnostic:computed-member:${location.filePath}:${location.startLine}:${location.startColumn}`,
+                summary:
+                  "CSS Module member access used a computed expression that cannot be resolved statically",
+                anchor: location,
+                metadata: {
+                  stylesheetFilePath: cssModuleImport.stylesheetFilePath,
+                  reason: "computed-css-module-member",
+                },
+              }),
+            ]
+          : [],
       },
     };
   }
@@ -380,6 +399,7 @@ function getCssModuleDestructuring(input: {
   parsedSourceFile: ts.SourceFile;
   sourceFilePath: string;
   importsBySourceAndLocalName: Map<string, CssModuleImportRecord>;
+  includeTraces: boolean;
 }):
   | {
       bindings: CssModuleDestructuredBindingRecord[];
@@ -418,6 +438,7 @@ function getCssModuleDestructuring(input: {
           cssModuleImport,
           summary:
             "CSS Module destructuring used a rest binding that cannot be resolved statically",
+          includeTraces: input.includeTraces,
         }),
       );
       continue;
@@ -434,6 +455,7 @@ function getCssModuleDestructuring(input: {
           cssModuleImport,
           summary:
             "CSS Module destructuring used a computed member name that cannot be resolved statically",
+          includeTraces: input.includeTraces,
         }),
       );
       continue;
@@ -449,22 +471,27 @@ function getCssModuleDestructuring(input: {
           cssModuleImport,
           summary:
             "CSS Module destructuring used a nested binding pattern that cannot be resolved statically",
+          includeTraces: input.includeTraces,
         }),
       );
       continue;
     }
 
     const location = toSourceAnchor(element, input.parsedSourceFile, input.sourceFilePath);
-    const trace = createCssModuleTrace({
-      traceId: `css-module:destructured-binding:${location.filePath}:${location.startLine}:${location.startColumn}`,
-      summary: `CSS Module member "${memberName.text}" was destructured from import "${cssModuleImport.localName}"`,
-      anchor: location,
-      metadata: {
-        stylesheetFilePath: cssModuleImport.stylesheetFilePath,
-        memberName: memberName.text,
-        bindingName: element.name.text,
-      },
-    });
+    const traces = input.includeTraces
+      ? [
+          createCssModuleTrace({
+            traceId: `css-module:destructured-binding:${location.filePath}:${location.startLine}:${location.startColumn}`,
+            summary: `CSS Module member "${memberName.text}" was destructured from import "${cssModuleImport.localName}"`,
+            anchor: location,
+            metadata: {
+              stylesheetFilePath: cssModuleImport.stylesheetFilePath,
+              memberName: memberName.text,
+              bindingName: element.name.text,
+            },
+          }),
+        ]
+      : [];
     const rawExpressionText = element.getText(input.parsedSourceFile);
 
     bindings.push({
@@ -475,7 +502,7 @@ function getCssModuleDestructuring(input: {
       bindingName: element.name.text,
       location,
       rawExpressionText,
-      traces: [trace],
+      traces,
     });
     references.push({
       sourceFilePath: input.sourceFilePath,
@@ -485,7 +512,7 @@ function getCssModuleDestructuring(input: {
       accessKind: "destructured-binding",
       location,
       rawExpressionText,
-      traces: [trace],
+      traces,
     });
   }
 
@@ -523,6 +550,7 @@ function createCssModuleDestructuringDiagnostic(input: {
   sourceFilePath: string;
   cssModuleImport: CssModuleImportRecord;
   summary: string;
+  includeTraces: boolean;
 }): CssModuleReferenceDiagnosticRecord {
   const location = toSourceAnchor(input.element, input.parsedSourceFile, input.sourceFilePath);
   return {
@@ -532,17 +560,19 @@ function createCssModuleDestructuringDiagnostic(input: {
     reason: input.reason,
     location,
     rawExpressionText: input.element.getText(input.parsedSourceFile),
-    traces: [
-      createCssModuleTrace({
-        traceId: `css-module:diagnostic:${input.reason}:${location.filePath}:${location.startLine}:${location.startColumn}`,
-        summary: input.summary,
-        anchor: location,
-        metadata: {
-          stylesheetFilePath: input.cssModuleImport.stylesheetFilePath,
-          reason: input.reason,
-        },
-      }),
-    ],
+    traces: input.includeTraces
+      ? [
+          createCssModuleTrace({
+            traceId: `css-module:diagnostic:${input.reason}:${location.filePath}:${location.startLine}:${location.startColumn}`,
+            summary: input.summary,
+            anchor: location,
+            metadata: {
+              stylesheetFilePath: input.cssModuleImport.stylesheetFilePath,
+              reason: input.reason,
+            },
+          }),
+        ]
+      : [],
   };
 }
 
@@ -553,6 +583,7 @@ function createCssModuleAliasDiagnostic(input: {
   sourceFilePath: string;
   cssModuleImport: CssModuleImportRecord;
   summary: string;
+  includeTraces: boolean;
 }): CssModuleReferenceDiagnosticRecord {
   const location = toSourceAnchor(input.node, input.parsedSourceFile, input.sourceFilePath);
   return {
@@ -562,17 +593,19 @@ function createCssModuleAliasDiagnostic(input: {
     reason: input.reason,
     location,
     rawExpressionText: input.node.getText(input.parsedSourceFile),
-    traces: [
-      createCssModuleTrace({
-        traceId: `css-module:diagnostic:${input.reason}:${location.filePath}:${location.startLine}:${location.startColumn}`,
-        summary: input.summary,
-        anchor: location,
-        metadata: {
-          stylesheetFilePath: input.cssModuleImport.stylesheetFilePath,
-          reason: input.reason,
-        },
-      }),
-    ],
+    traces: input.includeTraces
+      ? [
+          createCssModuleTrace({
+            traceId: `css-module:diagnostic:${input.reason}:${location.filePath}:${location.startLine}:${location.startColumn}`,
+            summary: input.summary,
+            anchor: location,
+            metadata: {
+              stylesheetFilePath: input.cssModuleImport.stylesheetFilePath,
+              reason: input.reason,
+            },
+          }),
+        ]
+      : [],
   };
 }
 

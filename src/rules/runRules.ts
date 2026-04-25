@@ -14,6 +14,7 @@ export function runRules(context: RuleContext & { config: ScannerConfig }): Rule
       return rule.run(context).map((finding) => ({
         ...finding,
         severity,
+        traces: context.includeTraces === false ? [] : finding.traces,
       }));
     }).sort((left, right) => left.id.localeCompare(right.id)),
   };

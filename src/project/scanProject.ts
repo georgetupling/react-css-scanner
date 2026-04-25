@@ -126,6 +126,7 @@ export async function scanProject(input: ScanProjectInput = {}): Promise<ScanPro
     runRules({
       analysis: engineResult.projectAnalysis,
       config,
+      includeTraces: input.includeTraces ?? true,
     }),
   );
   const failed =

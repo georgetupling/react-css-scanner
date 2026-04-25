@@ -46,11 +46,14 @@ function runUnusedCssModuleClassRule(context: RuleContext): UnresolvedFinding[] 
           id: definition.stylesheetId,
         },
       ],
-      traces: buildUnusedCssModuleClassTraces({
-        context,
-        definition,
-        stylesheetFilePath: stylesheet.filePath,
-      }),
+      traces:
+        context.includeTraces === false
+          ? []
+          : buildUnusedCssModuleClassTraces({
+              context,
+              definition,
+              stylesheetFilePath: stylesheet.filePath,
+            }),
       data: {
         className: definition.className,
         selectorText: definition.selectorText,

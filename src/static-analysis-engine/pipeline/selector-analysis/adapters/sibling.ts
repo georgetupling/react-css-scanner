@@ -18,7 +18,9 @@ export function analyzeSiblingConstraint(input: {
   selectorQuery: ParsedSelectorQuery;
   constraint: SiblingConstraint;
   analysisTargets: SelectorAnalysisTarget[];
+  includeTraces?: boolean;
 }): SelectorQueryResult {
+  const includeTraces = input.includeTraces ?? true;
   let sawUnsupportedDynamicClass = false;
   let sawPossibleMatch = false;
   const matchedTargets: SelectorAnalysisTarget[] = [];
@@ -48,19 +50,23 @@ export function analyzeSiblingConstraint(input: {
           ],
           certainty: "definite",
           dimensions: { structure: "definite" },
-          traces: [
-            {
-              traceId: `selector-match:sibling:${input.constraint.relation}:definite`,
-              category: "selector-match",
-              summary: `found a rendered ${describeRelation(input.constraint.relation)} sibling with class "${input.constraint.rightClassName}" after a sibling with class "${input.constraint.leftClassName}"`,
-              anchor:
-                input.selectorQuery.source.kind === "css-source"
-                  ? input.selectorQuery.source.selectorAnchor
-                  : undefined,
-              children: [],
-            },
-          ],
+          traces: includeTraces
+            ? [
+                {
+                  traceId: `selector-match:sibling:${input.constraint.relation}:definite`,
+                  category: "selector-match",
+                  summary: `found a rendered ${describeRelation(input.constraint.relation)} sibling with class "${input.constraint.rightClassName}" after a sibling with class "${input.constraint.leftClassName}"`,
+                  anchor:
+                    input.selectorQuery.source.kind === "css-source"
+                      ? input.selectorQuery.source.selectorAnchor
+                      : undefined,
+                  children: [],
+                },
+              ]
+            : [],
+          includeTraces,
         }),
+        includeTraces,
       });
     }
 
@@ -87,19 +93,23 @@ export function analyzeSiblingConstraint(input: {
         ],
         certainty: "possible",
         dimensions: { structure: "possible" },
-        traces: [
-          {
-            traceId: `selector-match:sibling:${input.constraint.relation}:possible`,
-            category: "selector-match",
-            summary: `found a plausible ${describeRelation(input.constraint.relation)} sibling match for "${input.constraint.leftClassName}${input.constraint.relation === "adjacent" ? " + " : " ~ "}${input.constraint.rightClassName}" on at least one bounded path`,
-            anchor:
-              input.selectorQuery.source.kind === "css-source"
-                ? input.selectorQuery.source.selectorAnchor
-                : undefined,
-            children: [],
-          },
-        ],
+        traces: includeTraces
+          ? [
+              {
+                traceId: `selector-match:sibling:${input.constraint.relation}:possible`,
+                category: "selector-match",
+                summary: `found a plausible ${describeRelation(input.constraint.relation)} sibling match for "${input.constraint.leftClassName}${input.constraint.relation === "adjacent" ? " + " : " ~ "}${input.constraint.rightClassName}" on at least one bounded path`,
+                anchor:
+                  input.selectorQuery.source.kind === "css-source"
+                    ? input.selectorQuery.source.selectorAnchor
+                    : undefined,
+                children: [],
+              },
+            ]
+          : [],
+        includeTraces,
       }),
+      includeTraces,
     });
   }
 
@@ -113,18 +123,21 @@ export function analyzeSiblingConstraint(input: {
       ],
       certainty: "unknown",
       dimensions: { structure: "unsupported" },
-      traces: [
-        {
-          traceId: `selector-match:sibling:${input.constraint.relation}:unsupported`,
-          category: "selector-match",
-          summary: `encountered unsupported dynamic class construction while checking ${describeRelation(input.constraint.relation)} sibling structure`,
-          anchor:
-            input.selectorQuery.source.kind === "css-source"
-              ? input.selectorQuery.source.selectorAnchor
-              : undefined,
-          children: [],
-        },
-      ],
+      traces: includeTraces
+        ? [
+            {
+              traceId: `selector-match:sibling:${input.constraint.relation}:unsupported`,
+              category: "selector-match",
+              summary: `encountered unsupported dynamic class construction while checking ${describeRelation(input.constraint.relation)} sibling structure`,
+              anchor:
+                input.selectorQuery.source.kind === "css-source"
+                  ? input.selectorQuery.source.selectorAnchor
+                  : undefined,
+              children: [],
+            },
+          ]
+        : [],
+      includeTraces,
     });
   }
 
@@ -137,18 +150,21 @@ export function analyzeSiblingConstraint(input: {
     ],
     certainty: "definite",
     dimensions: { structure: "not-found-under-bounded-analysis" },
-    traces: [
-      {
-        traceId: `selector-match:sibling:${input.constraint.relation}:no-match`,
-        category: "selector-match",
-        summary: `no bounded rendered path satisfied ${describeRelation(input.constraint.relation)} sibling "${input.constraint.leftClassName}" with sibling "${input.constraint.rightClassName}"`,
-        anchor:
-          input.selectorQuery.source.kind === "css-source"
-            ? input.selectorQuery.source.selectorAnchor
-            : undefined,
-        children: [],
-      },
-    ],
+    traces: includeTraces
+      ? [
+          {
+            traceId: `selector-match:sibling:${input.constraint.relation}:no-match`,
+            category: "selector-match",
+            summary: `no bounded rendered path satisfied ${describeRelation(input.constraint.relation)} sibling "${input.constraint.leftClassName}" with sibling "${input.constraint.rightClassName}"`,
+            anchor:
+              input.selectorQuery.source.kind === "css-source"
+                ? input.selectorQuery.source.selectorAnchor
+                : undefined,
+            children: [],
+          },
+        ]
+      : [],
+    includeTraces,
   });
 }
 

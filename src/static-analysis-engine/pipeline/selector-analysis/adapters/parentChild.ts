@@ -21,7 +21,9 @@ export function analyzeParentChildConstraint(input: {
   selectorQuery: ParsedSelectorQuery;
   constraint: ParentChildConstraint;
   analysisTargets: SelectorAnalysisTarget[];
+  includeTraces?: boolean;
 }): SelectorQueryResult {
+  const includeTraces = input.includeTraces ?? true;
   let sawUnsupportedDynamicClass = false;
   let sawPossibleMatch = false;
   const matchedTargets: SelectorAnalysisTarget[] = [];
@@ -55,19 +57,23 @@ export function analyzeParentChildConstraint(input: {
           ],
           certainty: "definite",
           dimensions: { structure: "definite" },
-          traces: [
-            {
-              traceId: "selector-match:parent-child:definite",
-              category: "selector-match",
-              summary: `found a rendered child with class "${input.constraint.childClassName}" directly under a parent with class "${input.constraint.parentClassName}"`,
-              anchor:
-                input.selectorQuery.source.kind === "css-source"
-                  ? input.selectorQuery.source.selectorAnchor
-                  : undefined,
-              children: [],
-            },
-          ],
+          traces: includeTraces
+            ? [
+                {
+                  traceId: "selector-match:parent-child:definite",
+                  category: "selector-match",
+                  summary: `found a rendered child with class "${input.constraint.childClassName}" directly under a parent with class "${input.constraint.parentClassName}"`,
+                  anchor:
+                    input.selectorQuery.source.kind === "css-source"
+                      ? input.selectorQuery.source.selectorAnchor
+                      : undefined,
+                  children: [],
+                },
+              ]
+            : [],
+          includeTraces,
         }),
+        includeTraces,
       });
     }
 
@@ -94,19 +100,23 @@ export function analyzeParentChildConstraint(input: {
         ],
         certainty: "possible",
         dimensions: { structure: "possible" },
-        traces: [
-          {
-            traceId: "selector-match:parent-child:possible",
-            category: "selector-match",
-            summary: `found a plausible direct parent-child match for "${input.constraint.parentClassName} > ${input.constraint.childClassName}" on at least one bounded path`,
-            anchor:
-              input.selectorQuery.source.kind === "css-source"
-                ? input.selectorQuery.source.selectorAnchor
-                : undefined,
-            children: [],
-          },
-        ],
+        traces: includeTraces
+          ? [
+              {
+                traceId: "selector-match:parent-child:possible",
+                category: "selector-match",
+                summary: `found a plausible direct parent-child match for "${input.constraint.parentClassName} > ${input.constraint.childClassName}" on at least one bounded path`,
+                anchor:
+                  input.selectorQuery.source.kind === "css-source"
+                    ? input.selectorQuery.source.selectorAnchor
+                    : undefined,
+                children: [],
+              },
+            ]
+          : [],
+        includeTraces,
       }),
+      includeTraces,
     });
   }
 
@@ -120,19 +130,22 @@ export function analyzeParentChildConstraint(input: {
       ],
       certainty: "unknown",
       dimensions: { structure: "unsupported" },
-      traces: [
-        {
-          traceId: "selector-match:parent-child:unsupported",
-          category: "selector-match",
-          summary:
-            "encountered unsupported dynamic class construction while checking direct parent-child structure",
-          anchor:
-            input.selectorQuery.source.kind === "css-source"
-              ? input.selectorQuery.source.selectorAnchor
-              : undefined,
-          children: [],
-        },
-      ],
+      traces: includeTraces
+        ? [
+            {
+              traceId: "selector-match:parent-child:unsupported",
+              category: "selector-match",
+              summary:
+                "encountered unsupported dynamic class construction while checking direct parent-child structure",
+              anchor:
+                input.selectorQuery.source.kind === "css-source"
+                  ? input.selectorQuery.source.selectorAnchor
+                  : undefined,
+              children: [],
+            },
+          ]
+        : [],
+      includeTraces,
     });
   }
 
@@ -145,18 +158,21 @@ export function analyzeParentChildConstraint(input: {
     ],
     certainty: "definite",
     dimensions: { structure: "not-found-under-bounded-analysis" },
-    traces: [
-      {
-        traceId: "selector-match:parent-child:no-match",
-        category: "selector-match",
-        summary: `no bounded rendered path satisfied parent "${input.constraint.parentClassName}" with direct child "${input.constraint.childClassName}"`,
-        anchor:
-          input.selectorQuery.source.kind === "css-source"
-            ? input.selectorQuery.source.selectorAnchor
-            : undefined,
-        children: [],
-      },
-    ],
+    traces: includeTraces
+      ? [
+          {
+            traceId: "selector-match:parent-child:no-match",
+            category: "selector-match",
+            summary: `no bounded rendered path satisfied parent "${input.constraint.parentClassName}" with direct child "${input.constraint.childClassName}"`,
+            anchor:
+              input.selectorQuery.source.kind === "css-source"
+                ? input.selectorQuery.source.selectorAnchor
+                : undefined,
+            children: [],
+          },
+        ]
+      : [],
+    includeTraces,
   });
 }
 

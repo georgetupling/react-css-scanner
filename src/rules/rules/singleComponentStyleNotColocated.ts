@@ -65,11 +65,14 @@ function runSingleComponentStyleNotColocatedRule(context: RuleContext): Unresolv
           id: stylesheet.id,
         },
       ],
-      traces: buildNotColocatedTraces({
-        ownership,
-        componentName: component.componentName,
-        stylesheetFilePath: stylesheet.filePath,
-      }),
+      traces:
+        context.includeTraces === false
+          ? []
+          : buildNotColocatedTraces({
+              ownership,
+              componentName: component.componentName,
+              stylesheetFilePath: stylesheet.filePath,
+            }),
       data: {
         className: ownership.className,
         componentId: component.id,

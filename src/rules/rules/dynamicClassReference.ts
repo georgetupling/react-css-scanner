@@ -27,7 +27,8 @@ function runDynamicClassReferenceRule(context: RuleContext): UnresolvedFinding[]
           id: reference.sourceFileId,
         },
       ],
-      traces: buildDynamicClassReferenceTraces({ reference }),
+      traces:
+        context.includeTraces === false ? [] : buildDynamicClassReferenceTraces({ reference }),
       data: {
         rawExpressionText: reference.rawExpressionText,
         expressionKind: reference.expressionKind,

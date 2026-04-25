@@ -9,15 +9,17 @@ export function buildSelectorQueryResult(input: {
   certainty: AnalysisCertainty;
   reasons: string[];
   traces: AnalysisTrace[];
+  includeTraces?: boolean;
   dimensions?: AnalysisDecision["dimensions"];
   reachability?: SelectorQueryResult["reachability"];
 }): SelectorQueryResult {
+  const includeTraces = input.includeTraces ?? true;
   const decision: AnalysisDecision = {
     status: input.status,
     certainty: input.certainty,
     dimensions: { ...(input.dimensions ?? {}) },
     reasons: [...input.reasons],
-    traces: [...input.traces],
+    traces: includeTraces ? [...input.traces] : [],
   };
 
   return {

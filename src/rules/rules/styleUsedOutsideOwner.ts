@@ -82,12 +82,15 @@ function runStyleUsedOutsideOwnerRule(context: RuleContext): UnresolvedFinding[]
             id: stylesheet.id,
           },
         ],
-        traces: buildOutsideOwnerTraces({
-          ownership,
-          ownerName: ownerComponent.componentName,
-          consumerName: consumerComponent.componentName,
-          stylesheetFilePath: stylesheet.filePath,
-        }),
+        traces:
+          context.includeTraces === false
+            ? []
+            : buildOutsideOwnerTraces({
+                ownership,
+                ownerName: ownerComponent.componentName,
+                consumerName: consumerComponent.componentName,
+                stylesheetFilePath: stylesheet.filePath,
+              }),
         data: {
           className: ownership.className,
           ownerComponentId: ownerComponent.id,

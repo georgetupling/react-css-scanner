@@ -3,7 +3,6 @@ import { constants } from "node:fs";
 import { access, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { scanProject } from "./project/index.js";
-import type { AnalysisTrace } from "./static-analysis-engine/index.js";
 import type { Finding, RuleSeverity } from "./rules/index.js";
 import type { ScanDiagnostic, ScanProgressEvent, ScanProjectResult } from "./project/index.js";
 import { severityMeetsThreshold } from "./rules/severity.js";
@@ -65,7 +64,7 @@ try {
     configPath: args.configPath,
     onProgress: progressRenderer.onProgress,
     collectPerformance: args.timings,
-    includeTraces: args.focusPaths.length > 0,
+    includeTraces: false,
   });
 } finally {
   progressRenderer.stop();
@@ -646,21 +645,7 @@ function collectFindingPaths(finding: Finding): string[] {
     }
   }
 
-  for (const trace of finding.traces) {
-    collectTracePaths(trace, paths);
-  }
-
   return [...paths];
-}
-
-function collectTracePaths(trace: AnalysisTrace, paths: Set<string>): void {
-  if (trace.anchor) {
-    paths.add(trace.anchor.filePath);
-  }
-
-  for (const child of trace.children) {
-    collectTracePaths(child, paths);
-  }
 }
 
 function extractPathFromEntityId(entityId: string): string | undefined {

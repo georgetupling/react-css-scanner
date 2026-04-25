@@ -8,6 +8,7 @@ import type {
 export function runRenderModelStage(input: {
   parsedFiles: ParsedProjectFile[];
   symbolResolution: SymbolResolutionStageResult;
+  includeTraces?: boolean;
 }): RenderModelStageResult {
   return buildRenderModel(input);
 }

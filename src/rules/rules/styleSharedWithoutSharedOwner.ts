@@ -62,11 +62,14 @@ function runStyleSharedWithoutSharedOwnerRule(context: RuleContext): UnresolvedF
           id: component.id,
         })),
       ],
-      traces: buildSharedWithoutOwnerTraces({
-        ownership,
-        componentNames: consumerComponents.map((component) => component.componentName),
-        stylesheetFilePath: stylesheet.filePath,
-      }),
+      traces:
+        context.includeTraces === false
+          ? []
+          : buildSharedWithoutOwnerTraces({
+              ownership,
+              componentNames: consumerComponents.map((component) => component.componentName),
+              stylesheetFilePath: stylesheet.filePath,
+            }),
       data: {
         className: ownership.className,
         componentIds: consumerComponents.map((component) => component.id),

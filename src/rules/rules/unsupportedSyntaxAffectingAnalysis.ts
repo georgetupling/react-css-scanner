@@ -27,7 +27,8 @@ function runUnsupportedSyntaxAffectingAnalysisRule(context: RuleContext): Unreso
           id: reference.sourceFileId,
         },
       ],
-      traces: buildUnsupportedClassReferenceTraces({ reference }),
+      traces:
+        context.includeTraces === false ? [] : buildUnsupportedClassReferenceTraces({ reference }),
       data: {
         rawExpressionText: reference.rawExpressionText,
         reason: reference.reason,

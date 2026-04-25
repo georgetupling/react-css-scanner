@@ -77,6 +77,27 @@ test("scanProject can collect performance timings", async () => {
   }
 });
 
+test("scanProject can omit analysis traces", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'export function App() { return <main className="missing" />; }\n',
+    )
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      includeTraces: false,
+    });
+
+    assert.ok(result.findings.length > 0);
+    assert.ok(result.findings.every((finding) => finding.traces.length === 0));
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("discoverProjectFiles scans source and CSS under a root directory", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile("src/components/Card.tsx", "export function Card() { return <div />; }\n")

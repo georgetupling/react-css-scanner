@@ -49,7 +49,9 @@ export function buildSameFileRenderSubtrees(input: {
     string,
     Map<string, import("./collection/shared/types.js").SameFileComponentDefinition>
   >;
+  includeTraces?: boolean;
 }): RenderSubtree[] {
+  const includeTraces = input.includeTraces ?? true;
   const componentDefinitions = input.componentDefinitions ?? collectSameFileComponents(input);
   const localComponentsByName = new Map(
     componentDefinitions.map((definition) => [definition.componentName, definition]),
@@ -87,6 +89,7 @@ export function buildSameFileRenderSubtrees(input: {
       propsObjectProperties: new Map(),
       propsObjectSubtreeProperties: new Map(),
       subtreeBindings: new Map(),
+      includeTraces,
     }),
     exported: definition.exported,
     componentName: definition.componentName,
@@ -196,16 +199,18 @@ function buildRenderNode(node: ts.Expression | ts.JsxChild, context: BuildContex
         kind: "unknown",
         sourceAnchor,
         reason: "empty-jsx-expression",
-        traces: [
-          createRenderExpansionTrace({
-            traceId: "render-expansion:unknown:empty-jsx-expression",
-            summary: "encountered an empty JSX expression while building render IR",
-            anchor: sourceAnchor,
-            metadata: {
-              reason: "empty-jsx-expression",
-            },
-          }),
-        ],
+        traces: context.includeTraces
+          ? [
+              createRenderExpansionTrace({
+                traceId: "render-expansion:unknown:empty-jsx-expression",
+                summary: "encountered an empty JSX expression while building render IR",
+                anchor: sourceAnchor,
+                metadata: {
+                  reason: "empty-jsx-expression",
+                },
+              }),
+            ]
+          : [],
       };
     }
 
@@ -223,16 +228,18 @@ function buildRenderNode(node: ts.Expression | ts.JsxChild, context: BuildContex
       kind: "unknown",
       sourceAnchor,
       reason: "jsx-text",
-      traces: [
-        createRenderExpansionTrace({
-          traceId: "render-expansion:unknown:jsx-text",
-          summary: "preserved JSX text as an unknown render node in the current bounded IR",
-          anchor: sourceAnchor,
-          metadata: {
-            reason: "jsx-text",
-          },
-        }),
-      ],
+      traces: context.includeTraces
+        ? [
+            createRenderExpansionTrace({
+              traceId: "render-expansion:unknown:jsx-text",
+              summary: "preserved JSX text as an unknown render node in the current bounded IR",
+              anchor: sourceAnchor,
+              metadata: {
+                reason: "jsx-text",
+              },
+            }),
+          ]
+        : [],
     };
   }
 
@@ -270,17 +277,19 @@ function buildRenderNode(node: ts.Expression | ts.JsxChild, context: BuildContex
         kind: "unknown",
         sourceAnchor,
         reason: helperFailureReason,
-        traces: [
-          createRenderExpansionTrace({
-            traceId: "render-expansion:unknown:helper-call",
-            summary:
-              "could not inline helper-driven render output under the current bounded expansion rules",
-            anchor: sourceAnchor,
-            metadata: {
-              reason: helperFailureReason,
-            },
-          }),
-        ],
+        traces: context.includeTraces
+          ? [
+              createRenderExpansionTrace({
+                traceId: "render-expansion:unknown:helper-call",
+                summary:
+                  "could not inline helper-driven render output under the current bounded expansion rules",
+                anchor: sourceAnchor,
+                metadata: {
+                  reason: helperFailureReason,
+                },
+              }),
+            ]
+          : [],
       };
     }
   }
@@ -290,17 +299,19 @@ function buildRenderNode(node: ts.Expression | ts.JsxChild, context: BuildContex
     kind: "unknown",
     sourceAnchor,
     reason: `unsupported-render-node:${ts.SyntaxKind[node.kind]}`,
-    traces: [
-      createRenderExpansionTrace({
-        traceId: "render-expansion:unknown:unsupported-node",
-        summary:
-          "encountered a render expression shape that is unsupported in the current bounded IR",
-        anchor: sourceAnchor,
-        metadata: {
-          reason: `unsupported-render-node:${ts.SyntaxKind[node.kind]}`,
-        },
-      }),
-    ],
+    traces: context.includeTraces
+      ? [
+          createRenderExpansionTrace({
+            traceId: "render-expansion:unknown:unsupported-node",
+            summary:
+              "encountered a render expression shape that is unsupported in the current bounded IR",
+            anchor: sourceAnchor,
+            metadata: {
+              reason: `unsupported-render-node:${ts.SyntaxKind[node.kind]}`,
+            },
+          }),
+        ]
+      : [],
   };
 }
 

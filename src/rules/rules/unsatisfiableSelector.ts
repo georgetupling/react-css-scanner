@@ -31,7 +31,7 @@ function runUnsatisfiableSelectorRule(context: RuleContext): UnresolvedFinding[]
       },
       location: query.location,
       evidence: buildSelectorEvidence(context, query),
-      traces: buildUnsatisfiableSelectorTraces(query),
+      traces: context.includeTraces === false ? [] : buildUnsatisfiableSelectorTraces(query),
       data: {
         selectorText: query.selectorText,
         constraint: query.constraint,

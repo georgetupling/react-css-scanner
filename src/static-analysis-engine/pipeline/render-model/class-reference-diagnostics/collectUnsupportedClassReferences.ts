@@ -11,7 +11,9 @@ export function collectUnsupportedClassReferences(input: {
     parsedSourceFile: ts.SourceFile;
   }>;
   renderSubtrees: RenderSubtree[];
+  includeTraces?: boolean;
 }): UnsupportedClassReferenceDiagnostic[] {
+  const includeTraces = input.includeTraces ?? true;
   const modeledClassReferenceKeys = collectModeledClassReferenceKeys(input.renderSubtrees);
   const diagnostics: UnsupportedClassReferenceDiagnostic[] = [];
 
@@ -29,20 +31,22 @@ export function collectUnsupportedClassReferences(input: {
         sourceAnchor: anchor,
         rawExpressionText: anchorNode.getText(parsedFile.parsedSourceFile),
         reason: "raw-jsx-class-not-modeled",
-        traces: [
-          {
-            traceId: `diagnostic:class-reference:unsupported:${anchor.filePath}:${anchor.startLine}:${anchor.startColumn}`,
-            category: "render-expansion",
-            summary:
-              "raw JSX className syntax was present in the source file but was not represented in the render IR",
-            anchor,
-            children: [],
-            metadata: {
-              reason: "raw-jsx-class-not-modeled",
-              rawExpressionText: anchorNode.getText(parsedFile.parsedSourceFile),
-            },
-          },
-        ],
+        traces: includeTraces
+          ? [
+              {
+                traceId: `diagnostic:class-reference:unsupported:${anchor.filePath}:${anchor.startLine}:${anchor.startColumn}`,
+                category: "render-expansion",
+                summary:
+                  "raw JSX className syntax was present in the source file but was not represented in the render IR",
+                anchor,
+                children: [],
+                metadata: {
+                  reason: "raw-jsx-class-not-modeled",
+                  rawExpressionText: anchorNode.getText(parsedFile.parsedSourceFile),
+                },
+              },
+            ]
+          : [],
       });
     });
   }

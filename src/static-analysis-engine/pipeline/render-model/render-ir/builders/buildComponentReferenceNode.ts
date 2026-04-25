@@ -38,17 +38,19 @@ export function buildComponentReferenceNode(
       sourceAnchor,
       componentName,
       reason: COMPONENT_DEFINITION_NOT_FOUND_REASON,
-      traces: [
-        createRenderExpansionTrace({
-          traceId: "render-expansion:component-reference:not-found",
-          summary: `could not resolve component reference "${componentName}" for render expansion`,
-          anchor: sourceAnchor,
-          metadata: {
-            componentName,
-            reason: COMPONENT_DEFINITION_NOT_FOUND_REASON,
-          },
-        }),
-      ],
+      traces: context.includeTraces
+        ? [
+            createRenderExpansionTrace({
+              traceId: "render-expansion:component-reference:not-found",
+              summary: `could not resolve component reference "${componentName}" for render expansion`,
+              anchor: sourceAnchor,
+              metadata: {
+                componentName,
+                reason: COMPONENT_DEFINITION_NOT_FOUND_REASON,
+              },
+            }),
+          ]
+        : [],
     };
   }
 
@@ -62,17 +64,19 @@ export function buildComponentReferenceNode(
       sourceAnchor,
       componentName,
       reason,
-      traces: [
-        createRenderExpansionTrace({
-          traceId: "render-expansion:component-reference:cycle",
-          summary: `stopped expanding component reference "${componentName}" because expansion would cycle`,
-          anchor: sourceAnchor,
-          metadata: {
-            componentName,
-            reason,
-          },
-        }),
-      ],
+      traces: context.includeTraces
+        ? [
+            createRenderExpansionTrace({
+              traceId: "render-expansion:component-reference:cycle",
+              summary: `stopped expanding component reference "${componentName}" because expansion would cycle`,
+              anchor: sourceAnchor,
+              metadata: {
+                componentName,
+                reason,
+              },
+            }),
+          ]
+        : [],
     };
   }
 
@@ -84,17 +88,19 @@ export function buildComponentReferenceNode(
       sourceAnchor,
       componentName,
       reason,
-      traces: [
-        createRenderExpansionTrace({
-          traceId: "render-expansion:component-reference:budget-exceeded",
-          summary: `stopped expanding component reference "${componentName}" because the render expansion budget was exceeded`,
-          anchor: sourceAnchor,
-          metadata: {
-            componentName,
-            reason,
-          },
-        }),
-      ],
+      traces: context.includeTraces
+        ? [
+            createRenderExpansionTrace({
+              traceId: "render-expansion:component-reference:budget-exceeded",
+              summary: `stopped expanding component reference "${componentName}" because the render expansion budget was exceeded`,
+              anchor: sourceAnchor,
+              metadata: {
+                componentName,
+                reason,
+              },
+            }),
+          ]
+        : [],
     };
   }
 
@@ -113,31 +119,37 @@ export function buildComponentReferenceNode(
       sourceAnchor,
       componentName,
       reason: expansionBinding.reason,
-      traces: [
-        createRenderExpansionTrace({
-          traceId: "render-expansion:component-reference:unsupported",
-          summary: `stopped expanding component reference "${componentName}" because prop or children binding is unsupported in the current bounded slice`,
-          anchor: sourceAnchor,
-          metadata: {
-            componentName,
-            reason: expansionBinding.reason,
-          },
-        }),
-      ],
+      traces: context.includeTraces
+        ? [
+            createRenderExpansionTrace({
+              traceId: "render-expansion:component-reference:unsupported",
+              summary: `stopped expanding component reference "${componentName}" because prop or children binding is unsupported in the current bounded slice`,
+              anchor: sourceAnchor,
+              metadata: {
+                componentName,
+                reason: expansionBinding.reason,
+              },
+            }),
+          ]
+        : [],
     };
   }
 
   const sourceAnchor = toSourceAnchor(tagNameNode, context.parsedSourceFile, context.filePath);
-  const expansionTrace = createRenderExpansionTrace({
-    traceId: `render-expansion:component-reference:expanded:${context.filePath}:${componentName}:${sourceAnchor.startLine}:${sourceAnchor.startColumn}`,
-    summary: `expanded component reference "${componentName}" into render IR`,
-    anchor: sourceAnchor,
-    metadata: {
-      componentName,
-      targetComponentName: definition.componentName,
-      targetFilePath: definition.filePath,
-    },
-  });
+  const expansionTraces = context.includeTraces
+    ? [
+        createRenderExpansionTrace({
+          traceId: `render-expansion:component-reference:expanded:${context.filePath}:${componentName}:${sourceAnchor.startLine}:${sourceAnchor.startColumn}`,
+          summary: `expanded component reference "${componentName}" into render IR`,
+          anchor: sourceAnchor,
+          metadata: {
+            componentName,
+            targetComponentName: definition.componentName,
+            targetFilePath: definition.filePath,
+          },
+        }),
+      ]
+    : [];
 
   return applyPlacementAnchor(
     applyComponentReferenceExpansion(
@@ -167,7 +179,7 @@ export function buildComponentReferenceNode(
         filePath: definition.filePath,
         targetSourceAnchor: definition.sourceAnchor,
         sourceAnchor,
-        traces: [expansionTrace],
+        traces: expansionTraces,
       },
     ),
     sourceAnchor,

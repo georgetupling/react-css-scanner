@@ -35,6 +35,7 @@ export function analyzeSourceText(input: {
     externalCss: input.externalCss,
     cssModules: input.cssModules,
     onProgress: input.onProgress,
+    includeTraces: input.includeTraces,
   });
 }
 
@@ -50,6 +51,7 @@ export function analyzeProjectSourceTexts(input: {
   onProgress?: AnalysisProgressCallback;
   includeTraces?: boolean;
 }): StaticAnalysisEngineResult {
+  const includeTraces = input.includeTraces ?? true;
   const progress = createAnalysisProgressReporter(input.onProgress);
   const parseStage = runAnalysisStage(progress, "parse", "Parsing source files", () =>
     runParseStage(input.sourceFiles),
@@ -67,12 +69,14 @@ export function analyzeProjectSourceTexts(input: {
       runSymbolResolutionStage({
         parsedFiles: parseStage.parsedFiles,
         moduleGraph: moduleGraphStage.moduleGraph,
+        includeTraces,
       }),
   );
   const renderModelStage = runAnalysisStage(progress, "render-model", "Building render model", () =>
     runRenderModelStage({
       parsedFiles: parseStage.parsedFiles,
       symbolResolution: symbolResolutionStage,
+      includeTraces,
     }),
   );
   const cssAnalysisStage = runAnalysisStage(progress, "css-analysis", "Analyzing CSS", () =>
@@ -90,6 +94,7 @@ export function analyzeProjectSourceTexts(input: {
         moduleGraph: moduleGraphStage.moduleGraph,
         cssFiles: cssAnalysisStage.cssFiles,
         options: input.cssModules,
+        includeTraces,
       }),
   );
   const externalCssStage = runAnalysisStage(
@@ -112,7 +117,7 @@ export function analyzeProjectSourceTexts(input: {
         renderSubtrees: renderModelStage.renderSubtrees,
         selectorCssSources: input.selectorCssSources ?? [],
         externalCssSummary: externalCssStage.externalCssSummary,
-        includeTraces: input.includeTraces ?? true,
+        includeTraces,
       }),
   );
   const selectorAnalysisStage = runAnalysisStage(
@@ -125,6 +130,7 @@ export function analyzeProjectSourceTexts(input: {
         selectorCssSources: input.selectorCssSources ?? [],
         renderSubtrees: renderModelStage.renderSubtrees,
         reachabilitySummary: reachabilityStage.reachabilitySummary,
+        includeTraces,
       }),
   );
   const projectAnalysisStage = runAnalysisStage(
@@ -142,6 +148,7 @@ export function analyzeProjectSourceTexts(input: {
         renderSubtrees: renderModelStage.renderSubtrees,
         unsupportedClassReferences: renderModelStage.unsupportedClassReferences,
         selectorQueryResults: selectorAnalysisStage.selectorQueryResults,
+        includeTraces,
       }),
   );
 

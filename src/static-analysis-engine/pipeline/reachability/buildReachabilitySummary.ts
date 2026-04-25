@@ -318,7 +318,7 @@ function applyStylesheetPackageImportReachability(input: {
               ...context.reasons,
             ],
             derivations: [...context.derivations],
-            traces: [...context.traces],
+            traces: input.includeTraces ? [...context.traces] : [],
           },
           input.includeTraces,
         );
@@ -748,6 +748,7 @@ function buildContextRecords(input: {
     const wholeComponentRegionAvailability = resolveWholeComponentRegionAvailability({
       componentKey,
       componentAvailabilityByKey: input.componentAvailabilityByKey,
+      includeTraces: input.includeTraces,
     });
 
     if (wholeComponentRegionAvailability && !importingComponentKeys.includes(componentKey)) {
@@ -835,6 +836,7 @@ function buildContextRecords(input: {
 
 function resolveWholeComponentRegionAvailability(input: {
   componentKey: string;
+  includeTraces: boolean;
   componentAvailabilityByKey: Map<
     string,
     {
@@ -865,7 +867,7 @@ function resolveWholeComponentRegionAvailability(input: {
     availability: availabilityRecord.availability,
     reasons: [...availabilityRecord.reasons],
     derivations: [...availabilityRecord.derivations],
-    traces: [...availabilityRecord.traces],
+    traces: input.includeTraces ? [...availabilityRecord.traces] : [],
   };
 }
 

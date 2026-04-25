@@ -18,7 +18,9 @@ export function buildProjectBindingResolution(input: {
   moduleGraph: ModuleGraph;
   symbolsByFilePath: Map<string, Map<EngineSymbolId, EngineSymbol>>;
   parsedSourceFilesByFilePath?: Map<string, ts.SourceFile>;
+  includeTraces?: boolean;
 }): ProjectBindingResolution {
+  const includeTraces = input.includeTraces ?? true;
   const resolvedImportedBindingsByFilePath = new Map<string, ResolvedImportedBinding[]>();
   const resolvedImportedComponentBindingsByFilePath = new Map<
     string,
@@ -55,6 +57,7 @@ export function buildProjectBindingResolution(input: {
         filePath: moduleNode.filePath,
         moduleGraph: input.moduleGraph,
         symbolsByFilePath,
+        includeTraces,
       }),
     );
     resolvedImportedComponentBindingsByFilePath.set(
@@ -68,6 +71,7 @@ export function buildProjectBindingResolution(input: {
       resolveNamespaceImportsForFile({
         filePath: moduleNode.filePath,
         moduleGraph: input.moduleGraph,
+        includeTraces,
       }),
     );
 
@@ -94,6 +98,7 @@ export function buildProjectBindingResolution(input: {
           symbol,
           moduleGraph: input.moduleGraph,
           filePath: moduleNode.filePath,
+          includeTraces,
         });
         if (unresolvedImportedBinding) {
           const enrichedSymbol: EngineSymbol = {
@@ -174,7 +179,9 @@ export function resolveImportedBindingsForFile(input: {
   filePath: string;
   moduleGraph: ModuleGraph;
   symbolsByFilePath?: Map<string, Map<EngineSymbolId, EngineSymbol>>;
+  includeTraces?: boolean;
 }): ResolvedImportedBinding[] {
+  const includeTraces = input.includeTraces ?? true;
   const moduleNode = input.moduleGraph.modulesById.get(createModuleId(input.filePath));
   if (!moduleNode) {
     return [];
@@ -204,6 +211,7 @@ export function resolveImportedBindingsForFile(input: {
         visitedExports: new Set([`${importedFilePath}:${importedName.importedName}`]),
         currentDepth: 0,
         importAnchor: importSymbolAnchorsByLocalName.get(importedName.localName),
+        includeTraces,
       });
       if (!resolvedExport.resolvedExport) {
         continue;
@@ -227,7 +235,9 @@ export function resolveImportedBindingsForFile(input: {
 export function resolveNamespaceImportsForFile(input: {
   filePath: string;
   moduleGraph: ModuleGraph;
+  includeTraces?: boolean;
 }): ResolvedNamespaceImport[] {
+  const includeTraces = input.includeTraces ?? true;
   const moduleNode = input.moduleGraph.modulesById.get(createModuleId(input.filePath));
   if (!moduleNode) {
     return [];
@@ -249,17 +259,19 @@ export function resolveNamespaceImportsForFile(input: {
             moduleGraph: input.moduleGraph,
             currentDepth: 0,
           }),
-          traces: [
-            createSymbolResolutionTrace({
-              traceId: `symbol-resolution:namespace-import:${input.filePath}:${importedName.localName}`,
-              summary: `resolved namespace import ${importedName.localName} from ${importedFilePath}`,
-              metadata: {
-                filePath: input.filePath,
-                localName: importedName.localName,
-                targetFilePath: importedFilePath,
-              },
-            }),
-          ],
+          traces: includeTraces
+            ? [
+                createSymbolResolutionTrace({
+                  traceId: `symbol-resolution:namespace-import:${input.filePath}:${importedName.localName}`,
+                  summary: `resolved namespace import ${importedName.localName} from ${importedFilePath}`,
+                  metadata: {
+                    filePath: input.filePath,
+                    localName: importedName.localName,
+                    targetFilePath: importedFilePath,
+                  },
+                }),
+              ]
+            : [],
         });
         continue;
       }
@@ -278,17 +290,19 @@ export function resolveNamespaceImportsForFile(input: {
       namespaceImports.push({
         localName: importedName.localName,
         exports: resolvedNamespaceImport,
-        traces: [
-          createSymbolResolutionTrace({
-            traceId: `symbol-resolution:namespace-import:${input.filePath}:${importedName.localName}`,
-            summary: `resolved namespace-like import ${importedName.localName} through ${importedFilePath}`,
-            metadata: {
-              filePath: input.filePath,
-              localName: importedName.localName,
-              targetFilePath: importedFilePath,
-            },
-          }),
-        ],
+        traces: includeTraces
+          ? [
+              createSymbolResolutionTrace({
+                traceId: `symbol-resolution:namespace-import:${input.filePath}:${importedName.localName}`,
+                summary: `resolved namespace-like import ${importedName.localName} through ${importedFilePath}`,
+                metadata: {
+                  filePath: input.filePath,
+                  localName: importedName.localName,
+                  targetFilePath: importedFilePath,
+                },
+              }),
+            ]
+          : [],
       });
     }
   }
@@ -443,27 +457,31 @@ function resolveProjectExport(input: {
   visitedExports: Set<string>;
   currentDepth: number;
   importAnchor?: EngineSymbol["declaration"];
+  includeTraces?: boolean;
 }): {
   resolvedExport?: ResolvedProjectExport;
   traces: AnalysisTrace[];
   reason?: string;
 } {
   const moduleNode = input.moduleGraph.modulesById.get(createModuleId(input.filePath));
+  const includeTraces = input.includeTraces ?? true;
   if (!moduleNode) {
     return {
       reason: "target-module-not-found",
-      traces: [
-        createSymbolResolutionTrace({
-          traceId: `symbol-resolution:module-not-found:${input.filePath}:${input.exportedName}`,
-          summary: `could not resolve export ${input.exportedName} because module ${input.filePath} was not found`,
-          anchor: input.importAnchor,
-          metadata: {
-            filePath: input.filePath,
-            exportedName: input.exportedName,
-            reason: "target-module-not-found",
-          },
-        }),
-      ],
+      traces: includeTraces
+        ? [
+            createSymbolResolutionTrace({
+              traceId: `symbol-resolution:module-not-found:${input.filePath}:${input.exportedName}`,
+              summary: `could not resolve export ${input.exportedName} because module ${input.filePath} was not found`,
+              anchor: input.importAnchor,
+              metadata: {
+                filePath: input.filePath,
+                exportedName: input.exportedName,
+                reason: "target-module-not-found",
+              },
+            }),
+          ]
+        : [],
     };
   }
 
@@ -479,37 +497,41 @@ function resolveProjectExport(input: {
         targetExportName: directExport.exportedName,
         targetSymbolId: directExport.localSymbolId,
       },
-      traces: [
-        createSymbolResolutionTrace({
-          traceId: `symbol-resolution:direct-export:${input.filePath}:${input.exportedName}`,
-          summary: `resolved export ${input.exportedName} directly from ${input.filePath}`,
-          anchor: input.importAnchor,
-          metadata: {
-            filePath: input.filePath,
-            exportedName: input.exportedName,
-            resolution: "direct-export",
-          },
-        }),
-      ],
+      traces: includeTraces
+        ? [
+            createSymbolResolutionTrace({
+              traceId: `symbol-resolution:direct-export:${input.filePath}:${input.exportedName}`,
+              summary: `resolved export ${input.exportedName} directly from ${input.filePath}`,
+              anchor: input.importAnchor,
+              metadata: {
+                filePath: input.filePath,
+                exportedName: input.exportedName,
+                resolution: "direct-export",
+              },
+            }),
+          ]
+        : [],
     };
   }
 
   if (input.currentDepth >= MAX_CROSS_FILE_IMPORT_PROPAGATION_DEPTH) {
     return {
       reason: "budget-exceeded",
-      traces: [
-        createSymbolResolutionTrace({
-          traceId: `symbol-resolution:budget-exceeded:${input.filePath}:${input.exportedName}`,
-          summary: `stopped resolving export ${input.exportedName} after hitting the cross-file symbol-resolution budget`,
-          anchor: input.importAnchor,
-          metadata: {
-            filePath: input.filePath,
-            exportedName: input.exportedName,
-            reason: "budget-exceeded",
-            currentDepth: input.currentDepth,
-          },
-        }),
-      ],
+      traces: includeTraces
+        ? [
+            createSymbolResolutionTrace({
+              traceId: `symbol-resolution:budget-exceeded:${input.filePath}:${input.exportedName}`,
+              summary: `stopped resolving export ${input.exportedName} after hitting the cross-file symbol-resolution budget`,
+              anchor: input.importAnchor,
+              metadata: {
+                filePath: input.filePath,
+                exportedName: input.exportedName,
+                reason: "budget-exceeded",
+                currentDepth: input.currentDepth,
+              },
+            }),
+          ]
+        : [],
     };
   }
 
@@ -536,20 +558,22 @@ function resolveProjectExport(input: {
       if (resolvedValue.resolvedExport) {
         return {
           resolvedExport: resolvedValue.resolvedExport,
-          traces: [
-            createSymbolResolutionTrace({
-              traceId: `symbol-resolution:re-export:${input.filePath}:${input.exportedName}:${targetFilePath}`,
-              summary: `followed re-export ${input.exportedName} from ${input.filePath} to ${targetFilePath}`,
-              anchor: input.importAnchor,
-              children: resolvedValue.traces,
-              metadata: {
-                filePath: input.filePath,
-                exportedName: input.exportedName,
-                targetFilePath,
-                reexportKind: exportRecord.reexportKind ?? "named",
-              },
-            }),
-          ],
+          traces: includeTraces
+            ? [
+                createSymbolResolutionTrace({
+                  traceId: `symbol-resolution:re-export:${input.filePath}:${input.exportedName}:${targetFilePath}`,
+                  summary: `followed re-export ${input.exportedName} from ${input.filePath} to ${targetFilePath}`,
+                  anchor: input.importAnchor,
+                  children: resolvedValue.traces,
+                  metadata: {
+                    filePath: input.filePath,
+                    exportedName: input.exportedName,
+                    targetFilePath,
+                    reexportKind: exportRecord.reexportKind ?? "named",
+                  },
+                }),
+              ]
+            : [],
         };
       }
     }
@@ -573,38 +597,42 @@ function resolveProjectExport(input: {
     if (resolvedValue.resolvedExport) {
       return {
         resolvedExport: resolvedValue.resolvedExport,
-        traces: [
-          createSymbolResolutionTrace({
-            traceId: `symbol-resolution:star-re-export:${input.filePath}:${input.exportedName}:${targetFilePath}`,
-            summary: `followed star re-export while resolving ${input.exportedName} from ${input.filePath} to ${targetFilePath}`,
-            anchor: input.importAnchor,
-            children: resolvedValue.traces,
-            metadata: {
-              filePath: input.filePath,
-              exportedName: input.exportedName,
-              targetFilePath,
-              reexportKind: "star",
-            },
-          }),
-        ],
+        traces: includeTraces
+          ? [
+              createSymbolResolutionTrace({
+                traceId: `symbol-resolution:star-re-export:${input.filePath}:${input.exportedName}:${targetFilePath}`,
+                summary: `followed star re-export while resolving ${input.exportedName} from ${input.filePath} to ${targetFilePath}`,
+                anchor: input.importAnchor,
+                children: resolvedValue.traces,
+                metadata: {
+                  filePath: input.filePath,
+                  exportedName: input.exportedName,
+                  targetFilePath,
+                  reexportKind: "star",
+                },
+              }),
+            ]
+          : [],
       };
     }
   }
 
   return {
     reason: "export-not-found",
-    traces: [
-      createSymbolResolutionTrace({
-        traceId: `symbol-resolution:export-not-found:${input.filePath}:${input.exportedName}`,
-        summary: `could not resolve export ${input.exportedName} from ${input.filePath}`,
-        anchor: input.importAnchor,
-        metadata: {
-          filePath: input.filePath,
-          exportedName: input.exportedName,
-          reason: "export-not-found",
-        },
-      }),
-    ],
+    traces: includeTraces
+      ? [
+          createSymbolResolutionTrace({
+            traceId: `symbol-resolution:export-not-found:${input.filePath}:${input.exportedName}`,
+            summary: `could not resolve export ${input.exportedName} from ${input.filePath}`,
+            anchor: input.importAnchor,
+            metadata: {
+              filePath: input.filePath,
+              exportedName: input.exportedName,
+              reason: "export-not-found",
+            },
+          }),
+        ]
+      : [],
   };
 }
 
@@ -612,6 +640,7 @@ function resolveImportedBindingFailureForSymbol(input: {
   symbol: EngineSymbol;
   moduleGraph: ModuleGraph;
   filePath: string;
+  includeTraces?: boolean;
 }): { reason: string; traces: AnalysisTrace[] } | undefined {
   if (input.symbol.resolution.kind !== "imported") {
     return undefined;
@@ -642,6 +671,7 @@ function resolveImportedBindingFailureForSymbol(input: {
       visitedExports: new Set([`${importedFilePath}:${importedName.importedName}`]),
       currentDepth: 0,
       importAnchor: input.symbol.declaration,
+      includeTraces: input.includeTraces,
     });
     if (result.resolvedExport) {
       return undefined;

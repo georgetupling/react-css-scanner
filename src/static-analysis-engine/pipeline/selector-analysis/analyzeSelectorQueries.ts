@@ -39,7 +39,9 @@ export function analyzeSelectorQueries(input: {
   selectorQueries: ParsedSelectorQuery[];
   renderSubtrees: RenderSubtree[];
   reachabilitySummary?: ReachabilitySummary;
+  includeTraces?: boolean;
 }): SelectorQueryResult[] {
+  const includeTraces = input.includeTraces ?? true;
   const reachabilityTargetCache = new Map<string, SelectorAnalysisTarget[]>();
   return input.selectorQueries.map((selectorQuery) =>
     analyzeSelectorQuery({
@@ -47,6 +49,7 @@ export function analyzeSelectorQueries(input: {
       renderSubtrees: input.renderSubtrees,
       reachabilitySummary: input.reachabilitySummary,
       reachabilityTargetCache,
+      includeTraces,
     }),
   );
 }
@@ -56,6 +59,7 @@ function analyzeSelectorQuery(input: {
   renderSubtrees: RenderSubtree[];
   reachabilitySummary?: ReachabilitySummary;
   reachabilityTargetCache: Map<string, SelectorAnalysisTarget[]>;
+  includeTraces: boolean;
 }): SelectorQueryResult {
   const { constraint } = input.selectorQuery;
   let analysisTargets: SelectorAnalysisTarget[] = input.renderSubtrees.map((renderSubtree) => ({
@@ -86,21 +90,24 @@ function analyzeSelectorQuery(input: {
       dimensions: {
         structure: "unsupported",
       },
-      traces: [
-        {
-          traceId: "selector-match:unsupported-selector-shape",
-          category: "selector-match",
-          summary: `unsupported selector query: ${constraint.reason}`,
-          anchor:
-            input.selectorQuery.source.kind === "css-source"
-              ? input.selectorQuery.source.selectorAnchor
-              : undefined,
-          children: input.selectorQuery.parseTraces,
-          metadata: {
-            selectorText: input.selectorQuery.selectorText,
-          },
-        },
-      ],
+      traces: input.includeTraces
+        ? [
+            {
+              traceId: "selector-match:unsupported-selector-shape",
+              category: "selector-match",
+              summary: `unsupported selector query: ${constraint.reason}`,
+              anchor:
+                input.selectorQuery.source.kind === "css-source"
+                  ? input.selectorQuery.source.selectorAnchor
+                  : undefined,
+              children: input.selectorQuery.parseTraces,
+              metadata: {
+                selectorText: input.selectorQuery.selectorText,
+              },
+            },
+          ]
+        : [],
+      includeTraces: input.includeTraces,
     });
   }
 
@@ -109,6 +116,7 @@ function analyzeSelectorQuery(input: {
       selectorQuery: input.selectorQuery,
       constraint,
       analysisTargets,
+      includeTraces: input.includeTraces,
     });
   }
 
@@ -117,6 +125,7 @@ function analyzeSelectorQuery(input: {
       selectorQuery: input.selectorQuery,
       constraint,
       analysisTargets,
+      includeTraces: input.includeTraces,
     });
   }
 
@@ -125,6 +134,7 @@ function analyzeSelectorQuery(input: {
       selectorQuery: input.selectorQuery,
       constraint,
       analysisTargets,
+      includeTraces: input.includeTraces,
     });
   }
 
@@ -132,6 +142,7 @@ function analyzeSelectorQuery(input: {
     selectorQuery: input.selectorQuery,
     constraint,
     analysisTargets,
+    includeTraces: input.includeTraces,
   });
 }
 
@@ -140,6 +151,7 @@ function resolveQueryReachability(input: {
   renderSubtrees: RenderSubtree[];
   reachabilitySummary?: ReachabilitySummary;
   reachabilityTargetCache: Map<string, SelectorAnalysisTarget[]>;
+  includeTraces: boolean;
 }):
   | {
       result: SelectorQueryResult;
@@ -183,18 +195,21 @@ function resolveQueryReachability(input: {
         dimensions: {
           reachability: "unsupported",
         },
-        traces: [
-          {
-            traceId: "selector-reachability:missing-record",
-            category: "reachability",
-            summary: "could not determine stylesheet reachability for this selector source",
-            anchor: input.selectorQuery.source.selectorAnchor,
-            children: [],
-            metadata: {
-              cssFilePath,
-            },
-          },
-        ],
+        traces: input.includeTraces
+          ? [
+              {
+                traceId: "selector-reachability:missing-record",
+                category: "reachability",
+                summary: "could not determine stylesheet reachability for this selector source",
+                anchor: input.selectorQuery.source.selectorAnchor,
+                children: [],
+                metadata: {
+                  cssFilePath,
+                },
+              },
+            ]
+          : [],
+        includeTraces: input.includeTraces,
         reachability: {
           kind: "css-source",
           cssFilePath,
@@ -218,18 +233,21 @@ function resolveQueryReachability(input: {
         dimensions: {
           reachability: "unknown",
         },
-        traces: [
-          {
-            traceId: "selector-reachability:unknown",
-            category: "reachability",
-            summary: "stylesheet reachability is unknown for this selector source",
-            anchor: input.selectorQuery.source.selectorAnchor,
-            children: reachabilityRecord.traces ?? [],
-            metadata: {
-              cssFilePath: reachabilityRecord.cssFilePath,
-            },
-          },
-        ],
+        traces: input.includeTraces
+          ? [
+              {
+                traceId: "selector-reachability:unknown",
+                category: "reachability",
+                summary: "stylesheet reachability is unknown for this selector source",
+                anchor: input.selectorQuery.source.selectorAnchor,
+                children: reachabilityRecord.traces ?? [],
+                metadata: {
+                  cssFilePath: reachabilityRecord.cssFilePath,
+                },
+              },
+            ]
+          : [],
+        includeTraces: input.includeTraces,
         reachability: {
           kind: "css-source",
           cssFilePath: reachabilityRecord.cssFilePath,
@@ -256,19 +274,22 @@ function resolveQueryReachability(input: {
           structure: "not-found-under-bounded-analysis",
           reachability: "unavailable",
         },
-        traces: [
-          {
-            traceId: "selector-reachability:unavailable",
-            category: "reachability",
-            summary:
-              "stylesheet is not reachable from any analyzed source file or propagated render context",
-            anchor: input.selectorQuery.source.selectorAnchor,
-            children: reachabilityRecord.traces ?? [],
-            metadata: {
-              cssFilePath: reachabilityRecord.cssFilePath,
-            },
-          },
-        ],
+        traces: input.includeTraces
+          ? [
+              {
+                traceId: "selector-reachability:unavailable",
+                category: "reachability",
+                summary:
+                  "stylesheet is not reachable from any analyzed source file or propagated render context",
+                anchor: input.selectorQuery.source.selectorAnchor,
+                children: reachabilityRecord.traces ?? [],
+                metadata: {
+                  cssFilePath: reachabilityRecord.cssFilePath,
+                },
+              },
+            ]
+          : [],
+        includeTraces: input.includeTraces,
         reachability: {
           kind: "css-source",
           cssFilePath: reachabilityRecord.cssFilePath,

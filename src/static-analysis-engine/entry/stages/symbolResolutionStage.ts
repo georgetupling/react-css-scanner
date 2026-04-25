@@ -15,6 +15,7 @@ import type {
 export function runSymbolResolutionStage(input: {
   parsedFiles: ParsedProjectFile[];
   moduleGraph: ModuleGraph;
+  includeTraces?: boolean;
 }): SymbolResolutionStageResult {
   const collectedSymbols = collectProjectSymbols({
     parsedFiles: input.parsedFiles,
@@ -26,6 +27,7 @@ export function runSymbolResolutionStage(input: {
     parsedSourceFilesByFilePath: new Map(
       input.parsedFiles.map((parsedFile) => [parsedFile.filePath, parsedFile.parsedSourceFile]),
     ),
+    includeTraces: input.includeTraces,
   });
 }
 

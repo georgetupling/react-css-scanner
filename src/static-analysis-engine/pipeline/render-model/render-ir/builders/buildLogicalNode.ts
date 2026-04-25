@@ -80,15 +80,18 @@ export function buildLogicalRenderNode(input: {
     kind: "unknown",
     sourceAnchor,
     reason: `unsupported-logical-render-operator:${ts.SyntaxKind[node.operatorToken.kind]}`,
-    traces: [
-      createRenderExpansionTrace({
-        traceId: "render-expansion:unknown:logical-operator",
-        summary: "could not expand logical render expression because the operator is unsupported",
-        anchor: sourceAnchor,
-        metadata: {
-          reason: `unsupported-logical-render-operator:${ts.SyntaxKind[node.operatorToken.kind]}`,
-        },
-      }),
-    ],
+    traces: context.includeTraces
+      ? [
+          createRenderExpansionTrace({
+            traceId: "render-expansion:unknown:logical-operator",
+            summary:
+              "could not expand logical render expression because the operator is unsupported",
+            anchor: sourceAnchor,
+            metadata: {
+              reason: `unsupported-logical-render-operator:${ts.SyntaxKind[node.operatorToken.kind]}`,
+            },
+          }),
+        ]
+      : [],
   };
 }

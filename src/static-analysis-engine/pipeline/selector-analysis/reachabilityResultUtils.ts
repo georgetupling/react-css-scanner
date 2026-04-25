@@ -6,11 +6,13 @@ export function attachMatchedReachability(input: {
   selectorQuery: ParsedSelectorQuery;
   result: SelectorQueryResult;
   matchedTargets: SelectorAnalysisTarget[];
+  includeTraces?: boolean;
 }): SelectorQueryResult {
   if (input.selectorQuery.source.kind !== "css-source") {
     return input.result;
   }
 
+  const includeTraces = input.includeTraces ?? true;
   const cssFilePath = input.selectorQuery.source.selectorAnchor?.filePath;
   const matchedContextsByKey = new Map<
     string,
@@ -28,26 +30,30 @@ export function attachMatchedReachability(input: {
       : input.matchedTargets.some((target) => target.reachabilityAvailability === "possible")
         ? "possible"
         : "definite";
-  const reachabilityTrace: AnalysisTrace = {
-    traceId: `selector-reachability:${availability}`,
-    category: "reachability",
-    summary:
-      input.result.outcome === "match"
-        ? "selector matched within stylesheet-reachable render contexts"
-        : "selector only matched within possible stylesheet-reachable render contexts",
-    anchor:
-      input.selectorQuery.source.kind === "css-source"
-        ? input.selectorQuery.source.selectorAnchor
-        : undefined,
-    children: mergeTraces(
-      [...matchedContextsByKey.values()].flatMap((context) => context.traces ?? []),
-    ),
-    metadata: {
-      cssFilePath,
-      matchedContextCount: matchedContextsByKey.size,
-      availability,
-    },
-  };
+  const reachabilityTrace: AnalysisTrace[] = includeTraces
+    ? [
+        {
+          traceId: `selector-reachability:${availability}`,
+          category: "reachability",
+          summary:
+            input.result.outcome === "match"
+              ? "selector matched within stylesheet-reachable render contexts"
+              : "selector only matched within possible stylesheet-reachable render contexts",
+          anchor:
+            input.selectorQuery.source.kind === "css-source"
+              ? input.selectorQuery.source.selectorAnchor
+              : undefined,
+          children: mergeTraces(
+            [...matchedContextsByKey.values()].flatMap((context) => context.traces ?? []),
+          ),
+          metadata: {
+            cssFilePath,
+            matchedContextCount: matchedContextsByKey.size,
+            availability,
+          },
+        },
+      ]
+    : [];
 
   return {
     ...input.result,
@@ -57,7 +63,7 @@ export function attachMatchedReachability(input: {
         ...input.result.decision.dimensions,
         reachability: availability,
       },
-      traces: [...input.result.decision.traces, reachabilityTrace],
+      traces: includeTraces ? [...input.result.decision.traces, ...reachabilityTrace] : [],
     },
     reachability: {
       kind: "css-source",

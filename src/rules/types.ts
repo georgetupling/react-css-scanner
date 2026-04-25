@@ -53,6 +53,7 @@ export type UnresolvedFinding = Omit<Finding, "severity">;
 
 export type RuleContext = {
   analysis: ProjectAnalysis;
+  includeTraces?: boolean;
 };
 
 export type RuleDefinition = {

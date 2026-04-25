@@ -64,17 +64,20 @@ function runCssClassUnreachableRule(context: RuleContext): UnresolvedFinding[] {
             id: stylesheetId,
           })),
         ],
-        traces: buildUnreachableClassTraces({
-          reference,
-          className,
-          matches,
-          stylesheetFilePaths: stylesheetIds
-            .map(
-              (stylesheetId) =>
-                context.analysis.indexes.stylesheetsById.get(stylesheetId)?.filePath,
-            )
-            .filter((filePath): filePath is string => Boolean(filePath)),
-        }),
+        traces:
+          context.includeTraces === false
+            ? []
+            : buildUnreachableClassTraces({
+                reference,
+                className,
+                matches,
+                stylesheetFilePaths: stylesheetIds
+                  .map(
+                    (stylesheetId) =>
+                      context.analysis.indexes.stylesheetsById.get(stylesheetId)?.filePath,
+                  )
+                  .filter((filePath): filePath is string => Boolean(filePath)),
+              }),
         data: {
           className,
           rawExpressionText: reference.rawExpressionText,

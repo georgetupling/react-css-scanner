@@ -34,7 +34,7 @@ function runCompoundSelectorNeverMatchedRule(context: RuleContext): UnresolvedFi
       },
       location: query.location,
       evidence: buildSelectorEvidence(context, query),
-      traces: buildCompoundSelectorTraces(query),
+      traces: context.includeTraces === false ? [] : buildCompoundSelectorTraces(query),
       data: {
         selectorText: query.selectorText,
         requiredClassNames:

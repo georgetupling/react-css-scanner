@@ -17,7 +17,9 @@ export function analyzeAncestorDescendantConstraint(input: {
   selectorQuery: ParsedSelectorQuery;
   constraint: AncestorDescendantConstraint;
   analysisTargets: SelectorAnalysisTarget[];
+  includeTraces?: boolean;
 }): SelectorQueryResult {
+  const includeTraces = input.includeTraces ?? true;
   let sawUnsupportedDynamicClass = false;
   let sawPossibleMatch = false;
   const matchedTargets: SelectorAnalysisTarget[] = [];
@@ -49,19 +51,23 @@ export function analyzeAncestorDescendantConstraint(input: {
           ],
           certainty: "definite",
           dimensions: { structure: "definite" },
-          traces: [
-            {
-              traceId: "selector-match:ancestor-descendant:definite",
-              category: "selector-match",
-              summary: `found a rendered descendant with class "${input.constraint.subjectClassName}" under an ancestor with class "${input.constraint.ancestorClassName}"`,
-              anchor:
-                input.selectorQuery.source.kind === "css-source"
-                  ? input.selectorQuery.source.selectorAnchor
-                  : undefined,
-              children: [],
-            },
-          ],
+          traces: includeTraces
+            ? [
+                {
+                  traceId: "selector-match:ancestor-descendant:definite",
+                  category: "selector-match",
+                  summary: `found a rendered descendant with class "${input.constraint.subjectClassName}" under an ancestor with class "${input.constraint.ancestorClassName}"`,
+                  anchor:
+                    input.selectorQuery.source.kind === "css-source"
+                      ? input.selectorQuery.source.selectorAnchor
+                      : undefined,
+                  children: [],
+                },
+              ]
+            : [],
+          includeTraces,
         }),
+        includeTraces,
       });
     }
 
@@ -88,19 +94,23 @@ export function analyzeAncestorDescendantConstraint(input: {
         ],
         certainty: "possible",
         dimensions: { structure: "possible" },
-        traces: [
-          {
-            traceId: "selector-match:ancestor-descendant:possible",
-            category: "selector-match",
-            summary: `found a plausible ancestor-descendant match for "${input.constraint.ancestorClassName} ${input.constraint.subjectClassName}" on at least one bounded path`,
-            anchor:
-              input.selectorQuery.source.kind === "css-source"
-                ? input.selectorQuery.source.selectorAnchor
-                : undefined,
-            children: [],
-          },
-        ],
+        traces: includeTraces
+          ? [
+              {
+                traceId: "selector-match:ancestor-descendant:possible",
+                category: "selector-match",
+                summary: `found a plausible ancestor-descendant match for "${input.constraint.ancestorClassName} ${input.constraint.subjectClassName}" on at least one bounded path`,
+                anchor:
+                  input.selectorQuery.source.kind === "css-source"
+                    ? input.selectorQuery.source.selectorAnchor
+                    : undefined,
+                children: [],
+              },
+            ]
+          : [],
+        includeTraces,
       }),
+      includeTraces,
     });
   }
 
@@ -114,19 +124,22 @@ export function analyzeAncestorDescendantConstraint(input: {
       ],
       certainty: "unknown",
       dimensions: { structure: "unsupported" },
-      traces: [
-        {
-          traceId: "selector-match:ancestor-descendant:unsupported",
-          category: "selector-match",
-          summary:
-            "encountered unsupported dynamic class construction while checking ancestor-descendant structure",
-          anchor:
-            input.selectorQuery.source.kind === "css-source"
-              ? input.selectorQuery.source.selectorAnchor
-              : undefined,
-          children: [],
-        },
-      ],
+      traces: includeTraces
+        ? [
+            {
+              traceId: "selector-match:ancestor-descendant:unsupported",
+              category: "selector-match",
+              summary:
+                "encountered unsupported dynamic class construction while checking ancestor-descendant structure",
+              anchor:
+                input.selectorQuery.source.kind === "css-source"
+                  ? input.selectorQuery.source.selectorAnchor
+                  : undefined,
+              children: [],
+            },
+          ]
+        : [],
+      includeTraces,
     });
   }
 
@@ -139,18 +152,21 @@ export function analyzeAncestorDescendantConstraint(input: {
     ],
     certainty: "definite",
     dimensions: { structure: "not-found-under-bounded-analysis" },
-    traces: [
-      {
-        traceId: "selector-match:ancestor-descendant:no-match",
-        category: "selector-match",
-        summary: `no bounded rendered path satisfied ancestor "${input.constraint.ancestorClassName}" with descendant "${input.constraint.subjectClassName}"`,
-        anchor:
-          input.selectorQuery.source.kind === "css-source"
-            ? input.selectorQuery.source.selectorAnchor
-            : undefined,
-        children: [],
-      },
-    ],
+    traces: includeTraces
+      ? [
+          {
+            traceId: "selector-match:ancestor-descendant:no-match",
+            category: "selector-match",
+            summary: `no bounded rendered path satisfied ancestor "${input.constraint.ancestorClassName}" with descendant "${input.constraint.subjectClassName}"`,
+            anchor:
+              input.selectorQuery.source.kind === "css-source"
+                ? input.selectorQuery.source.selectorAnchor
+                : undefined,
+            children: [],
+          },
+        ]
+      : [],
+    includeTraces,
   });
 }
 

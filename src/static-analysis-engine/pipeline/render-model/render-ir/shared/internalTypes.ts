@@ -23,4 +23,5 @@ export type BuildContext = {
   propsObjectProperties: Map<string, ts.Expression>;
   propsObjectSubtreeProperties: Map<string, RenderNode[]>;
   subtreeBindings: Map<string, RenderNode[]>;
+  includeTraces: boolean;
 };

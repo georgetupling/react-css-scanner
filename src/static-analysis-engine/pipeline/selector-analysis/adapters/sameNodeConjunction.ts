@@ -14,7 +14,9 @@ export function analyzeSameNodeClassConjunction(input: {
   selectorQuery: ParsedSelectorQuery;
   constraint: SameNodeConstraint;
   analysisTargets: SelectorAnalysisTarget[];
+  includeTraces?: boolean;
 }): SelectorQueryResult {
+  const includeTraces = input.includeTraces ?? true;
   let sawUnsupportedDynamicClass = false;
   let sawPossibleMatch = false;
   const matchedTargets: SelectorAnalysisTarget[] = [];
@@ -43,19 +45,23 @@ export function analyzeSameNodeClassConjunction(input: {
           ],
           certainty: "definite",
           dimensions: { structure: "definite" },
-          traces: [
-            {
-              traceId: "selector-match:same-node:definite",
-              category: "selector-match",
-              summary: `found a rendered element with all required classes: ${input.constraint.classNames.join(", ")}`,
-              anchor:
-                input.selectorQuery.source.kind === "css-source"
-                  ? input.selectorQuery.source.selectorAnchor
-                  : undefined,
-              children: [],
-            },
-          ],
+          traces: includeTraces
+            ? [
+                {
+                  traceId: "selector-match:same-node:definite",
+                  category: "selector-match",
+                  summary: `found a rendered element with all required classes: ${input.constraint.classNames.join(", ")}`,
+                  anchor:
+                    input.selectorQuery.source.kind === "css-source"
+                      ? input.selectorQuery.source.selectorAnchor
+                      : undefined,
+                  children: [],
+                },
+              ]
+            : [],
+          includeTraces,
         }),
+        includeTraces,
       });
     }
 
@@ -82,19 +88,23 @@ export function analyzeSameNodeClassConjunction(input: {
         ],
         certainty: "possible",
         dimensions: { structure: "possible" },
-        traces: [
-          {
-            traceId: "selector-match:same-node:possible",
-            category: "selector-match",
-            summary: `at least one rendered element may emit all required classes together: ${input.constraint.classNames.join(", ")}`,
-            anchor:
-              input.selectorQuery.source.kind === "css-source"
-                ? input.selectorQuery.source.selectorAnchor
-                : undefined,
-            children: [],
-          },
-        ],
+        traces: includeTraces
+          ? [
+              {
+                traceId: "selector-match:same-node:possible",
+                category: "selector-match",
+                summary: `at least one rendered element may emit all required classes together: ${input.constraint.classNames.join(", ")}`,
+                anchor:
+                  input.selectorQuery.source.kind === "css-source"
+                    ? input.selectorQuery.source.selectorAnchor
+                    : undefined,
+                children: [],
+              },
+            ]
+          : [],
+        includeTraces,
       }),
+      includeTraces,
     });
   }
 
@@ -108,19 +118,22 @@ export function analyzeSameNodeClassConjunction(input: {
       ],
       certainty: "unknown",
       dimensions: { structure: "unsupported" },
-      traces: [
-        {
-          traceId: "selector-match:same-node:unsupported",
-          category: "selector-match",
-          summary:
-            "encountered unsupported dynamic class construction while checking same-node class conjunction",
-          anchor:
-            input.selectorQuery.source.kind === "css-source"
-              ? input.selectorQuery.source.selectorAnchor
-              : undefined,
-          children: [],
-        },
-      ],
+      traces: includeTraces
+        ? [
+            {
+              traceId: "selector-match:same-node:unsupported",
+              category: "selector-match",
+              summary:
+                "encountered unsupported dynamic class construction while checking same-node class conjunction",
+              anchor:
+                input.selectorQuery.source.kind === "css-source"
+                  ? input.selectorQuery.source.selectorAnchor
+                  : undefined,
+              children: [],
+            },
+          ]
+        : [],
+      includeTraces,
     });
   }
 
@@ -133,18 +146,21 @@ export function analyzeSameNodeClassConjunction(input: {
     ],
     certainty: "definite",
     dimensions: { structure: "not-found-under-bounded-analysis" },
-    traces: [
-      {
-        traceId: "selector-match:same-node:no-match",
-        category: "selector-match",
-        summary: `no rendered element emitted all required classes together: ${input.constraint.classNames.join(", ")}`,
-        anchor:
-          input.selectorQuery.source.kind === "css-source"
-            ? input.selectorQuery.source.selectorAnchor
-            : undefined,
-        children: [],
-      },
-    ],
+    traces: includeTraces
+      ? [
+          {
+            traceId: "selector-match:same-node:no-match",
+            category: "selector-match",
+            summary: `no rendered element emitted all required classes together: ${input.constraint.classNames.join(", ")}`,
+            anchor:
+              input.selectorQuery.source.kind === "css-source"
+                ? input.selectorQuery.source.selectorAnchor
+                : undefined,
+            children: [],
+          },
+        ]
+      : [],
+    includeTraces,
   });
 }
 

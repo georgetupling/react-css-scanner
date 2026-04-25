@@ -10,7 +10,9 @@ const UNSUPPORTED_SELECTOR_REASON =
 
 export function projectToNormalizedSelector(
   parsedBranch: ParsedSelectorBranch,
+  options: { includeTraces?: boolean } = {},
 ): NormalizedSelector {
+  const includeTraces = options.includeTraces ?? true;
   if (
     parsedBranch.hasUnknownSemantics ||
     parsedBranch.hasSubjectModifiers ||
@@ -25,6 +27,7 @@ export function projectToNormalizedSelector(
         hasSubjectModifiers: parsedBranch.hasSubjectModifiers,
         negativeClassNames: [...parsedBranch.negativeClassNames],
       },
+      includeTraces,
     });
   }
 
@@ -38,6 +41,7 @@ export function projectToNormalizedSelector(
         metadata: {
           requiredClassCount: requiredClasses.length,
         },
+        includeTraces,
       });
     }
 
@@ -70,6 +74,7 @@ export function projectToNormalizedSelector(
       metadata: {
         stepCount: parsedBranch.steps.length,
       },
+      includeTraces,
     });
   }
 
@@ -85,6 +90,7 @@ export function projectToNormalizedSelector(
         leftRequiredClasses: [...leftStep.selector.requiredClasses],
         rightRequiredClasses: [...rightStep.selector.requiredClasses],
       },
+      includeTraces,
     });
   }
 
@@ -100,6 +106,7 @@ export function projectToNormalizedSelector(
       metadata: {
         combinator: rightStep.combinatorFromPrevious,
       },
+      includeTraces,
     });
   }
 
@@ -124,13 +131,17 @@ export function projectToNormalizedSelector(
   };
 }
 
-export function projectToSelectorConstraint(normalizedSelector: NormalizedSelector):
+export function projectToSelectorConstraint(
+  normalizedSelector: NormalizedSelector,
+  options: { includeTraces?: boolean } = {},
+):
   | SelectorConstraint
   | {
       kind: "unsupported";
       reason: string;
       traces: AnalysisTrace[];
     } {
+  const includeTraces = options.includeTraces ?? true;
   if (normalizedSelector.kind === "unsupported") {
     return normalizedSelector;
   }
@@ -144,6 +155,7 @@ export function projectToSelectorConstraint(normalizedSelector: NormalizedSelect
       metadata: {
         stepCount: steps.length,
       },
+      includeTraces,
     });
   }
 
@@ -200,17 +212,19 @@ export function projectToSelectorConstraint(normalizedSelector: NormalizedSelect
   return {
     kind: "unsupported",
     reason: UNSUPPORTED_SELECTOR_REASON,
-    traces: [
-      createSelectorParsingTrace({
-        traceId: "selector-parsing:constraint:unsupported-shape",
-        summary:
-          "normalized selector could not be projected into one of the currently supported selector constraint shapes",
-        metadata: {
-          stepCount: steps.length,
-          combinators,
-        },
-      }),
-    ],
+    traces: includeTraces
+      ? [
+          createSelectorParsingTrace({
+            traceId: "selector-parsing:constraint:unsupported-shape",
+            summary:
+              "normalized selector could not be projected into one of the currently supported selector constraint shapes",
+            metadata: {
+              stepCount: steps.length,
+              combinators,
+            },
+          }),
+        ]
+      : [],
   };
 }
 
@@ -276,17 +290,20 @@ function createUnsupportedNormalizedSelector(input: {
   reason: string;
   summary: string;
   metadata?: Record<string, unknown>;
+  includeTraces: boolean;
 }): Extract<NormalizedSelector, { kind: "unsupported" }> {
   return {
     kind: "unsupported",
     reason: input.reason,
-    traces: [
-      createSelectorParsingTrace({
-        traceId: "selector-parsing:normalized-selector:unsupported",
-        summary: input.summary,
-        metadata: input.metadata,
-      }),
-    ],
+    traces: input.includeTraces
+      ? [
+          createSelectorParsingTrace({
+            traceId: "selector-parsing:normalized-selector:unsupported",
+            summary: input.summary,
+            metadata: input.metadata,
+          }),
+        ]
+      : [],
   };
 }
 
@@ -294,6 +311,7 @@ function createUnsupportedConstraint(input: {
   reason: string;
   summary: string;
   metadata?: Record<string, unknown>;
+  includeTraces: boolean;
 }): Extract<
   ReturnType<typeof projectToSelectorConstraint>,
   {
@@ -303,13 +321,15 @@ function createUnsupportedConstraint(input: {
   return {
     kind: "unsupported",
     reason: input.reason,
-    traces: [
-      createSelectorParsingTrace({
-        traceId: "selector-parsing:constraint:unsupported",
-        summary: input.summary,
-        metadata: input.metadata,
-      }),
-    ],
+    traces: input.includeTraces
+      ? [
+          createSelectorParsingTrace({
+            traceId: "selector-parsing:constraint:unsupported",
+            summary: input.summary,
+            metadata: input.metadata,
+          }),
+        ]
+      : [],
   };
 }
 

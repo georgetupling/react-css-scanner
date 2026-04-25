@@ -448,6 +448,7 @@ export type ProjectAnalysisBuildInput = {
   renderSubtrees: RenderSubtree[];
   unsupportedClassReferences: UnsupportedClassReferenceDiagnostic[];
   selectorQueryResults: SelectorQueryResult[];
+  includeTraces?: boolean;
 };
 
 export type DeclarationForSignature = Pick<CssDeclarationFact, "property" | "value">;

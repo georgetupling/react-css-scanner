@@ -13,14 +13,18 @@ export function runSelectorAnalysisStage(input: {
   selectorCssSources: SelectorSourceInput[];
   renderSubtrees: RenderSubtree[];
   reachabilitySummary: ReachabilitySummary;
+  includeTraces?: boolean;
 }): SelectorAnalysisStageResult {
-  const parsedSelectorQueries = buildParsedSelectorQueries(buildSelectorQueries(input));
+  const parsedSelectorQueries = buildParsedSelectorQueries(buildSelectorQueries(input), {
+    includeTraces: input.includeTraces,
+  });
 
   return {
     selectorQueryResults: analyzeSelectorQueries({
       selectorQueries: parsedSelectorQueries,
       renderSubtrees: input.renderSubtrees,
       reachabilitySummary: input.reachabilitySummary,
+      includeTraces: input.includeTraces,
     }),
   };
 }
