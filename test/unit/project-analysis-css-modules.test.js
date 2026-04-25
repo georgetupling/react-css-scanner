@@ -174,6 +174,71 @@ test("ProjectAnalysis diagnoses unsupported CSS Module destructuring patterns", 
   );
 });
 
+test("ProjectAnalysis resolves CSS Module member references through simple aliases", () => {
+  const result = analyzeProjectSourceTexts({
+    sourceFiles: [
+      {
+        filePath: "src/Button.tsx",
+        sourceText: [
+          'import styles from "./Button.module.css";',
+          "const s = styles;",
+          "export function Button() { return <button className={s.root}>Button</button>; }",
+          "",
+        ].join("\n"),
+      },
+    ],
+    selectorCssSources: [
+      {
+        filePath: "src/Button.module.css",
+        cssText: ".root { display: block; }\n",
+      },
+    ],
+  });
+
+  const analysis = result.projectAnalysis;
+  const cssModuleImport = analysis.entities.cssModuleImports[0];
+  const alias = analysis.entities.cssModuleAliases[0];
+  const reference = analysis.entities.cssModuleMemberReferences[0];
+  const match = analysis.relations.cssModuleMemberMatches[0];
+
+  assert.equal(alias.localName, "styles");
+  assert.equal(alias.aliasName, "s");
+  assert.equal(reference.localName, "styles");
+  assert.equal(reference.memberName, "root");
+  assert.equal(reference.rawExpressionText, "s.root");
+  assert.equal(match.status, "matched");
+  assert.deepEqual(analysis.indexes.cssModuleAliasesByImportId.get(cssModuleImport.id), [alias.id]);
+});
+
+test("ProjectAnalysis diagnoses unsupported CSS Module alias declarations", () => {
+  const result = analyzeProjectSourceTexts({
+    sourceFiles: [
+      {
+        filePath: "src/Button.tsx",
+        sourceText: [
+          'import styles from "./Button.module.css";',
+          "let s = styles;",
+          "const styles = styles;",
+          "",
+        ].join("\n"),
+      },
+    ],
+    selectorCssSources: [
+      {
+        filePath: "src/Button.module.css",
+        cssText: ".root { display: block; }\n",
+      },
+    ],
+  });
+
+  assert.deepEqual(
+    result.projectAnalysis.entities.cssModuleReferenceDiagnostics.map(
+      (diagnostic) => diagnostic.reason,
+    ),
+    ["reassignable-css-module-alias", "self-referential-css-module-alias"],
+  );
+});
+
 test("ProjectAnalysis records missing and computed CSS Module member access", () => {
   const result = analyzeProjectSourceTexts({
     sourceFiles: [

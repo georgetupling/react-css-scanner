@@ -82,6 +82,7 @@ Implemented:
 - CSS Module import records
 - `styles.foo` and `styles["foo"]` member reference records
 - simple destructured CSS Module binding records
+- simple same-file CSS Module alias records
 - module member-to-class-definition match relations
 - `localsConvention` transformations for `asIs`, `camelCase`, and `camelCaseOnly`
 - computed member access diagnostics
@@ -89,7 +90,7 @@ Implemented:
 Still missing:
 
 - `composes` target analysis
-- aliased or re-exported CSS Module member patterns
+- chained, reassigned, or re-exported CSS Module member patterns
 - full integration between CSS Module member access and generic class-expression diagnostics
 
 ### 3. Dynamic class analysis is still narrow

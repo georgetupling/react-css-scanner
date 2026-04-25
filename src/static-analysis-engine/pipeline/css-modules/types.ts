@@ -37,6 +37,16 @@ export type CssModuleDestructuredBindingRecord = {
   traces: AnalysisTrace[];
 };
 
+export type CssModuleAliasRecord = {
+  sourceFilePath: string;
+  stylesheetFilePath: string;
+  localName: string;
+  aliasName: string;
+  location: SourceAnchor;
+  rawExpressionText: string;
+  traces: AnalysisTrace[];
+};
+
 export type CssModuleReferenceDiagnosticRecord = {
   sourceFilePath: string;
   stylesheetFilePath: string;
@@ -45,7 +55,9 @@ export type CssModuleReferenceDiagnosticRecord = {
     | "computed-css-module-member"
     | "computed-css-module-destructuring"
     | "nested-css-module-destructuring"
-    | "rest-css-module-destructuring";
+    | "rest-css-module-destructuring"
+    | "reassignable-css-module-alias"
+    | "self-referential-css-module-alias";
   location: SourceAnchor;
   rawExpressionText: string;
   traces: AnalysisTrace[];
@@ -54,6 +66,7 @@ export type CssModuleReferenceDiagnosticRecord = {
 export type CssModuleAnalysis = {
   options: Required<CssModuleAnalysisOptions>;
   imports: CssModuleImportRecord[];
+  aliases: CssModuleAliasRecord[];
   destructuredBindings: CssModuleDestructuredBindingRecord[];
   memberReferences: CssModuleMemberReferenceRecord[];
   diagnostics: CssModuleReferenceDiagnosticRecord[];

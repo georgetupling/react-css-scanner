@@ -62,6 +62,7 @@ export type ProjectAnalysisEntities = {
   renderSubtrees: RenderSubtreeAnalysis[];
   unsupportedClassReferences: UnsupportedClassReferenceAnalysis[];
   cssModuleImports: CssModuleImportAnalysis[];
+  cssModuleAliases: CssModuleAliasAnalysis[];
   cssModuleDestructuredBindings: CssModuleDestructuredBindingAnalysis[];
   cssModuleMemberReferences: CssModuleMemberReferenceAnalysis[];
   cssModuleReferenceDiagnostics: CssModuleReferenceDiagnosticAnalysis[];
@@ -257,6 +258,18 @@ export type CssModuleMemberReferenceAnalysis = {
   traces: AnalysisTrace[];
 };
 
+export type CssModuleAliasAnalysis = {
+  id: ProjectAnalysisId;
+  importId: ProjectAnalysisId;
+  sourceFileId: ProjectAnalysisId;
+  stylesheetId: ProjectAnalysisId;
+  localName: string;
+  aliasName: string;
+  location: SourceAnchor;
+  rawExpressionText: string;
+  traces: AnalysisTrace[];
+};
+
 export type CssModuleDestructuredBindingAnalysis = {
   id: ProjectAnalysisId;
   importId: ProjectAnalysisId;
@@ -376,6 +389,7 @@ export type ProjectAnalysisIndexes = {
   componentsById: Map<ProjectAnalysisId, ComponentAnalysis>;
   unsupportedClassReferencesById: Map<ProjectAnalysisId, UnsupportedClassReferenceAnalysis>;
   cssModuleImportsById: Map<ProjectAnalysisId, CssModuleImportAnalysis>;
+  cssModuleAliasesById: Map<ProjectAnalysisId, CssModuleAliasAnalysis>;
   cssModuleDestructuredBindingsById: Map<ProjectAnalysisId, CssModuleDestructuredBindingAnalysis>;
   cssModuleMemberReferencesById: Map<ProjectAnalysisId, CssModuleMemberReferenceAnalysis>;
   cssModuleReferenceDiagnosticsById: Map<ProjectAnalysisId, CssModuleReferenceDiagnosticAnalysis>;
@@ -407,6 +421,7 @@ export type ProjectAnalysisIndexes = {
   cssModuleMemberMatchesById: Map<ProjectAnalysisId, CssModuleMemberMatchRelation>;
   cssModuleImportsBySourceFileId: Map<ProjectAnalysisId, ProjectAnalysisId[]>;
   cssModuleImportsByStylesheetId: Map<ProjectAnalysisId, ProjectAnalysisId[]>;
+  cssModuleAliasesByImportId: Map<ProjectAnalysisId, ProjectAnalysisId[]>;
   cssModuleDestructuredBindingsByImportId: Map<ProjectAnalysisId, ProjectAnalysisId[]>;
   cssModuleMemberReferencesByImportId: Map<ProjectAnalysisId, ProjectAnalysisId[]>;
   cssModuleMemberReferencesByStylesheetAndClassName: Map<string, ProjectAnalysisId[]>;

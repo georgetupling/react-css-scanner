@@ -7,6 +7,7 @@ import type { ModuleGraph } from "../module-graph/types.js";
 import type {
   CssModuleAnalysis,
   CssModuleAnalysisOptions,
+  CssModuleAliasRecord,
   CssModuleDestructuredBindingRecord,
   CssModuleImportRecord,
   CssModuleMemberReferenceRecord,
@@ -21,14 +22,16 @@ export function analyzeCssModules(input: {
 }): CssModuleAnalysis {
   const options = normalizeCssModuleAnalysisOptions(input.options);
   const imports = buildCssModuleImports(input);
-  const { destructuredBindings, memberReferences, diagnostics } = buildCssModuleMemberReferences({
-    parsedFiles: input.parsedFiles,
-    imports,
-  });
+  const { aliases, destructuredBindings, memberReferences, diagnostics } =
+    buildCssModuleMemberReferences({
+      parsedFiles: input.parsedFiles,
+      imports,
+    });
 
   return {
     options,
     imports,
+    aliases,
     destructuredBindings,
     memberReferences,
     diagnostics,
@@ -100,6 +103,7 @@ function buildCssModuleMemberReferences(input: {
   parsedFiles: ParsedProjectFile[];
   imports: CssModuleImportRecord[];
 }): {
+  aliases: CssModuleAliasRecord[];
   destructuredBindings: CssModuleDestructuredBindingRecord[];
   memberReferences: CssModuleMemberReferenceRecord[];
   diagnostics: CssModuleReferenceDiagnosticRecord[];
@@ -112,19 +116,40 @@ function buildCssModuleMemberReferences(input: {
     );
   }
 
+  const aliases: CssModuleAliasRecord[] = [];
   const destructuredBindings: CssModuleDestructuredBindingRecord[] = [];
   const memberReferences: CssModuleMemberReferenceRecord[] = [];
   const diagnostics: CssModuleReferenceDiagnosticRecord[] = [];
 
   for (const parsedFile of input.parsedFiles) {
     const sourceFilePath = normalizeProjectPath(parsedFile.filePath);
+    const aliasAnalysis = buildCssModuleAliases({
+      parsedSourceFile: parsedFile.parsedSourceFile,
+      sourceFilePath,
+      importsBySourceAndLocalName,
+    });
+    aliases.push(...aliasAnalysis.aliases);
+    diagnostics.push(...aliasAnalysis.diagnostics);
+
+    const importsBySourceLocalOrAliasName = new Map(importsBySourceAndLocalName);
+    for (const alias of aliasAnalysis.aliases) {
+      const cssModuleImport = importsBySourceAndLocalName.get(
+        createCssModuleLocalKey(alias.sourceFilePath, alias.localName),
+      );
+      if (cssModuleImport) {
+        importsBySourceLocalOrAliasName.set(
+          createCssModuleLocalKey(alias.sourceFilePath, alias.aliasName),
+          cssModuleImport,
+        );
+      }
+    }
 
     const visit = (node: ts.Node): void => {
       const memberAccess = getCssModuleMemberAccess({
         node,
         parsedSourceFile: parsedFile.parsedSourceFile,
         sourceFilePath,
-        importsBySourceAndLocalName,
+        importsBySourceAndLocalName: importsBySourceLocalOrAliasName,
       });
 
       if (memberAccess?.kind === "reference") {
@@ -137,7 +162,7 @@ function buildCssModuleMemberReferences(input: {
         node,
         parsedSourceFile: parsedFile.parsedSourceFile,
         sourceFilePath,
-        importsBySourceAndLocalName,
+        importsBySourceAndLocalName: importsBySourceLocalOrAliasName,
       });
       if (destructuring) {
         destructuredBindings.push(...destructuring.bindings);
@@ -152,6 +177,7 @@ function buildCssModuleMemberReferences(input: {
   }
 
   return {
+    aliases: deduplicateByKey(aliases, createAliasKey).sort(compareAliases),
     destructuredBindings: deduplicateByKey(destructuredBindings, createDestructuredBindingKey).sort(
       compareDestructuredBindings,
     ),
@@ -165,6 +191,86 @@ function buildCssModuleMemberReferences(input: {
 type CssModuleMemberAccess =
   | { kind: "reference"; reference: CssModuleMemberReferenceRecord }
   | { kind: "diagnostic"; diagnostic: CssModuleReferenceDiagnosticRecord };
+
+function buildCssModuleAliases(input: {
+  parsedSourceFile: ts.SourceFile;
+  sourceFilePath: string;
+  importsBySourceAndLocalName: Map<string, CssModuleImportRecord>;
+}): {
+  aliases: CssModuleAliasRecord[];
+  diagnostics: CssModuleReferenceDiagnosticRecord[];
+} {
+  const aliases: CssModuleAliasRecord[] = [];
+  const diagnostics: CssModuleReferenceDiagnosticRecord[] = [];
+
+  const visit = (node: ts.Node): void => {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.initializer &&
+      ts.isIdentifier(node.initializer)
+    ) {
+      const cssModuleImport = input.importsBySourceAndLocalName.get(
+        createCssModuleLocalKey(input.sourceFilePath, node.initializer.text),
+      );
+
+      if (cssModuleImport) {
+        if (node.name.text === node.initializer.text) {
+          diagnostics.push(
+            createCssModuleAliasDiagnostic({
+              reason: "self-referential-css-module-alias",
+              node,
+              parsedSourceFile: input.parsedSourceFile,
+              sourceFilePath: input.sourceFilePath,
+              cssModuleImport,
+              summary: "CSS Module alias declaration referenced itself and cannot be resolved",
+            }),
+          );
+        } else if (!isConstVariableDeclaration(node)) {
+          diagnostics.push(
+            createCssModuleAliasDiagnostic({
+              reason: "reassignable-css-module-alias",
+              node,
+              parsedSourceFile: input.parsedSourceFile,
+              sourceFilePath: input.sourceFilePath,
+              cssModuleImport,
+              summary:
+                "CSS Module alias declaration used a reassignable binding and cannot be resolved safely",
+            }),
+          );
+        } else {
+          const location = toSourceAnchor(node, input.parsedSourceFile, input.sourceFilePath);
+          aliases.push({
+            sourceFilePath: input.sourceFilePath,
+            stylesheetFilePath: cssModuleImport.stylesheetFilePath,
+            localName: cssModuleImport.localName,
+            aliasName: node.name.text,
+            location,
+            rawExpressionText: node.getText(input.parsedSourceFile),
+            traces: [
+              createCssModuleTrace({
+                traceId: `css-module:alias:${location.filePath}:${location.startLine}:${location.startColumn}`,
+                summary: `CSS Module import "${cssModuleImport.localName}" was aliased as "${node.name.text}"`,
+                anchor: location,
+                metadata: {
+                  stylesheetFilePath: cssModuleImport.stylesheetFilePath,
+                  localName: cssModuleImport.localName,
+                  aliasName: node.name.text,
+                },
+              }),
+            ],
+          });
+        }
+      }
+    }
+
+    ts.forEachChild(node, visit);
+  };
+
+  visit(input.parsedSourceFile);
+
+  return { aliases, diagnostics };
+}
 
 function getCssModuleMemberAccess(input: {
   node: ts.Node;
@@ -440,6 +546,43 @@ function createCssModuleDestructuringDiagnostic(input: {
   };
 }
 
+function createCssModuleAliasDiagnostic(input: {
+  reason: CssModuleReferenceDiagnosticRecord["reason"];
+  node: ts.VariableDeclaration;
+  parsedSourceFile: ts.SourceFile;
+  sourceFilePath: string;
+  cssModuleImport: CssModuleImportRecord;
+  summary: string;
+}): CssModuleReferenceDiagnosticRecord {
+  const location = toSourceAnchor(input.node, input.parsedSourceFile, input.sourceFilePath);
+  return {
+    sourceFilePath: input.sourceFilePath,
+    stylesheetFilePath: input.cssModuleImport.stylesheetFilePath,
+    localName: input.cssModuleImport.localName,
+    reason: input.reason,
+    location,
+    rawExpressionText: input.node.getText(input.parsedSourceFile),
+    traces: [
+      createCssModuleTrace({
+        traceId: `css-module:diagnostic:${input.reason}:${location.filePath}:${location.startLine}:${location.startColumn}`,
+        summary: input.summary,
+        anchor: location,
+        metadata: {
+          stylesheetFilePath: input.cssModuleImport.stylesheetFilePath,
+          reason: input.reason,
+        },
+      }),
+    ],
+  };
+}
+
+function isConstVariableDeclaration(node: ts.VariableDeclaration): boolean {
+  return (
+    ts.isVariableDeclarationList(node.parent) &&
+    (node.parent.flags & ts.NodeFlags.Const) === ts.NodeFlags.Const
+  );
+}
+
 function resolveCssModuleSpecifier(input: {
   fromFilePath: string;
   specifier: string;
@@ -499,6 +642,17 @@ function createMemberReferenceKey(reference: CssModuleMemberReferenceRecord): st
   ].join(":");
 }
 
+function createAliasKey(alias: CssModuleAliasRecord): string {
+  return [
+    alias.sourceFilePath,
+    alias.stylesheetFilePath,
+    alias.localName,
+    alias.aliasName,
+    alias.location.startLine,
+    alias.location.startColumn,
+  ].join(":");
+}
+
 function createDestructuredBindingKey(binding: CssModuleDestructuredBindingRecord): string {
   return [
     binding.sourceFilePath,
@@ -529,6 +683,10 @@ function compareMemberReferences(
   right: CssModuleMemberReferenceRecord,
 ): number {
   return createMemberReferenceKey(left).localeCompare(createMemberReferenceKey(right));
+}
+
+function compareAliases(left: CssModuleAliasRecord, right: CssModuleAliasRecord): number {
+  return createAliasKey(left).localeCompare(createAliasKey(right));
 }
 
 function compareDestructuredBindings(

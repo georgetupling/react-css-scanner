@@ -66,6 +66,8 @@ The analysis supports direct static member reads from a known imported module ob
 ```ts
 styles.root;
 styles["root"];
+const s = styles;
+s.root;
 const { root, button: buttonClass } = styles;
 ```
 
@@ -91,6 +93,22 @@ These also produce `CssModuleDestructuredBindingAnalysis` records that preserve:
 - the local binding name
 - the source location, raw binding text, and traces
 
+Supported aliases are intentionally local and declaration-based:
+
+```ts
+const s = styles;
+s.root;
+```
+
+These produce `CssModuleAliasAnalysis` records that preserve:
+
+- the imported module object name
+- the local alias name
+- the source location, raw declaration text, and traces
+
+Member references through a simple alias still point back to the original CSS Module import, so rules
+do not need to distinguish `styles.root` from `s.root`.
+
 Computed element access is unsupported but diagnosed:
 
 ```ts
@@ -98,6 +116,7 @@ styles[name];
 styles[prefix + "Root"];
 const { [name]: root } = styles;
 const { ...rest } = styles;
+let s = styles;
 ```
 
 These produce `CssModuleReferenceDiagnosticAnalysis` records with:
@@ -106,13 +125,16 @@ These produce `CssModuleReferenceDiagnosticAnalysis` records with:
 - `reason: "computed-css-module-destructuring"` for computed destructured member names
 - `reason: "rest-css-module-destructuring"` for rest bindings
 - `reason: "nested-css-module-destructuring"` for nested binding patterns
+- `reason: "reassignable-css-module-alias"` for aliases declared with reassignable bindings
+- `reason: "self-referential-css-module-alias"` for self-referential alias declarations
 - source location, raw expression text, and traces
 
 Unsupported for now:
 
-- alias reads, such as `const s = styles; s.root`
 - optional chaining, such as `styles?.root`
 - passing module objects into helpers and reading members elsewhere
+- chained aliases, such as `const s = styles; const t = s`
+- alias reassignment after declaration
 
 ## Export Name Semantics
 
@@ -197,11 +219,12 @@ Currently diagnosed:
 - computed destructured member names from a known imported module object
 - rest destructuring from a known imported module object
 - nested destructuring from a known imported module object
+- reassignable aliases from a known imported module object
+- self-referential aliases from a known imported module object
 
 Not yet diagnosed consistently:
 
 - unsupported named import semantics
-- alias reassignment
 - unresolved CSS Module import targets
 - re-exports
 - unsupported `composes` targets

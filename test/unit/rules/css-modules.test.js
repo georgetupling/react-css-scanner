@@ -157,6 +157,40 @@ test("CSS Module rules treat destructured bindings as module member usage", asyn
   }
 });
 
+test("CSS Module rules resolve member usage through simple aliases", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/Button.tsx",
+      [
+        'import styles from "./Button.module.css";',
+        "const s = styles;",
+        "export function Button() { return <button className={s.root}>Button</button>; }",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/Button.module.css", ".root { display: block; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/Button.tsx"],
+      cssFilePaths: ["src/Button.module.css"],
+    });
+
+    assert.deepEqual(
+      result.findings.filter(
+        (finding) =>
+          finding.ruleId === "missing-css-module-class" ||
+          finding.ruleId === "unused-css-module-class",
+      ),
+      [],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("CSS Module rules respect camelCase locals convention", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(
