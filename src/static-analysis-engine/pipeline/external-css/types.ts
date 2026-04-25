@@ -18,11 +18,19 @@ export type HtmlStylesheetLinkInput = {
   resolvedFilePath?: string;
 };
 
+export type PackageCssImportInput = {
+  importerKind: "source" | "stylesheet";
+  importerFilePath: string;
+  specifier: string;
+  resolvedFilePath: string;
+};
+
 export type ExternalCssAnalysisInput = {
   enabled?: boolean;
   modes?: ExternalCssSourceMode[];
   globalProviders?: ExternalCssGlobalProviderConfig[];
   htmlStylesheetLinks?: HtmlStylesheetLinkInput[];
+  packageCssImports?: PackageCssImportInput[];
 };
 
 export type ActiveExternalCssProvider = {
@@ -37,6 +45,7 @@ export type ExternalCssSummary = {
   enabled: boolean;
   modes: ExternalCssSourceMode[];
   activeProviders: ActiveExternalCssProvider[];
+  packageCssImports: PackageCssImportInput[];
   projectWideStylesheetFilePaths: string[];
   externalStylesheetFilePaths: string[];
 };

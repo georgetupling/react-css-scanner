@@ -59,6 +59,126 @@ test("missing-css-class does not report defined classes", async () => {
   }
 });
 
+test("missing-css-class accepts classes from imported package CSS", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "library/styles.css";\nexport function App() { return <main className="library-btn">Hello</main>; }\n',
+    )
+    .withNodeModuleFile("library/styles.css", ".library-btn { display: inline-flex; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
+      cssFilePaths: [],
+    });
+
+    assert.deepEqual(
+      result.findings.filter(
+        (finding) =>
+          finding.ruleId === "missing-css-class" || finding.ruleId === "css-class-unreachable",
+      ),
+      [],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("missing-css-class emits diagnostics for missing imported package CSS", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "library/missing.css";\nexport function App() { return <main className="library-btn">Hello</main>; }\n',
+    )
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
+      cssFilePaths: [],
+    });
+
+    assert.equal(result.diagnostics.length, 1);
+    assert.equal(result.diagnostics[0].code, "loading.package-css-import-read-failed");
+    assert.equal(result.diagnostics[0].severity, "warning");
+    assert.equal(result.diagnostics[0].filePath, "src/App.tsx");
+    assert.match(result.diagnostics[0].message, /library\/missing\.css/);
+    assert.ok(
+      result.findings.some(
+        (finding) =>
+          finding.ruleId === "missing-css-class" && finding.data?.className === "library-btn",
+      ),
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("missing-css-class accepts classes from CSS package imports", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./App.css";\nexport function App() { return <main className="library-btn">Hello</main>; }\n',
+    )
+    .withCssFile("src/App.css", '@import "library/styles.css";\n.local { display: block; }\n')
+    .withNodeModuleFile("library/styles.css", ".library-btn { display: inline-flex; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
+      cssFilePaths: ["src/App.css"],
+    });
+
+    assert.deepEqual(
+      result.findings.filter(
+        (finding) =>
+          finding.ruleId === "missing-css-class" || finding.ruleId === "css-class-unreachable",
+      ),
+      [],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("missing-css-class emits diagnostics for missing CSS package imports", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./App.css";\nexport function App() { return <main className="library-btn">Hello</main>; }\n',
+    )
+    .withCssFile("src/App.css", '@import "library/missing.css";\n')
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
+      cssFilePaths: ["src/App.css"],
+    });
+
+    assert.equal(result.diagnostics.length, 1);
+    assert.equal(result.diagnostics[0].code, "loading.package-css-import-read-failed");
+    assert.equal(result.diagnostics[0].severity, "warning");
+    assert.equal(result.diagnostics[0].filePath, "src/App.css");
+    assert.match(result.diagnostics[0].message, /library\/missing\.css/);
+    assert.ok(
+      result.findings.some(
+        (finding) =>
+          finding.ruleId === "missing-css-class" && finding.data?.className === "library-btn",
+      ),
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("missing-css-class reports provider classes without matching stylesheet evidence", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(
@@ -80,6 +200,36 @@ test("missing-css-class reports provider classes without matching stylesheet evi
       .sort();
 
     assert.deepEqual(classNames, ["fa-check", "fa-solid"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("missing-css-class only accepts parsed Font Awesome classes when package CSS is imported", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "@fortawesome/fontawesome-free/css/all.css";\nexport function App() { return <i className="fa-solid fa-check" />; }\n',
+    )
+    .withNodeModuleFile(
+      "@fortawesome/fontawesome-free/css/all.css",
+      ".fa-check { display: inline-block; }\n",
+    )
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
+      cssFilePaths: [],
+    });
+
+    const classNames = result.findings
+      .filter((finding) => finding.ruleId === "missing-css-class")
+      .map((finding) => finding.data?.className)
+      .sort();
+
+    assert.deepEqual(classNames, ["fa-solid"]);
   } finally {
     await project.cleanup();
   }

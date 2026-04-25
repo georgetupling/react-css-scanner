@@ -196,8 +196,12 @@ currently include Font Awesome, Material Design Icons, Bootstrap Icons, Animate.
 Pure.css provider declarations; custom `externalCss.globals` entries are appended to those defaults.
 Static HTML/CDN stylesheet links activate matching declared providers, so a Font Awesome CDN link
 can satisfy `fa-*` references without an HTTP fetch. Local HTML-linked `.css` files are loaded,
-parsed, and treated as project-wide reachable. Package CSS loading and remote fetching remain staged
-follow-up work; remote fetching is opt-in by adding `fetch-remote` to `externalCss.modes`.
+parsed, and treated as project-wide reachable. JavaScript and TypeScript package CSS imports such as
+`import "bootstrap-icons/font/bootstrap-icons.css"` are resolved under `node_modules`, loaded,
+parsed, and treated as external imports. Provider declarations are only activated by configured
+external stylesheet evidence such as HTML/CDN links, not by package CSS imports. Package CSS loaded
+through CSS `@import` is also resolved under `node_modules`, parsed, and treated as reachable through
+the importing stylesheet. Remote fetching is opt-in by adding `fetch-remote` to `externalCss.modes`.
 
 ## Rules
 

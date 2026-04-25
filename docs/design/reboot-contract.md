@@ -539,7 +539,13 @@ Design rules:
 - local `.css` files linked from HTML are loaded, parsed, and treated as project-wide reachable;
   provider-matched linked CSS is classified as external, while ordinary local linked CSS remains
   project CSS
-- package CSS loading and remote fetch behavior are staged follow-up work
+- JavaScript and TypeScript package CSS imports are resolved under `node_modules`, loaded, parsed,
+  classified as external imports, and treated as reachable from the importing source file
+- package CSS imports do not activate declared providers; provider declarations are an alternative to
+  fetching externally linked stylesheets such as CDNs, not a substitute for parsed package CSS
+- CSS `@import` package entries are resolved under `node_modules`, loaded, parsed, classified as
+  external imports, and treated as reachable through the importing stylesheet
+- remote fetch behavior is staged follow-up work
 - default rule severities come from `docs/design/rules-catalogue.md` and the rule catalogue code
 - rule ids follow the reboot catalogue; old scanner rule ids are not part of the clean contract
 - missing config should resolve to built-in defaults

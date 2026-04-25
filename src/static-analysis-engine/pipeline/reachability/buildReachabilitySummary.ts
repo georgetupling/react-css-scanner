@@ -33,20 +33,34 @@ export function buildReachabilitySummary(input: {
       .map((filePath) => normalizeProjectPath(filePath))
       .filter(Boolean) as string[],
   );
+  const packageCssImportBySpecifier = new Map(
+    input.externalCssSummary.packageCssImports
+      .filter((importRecord) => importRecord.importerKind === "source")
+      .map((importRecord) => [
+        createPackageCssImportKey(importRecord.importerFilePath, importRecord.specifier),
+        normalizeProjectPath(importRecord.resolvedFilePath) ?? importRecord.resolvedFilePath,
+      ]),
+  );
   const analyzedSourceFilePaths = collectAnalyzedSourceFilePaths(input.moduleGraph);
 
+  const stylesheets = input.cssSources.map((cssSource) =>
+    buildStylesheetReachabilityRecord({
+      cssSource,
+      moduleGraph: input.moduleGraph,
+      renderGraph: input.renderGraph,
+      renderSubtrees: input.renderSubtrees,
+      knownCssFilePaths,
+      projectWideExternalStylesheetFilePaths,
+      packageCssImportBySpecifier,
+      analyzedSourceFilePaths,
+    }),
+  );
+
   return {
-    stylesheets: input.cssSources.map((cssSource) =>
-      buildStylesheetReachabilityRecord({
-        cssSource,
-        moduleGraph: input.moduleGraph,
-        renderGraph: input.renderGraph,
-        renderSubtrees: input.renderSubtrees,
-        knownCssFilePaths,
-        projectWideExternalStylesheetFilePaths,
-        analyzedSourceFilePaths,
-      }),
-    ),
+    stylesheets: applyStylesheetPackageImportReachability({
+      stylesheets,
+      packageCssImports: input.externalCssSummary.packageCssImports,
+    }),
   };
 }
 
@@ -57,6 +71,7 @@ function buildStylesheetReachabilityRecord(input: {
   renderSubtrees: RenderSubtree[];
   knownCssFilePaths: Set<string>;
   projectWideExternalStylesheetFilePaths: Set<string>;
+  packageCssImportBySpecifier: Map<string, string>;
   analyzedSourceFilePaths: string[];
 }): StylesheetReachabilityRecord {
   const cssFilePath = normalizeProjectPath(input.cssSource.filePath);
@@ -91,7 +106,11 @@ function buildStylesheetReachabilityRecord(input: {
 
       if (importRecord.importKind === "external-css") {
         return (
-          (normalizeProjectPath(importRecord.specifier) ?? importRecord.specifier) === cssFilePath
+          (input.packageCssImportBySpecifier.get(
+            createPackageCssImportKey(moduleNode.filePath, importRecord.specifier),
+          ) ??
+            normalizeProjectPath(importRecord.specifier) ??
+            importRecord.specifier) === cssFilePath
         );
       }
 
@@ -191,6 +210,91 @@ function collectAnalyzedSourceFilePaths(moduleGraph: ModuleGraph): string[] {
     .filter((moduleNode) => moduleNode.kind === "source")
     .map((moduleNode) => normalizeProjectPath(moduleNode.filePath) ?? moduleNode.filePath)
     .sort((left, right) => left.localeCompare(right));
+}
+
+function applyStylesheetPackageImportReachability(input: {
+  stylesheets: StylesheetReachabilityRecord[];
+  packageCssImports: ExternalCssSummary["packageCssImports"];
+}): StylesheetReachabilityRecord[] {
+  const stylesheetRecordsByPath = new Map(
+    input.stylesheets
+      .map((stylesheet) => [
+        stylesheet.cssFilePath ? normalizeProjectPath(stylesheet.cssFilePath) : undefined,
+        stylesheet,
+      ])
+      .filter(
+        (entry): entry is [string, StylesheetReachabilityRecord] => typeof entry[0] === "string",
+      ),
+  );
+  const stylesheetImports = input.packageCssImports
+    .filter((importRecord) => importRecord.importerKind === "stylesheet")
+    .map((importRecord) => ({
+      ...importRecord,
+      importerFilePath:
+        normalizeProjectPath(importRecord.importerFilePath) ?? importRecord.importerFilePath,
+      resolvedFilePath:
+        normalizeProjectPath(importRecord.resolvedFilePath) ?? importRecord.resolvedFilePath,
+    }))
+    .sort((left, right) =>
+      `${left.importerFilePath}:${left.specifier}:${left.resolvedFilePath}`.localeCompare(
+        `${right.importerFilePath}:${right.specifier}:${right.resolvedFilePath}`,
+      ),
+    );
+
+  let changed = true;
+  let remainingIterations = stylesheetImports.length + input.stylesheets.length + 1;
+  while (changed && remainingIterations > 0) {
+    changed = false;
+    remainingIterations -= 1;
+
+    for (const importRecord of stylesheetImports) {
+      const importer = stylesheetRecordsByPath.get(importRecord.importerFilePath);
+      const imported = stylesheetRecordsByPath.get(importRecord.resolvedFilePath);
+      if (!importer || !imported || importer.contexts.length === 0) {
+        continue;
+      }
+
+      const before = serializeStylesheetReachabilityRecord(imported);
+      const contextRecordsByKey = new Map<string, StylesheetReachabilityContextRecord>();
+      for (const context of imported.contexts) {
+        addContextRecord(contextRecordsByKey, context);
+      }
+      for (const context of importer.contexts) {
+        addContextRecord(contextRecordsByKey, {
+          context: context.context,
+          availability: context.availability,
+          reasons: [
+            `stylesheet is imported by reachable stylesheet ${importRecord.importerFilePath}`,
+            ...context.reasons,
+          ],
+          derivations: [...context.derivations],
+          traces: [...context.traces],
+        });
+      }
+
+      const contexts = [...contextRecordsByKey.values()].sort(compareContextRecords);
+      const reasons = [
+        `stylesheet is imported by reachable stylesheet ${importRecord.importerFilePath}`,
+        `reachability is attached to ${contexts.length} explicit render context${contexts.length === 1 ? "" : "s"}`,
+      ];
+      const nextRecord = withStylesheetRecordTraces({
+        ...imported,
+        availability: getAvailabilityFromContexts(contexts),
+        contexts,
+        reasons,
+        traces: [],
+      });
+
+      Object.assign(imported, nextRecord);
+      if (serializeStylesheetReachabilityRecord(imported) !== before) {
+        changed = true;
+      }
+    }
+  }
+
+  return input.stylesheets.sort((left, right) =>
+    (left.cssFilePath ?? "").localeCompare(right.cssFilePath ?? ""),
+  );
 }
 
 function buildContextRecords(input: {
@@ -1289,6 +1393,30 @@ function mergeAvailability(
   return order[left] >= order[right] ? left : right;
 }
 
+function getAvailabilityFromContexts(
+  contexts: StylesheetReachabilityContextRecord[],
+): StylesheetReachabilityRecord["availability"] {
+  if (contexts.some((context) => context.availability === "definite")) {
+    return "definite";
+  }
+  if (contexts.some((context) => context.availability === "possible")) {
+    return "possible";
+  }
+  if (contexts.some((context) => context.availability === "unknown")) {
+    return "unknown";
+  }
+  return "unavailable";
+}
+
+function serializeStylesheetReachabilityRecord(record: StylesheetReachabilityRecord): string {
+  return JSON.stringify({
+    cssFilePath: record.cssFilePath,
+    availability: record.availability,
+    contexts: record.contexts,
+    reasons: record.reasons,
+  });
+}
+
 function serializeContextKey(contextRecord: StylesheetReachabilityContextRecord): string {
   if (contextRecord.context.kind === "source-file") {
     return `source-file:${contextRecord.context.filePath}`;
@@ -1366,6 +1494,10 @@ function isRegionPathPrefix(
 
 function createComponentKey(filePath: string, componentName: string): string {
   return `${normalizeProjectPath(filePath) ?? filePath}::${componentName}`;
+}
+
+function createPackageCssImportKey(sourceFilePath: string, specifier: string): string {
+  return `${normalizeProjectPath(sourceFilePath) ?? sourceFilePath}:${specifier}`;
 }
 
 function compareContextRecords(

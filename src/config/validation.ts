@@ -37,6 +37,7 @@ export const DEFAULT_EXTERNAL_CSS_GLOBALS: ExternalCssGlobalProviderConfig[] = [
   {
     provider: "font-awesome",
     match: [
+      "**/@fortawesome/fontawesome-free/css/*.css",
       "**/font-awesome/**/css/*.css",
       "**/fontawesome/**/css/*.css",
       "**/cdnjs.cloudflare.com/ajax/libs/font-awesome/**/css/*.css",

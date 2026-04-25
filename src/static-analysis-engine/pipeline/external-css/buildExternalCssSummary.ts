@@ -4,6 +4,7 @@ import type {
   ExternalCssGlobalProviderConfig,
   ExternalCssSummary,
   HtmlStylesheetLinkInput,
+  PackageCssImportInput,
 } from "./types.js";
 
 export function buildExternalCssSummary(
@@ -13,8 +14,12 @@ export function buildExternalCssSummary(
   const modes = [...new Set(input?.modes ?? [])];
   const declaredGlobalsEnabled = modes.includes("declared-globals");
   const htmlLinksEnabled = modes.includes("html-links");
+  const importedPackagesEnabled = modes.includes("imported-packages");
   const fetchRemoteEnabled = modes.includes("fetch-remote");
   const htmlStylesheetLinks = normalizeHtmlStylesheetLinks(input?.htmlStylesheetLinks ?? []);
+  const packageCssImports = importedPackagesEnabled
+    ? normalizePackageCssImports(input?.packageCssImports ?? [])
+    : [];
   const globalProviders = normalizeGlobalProviders(input?.globalProviders ?? []);
 
   if (!enabled) {
@@ -22,6 +27,7 @@ export function buildExternalCssSummary(
       enabled,
       modes,
       activeProviders: [],
+      packageCssImports: [],
       projectWideStylesheetFilePaths: [],
       externalStylesheetFilePaths: [],
     };
@@ -39,6 +45,7 @@ export function buildExternalCssSummary(
     enabled,
     modes,
     activeProviders,
+    packageCssImports,
     projectWideStylesheetFilePaths: collectProjectWideStylesheetFilePaths({
       htmlStylesheetLinks,
       htmlLinksEnabled,
@@ -47,6 +54,7 @@ export function buildExternalCssSummary(
     externalStylesheetFilePaths: collectExternalStylesheetFilePaths({
       activeProviders,
       htmlStylesheetLinks,
+      packageCssImports,
       fetchRemoteEnabled,
     }),
   };
@@ -136,6 +144,28 @@ function normalizeHtmlStylesheetLinks(
     .sort(compareStylesheetLinks);
 }
 
+function normalizePackageCssImports(imports: PackageCssImportInput[]): PackageCssImportInput[] {
+  const importsByKey = new Map<string, PackageCssImportInput>();
+  for (const importRecord of imports) {
+    const normalizedImport = {
+      importerKind: importRecord.importerKind,
+      importerFilePath: importRecord.importerFilePath.replace(/\\/g, "/"),
+      specifier: importRecord.specifier,
+      resolvedFilePath: importRecord.resolvedFilePath.replace(/\\/g, "/"),
+    };
+    importsByKey.set(
+      `${normalizedImport.importerKind}:${normalizedImport.importerFilePath}:${normalizedImport.specifier}:${normalizedImport.resolvedFilePath}`,
+      normalizedImport,
+    );
+  }
+
+  return [...importsByKey.values()].sort((left, right) =>
+    `${left.importerKind}:${left.importerFilePath}:${left.specifier}:${left.resolvedFilePath}`.localeCompare(
+      `${right.importerKind}:${right.importerFilePath}:${right.specifier}:${right.resolvedFilePath}`,
+    ),
+  );
+}
+
 function compareStylesheetLinks(
   left: HtmlStylesheetLinkInput,
   right: HtmlStylesheetLinkInput,
@@ -193,6 +223,7 @@ function collectProjectWideStylesheetFilePaths(input: {
 function collectExternalStylesheetFilePaths(input: {
   activeProviders: ActiveExternalCssProvider[];
   htmlStylesheetLinks: HtmlStylesheetLinkInput[];
+  packageCssImports: PackageCssImportInput[];
   fetchRemoteEnabled: boolean;
 }): string[] {
   const externalStylesheetFilePaths = new Set<string>();
@@ -201,6 +232,10 @@ function collectExternalStylesheetFilePaths(input: {
     for (const stylesheetLink of provider.matchedStylesheets) {
       externalStylesheetFilePaths.add(stylesheetLink.resolvedFilePath ?? stylesheetLink.href);
     }
+  }
+
+  for (const importRecord of input.packageCssImports) {
+    externalStylesheetFilePaths.add(importRecord.resolvedFilePath);
   }
 
   if (input.fetchRemoteEnabled) {

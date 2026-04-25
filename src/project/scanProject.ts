@@ -9,6 +9,7 @@ import {
 } from "../static-analysis-engine/index.js";
 import { discoverProjectFiles } from "./discovery.js";
 import { extractHtmlStylesheetLinks } from "./htmlStylesheetLinks.js";
+import { loadPackageCssImports } from "./packageCssImports.js";
 import { normalizeProjectPath } from "./pathUtils.js";
 import type {
   ProjectFileRecord,
@@ -57,7 +58,21 @@ export async function scanProject(input: ScanProjectInput = {}): Promise<ScanPro
         diagnostics,
       )
     : [];
-  const selectorCssSources = mergeCssSources([...cssFiles, ...linkedCssFiles]);
+  const packageCssImportsEnabled =
+    config.externalCss.enabled && config.externalCss.modes.includes("imported-packages");
+  const packageCssImports = packageCssImportsEnabled
+    ? await loadPackageCssImports({
+        rootDir: discovered.rootDir,
+        sourceFiles,
+        cssSources: [...cssFiles, ...linkedCssFiles],
+        diagnostics,
+      })
+    : { cssSources: [], imports: [] };
+  const selectorCssSources = mergeCssSources([
+    ...cssFiles,
+    ...linkedCssFiles,
+    ...packageCssImports.cssSources,
+  ]);
 
   const engineResult = analyzeProjectSourceTexts({
     sourceFiles,
@@ -68,6 +83,7 @@ export async function scanProject(input: ScanProjectInput = {}): Promise<ScanPro
       modes: config.externalCss.modes,
       globalProviders: config.externalCss.globals,
       htmlStylesheetLinks: resolvedHtmlStylesheetLinks,
+      packageCssImports: packageCssImports.imports,
     },
   });
   const ruleResult = runRules({
