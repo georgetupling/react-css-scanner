@@ -152,7 +152,7 @@ Config:
 
 ### Ownership And Architecture
 
-Ownership rules should be convention-aware and opt-in by default.
+Ownership rules should be convention-aware and conservative by default.
 
 The reboot should prefer relational ownership over the old fixed bucket model. Instead of first asking whether a stylesheet is `component`, `page`, or `global`, these rules should ask:
 
@@ -183,7 +183,8 @@ Config:
 
 Default severity: `warn`
 
-Triggers when a stylesheet or class appears owned by one component or feature, but is used by another unrelated component or feature.
+Triggers when a stylesheet class has a high-confidence single importing component owner, but is
+used by another component.
 
 Meaning:
 
@@ -192,9 +193,9 @@ Meaning:
 
 Config:
 
-- requires ownership inference or explicit ownership configuration
-- may support feature root patterns
-- may support allowed cross-owner dependency lists
+- currently requires high-confidence import-based component ownership
+- may later support feature root patterns
+- may later support allowed cross-owner dependency lists
 
 #### `style-shared-without-shared-owner`
 

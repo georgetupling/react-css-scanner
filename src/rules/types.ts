@@ -18,6 +18,7 @@ export type RuleId =
   | "compound-selector-never-matched"
   | "unused-compound-selector-branch"
   | "single-component-style-not-colocated"
+  | "style-used-outside-owner"
   | "dynamic-class-reference"
   | "unsupported-syntax-affecting-analysis";
 
