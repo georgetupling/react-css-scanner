@@ -15,6 +15,11 @@ function runUnsatisfiableSelectorRule(context: RuleContext): UnresolvedFinding[]
     .filter((query) => query.outcome === "no-match-under-bounded-analysis")
     .filter((query) => query.constraint?.kind !== "unsupported")
     .filter((query) => query.constraint?.kind !== "same-node-class-conjunction")
+    .filter(
+      (query) =>
+        query.sourceResult.source.kind !== "css-source" ||
+        (query.sourceResult.source.branchCount ?? 1) === 1,
+    )
     .map((query) => ({
       id: `unsatisfiable-selector:${query.id}`,
       ruleId: "unsatisfiable-selector" as const,

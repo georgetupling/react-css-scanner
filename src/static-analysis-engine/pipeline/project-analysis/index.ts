@@ -25,6 +25,7 @@ export type {
   ProjectAnalysisRelations,
   ProviderClassSatisfactionRelation,
   RenderSubtreeAnalysis,
+  SelectorBranchAnalysis,
   SelectorMatchRelation,
   SelectorQueryAnalysis,
   SerializableProjectAnalysis,

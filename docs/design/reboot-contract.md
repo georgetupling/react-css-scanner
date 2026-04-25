@@ -125,6 +125,7 @@ those records for rules instead of walking parsed source text itself.
 This first slice intentionally covers the rule-facing contract that current stages can support:
 
 - source files, stylesheets, components, render subtrees, class references, class definitions, and selector queries
+- selector branches for branch-level selector-list findings
 - module imports, component render edges, stylesheet reachability, class-reference matches, selector matches, and declared-provider class satisfactions
 - deterministic indexes for class names, source files, stylesheets, reachability, selector queries, and matches
 
@@ -191,6 +192,7 @@ type ProjectAnalysisEntities = {
   classReferences: ClassReferenceAnalysis[];
   classDefinitions: ClassDefinitionAnalysis[];
   selectorQueries: SelectorQueryAnalysis[];
+  selectorBranches: SelectorBranchAnalysis[];
   cssModuleImports: CssModuleImportAnalysis[];
   cssModuleMemberReferences: CssModuleMemberReferenceAnalysis[];
   cssModuleReferenceDiagnostics: CssModuleReferenceDiagnosticAnalysis[];

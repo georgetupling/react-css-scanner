@@ -15,6 +15,11 @@ function runCompoundSelectorNeverMatchedRule(context: RuleContext): UnresolvedFi
     .filter((query) => query.outcome === "no-match-under-bounded-analysis")
     .filter(
       (query) =>
+        query.sourceResult.source.kind !== "css-source" ||
+        (query.sourceResult.source.branchCount ?? 1) === 1,
+    )
+    .filter(
+      (query) =>
         query.constraint?.kind === "same-node-class-conjunction" &&
         query.constraint.classNames.length > 1,
     )

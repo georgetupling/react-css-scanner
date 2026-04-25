@@ -56,6 +56,7 @@ export type ProjectAnalysisEntities = {
   classReferences: ClassReferenceAnalysis[];
   classDefinitions: ClassDefinitionAnalysis[];
   selectorQueries: SelectorQueryAnalysis[];
+  selectorBranches: SelectorBranchAnalysis[];
   components: ComponentAnalysis[];
   renderSubtrees: RenderSubtreeAnalysis[];
   unsupportedClassReferences: UnsupportedClassReferenceAnalysis[];
@@ -135,6 +136,24 @@ export type SelectorQueryAnalysis = {
   confidence: SelectorQueryResult["confidence"];
   traces: AnalysisTrace[];
   sourceResult: SelectorQueryResult;
+};
+
+export type SelectorBranchAnalysis = {
+  id: ProjectAnalysisId;
+  selectorQueryId: ProjectAnalysisId;
+  stylesheetId?: ProjectAnalysisId;
+  selectorText: string;
+  selectorListText: string;
+  branchIndex: number;
+  branchCount: number;
+  ruleKey: string;
+  location?: SourceAnchor;
+  constraint?: SelectorConstraint | { kind: "unsupported"; reason: string };
+  outcome: SelectorQueryResult["outcome"];
+  status: SelectorQueryResult["status"];
+  confidence: SelectorQueryResult["confidence"];
+  traces: AnalysisTrace[];
+  sourceQuery: SelectorQueryAnalysis;
 };
 
 export type ComponentAnalysis = {
@@ -289,6 +308,7 @@ export type ProjectAnalysisIndexes = {
   classReferencesById: Map<ProjectAnalysisId, ClassReferenceAnalysis>;
   classDefinitionsById: Map<ProjectAnalysisId, ClassDefinitionAnalysis>;
   selectorQueriesById: Map<ProjectAnalysisId, SelectorQueryAnalysis>;
+  selectorBranchesById: Map<ProjectAnalysisId, SelectorBranchAnalysis>;
   unsupportedClassReferencesById: Map<ProjectAnalysisId, UnsupportedClassReferenceAnalysis>;
   cssModuleImportsById: Map<ProjectAnalysisId, CssModuleImportAnalysis>;
   cssModuleMemberReferencesById: Map<ProjectAnalysisId, CssModuleMemberReferenceAnalysis>;
@@ -303,6 +323,9 @@ export type ProjectAnalysisIndexes = {
   reachableStylesheetsBySourceFileId: Map<ProjectAnalysisId, ProjectAnalysisId[]>;
   reachableStylesheetsByComponentId: Map<ProjectAnalysisId, ProjectAnalysisId[]>;
   selectorQueriesByStylesheetId: Map<ProjectAnalysisId, ProjectAnalysisId[]>;
+  selectorBranchesByStylesheetId: Map<ProjectAnalysisId, ProjectAnalysisId[]>;
+  selectorBranchesByQueryId: Map<ProjectAnalysisId, ProjectAnalysisId[]>;
+  selectorBranchesByRuleKey: Map<string, ProjectAnalysisId[]>;
   referenceMatchesById: Map<ProjectAnalysisId, ClassReferenceMatchRelation>;
   matchesByReferenceId: Map<ProjectAnalysisId, ProjectAnalysisId[]>;
   referenceMatchesByReferenceAndClassName: Map<string, ProjectAnalysisId[]>;

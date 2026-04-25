@@ -19,6 +19,7 @@ import type {
   ProviderClassSatisfactionRelation,
   RenderSubtreeAnalysis,
   SelectorMatchRelation,
+  SelectorBranchAnalysis,
   SelectorQueryAnalysis,
   SourceFileAnalysis,
   StylesheetAnalysis,
@@ -48,6 +49,7 @@ export function buildProjectAnalysis(input: ProjectAnalysisBuildInput): ProjectA
   const classReferences = buildClassReferences(renderSubtrees, indexes);
   const unsupportedClassReferences = buildUnsupportedClassReferences(input, indexes);
   const selectorQueries = buildSelectorQueries(input.selectorQueryResults, stylesheets, indexes);
+  const selectorBranches = buildSelectorBranches(selectorQueries);
   const cssModuleImports = buildCssModuleImports(input, indexes);
   const {
     memberReferences: cssModuleMemberReferences,
@@ -63,6 +65,7 @@ export function buildProjectAnalysis(input: ProjectAnalysisBuildInput): ProjectA
     classReferences,
     classDefinitions,
     selectorQueries,
+    selectorBranches,
     unsupportedClassReferences,
     cssModuleImports,
     cssModuleMemberReferences,
@@ -111,6 +114,7 @@ export function buildProjectAnalysis(input: ProjectAnalysisBuildInput): ProjectA
       classReferences,
       classDefinitions,
       selectorQueries,
+      selectorBranches,
       components,
       renderSubtrees,
       unsupportedClassReferences,
@@ -644,6 +648,42 @@ function buildSelectorQueries(
   return selectorQueries.sort(compareById);
 }
 
+function buildSelectorBranches(selectorQueries: SelectorQueryAnalysis[]): SelectorBranchAnalysis[] {
+  return selectorQueries
+    .filter((query) => query.sourceResult.source.kind === "css-source")
+    .flatMap((query, index) => {
+      const source = query.sourceResult.source;
+      if (source.kind !== "css-source") {
+        return [];
+      }
+      const selectorListText = source.selectorListText ?? query.selectorText;
+      const branchIndex = source.branchIndex ?? 0;
+      const branchCount = source.branchCount ?? 1;
+      const ruleKey = source.ruleKey ?? createSelectorRuleKey(query, index);
+
+      return [
+        {
+          id: createSelectorBranchId(query, branchIndex, index),
+          selectorQueryId: query.id,
+          stylesheetId: query.stylesheetId,
+          selectorText: query.selectorText,
+          selectorListText,
+          branchIndex,
+          branchCount,
+          ruleKey,
+          location: query.location,
+          constraint: query.constraint,
+          outcome: query.outcome,
+          status: query.status,
+          confidence: query.confidence,
+          traces: [...query.traces],
+          sourceQuery: query,
+        },
+      ];
+    })
+    .sort(compareById);
+}
+
 function buildStylesheetReachability(
   input: ProjectAnalysisBuildInput,
   indexes: ProjectAnalysisIndexes,
@@ -947,6 +987,7 @@ function indexEntities(input: {
   classReferences: ClassReferenceAnalysis[];
   classDefinitions: ClassDefinitionAnalysis[];
   selectorQueries: SelectorQueryAnalysis[];
+  selectorBranches: SelectorBranchAnalysis[];
   unsupportedClassReferences: UnsupportedClassReferenceAnalysis[];
   cssModuleImports: CssModuleImportAnalysis[];
   cssModuleMemberReferences: CssModuleMemberReferenceAnalysis[];
@@ -967,6 +1008,26 @@ function indexEntities(input: {
   }
   for (const selectorQuery of input.selectorQueries) {
     input.indexes.selectorQueriesById.set(selectorQuery.id, selectorQuery);
+  }
+  for (const selectorBranch of input.selectorBranches) {
+    input.indexes.selectorBranchesById.set(selectorBranch.id, selectorBranch);
+    pushMapValue(
+      input.indexes.selectorBranchesByQueryId,
+      selectorBranch.selectorQueryId,
+      selectorBranch.id,
+    );
+    pushMapValue(
+      input.indexes.selectorBranchesByRuleKey,
+      selectorBranch.ruleKey,
+      selectorBranch.id,
+    );
+    if (selectorBranch.stylesheetId) {
+      pushMapValue(
+        input.indexes.selectorBranchesByStylesheetId,
+        selectorBranch.stylesheetId,
+        selectorBranch.id,
+      );
+    }
   }
   for (const unsupportedReference of input.unsupportedClassReferences) {
     input.indexes.unsupportedClassReferencesById.set(unsupportedReference.id, unsupportedReference);
@@ -1007,6 +1068,9 @@ function indexEntities(input: {
   }
 
   sortIndexValues(input.indexes.cssModuleImportsBySourceFileId);
+  sortIndexValues(input.indexes.selectorBranchesByQueryId);
+  sortIndexValues(input.indexes.selectorBranchesByRuleKey);
+  sortIndexValues(input.indexes.selectorBranchesByStylesheetId);
   sortIndexValues(input.indexes.cssModuleImportsByStylesheetId);
   sortIndexValues(input.indexes.cssModuleMemberReferencesByImportId);
   sortIndexValues(input.indexes.cssModuleMemberReferencesByStylesheetAndClassName);
@@ -1315,6 +1379,7 @@ function createEmptyIndexes(): ProjectAnalysisIndexes {
     classReferencesById: new Map(),
     classDefinitionsById: new Map(),
     selectorQueriesById: new Map(),
+    selectorBranchesById: new Map(),
     unsupportedClassReferencesById: new Map(),
     cssModuleImportsById: new Map(),
     cssModuleMemberReferencesById: new Map(),
@@ -1329,6 +1394,9 @@ function createEmptyIndexes(): ProjectAnalysisIndexes {
     reachableStylesheetsBySourceFileId: new Map(),
     reachableStylesheetsByComponentId: new Map(),
     selectorQueriesByStylesheetId: new Map(),
+    selectorBranchesByStylesheetId: new Map(),
+    selectorBranchesByQueryId: new Map(),
+    selectorBranchesByRuleKey: new Map(),
     referenceMatchesById: new Map(),
     matchesByReferenceId: new Map(),
     referenceMatchesByReferenceAndClassName: new Map(),
@@ -1376,6 +1444,26 @@ function createSelectorQueryId(
   return anchor
     ? createAnchorId("selector-query", anchor, index)
     : `selector-query:direct:${index}:${stableHash(selectorQueryResult.selectorText)}`;
+}
+
+function createSelectorBranchId(
+  selectorQuery: SelectorQueryAnalysis,
+  branchIndex: number,
+  index: number,
+): ProjectAnalysisId {
+  const anchor = selectorQuery.location;
+  return anchor
+    ? createAnchorId("selector-branch", anchor, branchIndex)
+    : `selector-branch:${index}:${stableHash(`${selectorQuery.id}:${branchIndex}`)}`;
+}
+
+function createSelectorRuleKey(selectorQuery: SelectorQueryAnalysis, index: number): string {
+  return [
+    selectorQuery.stylesheetId ?? "direct-query",
+    selectorQuery.location?.startLine ?? index,
+    selectorQuery.location?.startColumn ?? 0,
+    selectorQuery.selectorText,
+  ].join(":");
 }
 
 function createAnchorId(kind: string, anchor: SourceAnchor, index: number): ProjectAnalysisId {

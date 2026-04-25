@@ -16,6 +16,7 @@ export type RuleId =
   | "unused-css-module-class"
   | "unsatisfiable-selector"
   | "compound-selector-never-matched"
+  | "unused-compound-selector-branch"
   | "dynamic-class-reference"
   | "unsupported-syntax-affecting-analysis";
 
@@ -26,6 +27,7 @@ export type AnalysisEntityRef =
   | { kind: "class-reference"; id: ProjectAnalysisId }
   | { kind: "unsupported-class-reference"; id: ProjectAnalysisId }
   | { kind: "class-definition"; id: ProjectAnalysisId }
+  | { kind: "selector-branch"; id: ProjectAnalysisId }
   | { kind: "css-module-import"; id: ProjectAnalysisId }
   | { kind: "css-module-member-reference"; id: ProjectAnalysisId }
   | { kind: "css-module-reference-diagnostic"; id: ProjectAnalysisId }

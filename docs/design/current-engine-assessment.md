@@ -27,6 +27,7 @@ Implemented areas include:
 - render graph construction
 - CSS rule and class-definition extraction
 - selector normalization for a bounded subset of selectors
+- selector branch projection for branch-level selector-list findings
 - stylesheet reachability analysis
 - a normalized `ProjectAnalysis` projection for rule-facing entities, relations, and indexes
 - reference match relations with class-token, definite/possible, reachability, reasons, and trace evidence

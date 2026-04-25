@@ -143,3 +143,77 @@ test("compound-selector-never-matched does not report matched same-node class co
     await project.cleanup();
   }
 });
+
+test("unused-compound-selector-branch reports a dead branch in an otherwise useful selector list", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        "export function App() {",
+        '  return <main className="card"><span className="title">Hello</span></main>;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".card > .title, .card > .missing { color: green; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
+      cssFilePaths: ["src/App.css"],
+    });
+
+    const findings = result.findings.filter(
+      (finding) => finding.ruleId === "unused-compound-selector-branch",
+    );
+    assert.equal(findings.length, 1);
+    assert.equal(findings[0].severity, "warn");
+    assert.equal(findings[0].confidence, "high");
+    assert.equal(findings[0].subject.kind, "selector-branch");
+    assert.equal(findings[0].data?.selectorText, ".card > .missing");
+    assert.equal(findings[0].data?.selectorListText, ".card > .title, .card > .missing");
+    assert.equal(findings[0].data?.branchIndex, 1);
+    assert.equal(findings[0].data?.branchCount, 2);
+    assert.equal(findings[0].traces[0].category, "rule-evaluation");
+    assert.deepEqual(
+      result.findings.filter((finding) => finding.ruleId === "unsatisfiable-selector"),
+      [],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unused-compound-selector-branch does not report when all selector list branches match", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        "export function App() {",
+        '  return <main className="card"><span className="title">Hello</span><span className="subtitle">World</span></main>;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".card > .title, .card > .subtitle { color: green; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
+      cssFilePaths: ["src/App.css"],
+    });
+
+    assert.deepEqual(
+      result.findings.filter((finding) => finding.ruleId === "unused-compound-selector-branch"),
+      [],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});

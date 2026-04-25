@@ -77,17 +77,24 @@ export type CssAtRuleContext = {
   queryText: string;
 };
 
+export type CssSelectorBranchSource = {
+  selectorListText?: string;
+  branchIndex?: number;
+  branchCount?: number;
+  ruleKey?: string;
+};
+
 export type ExtractedSelectorQuery = {
   selectorText: string;
   source:
     | {
         kind: "direct-query";
       }
-    | {
+    | ({
         kind: "css-source";
         selectorAnchor?: SourceAnchor;
         atRuleContext?: CssAtRuleContext[];
-      };
+      } & CssSelectorBranchSource);
 };
 
 export type ParsedSelectorQuery = {
@@ -96,11 +103,11 @@ export type ParsedSelectorQuery = {
     | {
         kind: "direct-query";
       }
-    | {
+    | ({
         kind: "css-source";
         selectorAnchor?: SourceAnchor;
         atRuleContext?: CssAtRuleContext[];
-      };
+      } & CssSelectorBranchSource);
   normalizedSelectorText: string;
   normalizedSelector: NormalizedSelector;
   parseNotes: string[];
@@ -120,11 +127,11 @@ export type SelectorQueryResult = {
     | {
         kind: "direct-query";
       }
-    | {
+    | ({
         kind: "css-source";
         selectorAnchor?: SourceAnchor;
         atRuleContext?: CssAtRuleContext[];
-      };
+      } & CssSelectorBranchSource);
   constraint?:
     | SelectorConstraint
     | {

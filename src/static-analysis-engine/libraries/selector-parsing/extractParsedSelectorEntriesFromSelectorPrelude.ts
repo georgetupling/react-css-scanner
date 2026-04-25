@@ -9,9 +9,12 @@ export function extractParsedSelectorEntriesFromSelectorPrelude(input: {
   atRuleContext?: ParsedCssAtRuleContext[];
 }): ParsedCssSelectorEntry[] {
   const entries: ParsedCssSelectorEntry[] = [];
+  const rawParts = input.selectorPrelude.split(",");
+  const selectorListText = input.selectorPrelude.trim();
+  const ruleKey = createSelectorRuleKey(input);
   let cursor = 0;
 
-  for (const rawPart of input.selectorPrelude.split(",")) {
+  for (const [branchIndex, rawPart] of rawParts.entries()) {
     const rawPartStart = cursor;
     const rawPartEnd = rawPartStart + rawPart.length;
     const trimmed = rawPart.trim();
@@ -26,6 +29,10 @@ export function extractParsedSelectorEntriesFromSelectorPrelude(input: {
       if (parsedBranch) {
         entries.push({
           selectorText: trimmed,
+          selectorListText,
+          branchIndex,
+          branchCount: rawParts.length,
+          ruleKey,
           parsedBranch,
           selectorAnchor: toSourceAnchor(input.sourceText, input.filePath, startOffset, endOffset),
           ...(input.atRuleContext && input.atRuleContext.length > 0
@@ -41,6 +48,20 @@ export function extractParsedSelectorEntriesFromSelectorPrelude(input: {
   }
 
   return entries;
+}
+
+function createSelectorRuleKey(input: {
+  selectorPrelude: string;
+  preludeStartIndex: number;
+  filePath?: string;
+  atRuleContext?: ParsedCssAtRuleContext[];
+}): string {
+  return [
+    input.filePath ?? "<anonymous-css>",
+    input.preludeStartIndex,
+    input.selectorPrelude.trim(),
+    ...(input.atRuleContext ?? []).map((entry) => `${entry.kind}:${entry.queryText}`),
+  ].join(":");
 }
 
 function toSourceAnchor(
