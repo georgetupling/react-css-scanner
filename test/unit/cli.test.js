@@ -113,6 +113,32 @@ test("CLI reports JSON output write failures clearly", async () => {
   }
 });
 
+test("CLI groups human-readable findings by file and prints summary last", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./App.css";\nexport function App() { return <main className="missing">Hello</main>; }\n',
+    )
+    .withCssFile("src/App.css", ".unused { display: block; }\n")
+    .build();
+
+  try {
+    const error = await captureRejectedCliRun([project.rootDir]);
+    const output = error.stdout;
+
+    assert.equal(error.code, 1);
+    assert.match(output, /scan-react-css reboot scan/);
+    assert.ok(output.includes("src/App.css\n  [warn] unused-css-class at src/App.css:1"));
+    assert.ok(output.includes("src/App.tsx\n  [error] missing-css-class at src/App.tsx:2"));
+    assert.match(output, /src\/App\.css[\s\S]*\n\nsrc\/App\.tsx/);
+    assert.ok(output.indexOf("Summary\n") > output.indexOf("src/App.tsx\n"));
+    assert.ok(output.includes("Summary\n  Source files: 1"));
+    assert.equal(output.includes("\u001b["), false);
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("CLI exit code follows configured fail threshold", async () => {
   const project = await new TestProjectBuilder()
     .withConfig({

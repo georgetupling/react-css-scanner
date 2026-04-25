@@ -75,35 +75,16 @@ if (args.json) {
   const visibleDiagnostics = filterDiagnostics(focusedResult.diagnostics, args.trace);
   const visibleFindings = filterFindings(focusedResult.findings, args.trace);
 
-  console.log(`scan-react-css reboot scan`);
-  console.log(`Root: ${focusedResult.rootDir}`);
-  if (args.focusPaths.length > 0) {
-    console.log(`Focus: ${args.focusPaths.join(", ")}`);
-  }
-  console.log(`Source files: ${focusedResult.summary.sourceFileCount}`);
-  console.log(`CSS files: ${focusedResult.summary.cssFileCount}`);
-  console.log(`Findings: ${visibleFindings.length}`);
-  console.log(`Failed: ${focusedResult.failed ? "yes" : "no"}`);
-  console.log(`Fail on severity: ${focusedResult.config.failOnSeverity}`);
-  console.log(`Class references: ${focusedResult.summary.classReferenceCount}`);
-  console.log(`Class definitions: ${focusedResult.summary.classDefinitionCount}`);
-  console.log(`Selector queries: ${focusedResult.summary.selectorQueryCount}`);
-
-  for (const diagnostic of visibleDiagnostics) {
-    console.log(`[${diagnostic.severity}] ${diagnostic.code}: ${diagnostic.message}`);
-  }
-
-  for (const finding of visibleFindings) {
-    const location = finding.location
-      ? ` (${finding.location.filePath}:${finding.location.startLine})`
-      : "";
-    console.log(`[${finding.severity}] ${finding.ruleId}: ${finding.message}${location}`);
-    if (args.trace) {
-      for (const trace of finding.traces) {
-        printTrace(trace, "  ");
-      }
-    }
-  }
+  console.log(
+    formatTextReport({
+      result: focusedResult,
+      diagnostics: visibleDiagnostics,
+      findings: visibleFindings,
+      focusPaths: args.focusPaths,
+      includeTrace: args.trace,
+      useColor: shouldUseColor(process.stdout),
+    }),
+  );
 }
 
 process.exit(focusedResult.failed ? 1 : 0);
@@ -252,6 +233,232 @@ async function pathExists(filePath: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+function formatTextReport(input: {
+  result: ScanProjectResult;
+  diagnostics: ScanDiagnostic[];
+  findings: Finding[];
+  focusPaths: string[];
+  includeTrace: boolean;
+  useColor: boolean;
+}): string {
+  const sections = [
+    formatTextHeader(input.result, input.focusPaths),
+    ...formatDiagnosticSections(input.diagnostics, input.useColor),
+    ...formatFindingSections(input.findings, input.includeTrace, input.useColor),
+    formatTextSummary(input.result, input.findings.length),
+  ];
+
+  return sections.filter(Boolean).join("\n\n");
+}
+
+function formatTextHeader(result: ScanProjectResult, focusPaths: string[]): string {
+  const lines = [`scan-react-css reboot scan`, `Root: ${result.rootDir}`];
+  if (focusPaths.length > 0) {
+    lines.push(`Focus: ${focusPaths.join(", ")}`);
+  }
+
+  return lines.join("\n");
+}
+
+function formatDiagnosticSections(diagnostics: ScanDiagnostic[], useColor: boolean): string[] {
+  if (diagnostics.length === 0) {
+    return [];
+  }
+
+  const grouped = groupBy(
+    diagnostics,
+    (diagnostic) => diagnostic.filePath ?? "Diagnostics",
+    compareDiagnosticLocations,
+  );
+
+  return grouped.map(([heading, group]) => {
+    const lines = [heading];
+    for (const diagnostic of group.sort(compareDiagnostics)) {
+      const severity = colorSeverity(diagnostic.severity, useColor);
+      const location = diagnostic.filePath ? ` at ${diagnostic.filePath}` : "";
+      lines.push(`  [${severity}] ${diagnostic.code}${location}`);
+      lines.push(`          ${diagnostic.message}`);
+    }
+
+    return lines.join("\n");
+  });
+}
+
+function formatFindingSections(
+  findings: Finding[],
+  includeTrace: boolean,
+  useColor: boolean,
+): string[] {
+  if (findings.length === 0) {
+    return ["Findings\n  No findings."];
+  }
+
+  const grouped = groupBy(findings, getFindingGroupKey, compareFindingGroupKeys);
+  return grouped.map(([heading, group]) => {
+    const lines = [heading];
+    for (const finding of group.sort(compareFindings)) {
+      const severity = colorSeverity(finding.severity, useColor);
+      const location = formatFindingLocation(finding);
+      const target = location ? ` at ${location}` : "";
+      lines.push(`  [${severity}] ${finding.ruleId}${target}`);
+      lines.push(`          ${finding.message}`);
+      if (includeTrace) {
+        for (const trace of finding.traces) {
+          lines.push(...formatTraceLines(trace, "          "));
+        }
+      }
+    }
+
+    return lines.join("\n");
+  });
+}
+
+function formatTextSummary(result: ScanProjectResult, visibleFindingCount: number): string {
+  return [
+    "Summary",
+    `  Source files: ${result.summary.sourceFileCount}`,
+    `  CSS files: ${result.summary.cssFileCount}`,
+    `  Findings: ${visibleFindingCount}`,
+    `  Failed: ${result.failed ? "yes" : "no"}`,
+    `  Fail on severity: ${result.config.failOnSeverity}`,
+    `  Class references: ${result.summary.classReferenceCount}`,
+    `  Class definitions: ${result.summary.classDefinitionCount}`,
+    `  Selector queries: ${result.summary.selectorQueryCount}`,
+  ].join("\n");
+}
+
+function formatFindingLocation(finding: Finding): string | undefined {
+  return finding.location
+    ? `${finding.location.filePath}:${finding.location.startLine}`
+    : undefined;
+}
+
+function getFindingGroupKey(finding: Finding): string {
+  return finding.location?.filePath ?? "Findings";
+}
+
+function compareFindingGroupKeys(left: string, right: string): number {
+  if (left === "Findings") {
+    return 1;
+  }
+
+  if (right === "Findings") {
+    return -1;
+  }
+
+  return left.localeCompare(right);
+}
+
+function compareFindings(left: Finding, right: Finding): number {
+  return (
+    compareRuleSeverities(left.severity, right.severity) ||
+    (left.location?.startLine ?? Number.MAX_SAFE_INTEGER) -
+      (right.location?.startLine ?? Number.MAX_SAFE_INTEGER) ||
+    left.ruleId.localeCompare(right.ruleId) ||
+    left.message.localeCompare(right.message)
+  );
+}
+
+function compareDiagnostics(left: ScanDiagnostic, right: ScanDiagnostic): number {
+  return (
+    compareDiagnosticSeverities(left.severity, right.severity) ||
+    left.code.localeCompare(right.code) ||
+    left.message.localeCompare(right.message)
+  );
+}
+
+function compareDiagnosticLocations(left: string, right: string): number {
+  if (left === "Diagnostics") {
+    return 1;
+  }
+
+  if (right === "Diagnostics") {
+    return -1;
+  }
+
+  return left.localeCompare(right);
+}
+
+function compareRuleSeverities(left: RuleSeverity, right: RuleSeverity): number {
+  return ruleSeverityRank(left) - ruleSeverityRank(right);
+}
+
+function compareDiagnosticSeverities(
+  left: ScanDiagnostic["severity"],
+  right: ScanDiagnostic["severity"],
+): number {
+  return diagnosticSeverityRank(left) - diagnosticSeverityRank(right);
+}
+
+function ruleSeverityRank(severity: RuleSeverity): number {
+  return {
+    error: 0,
+    warn: 1,
+    info: 2,
+    debug: 3,
+  }[severity];
+}
+
+function diagnosticSeverityRank(severity: ScanDiagnostic["severity"]): number {
+  return {
+    error: 0,
+    warning: 1,
+    info: 2,
+    debug: 3,
+  }[severity];
+}
+
+function colorSeverity(
+  severity: RuleSeverity | ScanDiagnostic["severity"],
+  useColor: boolean,
+): string {
+  if (!useColor) {
+    return severity;
+  }
+
+  const color = {
+    error: "\u001b[31m",
+    warn: "\u001b[38;5;208m",
+    warning: "\u001b[38;5;208m",
+    info: "\u001b[36m",
+    debug: "\u001b[90m",
+  }[severity];
+
+  return `${color}${severity}\u001b[0m`;
+}
+
+function shouldUseColor(stream: NodeJS.WriteStream): boolean {
+  return Boolean(stream.isTTY && !process.env.NO_COLOR);
+}
+
+function groupBy<T>(
+  values: T[],
+  getKey: (value: T) => string,
+  compareKeys: (left: string, right: string) => number,
+): Array<[string, T[]]> {
+  const groups = new Map<string, T[]>();
+  for (const value of values) {
+    const key = getKey(value);
+    const group = groups.get(key);
+    if (group) {
+      group.push(value);
+    } else {
+      groups.set(key, [value]);
+    }
+  }
+
+  return [...groups.entries()].sort(([left], [right]) => compareKeys(left, right));
+}
+
+function formatTraceLines(trace: AnalysisTrace, indent: string): string[] {
+  const lines = [`${indent}- ${trace.summary}`];
+  for (const child of trace.children) {
+    lines.push(...formatTraceLines(child, `${indent}  `));
+  }
+
+  return lines;
 }
 
 function formatJsonResult(result: ScanProjectResult, includeDebug: boolean): object {
@@ -481,11 +688,4 @@ function withoutDebugCounts(summary: ScanProjectResult["summary"]): ScanProjectR
       debug: 0,
     },
   };
-}
-
-function printTrace(trace: AnalysisTrace, indent: string): void {
-  console.log(`${indent}- ${trace.summary}`);
-  for (const child of trace.children) {
-    printTrace(child, `${indent}  `);
-  }
 }

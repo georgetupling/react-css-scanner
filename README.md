@@ -242,4 +242,9 @@ Default policy:
 - `error` findings fail the scan
 - `warn`, `info`, and `debug` findings do not
 
-Human-readable output is intended for local use. JSON output is deterministic and intended for tooling and CI.
+Human-readable output is intended for local use. Findings are grouped by file, separated by blank
+lines, and followed by a summary. Finding locations are printed as `path/to/file:line` targets so
+VS Code and common terminals can open them directly. Interactive terminals get severity colors,
+unless `NO_COLOR` is set.
+
+JSON output is deterministic and intended for tooling and CI.

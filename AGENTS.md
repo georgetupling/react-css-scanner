@@ -91,6 +91,8 @@ Current behavior:
 - `--output-file` selects the JSON report path and requires `--json`.
 - `--overwrite-output` replaces the chosen JSON report path and requires `--json`.
 - Without `--overwrite-output`, existing JSON reports are preserved with suffixed paths.
+- Human-readable output groups findings by file, prints clickable `file:line` targets, and keeps the
+  summary at the end.
 - `--focus` filters reported findings after full-project analysis.
 - `rootDir` must be a directory.
 - Debug findings are hidden unless `--debug` or `--trace` is used.

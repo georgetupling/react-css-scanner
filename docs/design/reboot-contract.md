@@ -549,6 +549,21 @@ It should not contain:
 - compatibility fields for the deleted scanner
 - old rule id aliases
 
+## CLI Text Contract
+
+Human-readable output is optimized for local inspection.
+
+Text output should:
+
+- group findings by primary location file
+- separate file sections with blank lines
+- print finding locations as `path/to/file:line` targets that common terminals and VS Code can open
+- sort findings within a file by severity, line, rule id, and message
+- put the summary at the end
+- color severity labels in interactive terminals
+- suppress color when stdout is not a TTY or `NO_COLOR` is set
+- keep trace details hidden unless `--trace` or `--debug` is supplied
+
 ## Rebuild Scope Around The Core
 
 The following deleted product capabilities need to be rebuilt outside the engine:
