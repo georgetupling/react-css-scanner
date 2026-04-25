@@ -316,6 +316,66 @@ test("dynamic-class-reference degrades recursive helper-bound class arrays witho
   }
 });
 
+test("dynamic-class-reference degrades recursive boolean bindings without overflowing", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        "export function App() {",
+        "  const active = active;",
+        "  return <main className={active && 'active'}>Hello</main>;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".active { display: block; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
+      cssFilePaths: ["src/App.css"],
+    });
+
+    assert.deepEqual(
+      result.findings.filter((finding) => finding.ruleId === "missing-css-class"),
+      [],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("dynamic-class-reference degrades recursive element access keys without overflowing", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        "export function App() {",
+        "  const key = key;",
+        "  const classes = { active: 'active' };",
+        "  return <main className={classes[key]}>Hello</main>;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".active { display: block; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
+      cssFilePaths: ["src/App.css"],
+    });
+
+    assert.ok(result.findings.some((finding) => finding.ruleId === "dynamic-class-reference"));
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("dynamic-class-reference can be disabled from config", async () => {
   const project = await new TestProjectBuilder()
     .withConfig({

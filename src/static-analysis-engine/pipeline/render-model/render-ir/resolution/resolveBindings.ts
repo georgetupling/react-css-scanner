@@ -9,6 +9,13 @@ import {
   type HelperExpansionReason,
 } from "../shared/expansionSemantics.js";
 
+const MAX_PROPERTY_NAME_RESOLUTION_DEPTH = 100;
+
+type PropertyNameResolutionState = {
+  activeExpressions: Set<string>;
+  depth: number;
+};
+
 export function resolveBoundExpression(
   expression: ts.Expression,
   context: BuildContext,
@@ -362,33 +369,59 @@ function resolvePropertyValueFromExpression(
 function resolveElementAccessPropertyName(
   argumentExpression: ts.Expression | undefined,
   context: BuildContext,
+  state: PropertyNameResolutionState = {
+    activeExpressions: new Set(),
+    depth: 0,
+  },
 ): string | undefined {
   if (!argumentExpression) {
     return undefined;
   }
 
-  const helperResolution = ts.isCallExpression(argumentExpression)
-    ? resolveHelperCallContext(argumentExpression, context)
-    : undefined;
-  if (helperResolution) {
-    return resolveElementAccessPropertyName(helperResolution.expression, helperResolution.context);
+  if (state.depth > MAX_PROPERTY_NAME_RESOLUTION_DEPTH) {
+    return undefined;
   }
 
-  const boundExpression = resolveBoundExpression(argumentExpression, context);
-  if (boundExpression) {
-    return resolveElementAccessPropertyName(boundExpression, context);
+  const expressionKey = getExpressionResolutionKey(argumentExpression, context);
+  if (state.activeExpressions.has(expressionKey)) {
+    return undefined;
   }
 
-  const unwrappedExpression = unwrapResolvableExpression(argumentExpression);
-  if (
-    ts.isStringLiteral(unwrappedExpression) ||
-    ts.isNoSubstitutionTemplateLiteral(unwrappedExpression) ||
-    ts.isNumericLiteral(unwrappedExpression)
-  ) {
-    return unwrappedExpression.text;
-  }
+  state.activeExpressions.add(expressionKey);
+  try {
+    const helperResolution = ts.isCallExpression(argumentExpression)
+      ? resolveHelperCallContext(argumentExpression, context)
+      : undefined;
+    if (helperResolution) {
+      return resolveElementAccessPropertyName(
+        helperResolution.expression,
+        helperResolution.context,
+        nextPropertyNameResolutionState(state),
+      );
+    }
 
-  return undefined;
+    const boundExpression = resolveBoundExpression(argumentExpression, context);
+    if (boundExpression) {
+      return resolveElementAccessPropertyName(
+        boundExpression,
+        context,
+        nextPropertyNameResolutionState(state),
+      );
+    }
+
+    const unwrappedExpression = unwrapResolvableExpression(argumentExpression);
+    if (
+      ts.isStringLiteral(unwrappedExpression) ||
+      ts.isNoSubstitutionTemplateLiteral(unwrappedExpression) ||
+      ts.isNumericLiteral(unwrappedExpression)
+    ) {
+      return unwrappedExpression.text;
+    }
+
+    return undefined;
+  } finally {
+    state.activeExpressions.delete(expressionKey);
+  }
 }
 
 function getObjectLiteralPropertyName(name: ts.PropertyName): string | undefined {
@@ -410,4 +443,17 @@ function unwrapResolvableExpression(expression: ts.Expression): ts.Expression {
   }
 
   return current;
+}
+
+function nextPropertyNameResolutionState(
+  state: PropertyNameResolutionState,
+): PropertyNameResolutionState {
+  return {
+    activeExpressions: state.activeExpressions,
+    depth: state.depth + 1,
+  };
+}
+
+function getExpressionResolutionKey(expression: ts.Expression, context: BuildContext): string {
+  return `${context.filePath}:${expression.pos}:${expression.end}:${expression.kind}`;
 }

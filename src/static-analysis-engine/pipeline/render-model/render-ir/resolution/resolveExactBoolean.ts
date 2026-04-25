@@ -11,75 +11,114 @@ import {
   resolveExactStringPredicateBoolean,
 } from "./exactCollectionPredicates.js";
 
+const MAX_EXACT_BOOLEAN_RESOLUTION_DEPTH = 100;
+
+type ExactBooleanResolutionState = {
+  activeExpressions: Set<string>;
+  depth: number;
+};
+
 export function resolveExactBooleanExpression(
   expression: ts.Expression,
   context: BuildContext,
 ): boolean | undefined {
-  const exactStringPredicateBoolean = ts.isCallExpression(expression)
-    ? resolveExactStringPredicateBoolean(expression, context)
-    : undefined;
-  if (exactStringPredicateBoolean !== undefined) {
-    return exactStringPredicateBoolean;
+  return resolveExactBooleanExpressionInternal(expression, context, createExactBooleanState());
+}
+
+function resolveExactBooleanExpressionInternal(
+  expression: ts.Expression,
+  context: BuildContext,
+  state: ExactBooleanResolutionState,
+): boolean | undefined {
+  if (!enterResolution("boolean", expression, context, state)) {
+    return undefined;
   }
 
-  const exactComparisonBoolean = ts.isBinaryExpression(expression)
-    ? resolveExactComparisonBoolean(expression, context)
-    : undefined;
-  if (exactComparisonBoolean !== undefined) {
-    return exactComparisonBoolean;
-  }
+  try {
+    const exactStringPredicateBoolean = ts.isCallExpression(expression)
+      ? resolveExactStringPredicateBoolean(expression, context)
+      : undefined;
+    if (exactStringPredicateBoolean !== undefined) {
+      return exactStringPredicateBoolean;
+    }
 
-  const exactIncludesBoolean = ts.isCallExpression(expression)
-    ? resolveExactIncludesBoolean(expression, context, resolveExactTruthyExpression)
-    : undefined;
-  if (exactIncludesBoolean !== undefined) {
-    return exactIncludesBoolean;
-  }
+    const exactComparisonBoolean = ts.isBinaryExpression(expression)
+      ? resolveExactComparisonBoolean(expression, context)
+      : undefined;
+    if (exactComparisonBoolean !== undefined) {
+      return exactComparisonBoolean;
+    }
 
-  const exactCollectionBoolean = ts.isCallExpression(expression)
-    ? resolveExactArrayPredicateBoolean(expression, context, resolveExactTruthyExpression)
-    : undefined;
-  if (exactCollectionBoolean !== undefined) {
-    return exactCollectionBoolean;
-  }
+    const exactIncludesBoolean = ts.isCallExpression(expression)
+      ? resolveExactIncludesBoolean(expression, context, resolveExactTruthyExpression)
+      : undefined;
+    if (exactIncludesBoolean !== undefined) {
+      return exactIncludesBoolean;
+    }
 
-  const helperResolution = ts.isCallExpression(expression)
-    ? resolveHelperCallContext(expression, context)
-    : undefined;
-  if (helperResolution) {
-    return resolveExactBooleanExpression(helperResolution.expression, helperResolution.context);
-  }
+    const exactCollectionBoolean = ts.isCallExpression(expression)
+      ? resolveExactArrayPredicateBoolean(expression, context, resolveExactTruthyExpression)
+      : undefined;
+    if (exactCollectionBoolean !== undefined) {
+      return exactCollectionBoolean;
+    }
 
-  const boundExpression = resolveBoundExpression(expression, context);
-  if (boundExpression) {
-    return resolveExactBooleanExpression(boundExpression, context);
-  }
+    const helperResolution = ts.isCallExpression(expression)
+      ? resolveHelperCallContext(expression, context)
+      : undefined;
+    if (helperResolution) {
+      return resolveExactBooleanExpressionInternal(
+        helperResolution.expression,
+        helperResolution.context,
+        nextExactBooleanState(state),
+      );
+    }
 
-  if (expression.kind === ts.SyntaxKind.TrueKeyword) {
-    return true;
-  }
+    const boundExpression = resolveBoundExpression(expression, context);
+    if (boundExpression) {
+      return resolveExactBooleanExpressionInternal(
+        boundExpression,
+        context,
+        nextExactBooleanState(state),
+      );
+    }
 
-  if (expression.kind === ts.SyntaxKind.FalseKeyword) {
-    return false;
-  }
+    if (expression.kind === ts.SyntaxKind.TrueKeyword) {
+      return true;
+    }
 
-  if (
-    ts.isParenthesizedExpression(expression) ||
-    ts.isAsExpression(expression) ||
-    ts.isSatisfiesExpression(expression)
-  ) {
-    return resolveExactBooleanExpression(expression.expression, context);
-  }
+    if (expression.kind === ts.SyntaxKind.FalseKeyword) {
+      return false;
+    }
 
-  if (
-    ts.isPrefixUnaryExpression(expression) &&
-    expression.operator === ts.SyntaxKind.ExclamationToken
-  ) {
-    const operand = resolveExactBooleanExpression(expression.operand, context);
-    return operand === undefined ? undefined : !operand;
-  }
+    if (
+      ts.isParenthesizedExpression(expression) ||
+      ts.isAsExpression(expression) ||
+      ts.isSatisfiesExpression(expression)
+    ) {
+      return resolveExactBooleanExpressionInternal(
+        expression.expression,
+        context,
+        nextExactBooleanState(state),
+      );
+    }
 
-  return undefined;
+    if (
+      ts.isPrefixUnaryExpression(expression) &&
+      expression.operator === ts.SyntaxKind.ExclamationToken
+    ) {
+      const operand = resolveExactBooleanExpressionInternal(
+        expression.operand,
+        context,
+        nextExactBooleanState(state),
+      );
+      return operand === undefined ? undefined : !operand;
+    }
+
+    return undefined;
+  } finally {
+    exitResolution("boolean", expression, context, state);
+  }
 }
 
 function resolveExactComparisonBoolean(
@@ -168,146 +207,292 @@ function resolveExactComparisonBoolean(
 }
 
 function isExplicitNullishOperand(expression: ts.Expression, context: BuildContext): boolean {
-  if (expression.kind === ts.SyntaxKind.NullKeyword || isUndefinedIdentifier(expression)) {
-    return true;
+  return isExplicitNullishOperandInternal(expression, context, createExactBooleanState());
+}
+
+function isExplicitNullishOperandInternal(
+  expression: ts.Expression,
+  context: BuildContext,
+  state: ExactBooleanResolutionState,
+): boolean {
+  if (!enterResolution("explicit-nullish", expression, context, state)) {
+    return false;
   }
 
-  if (
-    ts.isParenthesizedExpression(expression) ||
-    ts.isAsExpression(expression) ||
-    ts.isSatisfiesExpression(expression)
-  ) {
-    return isExplicitNullishOperand(expression.expression, context);
-  }
+  try {
+    if (expression.kind === ts.SyntaxKind.NullKeyword || isUndefinedIdentifier(expression)) {
+      return true;
+    }
 
-  const helperResolution = ts.isCallExpression(expression)
-    ? resolveHelperCallContext(expression, context)
-    : undefined;
-  if (helperResolution) {
-    return isExplicitNullishOperand(helperResolution.expression, helperResolution.context);
-  }
+    if (
+      ts.isParenthesizedExpression(expression) ||
+      ts.isAsExpression(expression) ||
+      ts.isSatisfiesExpression(expression)
+    ) {
+      return isExplicitNullishOperandInternal(
+        expression.expression,
+        context,
+        nextExactBooleanState(state),
+      );
+    }
 
-  const boundExpression = resolveBoundExpression(expression, context);
-  if (boundExpression) {
-    return isExplicitNullishOperand(boundExpression, context);
-  }
+    const helperResolution = ts.isCallExpression(expression)
+      ? resolveHelperCallContext(expression, context)
+      : undefined;
+    if (helperResolution) {
+      return isExplicitNullishOperandInternal(
+        helperResolution.expression,
+        helperResolution.context,
+        nextExactBooleanState(state),
+      );
+    }
 
-  return false;
+    const boundExpression = resolveBoundExpression(expression, context);
+    if (boundExpression) {
+      return isExplicitNullishOperandInternal(
+        boundExpression,
+        context,
+        nextExactBooleanState(state),
+      );
+    }
+
+    return false;
+  } finally {
+    exitResolution("explicit-nullish", expression, context, state);
+  }
 }
 
 export function resolveExactNullishExpression(
   expression: ts.Expression,
   context: BuildContext,
 ): boolean | undefined {
-  const helperResolution = ts.isCallExpression(expression)
-    ? resolveHelperCallContext(expression, context)
-    : undefined;
-  if (helperResolution) {
-    return resolveExactNullishExpression(helperResolution.expression, helperResolution.context);
+  return resolveExactNullishExpressionInternal(expression, context, createExactBooleanState());
+}
+
+function resolveExactNullishExpressionInternal(
+  expression: ts.Expression,
+  context: BuildContext,
+  state: ExactBooleanResolutionState,
+): boolean | undefined {
+  if (!enterResolution("nullish", expression, context, state)) {
+    return undefined;
   }
 
-  const boundExpression = resolveBoundExpression(expression, context);
-  if (boundExpression) {
-    return resolveExactNullishExpression(boundExpression, context);
-  }
+  try {
+    const helperResolution = ts.isCallExpression(expression)
+      ? resolveHelperCallContext(expression, context)
+      : undefined;
+    if (helperResolution) {
+      return resolveExactNullishExpressionInternal(
+        helperResolution.expression,
+        helperResolution.context,
+        nextExactBooleanState(state),
+      );
+    }
 
-  if (expression.kind === ts.SyntaxKind.NullKeyword || isUndefinedIdentifier(expression)) {
-    return true;
-  }
+    const boundExpression = resolveBoundExpression(expression, context);
+    if (boundExpression) {
+      return resolveExactNullishExpressionInternal(
+        boundExpression,
+        context,
+        nextExactBooleanState(state),
+      );
+    }
 
-  if (
-    ts.isStringLiteral(expression) ||
-    ts.isNoSubstitutionTemplateLiteral(expression) ||
-    expression.kind === ts.SyntaxKind.TrueKeyword ||
-    expression.kind === ts.SyntaxKind.FalseKeyword
-  ) {
-    return false;
-  }
+    if (expression.kind === ts.SyntaxKind.NullKeyword || isUndefinedIdentifier(expression)) {
+      return true;
+    }
 
-  if (
-    ts.isParenthesizedExpression(expression) ||
-    ts.isAsExpression(expression) ||
-    ts.isSatisfiesExpression(expression)
-  ) {
-    return resolveExactNullishExpression(expression.expression, context);
-  }
+    if (
+      ts.isStringLiteral(expression) ||
+      ts.isNoSubstitutionTemplateLiteral(expression) ||
+      expression.kind === ts.SyntaxKind.TrueKeyword ||
+      expression.kind === ts.SyntaxKind.FalseKeyword
+    ) {
+      return false;
+    }
 
-  return undefined;
+    if (
+      ts.isParenthesizedExpression(expression) ||
+      ts.isAsExpression(expression) ||
+      ts.isSatisfiesExpression(expression)
+    ) {
+      return resolveExactNullishExpressionInternal(
+        expression.expression,
+        context,
+        nextExactBooleanState(state),
+      );
+    }
+
+    return undefined;
+  } finally {
+    exitResolution("nullish", expression, context, state);
+  }
 }
 
 export function resolveExactTruthyExpression(
   expression: ts.Expression,
   context: BuildContext,
 ): boolean | undefined {
-  const exactBoolean = resolveExactBooleanExpression(expression, context);
-  if (exactBoolean !== undefined) {
-    return exactBoolean;
+  return resolveExactTruthyExpressionInternal(expression, context, createExactBooleanState());
+}
+
+function resolveExactTruthyExpressionInternal(
+  expression: ts.Expression,
+  context: BuildContext,
+  state: ExactBooleanResolutionState,
+): boolean | undefined {
+  if (!enterResolution("truthy", expression, context, state)) {
+    return undefined;
   }
 
-  const exactFoundExpression = ts.isCallExpression(expression)
-    ? resolveExactFoundExpression(expression, context, resolveExactTruthyExpression)
-    : undefined;
-  if (exactFoundExpression !== undefined) {
-    if (exactFoundExpression === null) {
-      return false;
+  try {
+    const exactBoolean = resolveExactBooleanExpressionInternal(
+      expression,
+      context,
+      nextExactBooleanState(state),
+    );
+    if (exactBoolean !== undefined) {
+      return exactBoolean;
     }
 
-    return resolveExactTruthyExpression(exactFoundExpression, context);
-  }
+    const exactFoundExpression = ts.isCallExpression(expression)
+      ? resolveExactFoundExpression(expression, context, resolveExactTruthyExpression)
+      : undefined;
+    if (exactFoundExpression !== undefined) {
+      if (exactFoundExpression === null) {
+        return false;
+      }
 
-  const helperResolution = ts.isCallExpression(expression)
-    ? resolveHelperCallContext(expression, context)
-    : undefined;
-  if (helperResolution) {
-    return resolveExactTruthyExpression(helperResolution.expression, helperResolution.context);
-  }
+      return resolveExactTruthyExpressionInternal(
+        exactFoundExpression,
+        context,
+        nextExactBooleanState(state),
+      );
+    }
 
-  const boundExpression = resolveBoundExpression(expression, context);
-  if (boundExpression) {
-    return resolveExactTruthyExpression(boundExpression, context);
-  }
+    const helperResolution = ts.isCallExpression(expression)
+      ? resolveHelperCallContext(expression, context)
+      : undefined;
+    if (helperResolution) {
+      return resolveExactTruthyExpressionInternal(
+        helperResolution.expression,
+        helperResolution.context,
+        nextExactBooleanState(state),
+      );
+    }
 
-  if (expression.kind === ts.SyntaxKind.TrueKeyword) {
-    return true;
-  }
+    const boundExpression = resolveBoundExpression(expression, context);
+    if (boundExpression) {
+      return resolveExactTruthyExpressionInternal(
+        boundExpression,
+        context,
+        nextExactBooleanState(state),
+      );
+    }
 
-  if (
-    expression.kind === ts.SyntaxKind.FalseKeyword ||
-    expression.kind === ts.SyntaxKind.NullKeyword ||
-    isUndefinedIdentifier(expression)
-  ) {
-    return false;
-  }
-
-  if (ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) {
-    return expression.text.length > 0;
-  }
-
-  if (ts.isNumericLiteral(expression)) {
-    return Number(expression.text) !== 0;
-  }
-
-  if (
-    ts.isParenthesizedExpression(expression) ||
-    ts.isAsExpression(expression) ||
-    ts.isSatisfiesExpression(expression)
-  ) {
-    return resolveExactTruthyExpression(expression.expression, context);
-  }
-
-  if (ts.isPrefixUnaryExpression(expression)) {
-    if (expression.operator === ts.SyntaxKind.ExclamationToken) {
-      const operand = resolveExactTruthyExpression(expression.operand, context);
-      return operand === undefined ? undefined : !operand;
+    if (expression.kind === ts.SyntaxKind.TrueKeyword) {
+      return true;
     }
 
     if (
-      expression.operator === ts.SyntaxKind.MinusToken &&
-      ts.isNumericLiteral(expression.operand)
+      expression.kind === ts.SyntaxKind.FalseKeyword ||
+      expression.kind === ts.SyntaxKind.NullKeyword ||
+      isUndefinedIdentifier(expression)
     ) {
-      return Number(expression.operand.text) !== 0;
+      return false;
     }
+
+    if (ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) {
+      return expression.text.length > 0;
+    }
+
+    if (ts.isNumericLiteral(expression)) {
+      return Number(expression.text) !== 0;
+    }
+
+    if (
+      ts.isParenthesizedExpression(expression) ||
+      ts.isAsExpression(expression) ||
+      ts.isSatisfiesExpression(expression)
+    ) {
+      return resolveExactTruthyExpressionInternal(
+        expression.expression,
+        context,
+        nextExactBooleanState(state),
+      );
+    }
+
+    if (ts.isPrefixUnaryExpression(expression)) {
+      if (expression.operator === ts.SyntaxKind.ExclamationToken) {
+        const operand = resolveExactTruthyExpressionInternal(
+          expression.operand,
+          context,
+          nextExactBooleanState(state),
+        );
+        return operand === undefined ? undefined : !operand;
+      }
+
+      if (
+        expression.operator === ts.SyntaxKind.MinusToken &&
+        ts.isNumericLiteral(expression.operand)
+      ) {
+        return Number(expression.operand.text) !== 0;
+      }
+    }
+
+    return undefined;
+  } finally {
+    exitResolution("truthy", expression, context, state);
+  }
+}
+
+function createExactBooleanState(): ExactBooleanResolutionState {
+  return {
+    activeExpressions: new Set(),
+    depth: 0,
+  };
+}
+
+function nextExactBooleanState(state: ExactBooleanResolutionState): ExactBooleanResolutionState {
+  return {
+    activeExpressions: state.activeExpressions,
+    depth: state.depth + 1,
+  };
+}
+
+function enterResolution(
+  kind: string,
+  expression: ts.Expression,
+  context: BuildContext,
+  state: ExactBooleanResolutionState,
+): boolean {
+  if (state.depth > MAX_EXACT_BOOLEAN_RESOLUTION_DEPTH) {
+    return false;
   }
 
-  return undefined;
+  const expressionKey = getExpressionResolutionKey(kind, expression, context);
+  if (state.activeExpressions.has(expressionKey)) {
+    return false;
+  }
+
+  state.activeExpressions.add(expressionKey);
+  return true;
+}
+
+function exitResolution(
+  kind: string,
+  expression: ts.Expression,
+  context: BuildContext,
+  state: ExactBooleanResolutionState,
+): void {
+  state.activeExpressions.delete(getExpressionResolutionKey(kind, expression, context));
+}
+
+function getExpressionResolutionKey(
+  kind: string,
+  expression: ts.Expression,
+  context: BuildContext,
+): string {
+  return `${kind}:${context.filePath}:${expression.pos}:${expression.end}:${expression.kind}`;
 }
