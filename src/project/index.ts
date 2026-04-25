@@ -1,6 +1,7 @@
 export { discoverProjectFiles } from "./discovery.js";
-export { analyzeProject, scanProject } from "./scanProject.js";
+export { scanProject } from "./scanProject.js";
 export type {
+  DiagnosticSeverityCounts,
   ProjectDiscoveryResult,
   ProjectFileRecord,
   ScanDiagnostic,
@@ -8,4 +9,6 @@ export type {
   ScanDiagnosticSeverity,
   ScanProjectInput,
   ScanProjectResult,
+  ScanSummary,
+  SeverityCounts,
 } from "./types.js";

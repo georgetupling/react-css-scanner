@@ -69,49 +69,41 @@ The internal contract should center on `ProjectAnalysis`, not on `Finding`.
 
 `Finding` is a presentation artifact built from analysis. The project should avoid using the finding shape as the main interchange format between stages.
 
-## Proposed Public APIs
+## Public API
 
-The package should expose two primary entry points.
+The package should expose one stable public entry point.
 
 ```ts
-type AnalyzeProjectInput = {
-  rootDir: string;
-  sourceFiles: ProjectTextFile[];
-  cssFiles: ProjectCssFile[];
-  htmlFiles?: ProjectHtmlFile[];
-  options?: AnalyzeProjectOptions;
-};
-
 type ScanProjectInput = {
-  cwd?: string;
-  targetPath?: string;
+  rootDir?: string;
+  sourceFilePaths?: string[];
+  cssFilePaths?: string[];
   configPath?: string;
-  config?: Partial<ScanConfig>;
-  focusPath?: string;
-  includeAnalysis?: boolean;
 };
 
-async function analyzeProject(input: AnalyzeProjectInput): Promise<AnalyzeProjectResult>;
 async function scanProject(input?: ScanProjectInput): Promise<ScanProjectResult>;
 ```
 
 Recommended intent:
 
-- `analyzeProject()` is the lower-level engine-facing API for prepared in-memory project inputs.
 - `scanProject()` is the product API that loads a real project from disk, runs analysis and rules, and returns user-facing results.
+- engine-facing APIs may exist internally, but they are not part of the stable package contract
+- raw analysis is not exposed through public JSON output
 
-## AnalyzeProjectResult
+`rootDir` drives default discovery. Explicit `sourceFilePaths` or `cssFilePaths` replace default
+discovery for that file kind; they are not additive include lists. This keeps targeted tests and
+programmatic scans deterministic while preserving a simple project-scan default.
 
-```ts
-type AnalyzeProjectResult = {
-  project: ProjectAnalysis;
-  diagnostics: ScanDiagnostic[];
-};
-```
+The root package export should not expose `analyzeProject`, discovery helpers, rule runners, config
+loaders, or raw analysis types as part of the stable product API.
 
-`diagnostics` here are operational or analysis diagnostics, not rule findings.
+## Internal Engine Result
 
-Examples:
+The static-analysis-engine should continue to expose analysis to internal product code.
+That engine-facing result is not the public Node API.
+
+Internal diagnostics are operational or analysis diagnostics, not rule findings.
+Examples include:
 
 - source file could not be parsed
 - module resolution was unsupported
@@ -371,15 +363,16 @@ type ScanProjectResult = {
   diagnostics: ScanDiagnostic[];
   findings: Finding[];
   summary: ScanSummary;
-  analysis?: SerializableAnalysisSnapshot;
 };
 ```
 
 Recommended intent:
 
 - `findings` is always present.
-- `analysis` is optional and primarily for debugging, testing, or advanced programmatic consumers.
 - `summary` is derived from findings and diagnostics, not vice versa.
+- raw `ProjectAnalysis` is not part of the public result contract
+- debug information should be surfaced through diagnostics, traces, and stable summary fields rather than by dumping engine internals
+- JSON output should be human-readable, deterministic, and close to the public result shape
 
 The first reboot shell exposes a narrower interim contract:
 
@@ -393,8 +386,11 @@ type ScanProjectInput = {
 
 type ScanProjectResult = {
   rootDir: string;
-  analysis: ProjectAnalysis;
+  config: ResolvedScannerConfig;
   diagnostics: ScanDiagnostic[];
+  findings: Finding[];
+  summary: ScanSummary;
+  failed: boolean;
   files: {
     sourceFiles: ProjectFileRecord[];
     cssFiles: ProjectFileRecord[];
@@ -402,12 +398,8 @@ type ScanProjectResult = {
 };
 ```
 
-`rootDir` drives default discovery. Explicit `sourceFilePaths` or `cssFilePaths` replace default
-discovery for that file kind; they are not additive include lists. This keeps targeted tests and
-programmatic scans deterministic while preserving a simple project-scan default.
-
-`configPath` is accepted by the API but currently produces a warning diagnostic because reboot
-config loading has not been reintroduced yet.
+The implementation uses raw analysis internally to run rules and build summary counts, but it does
+not include `analysis` in the public `ScanProjectResult`.
 
 ## Diagnostics
 
@@ -416,7 +408,7 @@ Diagnostics are not findings.
 ```ts
 type ScanDiagnostic = {
   code: string;
-  severity: "info" | "warning" | "error";
+  severity: "debug" | "info" | "warning" | "error";
   message: string;
   location?: SourceLocation;
   phase:
@@ -434,6 +426,56 @@ type ScanDiagnostic = {
 ```
 
 This separation matters because unsupported or budget-limited analysis should not always become user-facing rule findings.
+
+Unsupported analysis should normally be emitted as `debug` diagnostics. A rule may still produce a
+user-facing finding when uncertainty itself is the subject of that rule, but the default product
+behavior should keep bounded-analysis detail out of normal finding lists.
+
+CLI text output should hide `debug` diagnostics by default. CLI JSON may include debug diagnostics
+when debug output is explicitly requested, but it should still avoid raw analysis snapshots.
+
+## Minimal Config Contract
+
+The first stable reboot config should stay intentionally small.
+
+```ts
+type ScanConfig = {
+  failOnSeverity?: "debug" | "info" | "warn" | "error";
+  rules?: Record<RuleId, RuleSeverity | "off">;
+};
+```
+
+Design rules:
+
+- config format is JSON
+- no config merging
+- default rule severities come from `docs/design/rules-catalogue.md` and the rule catalogue code
+- rule ids follow the reboot catalogue; old scanner rule ids are not part of the clean contract
+- missing config should resolve to built-in defaults
+- unsupported or unknown config keys should produce diagnostics rather than silently changing behavior
+
+Additional include/exclude behavior, external provider declarations, CSS Module conventions, and
+ownership conventions can be added once the public result shape and CLI output are stable.
+
+## CLI JSON Contract
+
+CLI JSON should be deterministic and readable by a person reviewing CI output.
+
+The JSON object should contain:
+
+- `rootDir`
+- `config`
+- `diagnostics`
+- `findings`
+- `summary`
+- `failed`
+
+It should not contain:
+
+- raw `ProjectAnalysis`
+- engine intermediate stages
+- compatibility fields for the deleted scanner
+- old rule id aliases
 
 ## Rebuild Scope Around The Core
 
@@ -468,15 +510,17 @@ The following should be treated as optional until the new contract is stable. Th
 - remote external CSS fetching
 - advanced output-file suffix behavior
 - ownership-style rules
+- public raw-analysis JSON output
+- old scanner rule id compatibility aliases
 
 ## Recommended Implementation Order
 
 1. Define `ProjectAnalysis`, `Finding`, `ScanDiagnostic`, and `ScanProjectResult`.
-2. Rename the engine surface so it no longer exports `experimental` and compatibility concepts as the default public contract.
-3. Add a new project-loading layer that feeds `analyzeProject()`.
+2. Keep `scanProject()` as the only stable package API and remove the root `analyzeProject` export.
+3. Keep engine analysis available to product internals without exposing raw analysis in CLI JSON.
 4. Rebuild rules to consume the normalized analysis graph.
-5. Add `scanProject()`, summary building, and output formatting.
-6. Reintroduce CLI behavior and tests.
+5. Add summary building and deterministic JSON/text output.
+6. Reintroduce CLI exit-code behavior and tests.
 
 ## Success Criteria
 
@@ -485,5 +529,5 @@ The reboot is on track when:
 - rules are mostly short and read from normalized analysis data
 - analysis owns the expensive grouping and matching logic
 - the product shell no longer depends on deleted legacy code
-- the package has one stable public contract for Node usage and one for CLI usage
+- the package has one stable Node API, `scanProject()`, and one deterministic CLI JSON contract
 - the engine can evolve without leaking comparison or migration scaffolding into the main surface

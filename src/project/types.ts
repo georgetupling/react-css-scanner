@@ -1,6 +1,6 @@
-import type { ProjectAnalysis } from "../static-analysis-engine/index.js";
 import type { Finding } from "../rules/index.js";
 import type { ResolvedScannerConfig } from "../config/index.js";
+import type { RuleSeverity } from "../rules/index.js";
 
 export type ScanProjectInput = {
   rootDir?: string;
@@ -9,7 +9,7 @@ export type ScanProjectInput = {
   configPath?: string;
 };
 
-export type ScanDiagnosticSeverity = "info" | "warning" | "error";
+export type ScanDiagnosticSeverity = "debug" | "info" | "warning" | "error";
 
 export type ScanDiagnosticPhase = "config" | "discovery" | "loading" | "analysis";
 
@@ -33,12 +33,28 @@ export type ProjectDiscoveryResult = {
   diagnostics: ScanDiagnostic[];
 };
 
+export type SeverityCounts = Record<RuleSeverity, number>;
+export type DiagnosticSeverityCounts = Record<ScanDiagnosticSeverity, number>;
+
+export type ScanSummary = {
+  sourceFileCount: number;
+  cssFileCount: number;
+  findingCount: number;
+  findingsBySeverity: SeverityCounts;
+  diagnosticCount: number;
+  diagnosticsBySeverity: DiagnosticSeverityCounts;
+  classReferenceCount: number;
+  classDefinitionCount: number;
+  selectorQueryCount: number;
+  failed: boolean;
+};
+
 export type ScanProjectResult = {
   rootDir: string;
   config: ResolvedScannerConfig;
-  analysis: ProjectAnalysis;
   findings: Finding[];
   diagnostics: ScanDiagnostic[];
+  summary: ScanSummary;
   failed: boolean;
   files: {
     sourceFiles: ProjectFileRecord[];

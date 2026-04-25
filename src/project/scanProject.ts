@@ -9,6 +9,7 @@ import type {
   ScanDiagnostic,
   ScanProjectInput,
   ScanProjectResult,
+  ScanSummary,
 } from "./types.js";
 
 export async function scanProject(input: ScanProjectInput = {}): Promise<ScanProjectResult> {
@@ -37,13 +38,23 @@ export async function scanProject(input: ScanProjectInput = {}): Promise<ScanPro
     ruleResult.findings.some((finding) =>
       severityMeetsThreshold(finding.severity, config.failOnSeverity),
     );
+  const summary = buildScanSummary({
+    sourceFileCount: discovered.sourceFiles.length,
+    cssFileCount: discovered.cssFiles.length,
+    findings: ruleResult.findings,
+    diagnostics,
+    classReferenceCount: engineResult.projectAnalysis.entities.classReferences.length,
+    classDefinitionCount: engineResult.projectAnalysis.entities.classDefinitions.length,
+    selectorQueryCount: engineResult.projectAnalysis.entities.selectorQueries.length,
+    failed,
+  });
 
   return {
     rootDir: discovered.rootDir,
     config,
-    analysis: engineResult.projectAnalysis,
     findings: ruleResult.findings,
     diagnostics,
+    summary,
     failed,
     files: {
       sourceFiles: discovered.sourceFiles,
@@ -51,8 +62,6 @@ export async function scanProject(input: ScanProjectInput = {}): Promise<ScanPro
     },
   };
 }
-
-export const analyzeProject = scanProject;
 
 async function readSourceFiles(
   sourceFiles: ProjectFileRecord[],
@@ -73,6 +82,54 @@ async function readSourceFiles(
   return loadedFiles.filter((file): file is { filePath: string; sourceText: string } =>
     Boolean(file),
   );
+}
+
+function buildScanSummary(input: {
+  sourceFileCount: number;
+  cssFileCount: number;
+  findings: ScanProjectResult["findings"];
+  diagnostics: ScanDiagnostic[];
+  classReferenceCount: number;
+  classDefinitionCount: number;
+  selectorQueryCount: number;
+  failed: boolean;
+}): ScanSummary {
+  return {
+    sourceFileCount: input.sourceFileCount,
+    cssFileCount: input.cssFileCount,
+    findingCount: input.findings.length,
+    findingsBySeverity: {
+      debug: countFindingsBySeverity(input.findings, "debug"),
+      info: countFindingsBySeverity(input.findings, "info"),
+      warn: countFindingsBySeverity(input.findings, "warn"),
+      error: countFindingsBySeverity(input.findings, "error"),
+    },
+    diagnosticCount: input.diagnostics.length,
+    diagnosticsBySeverity: {
+      debug: countDiagnosticsBySeverity(input.diagnostics, "debug"),
+      info: countDiagnosticsBySeverity(input.diagnostics, "info"),
+      warning: countDiagnosticsBySeverity(input.diagnostics, "warning"),
+      error: countDiagnosticsBySeverity(input.diagnostics, "error"),
+    },
+    classReferenceCount: input.classReferenceCount,
+    classDefinitionCount: input.classDefinitionCount,
+    selectorQueryCount: input.selectorQueryCount,
+    failed: input.failed,
+  };
+}
+
+function countFindingsBySeverity(
+  findings: ScanProjectResult["findings"],
+  severity: keyof ScanSummary["findingsBySeverity"],
+): number {
+  return findings.filter((finding) => finding.severity === severity).length;
+}
+
+function countDiagnosticsBySeverity(
+  diagnostics: ScanDiagnostic[],
+  severity: keyof ScanSummary["diagnosticsBySeverity"],
+): number {
+  return diagnostics.filter((diagnostic) => diagnostic.severity === severity).length;
 }
 
 async function readCssFiles(

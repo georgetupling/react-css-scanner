@@ -1,7 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { discoverProjectFiles, scanProject } from "../../dist/index.js";
+import * as publicApi from "../../dist/index.js";
+import { discoverProjectFiles } from "../../dist/project/discovery.js";
 import { TestProjectBuilder } from "../support/TestProjectBuilder.js";
+
+const { scanProject } = publicApi;
+
+test("root package export exposes the stable product contract", () => {
+  assert.equal(typeof publicApi.scanProject, "function");
+  assert.equal("analyzeProject" in publicApi, false);
+  assert.equal("discoverProjectFiles" in publicApi, false);
+  assert.equal("runRules" in publicApi, false);
+});
 
 test("discoverProjectFiles scans source and CSS under a root directory", async () => {
   const project = await new TestProjectBuilder()
@@ -55,7 +65,7 @@ test("explicit file paths override default discovery for that file kind", async 
   }
 });
 
-test("scanProject returns ProjectAnalysis from discovered files", async () => {
+test("scanProject returns deterministic public summary from discovered files", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(
       "src/App.tsx",
@@ -79,30 +89,35 @@ test("scanProject returns ProjectAnalysis from discovered files", async () => {
     assert.equal(result.config.rules["unsupported-syntax-affecting-analysis"], "debug");
     assert.equal(result.failed, false);
     assert.deepEqual(result.findings, []);
-    assert.equal(result.analysis.entities.sourceFiles.length, 1);
-    assert.equal(result.analysis.entities.stylesheets.length, 1);
-    assert.equal(result.analysis.entities.classReferences.length, 1);
-    assert.equal(result.analysis.entities.classDefinitions.length, 1);
-    assert.equal(
-      result.analysis.entities.classReferences[0].traces[0].category,
-      "render-expansion",
-    );
-    assert.equal(
-      result.analysis.entities.classReferences[0].traces[0].children[0].category,
-      "value-evaluation",
-    );
-    assert.ok(result.analysis.entities.selectorQueries[0].traces.length > 0);
-    assert.ok(result.analysis.relations.stylesheetReachability[0].traces.length > 0);
-    assert.ok(result.analysis.relations.referenceMatches[0].traces.length > 0);
-    const definitionIds = result.analysis.indexes.definitionsByClassName.get("shell") ?? [];
-    assert.equal(definitionIds.length, 1);
-    assert.equal(result.analysis.entities.classDefinitions[0].className, "shell");
+    assert.equal("analysis" in result, false);
+    assert.deepEqual(result.summary, {
+      sourceFileCount: 1,
+      cssFileCount: 1,
+      findingCount: 0,
+      findingsBySeverity: {
+        debug: 0,
+        info: 0,
+        warn: 0,
+        error: 0,
+      },
+      diagnosticCount: 0,
+      diagnosticsBySeverity: {
+        debug: 0,
+        info: 0,
+        warning: 0,
+        error: 0,
+      },
+      classReferenceCount: 1,
+      classDefinitionCount: 1,
+      selectorQueryCount: 1,
+      failed: false,
+    });
   } finally {
     await project.cleanup();
   }
 });
 
-test("scanProject preserves unavailable stylesheet reachability in ProjectAnalysis", async () => {
+test("scanProject reports unreachable matching classes without exposing ProjectAnalysis", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(
       "src/App.tsx",
@@ -115,30 +130,8 @@ test("scanProject preserves unavailable stylesheet reachability in ProjectAnalys
     const result = await scanProject({
       rootDir: project.rootDir,
     });
-    const stylesheet = result.analysis.entities.stylesheets.find(
-      (candidate) => candidate.filePath === "src/unused.css",
-    );
-    const definition = result.analysis.entities.classDefinitions.find(
-      (candidate) => candidate.className === "ghost",
-    );
-    const reference = result.analysis.entities.classReferences.find((candidate) =>
-      candidate.definiteClassNames.includes("ghost"),
-    );
-    const reachability = result.analysis.relations.stylesheetReachability.find(
-      (candidate) => candidate.stylesheetId === stylesheet?.id,
-    );
-    const referenceMatch = result.analysis.relations.referenceMatches.find(
-      (candidate) =>
-        candidate.referenceId === reference?.id && candidate.definitionId === definition?.id,
-    );
 
-    assert.ok(stylesheet);
-    assert.ok(definition);
-    assert.ok(reference);
-    assert.equal(reachability?.availability, "unavailable");
-    assert.deepEqual(reachability?.contexts, []);
-    assert.equal(referenceMatch?.reachability, "unavailable");
-    assert.equal(referenceMatch?.matchKind, "unreachable-stylesheet");
+    assert.equal("analysis" in result, false);
     assert.deepEqual(
       result.findings.filter((finding) => finding.ruleId === "missing-css-class"),
       [],
@@ -147,12 +140,14 @@ test("scanProject preserves unavailable stylesheet reachability in ProjectAnalys
       result.findings.some((finding) => finding.ruleId === "css-class-unreachable"),
       true,
     );
+    assert.equal(result.summary.findingsBySeverity.error, 1);
+    assert.equal(result.failed, true);
   } finally {
     await project.cleanup();
   }
 });
 
-test("scanProject derives component render edges from render IR", async () => {
+test("scanProject summarizes component render analysis without exposing engine internals", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(
       "src/App.tsx",
@@ -170,16 +165,17 @@ test("scanProject derives component render edges from render IR", async () => {
       sourceFilePaths: ["src/App.tsx", "src/Button.tsx"],
       cssFilePaths: [],
     });
-    const componentRender = result.analysis.relations.componentRenders.find(
-      (candidate) => candidate.location.filePath === "src/App.tsx",
-    );
 
-    assert.ok(componentRender);
-    assert.equal(componentRender.renderPath, "definite");
-    assert.equal(componentRender.resolution, "resolved");
-    assert.equal(componentRender.traces[0].category, "render-graph");
-    assert.equal(componentRender.traces[0].metadata?.traversal, "render-ir");
-    assert.equal(componentRender.traces[0].children[0].category, "render-expansion");
+    assert.equal("analysis" in result, false);
+    assert.equal(result.summary.sourceFileCount, 2);
+    assert.equal(result.summary.classReferenceCount > 0, true);
+    assert.equal(
+      result.findings.some(
+        (finding) =>
+          finding.ruleId === "missing-css-class" && finding.location?.filePath === "src/App.tsx",
+      ),
+      true,
+    );
   } finally {
     await project.cleanup();
   }

@@ -29,10 +29,13 @@ Implemented areas include:
 - selector normalization for a bounded subset of selectors
 - stylesheet reachability analysis
 - a normalized `ProjectAnalysis` projection for rule-facing entities, relations, and indexes
+- render-model internals grouped under the render-model pipeline stage
 
 The pipeline in `entry/scan.ts` is coherent enough to act as the nucleus of the reboot.
 
-The biggest problem is not that the engine has no structure. The biggest remaining problem is that the new project analysis contract is still a first slice and does not yet cover every product behavior.
+The biggest problem is not that the engine has no structure. The biggest remaining problem is that
+the new project analysis contract is still a first slice and does not yet cover every product
+behavior.
 
 ## Real Functionality Gaps
 
@@ -150,45 +153,51 @@ Open areas include:
 - HTML discovery owned by the engine versus product shell
 - direct external stylesheet definition ingestion as a first-class pipeline input
 
-### 8. Missing rule families from the old product
+### 8. Missing analysis support for future rule families
 
-Inside the engine itself, there is still no native replacement for several major product behaviors that used to exist outside it.
+Rule execution now lives outside the engine in `src/rules`, so missing rule families are no longer
+engine-native rule gaps by themselves. The engine gap is whether `ProjectAnalysis` exposes enough
+evidence for those rules to stay thin.
 
-Notably absent from the current engine-native rule set:
+Current implemented rule families include:
 
 - missing CSS class
-- unreachable CSS
 - unused CSS class
-- CSS Module-specific missing and unused rules
-- ownership and organization rules
-- utility replacement and migration-style rules as first-class engine rules
+- CSS class defined only in unreachable stylesheets
+- dynamic class references
+- unsupported syntax affecting analysis
 
-These are not merely packaging gaps. They are current engine capability gaps.
+Remaining analysis gaps for target rules include:
+
+- CSS Module-specific reference and export relations
+- ownership and organization records
+- utility/migration-style declaration analysis
+- richer selector satisfiability records
+- richer external CSS ingestion and provider records
 
 ## Responsibility Leakage
 
 The main architectural leak is that rules are still doing analysis work.
 
-### 1. Rules rebuild project-wide indexes
+### 1. Rules should not rebuild project-wide indexes
 
-Rules must not rebuild project-wide indexes from intermediate engine stages.
+The reboot moved rules above the engine and made them consume `ProjectAnalysis`.
 
-It rebuilds:
+Current rules are mostly reading:
 
-- class definitions by stylesheet path
-- reachable stylesheet paths by source file
-- external imported stylesheet paths by source file
-- candidate class tokens by source file
+- class references
+- class definitions
+- reference match relations
+- declared-provider satisfaction relations
+- indexes such as `matchesByReferenceId`
 
-That logic belongs in normalized analysis output. The rule should ask the analysis:
+This is the intended direction. Any future rule that needs to rebuild project-wide maps is a signal
+that `ProjectAnalysis` needs another relation or index.
 
-- which external stylesheets are active for this reference?
-- which reachable definitions match this token?
-- did any declared provider satisfy it?
+### 2. Some definition-level analysis is still thin
 
-### 2. Rules still classify definition shapes locally
-
-`duplicateCssClassDefinition.ts` and `redundantCssDeclarationBlock.ts` both carry non-trivial filtering and grouping logic over CSS definitions.
+Future duplication and migration rules will need non-trivial filtering and grouping logic over CSS
+definitions.
 
 That suggests the engine is missing reusable definition-level analysis records such as:
 
@@ -197,18 +206,18 @@ That suggests the engine is missing reusable definition-level analysis records s
 - declaration signature
 - comparable-definition groups
 
-### 3. Rule inputs are still too raw
+### 3. Rule inputs still expose some low-level concepts
 
-The rule layer currently receives stage outputs, not domain-specific rule inputs.
+The rule layer no longer receives intermediate stage outputs, which is a major improvement.
 
-Because of that, a rule often has to understand:
+Some low-level concepts still leak through `ProjectAnalysis`, especially:
 
-- how class expressions encode certainty
-- how reachability records are keyed
-- how CSS files were analyzed
-- how selector queries represent their constraint
+- class expression certainty
+- selector query constraints
+- dynamic and unsupported analysis detail
 
-Rules should mostly not care about the internal shape of stage outputs.
+That is acceptable for the first slice, but the contract should keep moving toward domain-specific
+relations and summaries that rules can consume directly.
 
 ### 4. Legacy adapters were deleted
 
@@ -274,16 +283,13 @@ That is a good core shape, but the project should make that explicit. Otherwise 
 
 ### 2. Should the engine emit findings directly, or only analysis?
 
-The current engine returns rule results in the same top-level object as analysis outputs.
+Current decision:
 
-That is workable, but the more important contract should be `ProjectAnalysis`.
+- the engine returns analysis only
+- rule execution lives above the engine in `src/rules`
+- product reporting turns rule results into user-facing output
 
-Decision needed:
-
-- engine returns only analysis and rules live above it
-- or engine returns both analysis and engine-native rule results
-
-Either can work, but the boundary should be explicit.
+The remaining work is to keep that boundary clear as new rules are added.
 
 ### 3. How much unsupported analysis becomes a finding?
 
@@ -308,7 +314,7 @@ The deleted scanner had ownership-style concepts such as component, page, global
 
 The current engine does not have a strong native ownership model.
 
-Decision needed:
+Decision still needed:
 
 - keep ownership outside the engine as configurable product policy
 - or make it a first-class engine analysis layer
@@ -345,3 +351,20 @@ The engine should move toward one clean contract:
 - stop exporting legacy comparison scaffolding as part of the main story
 
 If we do that, the existing pipeline becomes an asset instead of a refactor trap.
+
+## Recommended Next Engine Slices
+
+1. Harden `ProjectAnalysis` for the existing rules:
+   - stable ids
+   - match semantics
+   - diagnostics versus findings support
+   - trace propagation
+   - serializable debug output
+2. Add CSS Module analysis:
+   - module imports
+   - member references
+   - module export/member relations
+   - computed module-reference diagnostics
+3. Improve dynamic class extraction for common syntax and helper libraries.
+4. Expand selector semantics once the selector result contract is stable.
+5. Add ownership analysis only after correctness and reachability are dependable.
