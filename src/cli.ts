@@ -65,6 +65,7 @@ try {
     configPath: args.configPath,
     onProgress: progressRenderer.onProgress,
     collectPerformance: args.timings,
+    includeTraces: args.focusPaths.length > 0,
   });
 } finally {
   progressRenderer.stop();

@@ -22,7 +22,9 @@ export function buildReachabilitySummary(input: {
   renderSubtrees: RenderSubtree[];
   cssSources: SelectorSourceInput[];
   externalCssSummary: ExternalCssSummary;
+  includeTraces?: boolean;
 }): ReachabilitySummary {
+  const includeTraces = input.includeTraces ?? true;
   const knownCssFilePaths = new Set(
     input.cssSources
       .map((cssSource) => normalizeProjectPath(cssSource.filePath))
@@ -55,6 +57,7 @@ export function buildReachabilitySummary(input: {
     cssSources: input.cssSources,
     directCssImportersByStylesheetPath,
     reachabilityGraphContext,
+    includeTraces,
   });
 
   const stylesheets = input.cssSources.map((cssSource) =>
@@ -70,6 +73,7 @@ export function buildReachabilitySummary(input: {
       reachabilityGraphContext,
       analyzedSourceFilePaths,
       componentAvailability,
+      includeTraces,
     }),
   );
 
@@ -77,6 +81,7 @@ export function buildReachabilitySummary(input: {
     stylesheets: applyStylesheetPackageImportReachability({
       stylesheets,
       packageCssImports: input.externalCssSummary.packageCssImports,
+      includeTraces,
     }),
   };
 }
@@ -93,6 +98,7 @@ function buildStylesheetReachabilityRecord(input: {
   reachabilityGraphContext: ReachabilityGraphContext;
   analyzedSourceFilePaths: string[];
   componentAvailability: BatchedComponentAvailability;
+  includeTraces: boolean;
 }): StylesheetReachabilityRecord {
   const cssFilePath = normalizeProjectPath(input.cssSource.filePath);
   if (!cssFilePath) {
@@ -104,6 +110,7 @@ function buildStylesheetReachabilityRecord(input: {
         "stylesheet source does not have a file path, so reachability cannot be determined",
       ],
       traces: [],
+      includeTraces: input.includeTraces,
     });
   }
 
@@ -118,6 +125,7 @@ function buildStylesheetReachabilityRecord(input: {
       componentAvailabilityByKey:
         input.componentAvailability.componentAvailabilityByStylesheetPath.get(cssFilePath) ??
         new Map(),
+      includeTraces: input.includeTraces,
     })) {
       contextRecordsByKey.set(serializeContextKey(contextRecord), contextRecord);
     }
@@ -127,22 +135,26 @@ function buildStylesheetReachabilityRecord(input: {
     input.projectWideExternalStylesheetFilePaths.has(cssFilePath);
   if (isProjectWideExternalStylesheet) {
     for (const filePath of input.analyzedSourceFilePaths) {
-      addContextRecord(contextRecordsByKey, {
-        context: {
-          kind: "source-file",
-          filePath,
-        },
-        availability: "definite",
-        reasons: [
-          "source file is covered by a project-wide HTML-linked remote external stylesheet",
-        ],
-        derivations: [
-          {
-            kind: "source-file-project-wide-external-css",
-            stylesheetHref: cssFilePath,
+      addContextRecord(
+        contextRecordsByKey,
+        {
+          context: {
+            kind: "source-file",
+            filePath,
           },
-        ],
-      });
+          availability: "definite",
+          reasons: [
+            "source file is covered by a project-wide HTML-linked remote external stylesheet",
+          ],
+          derivations: [
+            {
+              kind: "source-file-project-wide-external-css",
+              stylesheetHref: cssFilePath,
+            },
+          ],
+        },
+        input.includeTraces,
+      );
     }
   }
 
@@ -158,6 +170,7 @@ function buildStylesheetReachabilityRecord(input: {
           : "no analyzed source file directly imports this stylesheet",
       ],
       traces: [],
+      includeTraces: input.includeTraces,
     });
   }
 
@@ -188,6 +201,7 @@ function buildStylesheetReachabilityRecord(input: {
     contexts: contextRecords,
     reasons,
     traces: [],
+    includeTraces: input.includeTraces,
   });
 }
 
@@ -248,6 +262,7 @@ function collectDirectCssImportersByStylesheetPath(input: {
 function applyStylesheetPackageImportReachability(input: {
   stylesheets: StylesheetReachabilityRecord[];
   packageCssImports: ExternalCssSummary["packageCssImports"];
+  includeTraces: boolean;
 }): StylesheetReachabilityRecord[] {
   const stylesheetRecordsByPath = new Map(
     input.stylesheets
@@ -290,19 +305,23 @@ function applyStylesheetPackageImportReachability(input: {
       const before = serializeStylesheetReachabilityRecord(imported);
       const contextRecordsByKey = new Map<string, StylesheetReachabilityContextRecord>();
       for (const context of imported.contexts) {
-        addContextRecord(contextRecordsByKey, context);
+        addContextRecord(contextRecordsByKey, context, input.includeTraces);
       }
       for (const context of importer.contexts) {
-        addContextRecord(contextRecordsByKey, {
-          context: context.context,
-          availability: context.availability,
-          reasons: [
-            `stylesheet is imported by reachable stylesheet ${importRecord.importerFilePath}`,
-            ...context.reasons,
-          ],
-          derivations: [...context.derivations],
-          traces: [...context.traces],
-        });
+        addContextRecord(
+          contextRecordsByKey,
+          {
+            context: context.context,
+            availability: context.availability,
+            reasons: [
+              `stylesheet is imported by reachable stylesheet ${importRecord.importerFilePath}`,
+              ...context.reasons,
+            ],
+            derivations: [...context.derivations],
+            traces: [...context.traces],
+          },
+          input.includeTraces,
+        );
       }
 
       const contexts = [...contextRecordsByKey.values()].sort(compareContextRecords);
@@ -316,6 +335,7 @@ function applyStylesheetPackageImportReachability(input: {
         contexts,
         reasons,
         traces: [],
+        includeTraces: input.includeTraces,
       });
 
       Object.assign(imported, nextRecord);
@@ -468,6 +488,7 @@ function computeBatchedComponentAvailability(input: {
   cssSources: SelectorSourceInput[];
   directCssImportersByStylesheetPath: Map<string, string[]>;
   reachabilityGraphContext: ReachabilityGraphContext;
+  includeTraces: boolean;
 }): BatchedComponentAvailability {
   const stylesheetPaths = [
     ...new Set(
@@ -582,6 +603,7 @@ function computeBatchedComponentAvailability(input: {
           possibleBitsByComponentKey,
           incomingEdges:
             input.reachabilityGraphContext.incomingEdgesByComponentKey.get(componentKey) ?? [],
+          includeTraces: input.includeTraces,
         }),
       );
     }
@@ -602,6 +624,7 @@ function buildComponentAvailabilityRecordForStylesheet(input: {
   definiteBitsByComponentKey: Map<string, bigint>;
   possibleBitsByComponentKey: Map<string, bigint>;
   incomingEdges: import("../render-model/render-graph/types.js").RenderGraphEdge[];
+  includeTraces: boolean;
 }): ComponentAvailabilityRecord {
   const directBits = input.directDefiniteBitsByComponentKey.get(input.componentKey) ?? 0n;
   if ((directBits & input.stylesheetBit) !== 0n) {
@@ -619,7 +642,7 @@ function buildComponentAvailabilityRecordForStylesheet(input: {
       availability: "definite",
       reasons: ["all known renderers of this component have definite stylesheet availability"],
       derivations: [{ kind: "whole-component-all-known-renderers-definite" }],
-      traces: input.incomingEdges.flatMap((edge) => edge.traces),
+      traces: input.includeTraces ? input.incomingEdges.flatMap((edge) => edge.traces) : [],
     };
   }
 
@@ -647,7 +670,7 @@ function buildComponentAvailabilityRecordForStylesheet(input: {
       availability: "possible",
       reasons: ["at least one known renderer of this component has stylesheet availability"],
       derivations: [{ kind: "whole-component-at-least-one-renderer" }],
-      traces: definitePathParentEdges.flatMap((edge) => edge.traces),
+      traces: input.includeTraces ? definitePathParentEdges.flatMap((edge) => edge.traces) : [],
     };
   }
 
@@ -657,7 +680,7 @@ function buildComponentAvailabilityRecordForStylesheet(input: {
       "this component is only rendered on possible paths beneath a renderer with stylesheet availability",
     ],
     derivations: [{ kind: "whole-component-only-possible-renderers" }],
-    traces: availableParentEdges.flatMap((edge) => edge.traces),
+    traces: input.includeTraces ? availableParentEdges.flatMap((edge) => edge.traces) : [],
   };
 }
 
@@ -665,19 +688,24 @@ function buildContextRecords(input: {
   importingSourceFilePaths: string[];
   reachabilityGraphContext: ReachabilityGraphContext;
   componentAvailabilityByKey: Map<string, ComponentAvailabilityRecord>;
+  includeTraces: boolean;
 }): StylesheetReachabilityContextRecord[] {
   const contextRecordsByKey = new Map<string, StylesheetReachabilityContextRecord>();
 
   for (const filePath of input.importingSourceFilePaths) {
-    addContextRecord(contextRecordsByKey, {
-      context: {
-        kind: "source-file",
-        filePath,
+    addContextRecord(
+      contextRecordsByKey,
+      {
+        context: {
+          kind: "source-file",
+          filePath,
+        },
+        availability: "definite",
+        reasons: ["source file directly imports this stylesheet"],
+        derivations: [{ kind: "source-file-direct-import" }],
       },
-      availability: "definite",
-      reasons: ["source file directly imports this stylesheet"],
-      derivations: [{ kind: "source-file-direct-import" }],
-    });
+      input.includeTraces,
+    );
   }
 
   const importingComponentKeySet = new Set(
@@ -695,16 +723,20 @@ function buildContextRecords(input: {
       continue;
     }
 
-    addContextRecord(contextRecordsByKey, {
-      context: {
-        kind: "component",
-        filePath: normalizeProjectPath(node.filePath) ?? node.filePath,
-        componentName: node.componentName,
+    addContextRecord(
+      contextRecordsByKey,
+      {
+        context: {
+          kind: "component",
+          filePath: normalizeProjectPath(node.filePath) ?? node.filePath,
+          componentName: node.componentName,
+        },
+        availability: "definite",
+        reasons: ["component is declared in a source file that directly imports this stylesheet"],
+        derivations: [{ kind: "whole-component-direct-import" }],
       },
-      availability: "definite",
-      reasons: ["component is declared in a source file that directly imports this stylesheet"],
-      derivations: [{ kind: "whole-component-direct-import" }],
-    });
+      input.includeTraces,
+    );
   }
 
   for (const [componentKey, availabilityRecord] of input.componentAvailabilityByKey.entries()) {
@@ -719,17 +751,21 @@ function buildContextRecords(input: {
     });
 
     if (wholeComponentRegionAvailability && !importingComponentKeys.includes(componentKey)) {
-      addContextRecord(contextRecordsByKey, {
-        context: {
-          kind: "component",
-          filePath: normalizeProjectPath(node.filePath) ?? node.filePath,
-          componentName: node.componentName,
+      addContextRecord(
+        contextRecordsByKey,
+        {
+          context: {
+            kind: "component",
+            filePath: normalizeProjectPath(node.filePath) ?? node.filePath,
+            componentName: node.componentName,
+          },
+          availability: wholeComponentRegionAvailability.availability,
+          reasons: wholeComponentRegionAvailability.reasons,
+          derivations: wholeComponentRegionAvailability.derivations,
+          traces: wholeComponentRegionAvailability.traces,
         },
-        availability: wholeComponentRegionAvailability.availability,
-        reasons: wholeComponentRegionAvailability.reasons,
-        derivations: wholeComponentRegionAvailability.derivations,
-        traces: wholeComponentRegionAvailability.traces,
-      });
+        input.includeTraces,
+      );
     }
 
     if (wholeComponentRegionAvailability) {
@@ -744,6 +780,7 @@ function buildContextRecords(input: {
           "render subtree root inherits component stylesheet availability",
         derivations: wholeComponentRegionAvailability.derivations,
         traces: wholeComponentRegionAvailability.traces,
+        includeTraces: input.includeTraces,
         predicate: (subtree) =>
           (normalizeProjectPath(subtree.sourceAnchor.filePath) ?? subtree.sourceAnchor.filePath) ===
             (normalizeProjectPath(node.filePath) ?? node.filePath) &&
@@ -757,6 +794,7 @@ function buildContextRecords(input: {
         reasons: wholeComponentRegionAvailability.reasons,
         derivations: wholeComponentRegionAvailability.derivations,
         traces: wholeComponentRegionAvailability.traces,
+        includeTraces: input.includeTraces,
         predicate: () => true,
       });
     }
@@ -772,6 +810,7 @@ function buildContextRecords(input: {
       outgoingEdges:
         input.reachabilityGraphContext.outgoingEdgesByComponentKey.get(componentKey) ?? [],
       componentAvailabilityByKey: input.componentAvailabilityByKey,
+      includeTraces: input.includeTraces,
     });
 
     if (availabilityRecord.availability === "unavailable") {
@@ -786,6 +825,7 @@ function buildContextRecords(input: {
           new Map(),
         unknownBarriers:
           input.reachabilityGraphContext.unknownBarriersByComponentKey.get(componentKey) ?? [],
+        includeTraces: input.includeTraces,
       });
     }
   }
@@ -844,6 +884,7 @@ function addPlacedChildRenderRegionContexts(input: {
       traces: AnalysisTrace[];
     }
   >;
+  includeTraces: boolean;
 }): void {
   for (const edge of input.outgoingEdges) {
     const childAvailability = input.componentAvailabilityByKey.get(
@@ -884,25 +925,29 @@ function addPlacedChildRenderRegionContexts(input: {
       renderRegionsByPathKey: input.renderRegionsByPathKey,
       sourceAnchor: edge.sourceAnchor,
     })) {
-      addContextRecord(input.contextRecordsByKey, {
-        context: {
-          kind: "render-region",
-          filePath: renderRegion.filePath,
-          componentName: renderRegion.componentName,
-          regionKind: renderRegion.kind,
-          path: renderRegion.path,
-          sourceAnchor: {
-            startLine: renderRegion.sourceAnchor.startLine,
-            startColumn: renderRegion.sourceAnchor.startColumn,
-            endLine: renderRegion.sourceAnchor.endLine,
-            endColumn: renderRegion.sourceAnchor.endColumn,
+      addContextRecord(
+        input.contextRecordsByKey,
+        {
+          context: {
+            kind: "render-region",
+            filePath: renderRegion.filePath,
+            componentName: renderRegion.componentName,
+            regionKind: renderRegion.kind,
+            path: renderRegion.path,
+            sourceAnchor: {
+              startLine: renderRegion.sourceAnchor.startLine,
+              startColumn: renderRegion.sourceAnchor.startColumn,
+              endLine: renderRegion.sourceAnchor.endLine,
+              endColumn: renderRegion.sourceAnchor.endColumn,
+            },
           },
+          availability,
+          reasons,
+          derivations,
+          traces: input.includeTraces ? edge.traces : [],
         },
-        availability,
-        reasons,
-        derivations,
-        traces: edge.traces,
-      });
+        input.includeTraces,
+      );
     }
   }
 }
@@ -988,6 +1033,7 @@ function addUnknownBarrierContexts(input: {
   renderRegions: RenderRegion[];
   renderRegionsByPathKey: Map<string, RenderRegion[]>;
   unknownBarriers: UnknownReachabilityBarrier[];
+  includeTraces: boolean;
 }): void {
   if (
     !input.renderSubtree ||
@@ -1005,41 +1051,49 @@ function addUnknownBarrierContexts(input: {
     reason,
   }));
 
-  addContextRecord(input.contextRecordsByKey, {
-    context: {
-      kind: "component",
-      filePath:
-        normalizeProjectPath(input.renderSubtree.sourceAnchor.filePath) ??
-        input.renderSubtree.sourceAnchor.filePath,
-      componentName: input.renderSubtree.componentName,
-    },
-    availability: "unknown",
-    reasons: [
-      "component contains unsupported or budget-limited render expansion that may hide stylesheet availability",
-    ],
-    derivations,
-  });
-
-  addContextRecord(input.contextRecordsByKey, {
-    context: {
-      kind: "render-subtree-root",
-      filePath:
-        normalizeProjectPath(input.renderSubtree.sourceAnchor.filePath) ??
-        input.renderSubtree.sourceAnchor.filePath,
-      componentName: input.renderSubtree.componentName,
-      rootAnchor: {
-        startLine: input.renderSubtree.root.sourceAnchor.startLine,
-        startColumn: input.renderSubtree.root.sourceAnchor.startColumn,
-        endLine: input.renderSubtree.root.sourceAnchor.endLine,
-        endColumn: input.renderSubtree.root.sourceAnchor.endColumn,
+  addContextRecord(
+    input.contextRecordsByKey,
+    {
+      context: {
+        kind: "component",
+        filePath:
+          normalizeProjectPath(input.renderSubtree.sourceAnchor.filePath) ??
+          input.renderSubtree.sourceAnchor.filePath,
+        componentName: input.renderSubtree.componentName,
       },
+      availability: "unknown",
+      reasons: [
+        "component contains unsupported or budget-limited render expansion that may hide stylesheet availability",
+      ],
+      derivations,
     },
-    availability: "unknown",
-    reasons: [
-      "render subtree contains unsupported or budget-limited expansion that may hide stylesheet availability",
-    ],
-    derivations,
-  });
+    input.includeTraces,
+  );
+
+  addContextRecord(
+    input.contextRecordsByKey,
+    {
+      context: {
+        kind: "render-subtree-root",
+        filePath:
+          normalizeProjectPath(input.renderSubtree.sourceAnchor.filePath) ??
+          input.renderSubtree.sourceAnchor.filePath,
+        componentName: input.renderSubtree.componentName,
+        rootAnchor: {
+          startLine: input.renderSubtree.root.sourceAnchor.startLine,
+          startColumn: input.renderSubtree.root.sourceAnchor.startColumn,
+          endLine: input.renderSubtree.root.sourceAnchor.endLine,
+          endColumn: input.renderSubtree.root.sourceAnchor.endColumn,
+        },
+      },
+      availability: "unknown",
+      reasons: [
+        "render subtree contains unsupported or budget-limited expansion that may hide stylesheet availability",
+      ],
+      derivations,
+    },
+    input.includeTraces,
+  );
 
   for (const barrier of input.unknownBarriers) {
     for (const renderRegion of collectRenderRegionsForBarrierPath({
@@ -1050,26 +1104,30 @@ function addUnknownBarrierContexts(input: {
         continue;
       }
 
-      addContextRecord(input.contextRecordsByKey, {
-        context: {
-          kind: "render-region",
-          filePath: renderRegion.filePath,
-          componentName: renderRegion.componentName,
-          regionKind: renderRegion.kind,
-          path: renderRegion.path,
-          sourceAnchor: {
-            startLine: renderRegion.sourceAnchor.startLine,
-            startColumn: renderRegion.sourceAnchor.startColumn,
-            endLine: renderRegion.sourceAnchor.endLine,
-            endColumn: renderRegion.sourceAnchor.endColumn,
+      addContextRecord(
+        input.contextRecordsByKey,
+        {
+          context: {
+            kind: "render-region",
+            filePath: renderRegion.filePath,
+            componentName: renderRegion.componentName,
+            regionKind: renderRegion.kind,
+            path: renderRegion.path,
+            sourceAnchor: {
+              startLine: renderRegion.sourceAnchor.startLine,
+              startColumn: renderRegion.sourceAnchor.startColumn,
+              endLine: renderRegion.sourceAnchor.endLine,
+              endColumn: renderRegion.sourceAnchor.endColumn,
+            },
           },
+          availability: "unknown",
+          reasons: [
+            "render region contains unsupported or budget-limited expansion that may hide stylesheet availability",
+          ],
+          derivations: [{ kind: "render-region-unknown-barrier", reason: barrier.reason }],
         },
-        availability: "unknown",
-        reasons: [
-          "render region contains unsupported or budget-limited expansion that may hide stylesheet availability",
-        ],
-        derivations: [{ kind: "render-region-unknown-barrier", reason: barrier.reason }],
-      });
+        input.includeTraces,
+      );
     }
   }
 }
@@ -1270,27 +1328,32 @@ function addRenderSubtreeRootContexts(input: {
   reason: string;
   derivations: ReachabilityDerivation[];
   traces: AnalysisTrace[];
+  includeTraces: boolean;
   predicate: (subtree: RenderSubtree) => boolean;
 }): void {
   for (const subtree of input.renderSubtrees.filter(input.predicate)) {
-    addContextRecord(input.contextRecordsByKey, {
-      context: {
-        kind: "render-subtree-root",
-        filePath:
-          normalizeProjectPath(subtree.sourceAnchor.filePath) ?? subtree.sourceAnchor.filePath,
-        componentName: subtree.componentName,
-        rootAnchor: {
-          startLine: subtree.root.sourceAnchor.startLine,
-          startColumn: subtree.root.sourceAnchor.startColumn,
-          endLine: subtree.root.sourceAnchor.endLine,
-          endColumn: subtree.root.sourceAnchor.endColumn,
+    addContextRecord(
+      input.contextRecordsByKey,
+      {
+        context: {
+          kind: "render-subtree-root",
+          filePath:
+            normalizeProjectPath(subtree.sourceAnchor.filePath) ?? subtree.sourceAnchor.filePath,
+          componentName: subtree.componentName,
+          rootAnchor: {
+            startLine: subtree.root.sourceAnchor.startLine,
+            startColumn: subtree.root.sourceAnchor.startColumn,
+            endLine: subtree.root.sourceAnchor.endLine,
+            endColumn: subtree.root.sourceAnchor.endColumn,
+          },
         },
+        availability: input.availability,
+        reasons: [input.reason],
+        derivations: [...input.derivations],
+        traces: input.includeTraces ? [...input.traces] : [],
       },
-      availability: input.availability,
-      reasons: [input.reason],
-      derivations: [...input.derivations],
-      traces: [...input.traces],
-    });
+      input.includeTraces,
+    );
   }
 }
 
@@ -1301,6 +1364,7 @@ function addRenderRegionContexts(input: {
   reasons: string[];
   derivations: ReachabilityDerivation[];
   traces: AnalysisTrace[];
+  includeTraces: boolean;
   predicate: (region: RenderRegion) => boolean;
 }): void {
   for (const region of input.renderRegions.filter(input.predicate)) {
@@ -1308,25 +1372,29 @@ function addRenderRegionContexts(input: {
       continue;
     }
 
-    addContextRecord(input.contextRecordsByKey, {
-      context: {
-        kind: "render-region",
-        filePath: region.filePath,
-        componentName: region.componentName,
-        regionKind: region.kind,
-        path: region.path,
-        sourceAnchor: {
-          startLine: region.sourceAnchor.startLine,
-          startColumn: region.sourceAnchor.startColumn,
-          endLine: region.sourceAnchor.endLine,
-          endColumn: region.sourceAnchor.endColumn,
+    addContextRecord(
+      input.contextRecordsByKey,
+      {
+        context: {
+          kind: "render-region",
+          filePath: region.filePath,
+          componentName: region.componentName,
+          regionKind: region.kind,
+          path: region.path,
+          sourceAnchor: {
+            startLine: region.sourceAnchor.startLine,
+            startColumn: region.sourceAnchor.startColumn,
+            endLine: region.sourceAnchor.endLine,
+            endColumn: region.sourceAnchor.endColumn,
+          },
         },
+        availability: input.availability,
+        reasons: [...input.reasons],
+        derivations: [...input.derivations],
+        traces: input.includeTraces ? [...input.traces] : [],
       },
-      availability: input.availability,
-      reasons: [...input.reasons],
-      derivations: [...input.derivations],
-      traces: [...input.traces],
-    });
+      input.includeTraces,
+    );
   }
 }
 
@@ -1335,8 +1403,9 @@ function addContextRecord(
   contextRecord: Omit<StylesheetReachabilityContextRecord, "traces"> & {
     traces?: AnalysisTrace[];
   },
+  includeTraces = true,
 ): void {
-  const normalizedContextRecord = withContextRecordTraces(contextRecord);
+  const normalizedContextRecord = withContextRecordTraces(contextRecord, includeTraces);
   const contextKey = serializeContextKey(normalizedContextRecord);
   const existingContextRecord = contextRecordsByKey.get(contextKey);
   if (!existingContextRecord) {
@@ -1377,7 +1446,15 @@ function withContextRecordTraces(
   contextRecord: Omit<StylesheetReachabilityContextRecord, "traces"> & {
     traces?: AnalysisTrace[];
   },
+  includeTraces = true,
 ): StylesheetReachabilityContextRecord {
+  if (!includeTraces) {
+    return {
+      ...contextRecord,
+      traces: [],
+    };
+  }
+
   const traces = [
     createReachabilityTrace({
       traceId: `reachability-context:${contextRecord.context.kind}:${contextRecord.availability}`,
@@ -1401,27 +1478,38 @@ function withContextRecordTraces(
 }
 
 function withStylesheetRecordTraces(
-  record: StylesheetReachabilityRecord,
+  record: StylesheetReachabilityRecord & { includeTraces?: boolean },
 ): StylesheetReachabilityRecord {
+  const { includeTraces = true, ...stylesheetRecord } = record;
+  if (!includeTraces) {
+    return {
+      ...stylesheetRecord,
+      traces: [],
+    };
+  }
+
   const traces =
-    record.traces.length > 0
-      ? [...record.traces]
+    stylesheetRecord.traces.length > 0
+      ? [...stylesheetRecord.traces]
       : [
           createReachabilityTrace({
-            traceId: `reachability-stylesheet:${record.cssFilePath ?? "unknown"}:${record.availability}`,
+            traceId: `reachability-stylesheet:${stylesheetRecord.cssFilePath ?? "unknown"}:${stylesheetRecord.availability}`,
             summary:
-              record.reasons[0] ?? `stylesheet reachability resolved as ${record.availability}`,
-            children: mergeTraceCollections(record.contexts.map((context) => context.traces)),
+              stylesheetRecord.reasons[0] ??
+              `stylesheet reachability resolved as ${stylesheetRecord.availability}`,
+            children: mergeTraceCollections(
+              stylesheetRecord.contexts.map((context) => context.traces),
+            ),
             metadata: {
-              cssFilePath: record.cssFilePath,
-              availability: record.availability,
-              contextCount: record.contexts.length,
+              cssFilePath: stylesheetRecord.cssFilePath,
+              availability: stylesheetRecord.availability,
+              contextCount: stylesheetRecord.contexts.length,
             },
           }),
         ];
 
   return {
-    ...record,
+    ...stylesheetRecord,
     traces,
   };
 }

@@ -28,6 +28,13 @@ type RenderRegionContextRecord = AvailableContextRecord & {
   context: Extract<StylesheetReachabilityContextRecord["context"], { kind: "render-region" }>;
 };
 
+type ReachabilityContextIndex = {
+  sourceFileContextsByFilePath: Map<string, AvailableContextRecord[]>;
+  componentContextsByComponentKey: Map<string, AvailableContextRecord[]>;
+  subtreeRootContextsByRootKey: Map<string, AvailableContextRecord[]>;
+  renderRegionContextsByComponentKey: Map<string, RenderRegionContextRecord[]>;
+};
+
 export function analyzeSelectorQueries(input: {
   selectorQueries: ParsedSelectorQuery[];
   renderSubtrees: RenderSubtree[];
@@ -274,8 +281,9 @@ function resolveQueryReachability(input: {
     };
   }
 
+  const reachabilityContextIndex = buildReachabilityContextIndex(reachabilityRecord.contexts);
   const analysisTargets = input.renderSubtrees
-    .flatMap((subtree) => resolveReachableAnalysisSubtrees(subtree, reachabilityRecord))
+    .flatMap((subtree) => resolveReachableAnalysisSubtrees(subtree, reachabilityContextIndex))
     .map((analysisSubtree) => ({
       renderSubtree: analysisSubtree.subtree,
       reachabilityAvailability: analysisSubtree.availability,
@@ -293,42 +301,28 @@ function resolveQueryReachability(input: {
 
 function resolveReachableAnalysisSubtrees(
   subtree: RenderSubtree,
-  reachabilityRecord: ReachabilitySummary["stylesheets"][number],
+  reachabilityContextIndex: ReachabilityContextIndex,
 ): ReachableAnalysisSubtree[] {
   const normalizedFilePath = subtree.sourceAnchor.filePath.replace(/\\/g, "/");
-  const availableContextRecords = reachabilityRecord.contexts.filter(
-    (contextRecord) =>
-      contextRecord.availability === "definite" || contextRecord.availability === "possible",
-  ) as AvailableContextRecord[];
-  const matchingRenderRegionContexts = availableContextRecords.filter(
-    (contextRecord) =>
-      contextRecord.context.kind === "render-region" &&
-      contextRecord.context.filePath === normalizedFilePath &&
-      contextRecord.context.componentName === subtree.componentName,
-  ) as RenderRegionContextRecord[];
-  const hasSourceFileContext = availableContextRecords.some(
-    (contextRecord) =>
-      contextRecord.context.kind === "source-file" &&
-      contextRecord.context.filePath === normalizedFilePath,
-  );
-  const matchingSubtreeRootContexts = availableContextRecords.filter(
-    (contextRecord) =>
-      contextRecord.context.kind === "render-subtree-root" &&
-      contextRecord.context.filePath === normalizedFilePath &&
-      contextRecord.context.componentName === subtree.componentName &&
-      contextRecord.context.rootAnchor.startLine === subtree.root.sourceAnchor.startLine &&
-      contextRecord.context.rootAnchor.startColumn === subtree.root.sourceAnchor.startColumn &&
-      (contextRecord.context.rootAnchor.endLine ?? 0) ===
-        (subtree.root.sourceAnchor.endLine ?? 0) &&
-      (contextRecord.context.rootAnchor.endColumn ?? 0) ===
-        (subtree.root.sourceAnchor.endColumn ?? 0),
-  );
-  const matchingComponentContexts = availableContextRecords.filter(
-    (contextRecord) =>
-      contextRecord.context.kind === "component" &&
-      contextRecord.context.filePath === normalizedFilePath &&
-      contextRecord.context.componentName === subtree.componentName,
-  );
+  const componentKey = createComponentContextKey(normalizedFilePath, subtree.componentName);
+  const matchingRenderRegionContexts =
+    reachabilityContextIndex.renderRegionContextsByComponentKey.get(componentKey) ?? [];
+  const sourceFileContexts =
+    reachabilityContextIndex.sourceFileContextsByFilePath.get(normalizedFilePath) ?? [];
+  const matchingSubtreeRootContexts =
+    reachabilityContextIndex.subtreeRootContextsByRootKey.get(
+      createSubtreeRootContextKey({
+        filePath: normalizedFilePath,
+        componentName: subtree.componentName,
+        startLine: subtree.root.sourceAnchor.startLine,
+        startColumn: subtree.root.sourceAnchor.startColumn,
+        endLine: subtree.root.sourceAnchor.endLine,
+        endColumn: subtree.root.sourceAnchor.endColumn,
+      }),
+    ) ?? [];
+  const matchingComponentContexts =
+    reachabilityContextIndex.componentContextsByComponentKey.get(componentKey) ?? [];
+  const hasSourceFileContext = sourceFileContexts.length > 0;
   const hasSubtreeRootContext = matchingSubtreeRootContexts.length > 0;
   const hasComponentContext = matchingComponentContexts.length > 0;
 
@@ -370,11 +364,7 @@ function resolveReachableAnalysisSubtrees(
         subtree,
         availability: wholeSubtreeAvailability,
         contexts: hasSourceFileContext
-          ? availableContextRecords.filter(
-              (contextRecord) =>
-                contextRecord.context.kind === "source-file" &&
-                contextRecord.context.filePath === normalizedFilePath,
-            )
+          ? sourceFileContexts
           : [...matchingSubtreeRootContexts, ...matchingComponentContexts],
       },
       ...narrowedSubtrees,
@@ -382,6 +372,99 @@ function resolveReachableAnalysisSubtrees(
   }
 
   return deduplicateAnalysisSubtrees(narrowedSubtrees);
+}
+
+function buildReachabilityContextIndex(
+  contextRecords: StylesheetReachabilityContextRecord[],
+): ReachabilityContextIndex {
+  const index: ReachabilityContextIndex = {
+    sourceFileContextsByFilePath: new Map(),
+    componentContextsByComponentKey: new Map(),
+    subtreeRootContextsByRootKey: new Map(),
+    renderRegionContextsByComponentKey: new Map(),
+  };
+
+  for (const contextRecord of contextRecords) {
+    if (contextRecord.availability !== "definite" && contextRecord.availability !== "possible") {
+      continue;
+    }
+
+    const availableContextRecord = contextRecord as AvailableContextRecord;
+    const context = contextRecord.context;
+    if (context.kind === "source-file") {
+      appendToMap(
+        index.sourceFileContextsByFilePath,
+        normalizeProjectPath(context.filePath),
+        availableContextRecord,
+      );
+      continue;
+    }
+
+    if (context.kind === "component") {
+      appendToMap(
+        index.componentContextsByComponentKey,
+        createComponentContextKey(context.filePath, context.componentName),
+        availableContextRecord,
+      );
+      continue;
+    }
+
+    if (context.kind === "render-subtree-root") {
+      appendToMap(
+        index.subtreeRootContextsByRootKey,
+        createSubtreeRootContextKey({
+          filePath: context.filePath,
+          componentName: context.componentName,
+          startLine: context.rootAnchor.startLine,
+          startColumn: context.rootAnchor.startColumn,
+          endLine: context.rootAnchor.endLine,
+          endColumn: context.rootAnchor.endColumn,
+        }),
+        availableContextRecord,
+      );
+      continue;
+    }
+
+    appendToMap(
+      index.renderRegionContextsByComponentKey,
+      createComponentContextKey(context.filePath, context.componentName),
+      availableContextRecord as RenderRegionContextRecord,
+    );
+  }
+
+  return index;
+}
+
+function appendToMap<TKey, TValue>(map: Map<TKey, TValue[]>, key: TKey, value: TValue): void {
+  const values = map.get(key);
+  if (values) {
+    values.push(value);
+    return;
+  }
+
+  map.set(key, [value]);
+}
+
+function createComponentContextKey(filePath: string, componentName?: string): string {
+  return [normalizeProjectPath(filePath), componentName ?? ""].join(":");
+}
+
+function createSubtreeRootContextKey(input: {
+  filePath: string;
+  componentName?: string;
+  startLine: number;
+  startColumn: number;
+  endLine?: number;
+  endColumn?: number;
+}): string {
+  return [
+    normalizeProjectPath(input.filePath),
+    input.componentName ?? "",
+    input.startLine,
+    input.startColumn,
+    input.endLine ?? 0,
+    input.endColumn ?? 0,
+  ].join(":");
 }
 
 function resolveRenderRegionNode(input: {

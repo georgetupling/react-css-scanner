@@ -11,6 +11,7 @@ export type ScanProjectInput = {
   configBaseDir?: string;
   onProgress?: ScanProgressCallback;
   collectPerformance?: boolean;
+  includeTraces?: boolean;
 };
 
 export type ScanProgressStatus = "started" | "completed";

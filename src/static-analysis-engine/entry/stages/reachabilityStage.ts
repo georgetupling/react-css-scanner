@@ -12,6 +12,7 @@ export function runReachabilityStage(input: {
   renderSubtrees: RenderSubtree[];
   selectorCssSources: SelectorSourceInput[];
   externalCssSummary: ExternalCssSummary;
+  includeTraces?: boolean;
 }): ReachabilityStageResult {
   return {
     reachabilitySummary: buildReachabilitySummary({
@@ -20,6 +21,7 @@ export function runReachabilityStage(input: {
       renderSubtrees: input.renderSubtrees,
       cssSources: input.selectorCssSources,
       externalCssSummary: input.externalCssSummary,
+      includeTraces: input.includeTraces ?? true,
     }),
   };
 }

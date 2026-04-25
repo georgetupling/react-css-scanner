@@ -14,3 +14,7 @@ export type AnalysisProgressEvent = {
 };
 
 export type AnalysisProgressCallback = (event: AnalysisProgressEvent) => void;
+
+export type AnalysisRuntimeOptions = {
+  includeTraces?: boolean;
+};

@@ -119,6 +119,7 @@ export async function scanProject(input: ScanProjectInput = {}): Promise<ScanPro
       htmlStylesheetLinks: resolvedHtmlStylesheetLinks,
       packageCssImports: packageCssImports.imports,
     },
+    includeTraces: input.includeTraces ?? true,
     onProgress: (event) => progress(event.stage, event.status, event.message, event.durationMs),
   });
   const ruleResult = await runScanStage(progress, "run-rules", "Running rules", () =>

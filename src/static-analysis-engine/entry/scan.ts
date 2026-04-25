@@ -21,6 +21,7 @@ export function analyzeSourceText(input: {
   externalCss?: ExternalCssAnalysisInput;
   cssModules?: CssModuleAnalysisOptions;
   onProgress?: AnalysisProgressCallback;
+  includeTraces?: boolean;
 }): StaticAnalysisEngineResult {
   return analyzeProjectSourceTexts({
     sourceFiles: [
@@ -47,6 +48,7 @@ export function analyzeProjectSourceTexts(input: {
   externalCss?: ExternalCssAnalysisInput;
   cssModules?: CssModuleAnalysisOptions;
   onProgress?: AnalysisProgressCallback;
+  includeTraces?: boolean;
 }): StaticAnalysisEngineResult {
   const progress = createAnalysisProgressReporter(input.onProgress);
   const parseStage = runAnalysisStage(progress, "parse", "Parsing source files", () =>
@@ -110,6 +112,7 @@ export function analyzeProjectSourceTexts(input: {
         renderSubtrees: renderModelStage.renderSubtrees,
         selectorCssSources: input.selectorCssSources ?? [],
         externalCssSummary: externalCssStage.externalCssSummary,
+        includeTraces: input.includeTraces ?? true,
       }),
   );
   const selectorAnalysisStage = runAnalysisStage(
