@@ -265,6 +265,122 @@ test("missing-css-class accepts Font Awesome classes when HTML links a matching 
   }
 });
 
+test("missing-css-class accepts classes from fetched remote CSS when fetch-remote is enabled", async () => {
+  const originalFetch = globalThis.fetch;
+  const fetchCalls = [];
+  globalThis.fetch = async (url) => {
+    fetchCalls.push(String(url));
+    return new Response(".remote-btn { display: block; }\n", { status: 200 });
+  };
+  const project = await new TestProjectBuilder()
+    .withConfig({
+      externalCss: {
+        modes: ["fetch-remote"],
+      },
+    })
+    .withFile("index.html", '<link rel="stylesheet" href="https://cdn.example/app.css">\n')
+    .withSourceFile(
+      "src/App.tsx",
+      'export function App() { return <main className="remote-btn" />; }\n',
+    )
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
+      cssFilePaths: [],
+    });
+
+    assert.deepEqual(fetchCalls, ["https://cdn.example/app.css"]);
+    assert.deepEqual(
+      result.findings.filter(
+        (finding) =>
+          finding.ruleId === "missing-css-class" || finding.ruleId === "css-class-unreachable",
+      ),
+      [],
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+    await project.cleanup();
+  }
+});
+
+test("missing-css-class emits diagnostics for remote CSS fetch failures", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response("not found", { status: 404 });
+  const project = await new TestProjectBuilder()
+    .withConfig({
+      externalCss: {
+        modes: ["fetch-remote"],
+      },
+    })
+    .withFile("index.html", '<link rel="stylesheet" href="https://cdn.example/missing.css">\n')
+    .withSourceFile(
+      "src/App.tsx",
+      'export function App() { return <main className="remote-btn" />; }\n',
+    )
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
+      cssFilePaths: [],
+    });
+
+    assert.equal(result.diagnostics.length, 1);
+    assert.equal(result.diagnostics[0].code, "loading.remote-css-fetch-failed");
+    assert.equal(result.diagnostics[0].severity, "warning");
+    assert.equal(result.diagnostics[0].filePath, "index.html");
+    assert.match(result.diagnostics[0].message, /HTTP 404/);
+    assert.ok(
+      result.findings.some(
+        (finding) =>
+          finding.ruleId === "missing-css-class" && finding.data?.className === "remote-btn",
+      ),
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+    await project.cleanup();
+  }
+});
+
+test("missing-css-class does not fetch remote CSS in default modes", async () => {
+  const originalFetch = globalThis.fetch;
+  let fetchCount = 0;
+  globalThis.fetch = async () => {
+    fetchCount += 1;
+    return new Response(".remote-btn { display: block; }\n", { status: 200 });
+  };
+  const project = await new TestProjectBuilder()
+    .withFile("index.html", '<link rel="stylesheet" href="https://cdn.example/app.css">\n')
+    .withSourceFile(
+      "src/App.tsx",
+      'export function App() { return <main className="remote-btn" />; }\n',
+    )
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
+      cssFilePaths: [],
+    });
+
+    assert.equal(fetchCount, 0);
+    assert.ok(
+      result.findings.some(
+        (finding) =>
+          finding.ruleId === "missing-css-class" && finding.data?.className === "remote-btn",
+      ),
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+    await project.cleanup();
+  }
+});
+
 test("missing-css-class accepts classes from local CSS linked by HTML", async () => {
   const project = await new TestProjectBuilder()
     .withFile("index.html", '<link rel="stylesheet" href="/public/app.css">\n')

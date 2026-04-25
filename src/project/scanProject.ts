@@ -11,6 +11,7 @@ import { discoverProjectFiles } from "./discovery.js";
 import { extractHtmlStylesheetLinks } from "./htmlStylesheetLinks.js";
 import { loadPackageCssImports } from "./packageCssImports.js";
 import { normalizeProjectPath } from "./pathUtils.js";
+import { fetchRemoteCssSources } from "./remoteCss.js";
 import type {
   ProjectFileRecord,
   ScanDiagnostic,
@@ -68,10 +69,20 @@ export async function scanProject(input: ScanProjectInput = {}): Promise<ScanPro
         diagnostics,
       })
     : { cssSources: [], imports: [] };
+  const remoteCssFetchEnabled =
+    config.externalCss.enabled && config.externalCss.modes.includes("fetch-remote");
+  const remoteCssSources = remoteCssFetchEnabled
+    ? await fetchRemoteCssSources({
+        htmlStylesheetLinks: resolvedHtmlStylesheetLinks,
+        remoteTimeoutMs: config.externalCss.remoteTimeoutMs,
+        diagnostics,
+      })
+    : [];
   const selectorCssSources = mergeCssSources([
     ...cssFiles,
     ...linkedCssFiles,
     ...packageCssImports.cssSources,
+    ...remoteCssSources,
   ]);
 
   const engineResult = analyzeProjectSourceTexts({

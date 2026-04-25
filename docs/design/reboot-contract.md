@@ -545,7 +545,9 @@ Design rules:
   fetching externally linked stylesheets such as CDNs, not a substitute for parsed package CSS
 - CSS `@import` package entries are resolved under `node_modules`, loaded, parsed, classified as
   external imports, and treated as reachable through the importing stylesheet
-- remote fetch behavior is staged follow-up work
+- remote HTML stylesheet links are fetched only when `fetch-remote` is present; fetched CSS is
+  parsed into concrete class definitions, uses `remoteTimeoutMs`, is treated as project-wide
+  external CSS, and fetch failures emit warning diagnostics
 - default rule severities come from `docs/design/rules-catalogue.md` and the rule catalogue code
 - rule ids follow the reboot catalogue; old scanner rule ids are not part of the clean contract
 - missing config should resolve to built-in defaults
