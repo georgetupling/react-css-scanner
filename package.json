@@ -1,6 +1,6 @@
 {
   "name": "scan-react-css",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "CLI and Node API for auditing React CSS usage.",
   "type": "module",
   "bin": {
