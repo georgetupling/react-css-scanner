@@ -644,6 +644,57 @@ test("CLI --focus accepts comma-separated and repeated focus values", async () =
   }
 });
 
+test("CLI --focus accepts direct file paths and pasted file locations", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/components/Button.tsx",
+      'export function Button() { return <button className="missing-button">Button</button>; }\n',
+    )
+    .withSourceFile(
+      "src/components/Card.tsx",
+      'export function Card() { return <article className="missing-card">Card</article>; }\n',
+    )
+    .build();
+
+  try {
+    const fileOutputPath = project.filePath("file-focus-report.json");
+    const fileError = await captureRejectedCliRun([
+      project.rootDir,
+      "--focus",
+      "src/components/Button.tsx",
+      "--json",
+      "--output-file",
+      fileOutputPath,
+    ]);
+    const fileOutput = await readJsonFile(fileOutputPath);
+
+    assert.equal(fileError.code, 1);
+    assert.deepEqual(
+      fileOutput.findings.map((finding) => finding.data.className),
+      ["missing-button"],
+    );
+
+    const locationOutputPath = project.filePath("location-focus-report.json");
+    const locationError = await captureRejectedCliRun([
+      project.rootDir,
+      "--focus",
+      "src/components/Card.tsx:1:34",
+      "--json",
+      "--output-file",
+      locationOutputPath,
+    ]);
+    const locationOutput = await readJsonFile(locationOutputPath);
+
+    assert.equal(locationError.code, 1);
+    assert.deepEqual(
+      locationOutput.findings.map((finding) => finding.data.className),
+      ["missing-card"],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("CLI rejects --focus without a value", async () => {
   const error = await captureRejectedCliRun([".", "--focus", "--json"]);
 

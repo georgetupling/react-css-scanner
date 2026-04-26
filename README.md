@@ -87,6 +87,7 @@ Details:
 - `--focus` can be provided more than once.
 - A focus value can contain comma-separated paths.
 - Non-glob values match an exact file or directory subtree.
+- File focus values may include a pasted `:line` or `:line:column` suffix from CLI output.
 - Glob values use project-relative `/` paths and support `*`, `?`, and `**`.
 - Source, CSS, class-reference, class-definition, and selector-query counts describe the full project context.
 - Finding counts and the CLI exit code are based on the focused findings.
@@ -96,6 +97,8 @@ Examples:
 
 ```bash
 npx scan-react-css --focus src/components
+npx scan-react-css --focus src/components/Button.tsx
+npx scan-react-css --focus src/components/Button.tsx:31
 npx scan-react-css --focus src/components,src/pages
 npx scan-react-css --focus "src/features/**/components"
 ```

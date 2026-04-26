@@ -81,7 +81,7 @@ function buildFocusMatcher(focusPath: string, rootDir: string): FocusMatcher {
 }
 
 function normalizeFocusPath(focusPath: string, rootDir: string): string {
-  let normalized = normalizeProjectPath(focusPath);
+  let normalized = stripLocationSuffix(normalizeProjectPath(focusPath));
   const normalizedRoot = normalizeProjectPath(rootDir);
   if (normalized === normalizedRoot) {
     return ".";
@@ -96,6 +96,10 @@ function normalizeFocusPath(focusPath: string, rootDir: string): string {
 
 function normalizeProjectPath(filePath: string): string {
   return filePath.split("\\").join("/").replace(/\/+/g, "/").replace(/\/+$/, "");
+}
+
+function stripLocationSuffix(focusPath: string): string {
+  return focusPath.replace(/(\.(?:[cm]?[jt]sx?|css)):\d+(?::\d+)?$/i, "$1");
 }
 
 function hasGlobSyntax(value: string): boolean {

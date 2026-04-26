@@ -512,6 +512,7 @@ Focused output semantics:
 - `--focus path-or-glob` may be provided more than once.
 - A single `--focus` value may contain comma-separated paths or globs.
 - Non-glob values match the exact file or directory subtree.
+- File focus values may include a pasted `:line` or `:line:column` suffix from CLI output.
 - Glob values use project-relative `/` paths and support `*`, `?`, and `**`.
 - CLI `findings` are filtered to findings whose primary location, subject/evidence path, or trace
   anchor is inside one of the focus paths.
