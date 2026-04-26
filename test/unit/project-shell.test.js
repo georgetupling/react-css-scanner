@@ -338,6 +338,34 @@ test("scanProject degrades recursive exact-array predicates without overflowing 
   }
 });
 
+test("scanProject degrades empty string intrinsic tag bindings without crashing", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        "export function App() {",
+        '  const Tag = "";',
+        '  return <Tag className="app" />;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".app { display: block; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+    });
+
+    assert.equal(result.diagnostics.length, 0);
+    assert.equal(result.summary.sourceFileCount, 1);
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("scanProject reports unreachable matching classes without exposing ProjectAnalysis", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(

@@ -95,6 +95,10 @@ function resolveExactIntrinsicTagNameExpressionInternal(
 }
 
 export function isIntrinsicTagName(tagName: string): boolean {
+  if (tagName.length === 0) {
+    return false;
+  }
+
   if (tagName.includes(".")) {
     return false;
   }
