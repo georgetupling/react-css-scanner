@@ -11,12 +11,19 @@ export type RuntimeDomClassReference = {
   location: SourceAnchor;
   rawExpressionText: string;
   classExpression: ClassExpressionSummary;
+  runtimeLibraryHint?: RuntimeDomLibraryHint;
 };
 
 export type RuntimeDomAdapterContext = {
   filePath: string;
   parsedSourceFile: ts.SourceFile;
   includeTraces: boolean;
+};
+
+export type RuntimeDomLibraryHint = {
+  packageName: string;
+  importedName: string;
+  localName: string;
 };
 
 export type RuntimeDomAdapter = {

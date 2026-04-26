@@ -427,6 +427,7 @@ function buildClassReferences(input: {
       sourceFileId,
       location: normalizeAnchor(runtimeReference.location),
       origin: "runtime-dom",
+      runtimeLibraryHint: runtimeReference.runtimeLibraryHint,
       expressionKind: getReferenceExpressionKind(classExpression),
       rawExpressionText: runtimeReference.rawExpressionText,
       definiteClassNames: [...classExpression.classes.definite],
@@ -910,6 +911,7 @@ function buildRuntimeDomClassReferenceTraces(
         origin: "runtime-dom",
         adapter: reference.kind,
         sourceFilePath: normalizeProjectPath(reference.filePath),
+        runtimeLibraryHint: reference.runtimeLibraryHint,
       },
     },
   ];

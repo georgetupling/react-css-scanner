@@ -171,6 +171,10 @@ function formatFindingSections(
       const target = location ? ` at ${location}` : "";
       lines.push(`  [${severity}] ${finding.ruleId}${target}`);
       lines.push(`          ${finding.message}`);
+      const hint = getFindingHint(finding);
+      if (hint) {
+        lines.push(`          hint: ${hint}`);
+      }
     }
 
     return lines.join("\n");
@@ -259,11 +263,26 @@ function formatFindingDataLines(data: Finding["data"]): string[] {
     "usageLocations",
     "definitionCount",
     "definitionLocations",
+    "runtimeLibraryHint",
     "selectorTexts",
   ];
   const keys = preferredKeys.filter((key) => Object.hasOwn(data, key));
 
   return keys.map((key) => `${key}: ${formatDataValue(data[key])}`);
+}
+
+function getFindingHint(finding: Finding): string | undefined {
+  const runtimeLibraryHint = finding.data?.runtimeLibraryHint;
+  if (
+    runtimeLibraryHint &&
+    typeof runtimeLibraryHint === "object" &&
+    "message" in runtimeLibraryHint &&
+    typeof runtimeLibraryHint.message === "string"
+  ) {
+    return runtimeLibraryHint.message;
+  }
+
+  return undefined;
 }
 
 function formatDataValue(value: unknown): string {

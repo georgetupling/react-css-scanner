@@ -8,7 +8,7 @@ import type {
 } from "../reachability/types.js";
 import type { RenderGraphEdge } from "../render-model/render-graph/types.js";
 import type { RenderSubtree } from "../render-model/render-ir/types.js";
-import type { RuntimeDomClassReference } from "../runtime-dom/types.js";
+import type { RuntimeDomClassReference, RuntimeDomLibraryHint } from "../runtime-dom/types.js";
 import type { SelectorConstraint, SelectorQueryResult } from "../selector-analysis/types.js";
 import type { AnalysisConfidence, AnalysisTrace } from "../../types/analysis.js";
 import type { SourceAnchor } from "../../types/core.js";
@@ -103,6 +103,7 @@ export type ClassReferenceAnalysis = {
   emittedElementLocation?: SourceAnchor;
   placementLocation?: SourceAnchor;
   origin: ClassReferenceOrigin;
+  runtimeLibraryHint?: RuntimeDomLibraryHint;
   expressionKind: ClassReferenceExpressionKind;
   rawExpressionText: string;
   definiteClassNames: string[];

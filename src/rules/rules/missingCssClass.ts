@@ -68,6 +68,7 @@ function buildMissingClassFinding(
     );
   const firstReference = references[0];
   const usageLocations = dedupeUsageLocations(references);
+  const runtimeLibraryHint = buildRuntimeLibraryHint(context, className, references);
 
   return {
     id: `missing-css-class:${className}`,
@@ -95,6 +96,7 @@ function buildMissingClassFinding(
       expressionKind: firstReference.expressionKind,
       usageCount: references.length,
       usageLocations,
+      ...(runtimeLibraryHint ? { runtimeLibraryHint } : {}),
       focusFilePaths: collectReferenceFocusFilePaths(context, className, references),
     },
   };
@@ -198,6 +200,7 @@ function buildMissingClassTraces(input: {
   reference: RuleContext["analysis"]["entities"]["classReferences"][number];
   className: string;
 }): AnalysisTrace[] {
+  const runtimeLibraryHint = input.reference.runtimeLibraryHint;
   return [
     {
       traceId: `rule-evaluation:missing-css-class:${input.reference.id}:${input.className}`,
@@ -236,6 +239,21 @@ function buildMissingClassTraces(input: {
             className: input.className,
           },
         },
+        ...(runtimeLibraryHint
+          ? [
+              {
+                traceId: `rule-evaluation:missing-css-class:${input.reference.id}:${input.className}:runtime-library-hint`,
+                category: "rule-evaluation" as const,
+                summary: `runtime DOM class reference was associated with "${runtimeLibraryHint.packageName}" via "${runtimeLibraryHint.localName}"`,
+                anchor: input.reference.location,
+                children: [],
+                metadata: {
+                  className: input.className,
+                  runtimeLibraryHint,
+                },
+              },
+            ]
+          : []),
       ],
       metadata: {
         ruleId: "missing-css-class",
@@ -246,4 +264,45 @@ function buildMissingClassTraces(input: {
       },
     },
   ];
+}
+
+function buildRuntimeLibraryHint(
+  context: RuleContext,
+  className: string,
+  references: RuleContext["analysis"]["entities"]["classReferences"],
+): Record<string, unknown> | undefined {
+  const runtimeHint = references
+    .map((reference) => reference.runtimeLibraryHint)
+    .find((hint) => hint !== undefined);
+  if (!runtimeHint) {
+    return undefined;
+  }
+
+  const packageCssImports = context.analysis.inputs.externalCss.packageCssImports.filter(
+    (importRecord) =>
+      getPackageNameFromSpecifier(importRecord.specifier) === runtimeHint.packageName,
+  );
+  const cssImportFound = packageCssImports.length > 0;
+
+  return {
+    packageName: runtimeHint.packageName,
+    importedName: runtimeHint.importedName,
+    localName: runtimeHint.localName,
+    cssImportFound,
+    importedPackageCssSpecifiers: packageCssImports
+      .map((importRecord) => importRecord.specifier)
+      .sort((left, right) => left.localeCompare(right)),
+    message: cssImportFound
+      ? `Class "${className}" is referenced by runtime DOM code from "${runtimeHint.packageName}", and package CSS from that package was imported, but no CSS definition for this class was found. If this class is library-styled, import the package CSS file that defines it or define it locally.`
+      : `Class "${className}" is referenced by runtime DOM code from "${runtimeHint.packageName}", but no package CSS import was found. If this class is library-styled, import the package CSS or define it locally.`,
+  };
+}
+
+function getPackageNameFromSpecifier(specifier: string): string {
+  const segments = specifier.split("/");
+  if (specifier.startsWith("@")) {
+    return segments.length >= 2 ? `${segments[0]}/${segments[1]}` : specifier;
+  }
+
+  return segments[0] ?? specifier;
 }

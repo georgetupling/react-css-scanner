@@ -327,6 +327,9 @@ architectural ownership attribution.
 ProseMirror `EditorView` `attributes.class` / `attributes.className` strings as usage evidence. These
 references participate in class-definition matching and unused-class suppression, but they do not
 claim render IR placement or selector layout context.
+When `EditorView` is proven to come from `prosemirror-view`, the runtime reference may carry
+`runtimeLibraryHint` metadata. That metadata is explanatory only: JavaScript imports do not satisfy
+CSS classes, while imported package CSS and linked stylesheets remain normal CSS evidence.
 
 ### ClassDefinitionAnalysis
 

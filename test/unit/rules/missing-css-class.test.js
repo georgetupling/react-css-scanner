@@ -176,6 +176,92 @@ test("missing-css-class accepts classes from CSS package imports", async () => {
   }
 });
 
+test("missing-css-class adds runtime library hints for JS-only ProseMirror imports", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/RichTextEditor.tsx",
+      [
+        'import { EditorView } from "prosemirror-view";',
+        "export function mountEditor(mount, state) {",
+        "  new EditorView(",
+        "    { mount },",
+        "    {",
+        "      state,",
+        "      attributes: {",
+        '        class: "ProseMirror",',
+        "      },",
+        "    },",
+        "  );",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/RichTextEditor.tsx"],
+      cssFilePaths: [],
+    });
+
+    const finding = result.findings.find(
+      (candidate) =>
+        candidate.ruleId === "missing-css-class" && candidate.data?.className === "ProseMirror",
+    );
+
+    assert.ok(finding);
+    assert.deepEqual(finding.data?.runtimeLibraryHint, {
+      packageName: "prosemirror-view",
+      importedName: "EditorView",
+      localName: "EditorView",
+      cssImportFound: false,
+      importedPackageCssSpecifiers: [],
+      message:
+        'Class "ProseMirror" is referenced by runtime DOM code from "prosemirror-view", but no package CSS import was found. If this class is library-styled, import the package CSS or define it locally.',
+    });
+    assert.match(
+      finding.traces[0].children.at(-1)?.summary ?? "",
+      /associated with "prosemirror-view"/,
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("missing-css-class accepts runtime classes from imported ProseMirror package CSS", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/RichTextEditor.tsx",
+      [
+        'import { EditorView } from "prosemirror-view";',
+        'import "prosemirror-view/style/prosemirror.css";',
+        "export function mountEditor(mount, state) {",
+        "  new EditorView({ mount }, { state, attributes: { class: 'ProseMirror' } });",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withNodeModuleFile(
+      "prosemirror-view/style/prosemirror.css",
+      ".ProseMirror { white-space: pre-wrap; }\n",
+    )
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/RichTextEditor.tsx"],
+      cssFilePaths: [],
+    });
+
+    assertNoClassFindings(result, "missing-css-class", ["ProseMirror"]);
+    assertNoClassFindings(result, "css-class-unreachable", ["ProseMirror"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("missing-css-class emits diagnostics for missing CSS package imports", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(

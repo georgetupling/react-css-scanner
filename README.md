@@ -237,6 +237,10 @@ The scanner also recognizes a small set of usage-only runtime DOM class APIs. Pr
 `new EditorView(..., { attributes: { class: "..." } })` static class strings are indexed as
 `runtime-dom` class references so CSS used by the editor surface is not reported as unused. These
 references prove usage only; they do not add render-tree placement for selector layout matching.
+When `EditorView` is imported from `prosemirror-view`, missing runtime classes include a
+finding-level hint if no package CSS import from `prosemirror-view` was loaded. JavaScript package
+imports are advisory only; classes are satisfied only by real CSS evidence such as local CSS,
+imported package CSS, or linked stylesheets.
 
 ## Rules
 

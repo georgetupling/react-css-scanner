@@ -9,6 +9,7 @@ import type {
   RuntimeDomClassReference,
   RuntimeDomClassReferenceKind,
   RuntimeDomAdapterContext,
+  RuntimeDomLibraryHint,
   RuntimeDomReferenceTrace,
   RuntimeDomReferenceTraceInput,
 } from "../types.js";
@@ -20,6 +21,7 @@ export function buildRuntimeDomClassReference(input: {
   context: RuntimeDomAdapterContext;
   traceSummary: string;
   adapterName: string;
+  runtimeLibraryHint?: RuntimeDomLibraryHint;
 }): RuntimeDomClassReference {
   const sourceAnchor = toSourceAnchor(
     input.expression,
@@ -34,6 +36,7 @@ export function buildRuntimeDomClassReference(input: {
     filePath: input.context.filePath,
     location: sourceAnchor,
     rawExpressionText: sourceText,
+    runtimeLibraryHint: input.runtimeLibraryHint,
     classExpression: {
       sourceAnchor,
       sourceText,

@@ -41,6 +41,7 @@ Meaning:
 
 - the component references a class that the scanner cannot find in any stylesheet that can apply to that usage site
 - this usually means a typo, deleted class, missing import, or missing stylesheet
+- runtime-library metadata, when available, may add finding-level remediation hints; it is not treated as proof that CSS exists
 
 Config:
 

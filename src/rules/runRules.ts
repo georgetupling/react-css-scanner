@@ -1,8 +1,7 @@
 import { DEFAULT_RULE_SEVERITIES, RULE_DEFINITIONS } from "./catalogue.js";
 import type { RuleContext, RuleEngineResult } from "./types.js";
-import type { ScannerConfig } from "../config/index.js";
 
-export function runRules(context: RuleContext & { config: ScannerConfig }): RuleEngineResult {
+export function runRules(context: RuleContext): RuleEngineResult {
   return {
     findings: RULE_DEFINITIONS.flatMap((rule) => {
       const configuredSeverity = context.config.rules[rule.id];
