@@ -695,6 +695,69 @@ test("CLI --focus accepts direct file paths and pasted file locations", async ()
   }
 });
 
+test("CLI --focus uses supplied class provenance for forwarded class findings", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/pages/ArticleEdit.tsx",
+      [
+        'import { Checkbox } from "../ui/Checkbox";',
+        'export function ArticleEdit() { return <Checkbox className="article-edit__autolink-toggle" />; }',
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/ui/Checkbox.tsx",
+      [
+        'import "./Checkbox.css";',
+        'function joinClasses(...classes) { return classes.filter(Boolean).join(" "); }',
+        'export function Checkbox({ className }) { return <label className={joinClasses("checkbox", className)} />; }',
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/ui/Checkbox.css", ".checkbox { display: inline-flex; }\n")
+    .build();
+
+  try {
+    const primitiveOutputPath = project.filePath("primitive-focus-report.json");
+    await runCli(
+      [
+        project.rootDir,
+        "--focus",
+        "src/ui/Checkbox",
+        "--json",
+        "--output-file",
+        primitiveOutputPath,
+      ],
+      { cwd: project.rootDir },
+    );
+    const primitiveOutput = await readJsonFile(primitiveOutputPath);
+
+    assert.equal(primitiveOutput.failed, false);
+    assert.deepEqual(primitiveOutput.findings, []);
+
+    const pageOutputPath = project.filePath("page-focus-report.json");
+    const pageError = await captureRejectedCliRun(
+      [
+        project.rootDir,
+        "--focus",
+        "src/pages/ArticleEdit.tsx",
+        "--json",
+        "--output-file",
+        pageOutputPath,
+      ],
+      { cwd: project.rootDir },
+    );
+    const pageOutput = await readJsonFile(pageOutputPath);
+
+    assert.equal(pageError.code, 1);
+    assert.equal(pageOutput.findings.length, 1);
+    assert.equal(pageOutput.findings[0].data.className, "article-edit__autolink-toggle");
+    assert.deepEqual(pageOutput.findings[0].data.focusFilePaths, ["src/pages/ArticleEdit.tsx"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("CLI rejects --focus without a value", async () => {
   const error = await captureRejectedCliRun([".", "--focus", "--json"]);
 

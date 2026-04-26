@@ -84,6 +84,7 @@ function runCssClassUnreachableRule(context: RuleContext): UnresolvedFinding[] {
           expressionKind: reference.expressionKind,
           definitionIds,
           stylesheetIds,
+          focusFilePaths: collectReferenceFocusFilePaths(context, className, reference),
         },
       });
     }
@@ -94,6 +95,18 @@ function runCssClassUnreachableRule(context: RuleContext): UnresolvedFinding[] {
 
 function createReferenceClassKey(referenceId: string, className: string): string {
   return `${referenceId}:${className}`;
+}
+
+function collectReferenceFocusFilePaths(
+  context: RuleContext,
+  className: string,
+  reference: RuleContext["analysis"]["entities"]["classReferences"][number],
+): string[] {
+  const componentId = reference.classNameComponentIds?.[className] ?? reference.componentId;
+  const component = componentId
+    ? context.analysis.indexes.componentsById.get(componentId)
+    : undefined;
+  return [component?.filePath ?? reference.location.filePath];
 }
 
 function buildUnreachableClassTraces(input: {

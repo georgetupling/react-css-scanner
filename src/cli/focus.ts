@@ -45,6 +45,11 @@ function findingMatchesFocus(finding: Finding, matchers: FocusMatcher[]): boolea
 }
 
 function collectFindingPaths(finding: Finding): string[] {
+  const focusFilePaths = getFindingFocusFilePaths(finding);
+  if (focusFilePaths.length > 0) {
+    return focusFilePaths;
+  }
+
   const paths = new Set<string>();
   if (finding.location) {
     paths.add(finding.location.filePath);
@@ -58,6 +63,15 @@ function collectFindingPaths(finding: Finding): string[] {
   }
 
   return [...paths];
+}
+
+function getFindingFocusFilePaths(finding: Finding): string[] {
+  const focusFilePaths = finding.data?.focusFilePaths;
+  if (!Array.isArray(focusFilePaths)) {
+    return [];
+  }
+
+  return focusFilePaths.filter((filePath): filePath is string => typeof filePath === "string");
 }
 
 function buildFocusMatcher(focusPath: string, rootDir: string): FocusMatcher {

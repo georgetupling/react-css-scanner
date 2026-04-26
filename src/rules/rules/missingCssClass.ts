@@ -95,6 +95,7 @@ function buildMissingClassFinding(
       expressionKind: firstReference.expressionKind,
       usageCount: references.length,
       usageLocations,
+      focusFilePaths: collectReferenceFocusFilePaths(context, className, references),
     },
   };
 }
@@ -121,6 +122,23 @@ function buildMissingClassEvidence(
   }
 
   return [...evidenceByKey.values()];
+}
+
+function collectReferenceFocusFilePaths(
+  context: RuleContext,
+  className: string,
+  references: RuleContext["analysis"]["entities"]["classReferences"],
+): string[] {
+  const paths = new Set<string>();
+  for (const reference of references) {
+    const componentId = reference.classNameComponentIds?.[className] ?? reference.componentId;
+    const component = componentId
+      ? context.analysis.indexes.componentsById.get(componentId)
+      : undefined;
+    paths.add(component?.filePath ?? reference.location.filePath);
+  }
+
+  return [...paths].sort((left, right) => left.localeCompare(right));
 }
 
 function dedupeUsageLocations(
