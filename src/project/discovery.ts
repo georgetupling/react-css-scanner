@@ -1,17 +1,32 @@
 import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
+import type { DiscoveryConfig } from "../config/index.js";
 import type { ProjectDiscoveryResult, ProjectFileRecord, ScanDiagnostic } from "./types.js";
 import { normalizeProjectPath, resolveProjectFile, resolveRootDir } from "./pathUtils.js";
 
 const IGNORED_DIRECTORIES = new Set([".git", "build", "coverage", "dist", "node_modules"]);
 
 const SOURCE_EXTENSIONS = new Set([".js", ".jsx", ".ts", ".tsx"]);
+const DEFAULT_SOURCE_EXCLUDE_PATTERNS = [
+  "**/test/**",
+  "**/tests/**",
+  "**/__tests__/**",
+  "**/*.test.js",
+  "**/*.test.jsx",
+  "**/*.test.ts",
+  "**/*.test.tsx",
+  "**/*.spec.js",
+  "**/*.spec.jsx",
+  "**/*.spec.ts",
+  "**/*.spec.tsx",
+];
 
 export async function discoverProjectFiles(input: {
   rootDir?: string;
   sourceFilePaths?: string[];
   cssFilePaths?: string[];
   htmlFilePaths?: string[];
+  discovery?: DiscoveryConfig;
 }): Promise<ProjectDiscoveryResult> {
   const rootDir = resolveRootDir(input.rootDir);
   const diagnostics: ScanDiagnostic[] = [];
@@ -29,7 +44,10 @@ export async function discoverProjectFiles(input: {
 
   const sourceFiles = input.sourceFilePaths
     ? normalizeExplicitFiles(rootDir, input.sourceFilePaths)
-    : await discoverFilesByPredicate(rootDir, isSourceFilePath);
+    : await discoverSourceFiles({
+        rootDir,
+        discovery: input.discovery,
+      });
   const cssFiles = input.cssFilePaths
     ? normalizeExplicitFiles(rootDir, input.cssFilePaths)
     : await discoverFilesByPredicate(rootDir, isCssFilePath);
@@ -53,6 +71,35 @@ export async function discoverProjectFiles(input: {
     htmlFiles,
     diagnostics,
   };
+}
+
+async function discoverSourceFiles(input: {
+  rootDir: string;
+  discovery: DiscoveryConfig | undefined;
+}): Promise<ProjectFileRecord[]> {
+  const excludePatterns = [
+    ...DEFAULT_SOURCE_EXCLUDE_PATTERNS,
+    ...(input.discovery?.exclude ?? []),
+  ].map(globToRegExp);
+  const sourceRoots = input.discovery?.sourceRoots ?? [];
+  const predicate = (filePath: string): boolean =>
+    isSourceFilePath(filePath) && !excludePatterns.some((pattern) => pattern.test(filePath));
+
+  if (sourceRoots.length === 0) {
+    return discoverFilesByPredicate(input.rootDir, predicate);
+  }
+
+  const files: ProjectFileRecord[] = [];
+  for (const sourceRoot of sourceRoots) {
+    const absoluteRoot = path.resolve(input.rootDir, sourceRoot);
+    if (!(await isDirectory(absoluteRoot))) {
+      continue;
+    }
+
+    await walkDirectory(input.rootDir, absoluteRoot, predicate, files);
+  }
+
+  return deduplicateFiles(files).sort((left, right) => left.filePath.localeCompare(right.filePath));
 }
 
 async function validateRootDir(rootDir: string): Promise<ScanDiagnostic | undefined> {
@@ -121,6 +168,23 @@ async function walkDirectory(
   }
 }
 
+async function isDirectory(absolutePath: string): Promise<boolean> {
+  try {
+    return (await stat(absolutePath)).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+function deduplicateFiles(files: ProjectFileRecord[]): ProjectFileRecord[] {
+  const byPath = new Map<string, ProjectFileRecord>();
+  for (const file of files) {
+    byPath.set(file.filePath, file);
+  }
+
+  return [...byPath.values()];
+}
+
 function normalizeExplicitFiles(rootDir: string, filePaths: string[]): ProjectFileRecord[] {
   return filePaths
     .map((filePath) => resolveProjectFile(rootDir, filePath))
@@ -137,4 +201,45 @@ function isCssFilePath(filePath: string): boolean {
 
 function isHtmlFilePath(filePath: string): boolean {
   return path.extname(filePath) === ".html";
+}
+
+function globToRegExp(glob: string): RegExp {
+  let source = "^";
+  const normalized = normalizeProjectPath(glob);
+  for (let index = 0; index < normalized.length; index += 1) {
+    const char = normalized[index];
+    const nextChar = normalized[index + 1];
+
+    if (char === "*" && nextChar === "*") {
+      const afterGlobstar = normalized[index + 2];
+      if (afterGlobstar === "/") {
+        source += "(?:.*/)?";
+        index += 2;
+        continue;
+      }
+
+      source += ".*";
+      index += 1;
+      continue;
+    }
+
+    if (char === "*") {
+      source += "[^/]*";
+      continue;
+    }
+
+    if (char === "?") {
+      source += "[^/]";
+      continue;
+    }
+
+    source += escapeRegExp(char);
+  }
+
+  source += "$";
+  return new RegExp(source);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

@@ -21,11 +21,13 @@ const TOP_LEVEL_CONFIG_KEYS = new Set([
   "cssModules",
   "externalCss",
   "ownership",
+  "discovery",
   "ignore",
 ]);
 const CSS_MODULES_CONFIG_KEYS = new Set(["localsConvention"]);
 const EXTERNAL_CSS_CONFIG_KEYS = new Set(["fetchRemote", "globals", "remoteTimeoutMs"]);
 const OWNERSHIP_CONFIG_KEYS = new Set(["sharedCss"]);
+const DISCOVERY_CONFIG_KEYS = new Set(["sourceRoots", "exclude"]);
 const IGNORE_CONFIG_KEYS = new Set(["classNames", "filePaths"]);
 const EXTERNAL_CSS_GLOBAL_CONFIG_KEYS = new Set([
   "provider",
@@ -121,6 +123,10 @@ export const DEFAULT_SCANNER_CONFIG: ScannerConfig = {
   ownership: {
     sharedCss: [],
   },
+  discovery: {
+    sourceRoots: [],
+    exclude: [],
+  },
   ignore: {
     classNames: [],
     filePaths: [],
@@ -175,6 +181,7 @@ export function parseConfig(
     cssModules: parseCssModules(parsed.cssModules, filePath, diagnostics),
     externalCss: parseExternalCss(parsed.externalCss, filePath, diagnostics),
     ownership: parseOwnership(parsed.ownership, filePath, diagnostics),
+    discovery: parseDiscovery(parsed.discovery, filePath, diagnostics),
     ignore: parseIgnore(parsed.ignore, filePath, diagnostics),
   };
 }
@@ -186,6 +193,7 @@ export function cloneScannerConfig(config: ScannerConfig): ScannerConfig {
     cssModules: { ...config.cssModules },
     externalCss: cloneExternalCssConfig(config.externalCss),
     ownership: cloneOwnershipConfig(config.ownership),
+    discovery: cloneDiscoveryConfig(config.discovery),
     ignore: cloneIgnoreConfig(config.ignore),
   };
 }
@@ -459,6 +467,57 @@ function parseIgnore(
   };
 }
 
+function parseDiscovery(
+  value: unknown,
+  filePath: string,
+  diagnostics: ScanDiagnostic[],
+): ScannerConfig["discovery"] {
+  if (value === undefined) {
+    return cloneDiscoveryConfig(DEFAULT_SCANNER_CONFIG.discovery);
+  }
+
+  if (!isRecord(value)) {
+    diagnostics.push({
+      code: "config.invalid-discovery",
+      severity: "error",
+      phase: "config",
+      filePath,
+      message: "discovery must be an object",
+    });
+    return cloneDiscoveryConfig(DEFAULT_SCANNER_CONFIG.discovery);
+  }
+
+  reportUnknownKeys({
+    value,
+    allowedKeys: DISCOVERY_CONFIG_KEYS,
+    filePath,
+    diagnostics,
+    objectName: "discovery",
+    code: "config.unknown-discovery-key",
+  });
+
+  return {
+    sourceRoots: parseStringArray({
+      value: value.sourceRoots,
+      fallback: DEFAULT_SCANNER_CONFIG.discovery.sourceRoots,
+      filePath,
+      diagnostics,
+      code: "config.invalid-discovery-source-roots",
+      message: "discovery.sourceRoots must be an array of non-empty strings",
+      requireNonEmpty: true,
+    }),
+    exclude: parseStringArray({
+      value: value.exclude,
+      fallback: DEFAULT_SCANNER_CONFIG.discovery.exclude,
+      filePath,
+      diagnostics,
+      code: "config.invalid-discovery-exclude",
+      message: "discovery.exclude must be an array of non-empty strings",
+      requireNonEmpty: true,
+    }),
+  };
+}
+
 function parseExternalCssGlobals(
   value: unknown,
   filePath: string,
@@ -704,6 +763,13 @@ function cloneExternalCssConfig(
 function cloneOwnershipConfig(config: ScannerConfig["ownership"]): ScannerConfig["ownership"] {
   return {
     sharedCss: [...config.sharedCss],
+  };
+}
+
+function cloneDiscoveryConfig(config: ScannerConfig["discovery"]): ScannerConfig["discovery"] {
+  return {
+    sourceRoots: [...config.sourceRoots],
+    exclude: [...config.exclude],
   };
 }
 

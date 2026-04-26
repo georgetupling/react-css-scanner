@@ -4,6 +4,7 @@ export type {
   CssModulesConfig,
   ExternalCssConfig,
   ExternalCssGlobalProviderConfig,
+  DiscoveryConfig,
   IgnoreConfig,
   OwnershipConfig,
   ResolvedScannerConfig,

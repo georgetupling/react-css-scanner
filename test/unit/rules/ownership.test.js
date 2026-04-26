@@ -553,6 +553,140 @@ test("style-used-outside-owner does not report intentionally broad stylesheets",
   }
 });
 
+test("style-used-outside-owner ignores same-family sibling skeleton components", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/features/navigation/components/SiteHeader/SiteHeader.tsx",
+      [
+        'import "./SiteHeader.css";',
+        "export function SiteHeader() {",
+        '  return <header className="site-header"><div className="site-header__inner" /></header>;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/features/navigation/components/SiteHeader/SiteHeaderSkeleton.tsx",
+      [
+        "export function SiteHeaderSkeleton() {",
+        '  return <header className="site-header site-header--skeleton"><div className="site-header__inner" /></header>;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile(
+      "src/features/navigation/components/SiteHeader/SiteHeader.css",
+      [
+        ".site-header { display: block; }",
+        ".site-header__inner { display: flex; }",
+        ".site-header--skeleton .site-header__inner { opacity: 0.7; }",
+        "",
+      ].join("\n"),
+    )
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "style-used-outside-owner", [
+      "site-header",
+      "site-header__inner",
+    ]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("style-used-outside-owner ignores scoped primitive override classes", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/features/navigation/components/SiteHeader/SiteHeader.tsx",
+      [
+        'import "./SiteHeader.css";',
+        'import { DropdownMenu } from "../../../../components/primitives/DropdownMenu";',
+        "export function SiteHeader() {",
+        '  return <nav className="site-header"><div className="site-header__account-menu"><DropdownMenu /></div></nav>;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/components/primitives/DropdownMenu.tsx",
+      [
+        "export function DropdownMenu() {",
+        '  return <div className="popover__panel">Menu</div>;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile(
+      "src/features/navigation/components/SiteHeader/SiteHeader.css",
+      [
+        ".site-header { display: block; }",
+        ".site-header__account-menu .popover__panel { min-width: 12rem; }",
+        "",
+      ].join("\n"),
+    )
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "style-used-outside-owner", ["popover__panel"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("style-used-outside-owner ignores generic state class tokens", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/features/home/HomepageFeed/HomepageFeed.tsx",
+      [
+        'import "./HomepageFeed.css";',
+        "export function HomepageFeed() {",
+        '  return <section className="homepage-feed is-refreshing">Feed</section>;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/pages/WorldArchivePage/WorldArchivePage.tsx",
+      [
+        'import "./WorldArchivePage.css";',
+        "export function WorldArchivePage() {",
+        '  return <main className="world-archive-page__content is-refreshing">Archive</main>;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile(
+      "src/features/home/HomepageFeed/HomepageFeed.css",
+      [
+        ".homepage-feed { display: block; }",
+        ".homepage-feed.is-refreshing { opacity: 0.8; }",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile(
+      "src/pages/WorldArchivePage/WorldArchivePage.css",
+      [
+        ".world-archive-page__content { display: grid; }",
+        ".world-archive-page__content.is-refreshing { opacity: 0.8; }",
+        "",
+      ].join("\n"),
+    )
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "style-used-outside-owner", ["is-refreshing"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("style-used-outside-owner reports private owner leaks even when the path looks broad", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(

@@ -219,6 +219,10 @@ Current config shape:
   "ownership": {
     "sharedCss": ["src/styles/**/*.css", "src/**/Card.css"]
   },
+  "discovery": {
+    "sourceRoots": ["src", "packages/ui/src"],
+    "exclude": ["**/*.stories.tsx", "**/fixtures/**"]
+  },
   "ignore": {
     "classNames": ["ProseMirror", "generated-*"],
     "filePaths": ["src/legacy/**"]
@@ -262,6 +266,13 @@ conventions, including names such as `global.css`, `shared.css`, `layout.css`, a
 Strong private component-owner evidence, such as `Layout.tsx` paired with `Layout.css`, takes
 precedence over configured and built-in shared path signals. Otherwise, matching shared stylesheets
 are not reported as shared-without-owner CSS.
+
+Discovery config controls which source files are loaded into the analysis graph during default
+project discovery. `discovery.sourceRoots` is an array of exact project-relative directories; when
+provided, source discovery is limited to those roots. `discovery.exclude` is an array of
+project-relative globs appended to the built-in source exclusions for common test files and
+directories such as `**/__tests__/**`, `**/test/**`, `**/*.test.tsx`, and `**/*.spec.tsx`.
+Explicit Node API `sourceFilePaths` bypass discovery exclusions.
 
 Ignore config suppresses matching findings after rules run. `ignore.classNames` matches individual
 CSS class tokens, while `ignore.filePaths` matches project-relative file paths involved in a

@@ -627,6 +627,13 @@ Design rules:
   aggregate counts and definition locations in finding data
 - `ownership.sharedCss` is an array of project-relative stylesheet path/glob patterns that extends
   built-in broad/shared stylesheet conventions for ownership rules
+- default source discovery excludes common test-only source files and directories before analysis,
+  including `**/test/**`, `**/tests/**`, `**/__tests__/**`, `**/*.test.*`, and `**/*.spec.*`
+- `discovery.sourceRoots` contains exact project-relative source directories; when set, default
+  source discovery is limited to those directories
+- `discovery.exclude` contains project-relative source globs appended to the built-in test-source
+  exclusions
+- explicit API `sourceFilePaths` are exact overrides and are not filtered by discovery exclusions
 - `ignore.classNames` and `ignore.filePaths` are arrays of non-empty suppression patterns, not CSS
   evidence declarations
 - default rule severities come from `docs/design/rules-catalogue.md` and the rule catalogue code
@@ -635,8 +642,8 @@ Design rules:
 - unsupported or unknown config keys should produce error diagnostics rather than silently changing behavior
 - unknown rule IDs should produce error diagnostics rather than being ignored
 
-Additional include/exclude behavior can be added once the public result shape and CLI output are
-stable.
+Additional include/exclude behavior for CSS and HTML discovery can be added once the source
+discovery contract settles.
 
 ## CLI JSON Contract
 

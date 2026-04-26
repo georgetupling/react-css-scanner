@@ -231,3 +231,142 @@ test("ProjectAnalysis records per-class suppliers for merged forwarded class pro
     "component:src/components/Select.tsx:Select",
   );
 });
+
+test("ProjectAnalysis indexes React child transform references by class name", () => {
+  const result = analyzeProjectSourceTexts({
+    sourceFiles: [
+      {
+        filePath: "src/FieldList.tsx",
+        sourceText: [
+          'import { Children, cloneElement } from "react";',
+          "function joinClasses(...classes) { return classes.filter(Boolean).join(' '); }",
+          "export function FieldList({ children }) {",
+          "  return Children.map(children, (child) =>",
+          "    cloneElement(child, {",
+          '      className: joinClasses(child.props.className, "field-list__control"),',
+          "    }),",
+          "  );",
+          "}",
+          "export function App() {",
+          "  return (",
+          "    <FieldList>",
+          '      <input className="invite-form__email" />',
+          '      <textarea className="invite-form__message" />',
+          "    </FieldList>",
+          "  );",
+          "}",
+          "",
+        ].join("\n"),
+      },
+    ],
+    selectorCssSources: [
+      {
+        filePath: "src/FieldList.css",
+        cssText: [
+          ".field-list__control { display: block; }",
+          ".invite-form__email { inline-size: 100%; }",
+          ".invite-form__message { min-height: 8rem; }",
+          "",
+        ].join("\n"),
+      },
+    ],
+  });
+
+  assertIndexedClassReferences(result.projectAnalysis, [
+    "field-list__control",
+    "invite-form__email",
+    "invite-form__message",
+  ]);
+});
+
+test("ProjectAnalysis treats React child guard APIs as non-rendering", () => {
+  const result = analyzeProjectSourceTexts({
+    sourceFiles: [
+      {
+        filePath: "src/GuardOnly.tsx",
+        sourceText: [
+          'import { Children, isValidElement } from "react";',
+          "export function GuardOnly({ children }) {",
+          "  const count = Children.count(children);",
+          "  Children.forEach(children, () => undefined);",
+          "  if (!isValidElement(children)) {",
+          "    return null;",
+          "  }",
+          '  return <div className="guard-only">{count}</div>;',
+          "}",
+          "export function App() {",
+          '  return <GuardOnly><span className="child-only" /></GuardOnly>;',
+          "}",
+          "",
+        ].join("\n"),
+      },
+    ],
+    selectorCssSources: [
+      {
+        filePath: "src/GuardOnly.css",
+        cssText: ".guard-only { display: block; }\n.child-only { display: block; }\n",
+      },
+    ],
+  });
+
+  assertIndexedClassReferences(result.projectAnalysis, ["guard-only"]);
+  assertNoIndexedClassReferences(result.projectAnalysis, ["child-only"]);
+});
+
+test("ProjectAnalysis keeps unbounded cloneElement className values uncertain", () => {
+  const result = analyzeProjectSourceTexts({
+    sourceFiles: [
+      {
+        filePath: "src/DynamicClone.tsx",
+        sourceText: [
+          'import { Children, cloneElement } from "react";',
+          "export function DynamicClone({ children, tone }) {",
+          "  const child = Children.only(children);",
+          "  return cloneElement(child, {",
+          "    className: `field-list__${tone}`,",
+          "  });",
+          "}",
+          "export function App() {",
+          '  return <DynamicClone tone={window.location.hash}><input className="stable-child" /></DynamicClone>;',
+          "}",
+          "",
+        ].join("\n"),
+      },
+    ],
+    selectorCssSources: [
+      {
+        filePath: "src/DynamicClone.css",
+        cssText: ".stable-child { display: block; }\n.field-list__control { display: block; }\n",
+      },
+    ],
+  });
+
+  assertNoIndexedClassReferences(result.projectAnalysis, ["field-list__control"]);
+  assert.ok(
+    result.projectAnalysis.entities.classReferences.some(
+      (reference) =>
+        reference.unknownDynamic &&
+        reference.definiteClassNames.length === 0 &&
+        reference.possibleClassNames.length === 0,
+    ),
+  );
+});
+
+function assertIndexedClassReferences(analysis, classNames) {
+  for (const className of classNames) {
+    assert.ok(
+      (analysis.indexes.referencesByClassName.get(className) ?? []).length > 0,
+      `expected referencesByClassName to contain ${className}`,
+    );
+  }
+}
+
+function assertNoIndexedClassReferences(analysis, classNames) {
+  for (const className of classNames) {
+    assert.deepEqual(
+      analysis.indexes.referencesByClassName.get(className) ?? [],
+      [],
+      `expected referencesByClassName not to contain ${className}`,
+    );
+  }
+}

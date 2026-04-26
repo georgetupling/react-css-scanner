@@ -25,6 +25,11 @@ export type OwnershipConfig = {
   sharedCss: string[];
 };
 
+export type DiscoveryConfig = {
+  sourceRoots: string[];
+  exclude: string[];
+};
+
 export type IgnoreConfig = {
   classNames: string[];
   filePaths: string[];
@@ -36,6 +41,7 @@ export type ScannerConfig = {
   cssModules: CssModulesConfig;
   externalCss: ExternalCssConfig;
   ownership: OwnershipConfig;
+  discovery: DiscoveryConfig;
   ignore: IgnoreConfig;
 };
 

@@ -12,7 +12,7 @@ import { extractHtmlScriptSources } from "./htmlScriptSources.js";
 import { extractHtmlStylesheetLinks } from "./htmlStylesheetLinks.js";
 import { applyIgnoreFilter, mergeIgnoreConfig } from "./ignoreFilter.js";
 import { loadPackageCssImports } from "./packageCssImports.js";
-import { normalizeProjectPath } from "./pathUtils.js";
+import { normalizeProjectPath, resolveRootDir } from "./pathUtils.js";
 import { fetchRemoteCssSources } from "./remoteCss.js";
 import type {
   ProjectFileRecord,
@@ -28,25 +28,32 @@ import type {
 export async function scanProject(input: ScanProjectInput = {}): Promise<ScanProjectResult> {
   const totalStartedAt = performance.now();
   const performanceStages: ScanPerformanceStage[] = [];
+  const rootDir = resolveRootDir(input.rootDir);
+  const diagnostics: ScanDiagnostic[] = [];
   const progress = createScanProgressReporter({
     onProgress: input.onProgress,
     performanceStages: input.collectPerformance ? performanceStages : undefined,
   });
-  const discovered = await runScanStage(
-    progress,
-    "discover-files",
-    "Discovering project files",
-    () => discoverProjectFiles(input),
-  );
-  const diagnostics: ScanDiagnostic[] = [...discovered.diagnostics];
   const config = await runScanStage(progress, "load-config", "Loading config", () =>
     loadScannerConfig({
-      rootDir: discovered.rootDir,
+      rootDir,
       configBaseDir: input.configBaseDir,
       configPath: input.configPath,
       diagnostics,
     }),
   );
+  const discovered = await runScanStage(
+    progress,
+    "discover-files",
+    "Discovering project files",
+    () =>
+      discoverProjectFiles({
+        ...input,
+        rootDir,
+        discovery: config.discovery,
+      }),
+  );
+  diagnostics.push(...discovered.diagnostics);
   const [sourceFiles, cssFiles, htmlFiles] = await runScanStage(
     progress,
     "load-files",

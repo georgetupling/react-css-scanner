@@ -126,6 +126,30 @@ test("discoverProjectFiles scans source and CSS under a root directory", async (
   }
 });
 
+test("discoverProjectFiles excludes common test source files by default", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile("src/components/Card.tsx", "export function Card() { return <div />; }\n")
+    .withSourceFile("src/components/Card.test.tsx", "export function CardTest() { return null; }\n")
+    .withSourceFile("src/__tests__/Fixture.tsx", "export function Fixture() { return null; }\n")
+    .withSourceFile("src/test/Helper.tsx", "export function Helper() { return null; }\n")
+    .withSourceFile("src/tests/OtherHelper.tsx", "export function OtherHelper() { return null; }\n")
+    .withSourceFile("src/components/Card.spec.ts", "export const spec = true;\n")
+    .build();
+
+  try {
+    const discovered = await discoverProjectFiles({
+      rootDir: project.rootDir,
+    });
+
+    assert.deepEqual(
+      discovered.sourceFiles.map((file) => file.filePath),
+      ["src/App.tsx", "src/components/Card.tsx"],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("explicit file paths override default discovery for that file kind", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile("src/components/Card.tsx", "export function Card() { return <div />; }\n")
@@ -147,6 +171,52 @@ test("explicit file paths override default discovery for that file kind", async 
       ["src/components/Card.css"],
     );
     assert.deepEqual(discovered.htmlFiles, []);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("explicit source file paths can include test files", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile("src/App.test.tsx", "export function AppTest() { return null; }\n")
+    .build();
+
+  try {
+    const discovered = await discoverProjectFiles({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.test.tsx"],
+    });
+
+    assert.deepEqual(
+      discovered.sourceFiles.map((file) => file.filePath),
+      ["src/App.test.tsx"],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("discoverProjectFiles supports configured source roots and source excludes", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile("apps/web/src/App.tsx", "export function App() { return null; }\n")
+    .withSourceFile("apps/web/src/App.stories.tsx", "export function Story() { return null; }\n")
+    .withSourceFile("backend/src/server.ts", "export const server = true;\n")
+    .withSourceFile("packages/ui/src/Button.tsx", "export function Button() { return null; }\n")
+    .build();
+
+  try {
+    const discovered = await discoverProjectFiles({
+      rootDir: project.rootDir,
+      discovery: {
+        sourceRoots: ["apps/web/src", "packages/ui/src"],
+        exclude: ["**/*.stories.tsx"],
+      },
+    });
+
+    assert.deepEqual(
+      discovered.sourceFiles.map((file) => file.filePath),
+      ["apps/web/src/App.tsx", "packages/ui/src/Button.tsx"],
+    );
   } finally {
     await project.cleanup();
   }
@@ -246,6 +316,10 @@ test("scanProject returns deterministic public summary from discovered files", a
       result.config.externalCss.globals.some((provider) => provider.provider === "font-awesome"),
     );
     assert.deepEqual(result.config.ownership.sharedCss, []);
+    assert.deepEqual(result.config.discovery, {
+      sourceRoots: [],
+      exclude: [],
+    });
     assert.deepEqual(result.config.ignore, {
       classNames: [],
       filePaths: [],
@@ -600,6 +674,158 @@ test("scanProject fails on invalid ownership shared CSS config", async () => {
     assert.equal(result.failed, true);
     assert.equal(result.diagnostics[0].code, "config.invalid-ownership-shared-css");
     assert.match(result.diagnostics[0].message, /ownership\.sharedCss must be an array/);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("scanProject accepts discovery config", async () => {
+  const project = await new TestProjectBuilder()
+    .withConfig({
+      discovery: {
+        sourceRoots: ["apps/web/src"],
+        exclude: ["**/*.stories.tsx"],
+      },
+    })
+    .withSourceFile("apps/web/src/App.tsx", "export function App() { return null; }\n")
+    .withSourceFile("apps/web/src/App.stories.tsx", "export function Story() { return null; }\n")
+    .withSourceFile("backend/src/server.ts", "export const server = true;\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+    });
+
+    assert.equal(result.failed, false);
+    assert.deepEqual(result.config.discovery, {
+      sourceRoots: ["apps/web/src"],
+      exclude: ["**/*.stories.tsx"],
+    });
+    assert.deepEqual(
+      result.files.sourceFiles.map((file) => file.filePath),
+      ["apps/web/src/App.tsx"],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("default test-source exclusions keep test-only CSS usage out of analysis", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile("src/App.tsx", "export function App() { return <main />; }\n")
+    .withSourceFile(
+      "src/App.test.tsx",
+      'export function AppTest() { return <main className="test-only" />; }\n',
+    )
+    .withCssFile("src/App.css", ".test-only { display: block; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+    });
+
+    assert.deepEqual(
+      result.files.sourceFiles.map((file) => file.filePath),
+      ["src/App.tsx"],
+    );
+    assert.equal(
+      result.findings.some(
+        (finding) =>
+          finding.ruleId === "unused-css-class" && finding.data?.className === "test-only",
+      ),
+      true,
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("default test-source exclusions keep test consumers out of ownership analysis", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/components/Button/Button.tsx",
+      [
+        'import "./Button.css";',
+        'export function Button() { return <button className="button">Save</button>; }',
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/components/Button/Button.test.tsx",
+      [
+        'import { Button } from "./Button";',
+        'export function ButtonFixture() { return <div><Button /><span className="button">Again</span></div>; }',
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/components/Button/Button.css", ".button { display: block; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+    });
+
+    assert.deepEqual(
+      result.files.sourceFiles.map((file) => file.filePath),
+      ["src/App.tsx", "src/components/Button/Button.tsx"],
+    );
+    assert.deepEqual(
+      result.findings.filter((finding) => finding.ruleId === "style-used-outside-owner"),
+      [],
+    );
+    assert.deepEqual(
+      result.findings.filter((finding) => finding.ruleId === "style-shared-without-shared-owner"),
+      [],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("scanProject fails on unknown discovery config keys", async () => {
+  const project = await new TestProjectBuilder()
+    .withConfig({
+      discovery: {
+        roots: ["src"],
+      },
+    })
+    .withSourceFile("src/App.tsx", "export function App() { return null; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+    });
+
+    assert.equal(result.failed, true);
+    assert.equal(result.diagnostics[0].code, "config.unknown-discovery-key");
+    assert.match(result.diagnostics[0].message, /unknown discovery key "roots"/);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("scanProject fails on invalid discovery config", async () => {
+  const project = await new TestProjectBuilder()
+    .withConfig({
+      discovery: {
+        sourceRoots: ["src", ""],
+      },
+    })
+    .withSourceFile("src/App.tsx", "export function App() { return null; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+    });
+
+    assert.equal(result.failed, true);
+    assert.equal(result.diagnostics[0].code, "config.invalid-discovery-source-roots");
+    assert.match(result.diagnostics[0].message, /discovery\.sourceRoots must be an array/);
   } finally {
     await project.cleanup();
   }

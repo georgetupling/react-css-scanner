@@ -231,6 +231,126 @@ test("unused-css-class treats observed button helper class assembly as used", as
   }
 });
 
+test("unused-css-class treats static JSX classes inside assigned conditional content as used", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/Button.tsx",
+      [
+        'import "./Button.css";',
+        "export function Button({ isLoading = false, iconOnly = false, loadingLabel, children }) {",
+        "  const content = isLoading ? (",
+        "    <>",
+        '      <span className="button__spinner" aria-hidden="true" />',
+        "      {!iconOnly ? <span>{loadingLabel ?? children}</span> : null}",
+        "    </>",
+        "  ) : (",
+        "    children",
+        "  );",
+        '  return <button className="button">{content}</button>;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile(
+      "src/Button.css",
+      [".button { display: inline-flex; }", ".button__spinner { inline-size: 1rem; }", ""].join(
+        "\n",
+      ),
+    )
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", ["button__spinner"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unused-css-class treats full button helper variant assembly as used", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/Button.tsx",
+      [
+        'import "./Button.css";',
+        'type ButtonVariant = "primary" | "ghost" | "ghost-round" | "destructive";',
+        'type ButtonSize = "sm" | "md";',
+        "type ButtonProps = {",
+        "  variant?: ButtonVariant;",
+        "  size?: ButtonSize;",
+        "  iconOnly?: boolean;",
+        "  isLoading?: boolean;",
+        "  loadingLabel?: string;",
+        "  className?: string;",
+        "  children?: unknown;",
+        "};",
+        "function joinClasses(...classes: Array<string | false | null | undefined>) {",
+        "  return classes.filter(Boolean).join(' ');",
+        "}",
+        "export function Button({",
+        "  variant = 'primary',",
+        "  size = 'md',",
+        "  iconOnly = false,",
+        "  isLoading = false,",
+        "  loadingLabel,",
+        "  className,",
+        "  children,",
+        "}: ButtonProps) {",
+        "  const classes = joinClasses(",
+        "    'button',",
+        "    `button--${variant}`,",
+        "    size === 'sm' && 'button--sm',",
+        "    iconOnly && 'button--icon-only',",
+        "    className,",
+        "  );",
+        "  const content = isLoading ? (",
+        "    <>",
+        '      <span className="button__spinner" aria-hidden="true" />',
+        "      {!iconOnly ? <span>{loadingLabel ?? children}</span> : null}",
+        "    </>",
+        "  ) : (",
+        "    children",
+        "  );",
+        "  return <button className={classes}>{content}</button>;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile(
+      "src/Button.css",
+      [
+        ".button { display: inline-flex; }",
+        ".button--primary { color: white; }",
+        ".button--ghost { color: inherit; }",
+        ".button--ghost-round { border-radius: 999px; }",
+        ".button--destructive { color: red; }",
+        ".button--sm { min-height: 2rem; }",
+        ".button--icon-only { inline-size: 2.5rem; }",
+        ".button__spinner { inline-size: 1rem; }",
+        "",
+      ].join("\n"),
+    )
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", [
+      "button",
+      "button--primary",
+      "button--ghost",
+      "button--ghost-round",
+      "button--destructive",
+      "button--sm",
+      "button--icon-only",
+      "button__spinner",
+    ]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("unused-css-class treats className forwarded through primitives as used", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(
@@ -322,6 +442,263 @@ test("unused-css-class treats className forwarded through primitives as used", a
       "world-members-page__role-select",
       "world-members-page__table-wrap",
       "world-members-page__user-cell",
+    ]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unused-css-class treats static classes inside cloneElement field children as used", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/WorldInvitationsPage.tsx",
+      [
+        'import "./WorldInvitationsPage.css";',
+        'import { WorldInvitationFormPanel } from "./WorldInvitationFormPanel";',
+        "export function WorldInvitationsPage() {",
+        "  return <WorldInvitationFormPanel />;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/WorldInvitationFormPanel.tsx",
+      [
+        'import { Field } from "./Field";',
+        "export function WorldInvitationFormPanel() {",
+        "  return (",
+        '    <Field label="Optional Message" hint="Keep it brief.">',
+        '      <textarea className="field__input world-invitations-page__message-input" aria-label="Message" />',
+        "    </Field>",
+        "  );",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/Field.tsx",
+      [
+        'import { Children, cloneElement, isValidElement } from "react";',
+        "function joinClasses(...classes) { return classes.filter(Boolean).join(' '); }",
+        "export function Field({ label, children, className, hint }) {",
+        "  const child = Children.only(children);",
+        "  if (!isValidElement(child)) {",
+        '    throw new Error("Field expects a single form control element child.");',
+        "  }",
+        "  return (",
+        '    <div className={joinClasses("field", className)}>',
+        '      <label className="field__label">{label}</label>',
+        "      {cloneElement(child, {",
+        '        "aria-describedby": hint ? "field-hint" : undefined,',
+        "      })}",
+        '      {hint ? <p className="field__hint" id="field-hint">{hint}</p> : null}',
+        "    </div>",
+        "  );",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile(
+      "src/WorldInvitationsPage.css",
+      [
+        ".field__input { display: block; }",
+        ".world-invitations-page__message-input { min-height: 8rem; }",
+        "",
+      ].join("\n"),
+    )
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", [
+      "field__input",
+      "world-invitations-page__message-input",
+    ]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unused-css-class indexes cloneElement className replacement classes", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/Field.tsx",
+      [
+        'import { Children, cloneElement } from "react";',
+        'import "./Field.css";',
+        "export function Field({ children }) {",
+        "  const child = Children.only(children);",
+        "  return cloneElement(child, {",
+        '    className: "field__input",',
+        "  });",
+        "}",
+        "export function App() {",
+        '  return <Field><input aria-label="Name" /></Field>;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/Field.css", [".field__input { display: block; }", ""].join("\n"))
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", ["field__input"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unused-css-class preserves child class evidence through cloneElement className merges", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/Field.tsx",
+      [
+        'import { Children, cloneElement } from "react";',
+        'import "./Field.css";',
+        "function joinClasses(...classes) { return classes.filter(Boolean).join(' '); }",
+        "export function Field({ children }) {",
+        "  const child = Children.only(children);",
+        "  return cloneElement(child, {",
+        '    className: joinClasses(child.props.className, "field__input"),',
+        "  });",
+        "}",
+        "export function App() {",
+        '  return <Field><textarea className="world-invitations-page__message-input" /></Field>;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile(
+      "src/Field.css",
+      [
+        ".field__input { display: block; }",
+        ".world-invitations-page__message-input { min-height: 8rem; }",
+        "",
+      ].join("\n"),
+    )
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", [
+      "field__input",
+      "world-invitations-page__message-input",
+    ]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unused-css-class preserves mapped child classes through Children.map cloneElement transforms", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/FieldList.tsx",
+      [
+        'import { Children, cloneElement } from "react";',
+        'import "./FieldList.css";',
+        "function joinClasses(...classes) { return classes.filter(Boolean).join(' '); }",
+        "export function FieldList({ children }) {",
+        "  return (",
+        '    <div className="field-list">',
+        "      {Children.map(children, (child) =>",
+        "        cloneElement(child, {",
+        '          className: joinClasses(child.props.className, "field-list__control"),',
+        "        }),",
+        "      )}",
+        "    </div>",
+        "  );",
+        "}",
+        "export function App() {",
+        "  return (",
+        "    <FieldList>",
+        '      <input className="invite-form__email" />',
+        '      <textarea className="invite-form__message" />',
+        "    </FieldList>",
+        "  );",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile(
+      "src/FieldList.css",
+      [
+        ".field-list { display: grid; }",
+        ".field-list__control { display: block; }",
+        ".invite-form__email { inline-size: 100%; }",
+        ".invite-form__message { min-height: 8rem; }",
+        "",
+      ].join("\n"),
+    )
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", [
+      "field-list",
+      "field-list__control",
+      "invite-form__email",
+      "invite-form__message",
+    ]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unused-css-class preserves mapped child classes through Children.toArray map cloneElement transforms", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/TabList.tsx",
+      [
+        'import { Children, cloneElement } from "react";',
+        'import "./TabList.css";',
+        "function joinClasses(...classes) { return classes.filter(Boolean).join(' '); }",
+        "export function TabList({ children }) {",
+        "  return (",
+        '    <div className="tab-list">',
+        "      {Children.toArray(children).map((child) =>",
+        "        cloneElement(child, {",
+        '          className: joinClasses(child.props.className, "tab-list__tab"),',
+        "        }),",
+        "      )}",
+        "    </div>",
+        "  );",
+        "}",
+        "export function App() {",
+        "  return (",
+        "    <TabList>",
+        '      <button className="settings-tabs__account">Account</button>',
+        '      <button className="settings-tabs__billing">Billing</button>',
+        "    </TabList>",
+        "  );",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile(
+      "src/TabList.css",
+      [
+        ".tab-list { display: flex; }",
+        ".tab-list__tab { flex: 1; }",
+        ".settings-tabs__account { font-weight: 600; }",
+        ".settings-tabs__billing { font-weight: 600; }",
+        "",
+      ].join("\n"),
+    )
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", [
+      "tab-list",
+      "tab-list__tab",
+      "settings-tabs__account",
+      "settings-tabs__billing",
     ]);
   } finally {
     await project.cleanup();
