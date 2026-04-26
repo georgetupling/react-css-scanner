@@ -61,7 +61,7 @@ By default this creates a timestamped report such as
 ## CLI Usage
 
 ```bash
-scan-react-css [rootDir] [--config path] [--focus path-or-glob] [--json] [--output-file path] [--overwrite-output] [--output-min-severity severity] [--timings]
+scan-react-css [rootDir] [--config path] [--focus path-or-glob] [--json] [--output-file path] [--overwrite-output] [--output-min-severity severity] [--verbosity low|medium|high] [--timings]
 ```
 
 Supported flags:
@@ -72,6 +72,7 @@ Supported flags:
 - `--output-file path/to/report.json`
 - `--overwrite-output`
 - `--output-min-severity debug|info|warn|error`
+- `--verbosity low|medium|high`
 - `--timings`
 - `--help`
 
@@ -104,7 +105,6 @@ npx scan-react-css --focus "src/features/**/components"
 These historical flags are recognized but not supported in this build yet:
 
 - `--print-config`
-- `--verbosity`
 
 `--output-file` and `--overwrite-output` require `--json`.
 
@@ -112,6 +112,11 @@ These historical flags are recognized but not supported in this build yet:
 defaults to `info`, which hides debug scanner-internal uncertainty findings. Use
 `--output-min-severity debug` to include debug findings in the report. This does not change
 `failOnSeverity` or the CLI exit code.
+
+`--verbosity` controls human-readable text output only. `low` prints a compact findings table,
+`medium` is the default grouped-by-file output, and `high` prints one block per finding with
+confidence, subject, selected details, and evidence. In JSON mode, `--verbosity` has no effect and
+the CLI prints a warning.
 
 Interactive text-mode scans print the active scan stage to `stderr` while analysis is running, for
 example `Building reachability graph`. JSON mode keeps progress output disabled so automation sees
@@ -311,9 +316,9 @@ Default policy:
 - `error` findings fail the scan
 - `warn`, `info`, and `debug` findings do not
 
-Human-readable output is intended for local use. Findings are grouped by file, separated by blank
-lines, and followed by a summary. Finding locations are printed as `path/to/file:line` targets so
-VS Code and common terminals can open them directly. Interactive terminals get severity colors,
-unless `NO_COLOR` is set.
+Human-readable output is intended for local use. The default `medium` verbosity groups findings by
+file, separates groups with blank lines, and ends with a summary. Finding locations are printed as
+`path/to/file:line` targets so VS Code and common terminals can open them directly. Interactive
+terminals get severity colors, unless `NO_COLOR` is set.
 
 JSON output is deterministic and intended for tooling and CI.

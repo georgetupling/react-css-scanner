@@ -638,6 +638,10 @@ Text output should:
 - print finding locations as `path/to/file:line` targets that common terminals and VS Code can open
 - sort findings within a file by severity, line, rule id, and message
 - apply `--output-min-severity` to reported diagnostics and findings
+- support text-only `--verbosity low|medium|high`; `medium` is the default grouped output, `low`
+  prints compact finding rows, and `high` prints per-finding blocks with confidence, subject,
+  selected structured details, and evidence
+- warn that `--verbosity` has no effect when JSON output is requested
 - put the summary at the end
 - color severity labels in interactive terminals
 - suppress color when stdout is not a TTY or `NO_COLOR` is set
@@ -674,7 +678,6 @@ The following should be treated as optional until the new contract is stable. Th
 - PATH-based config discovery
 - `SCAN_REACT_CSS_CONFIG_DIR`
 - `print-config`
-- multiple verbosity tiers
 - remote external CSS fetching
 - ownership-style rules
 - public raw-analysis JSON output

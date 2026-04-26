@@ -288,6 +288,73 @@ test("CLI groups human-readable findings by file and prints summary last", async
   }
 });
 
+test("CLI supports low verbosity finding table output", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'export function App() { return <main className="missing">Hello</main>; }\n',
+    )
+    .build();
+
+  try {
+    const error = await captureRejectedCliRun([project.rootDir, "--verbosity", "low"]);
+    const output = error.stdout;
+
+    assert.equal(error.code, 1);
+    assert.match(output, /Findings\nseverity\s+rule\s+confidence\s+location\s+message/);
+    assert.match(output, /error\s+missing-css-class\s+high\s+src\/App\.tsx:1/);
+    assert.doesNotMatch(output, /src\/App\.tsx\n {2}\[error\] missing-css-class/);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("CLI supports high verbosity finding blocks", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'export function App() { return <main className="missing">Hello</main>; }\n',
+    )
+    .build();
+
+  try {
+    const error = await captureRejectedCliRun([project.rootDir, "--verbosity", "high"]);
+    const output = error.stdout;
+
+    assert.equal(error.code, 1);
+    assert.match(output, /Finding 1: error missing-css-class/);
+    assert.match(output, /Location: src\/App\.tsx:1/);
+    assert.match(output, /Confidence: high/);
+    assert.match(output, /Subject: class-reference/);
+    assert.match(output, /Details:\n {4}className: missing/);
+    assert.match(output, /rawExpressionText: "missing"/);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("CLI accepts verbosity with JSON but warns that it has no effect", async () => {
+  const project = await new TestProjectBuilder().build();
+
+  try {
+    const outputPath = project.filePath("report.json");
+    const { stderr } = await runCli([
+      project.rootDir,
+      "--json",
+      "--verbosity",
+      "high",
+      "--output-file",
+      outputPath,
+    ]);
+    const output = await readJsonFile(outputPath);
+
+    assert.equal(output.rootDir, project.rootDir);
+    assert.match(stderr, /Warning: --verbosity has no effect with --json\./);
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("CLI exit code follows configured fail threshold", async () => {
   const project = await new TestProjectBuilder()
     .withConfig({
@@ -438,10 +505,7 @@ test("CLI rejects unknown options before scanning", async () => {
 });
 
 test("CLI rejects historical options that are recognized but not yet restored", async () => {
-  const historicalOptions = [
-    ["--print-config", "on"],
-    ["--verbosity", "high"],
-  ];
+  const historicalOptions = [["--print-config", "on"]];
 
   for (const args of historicalOptions) {
     const error = await captureRejectedCliRun([".", ...args, "--json"]);
@@ -455,6 +519,14 @@ test("CLI rejects historical options that are recognized but not yet restored", 
     );
     assert.equal(error.stdout, "");
   }
+});
+
+test("CLI rejects invalid verbosity values", async () => {
+  const error = await captureRejectedCliRun([".", "--verbosity", "chatty"]);
+
+  assert.equal(error.code, 2);
+  assert.match(error.stderr, /--verbosity must be one of "low", "medium", or "high"\./);
+  assert.equal(error.stdout, "");
 });
 
 test("CLI rejects output-file options without JSON mode", async () => {
