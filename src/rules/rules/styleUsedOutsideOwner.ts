@@ -1,6 +1,11 @@
 import type { AnalysisTrace } from "../../static-analysis-engine/index.js";
 import type { RuleContext, RuleDefinition, UnresolvedFinding } from "../types.js";
-import { findPrivateComponentOwnerCandidate } from "./ownershipRuleUtils.js";
+import {
+  findPrivateComponentOwnerCandidate,
+  isContextualPrimitiveOverrideClass,
+  isGenericStateClassToken,
+  isOwnerFamilyConsumer,
+} from "./ownershipRuleUtils.js";
 
 export const styleUsedOutsideOwnerRule: RuleDefinition = {
   id: "style-used-outside-owner",
@@ -31,13 +36,40 @@ function runStyleUsedOutsideOwnerRule(context: RuleContext): UnresolvedFinding[]
       continue;
     }
 
+    if (isGenericStateClassToken(ownership.className)) {
+      continue;
+    }
+
     const ownerComponent = context.analysis.indexes.componentsById.get(ownerCandidate.id);
     if (!ownerComponent) {
       continue;
     }
 
+    if (
+      isContextualPrimitiveOverrideClass({
+        className: ownership.className,
+        selectorKind: definition.selectorKind,
+        contextClassNames: definition.sourceDefinition.selectorBranch.contextClassNames,
+        ownerComponentName: ownerComponent.componentName,
+        stylesheetFilePath: stylesheet.filePath,
+      })
+    ) {
+      continue;
+    }
+
     const outsideConsumerIds = ownership.consumerSummary.consumerComponentIds.filter(
-      (componentId) => componentId !== ownerComponent.id,
+      (componentId) => {
+        if (componentId === ownerComponent.id) {
+          return false;
+        }
+
+        const consumerComponent = context.analysis.indexes.componentsById.get(componentId);
+        return !isOwnerFamilyConsumer({
+          ownerComponentFilePath: ownerComponent.filePath,
+          consumerComponentFilePath: consumerComponent?.filePath,
+          stylesheetFilePath: stylesheet.filePath,
+        });
+      },
     );
     for (const consumerId of outsideConsumerIds) {
       const consumerComponent = context.analysis.indexes.componentsById.get(consumerId);

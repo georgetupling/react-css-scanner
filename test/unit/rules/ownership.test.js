@@ -112,6 +112,95 @@ test("style-used-outside-owner reports classes consumed outside a private compon
   }
 });
 
+test("style-used-outside-owner still reports leaked private BEM-like classes", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/components/Button/Button.tsx",
+      [
+        'import "./Button.css";',
+        'export function Button() { return <button className="button__label">Save</button>; }',
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/components/Card.tsx",
+      [
+        'import { Button } from "./Button/Button";',
+        'export function Card() { return <div><Button /><span className="button__label">Again</span></div>; }',
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/components/Button/Button.css", ".button__label { display: block; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/components/Button/Button.tsx", "src/components/Card.tsx"],
+      cssFilePaths: ["src/components/Button/Button.css"],
+    });
+
+    const findings = result.findings.filter(
+      (finding) => finding.ruleId === "style-used-outside-owner",
+    );
+    assert.equal(findings.length, 1);
+    assert.equal(findings[0].data?.className, "button__label");
+    assert.equal(findings[0].data?.ownerComponentName, "Button");
+    assert.equal(findings[0].data?.consumerComponentName, "Card");
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("style-used-outside-owner still reports contextual classes from the owner block", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/components/SiteHeader/SiteHeader.tsx",
+      [
+        'import "./SiteHeader.css";',
+        "export function SiteHeader() {",
+        '  return <nav className="site-header"><div className="site-header__account-menu" /></nav>;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/features/profile/ProfileMenu.tsx",
+      [
+        "export function ProfileMenu() {",
+        '  return <div className="site-header__popover-panel">Profile</div>;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile(
+      "src/components/SiteHeader/SiteHeader.css",
+      ".site-header__account-menu .site-header__popover-panel { display: block; }\n",
+    )
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: [
+        "src/components/SiteHeader/SiteHeader.tsx",
+        "src/features/profile/ProfileMenu.tsx",
+      ],
+      cssFilePaths: ["src/components/SiteHeader/SiteHeader.css"],
+    });
+
+    const findings = result.findings.filter(
+      (finding) => finding.ruleId === "style-used-outside-owner",
+    );
+    assert.equal(findings.length, 1);
+    assert.equal(findings[0].data?.className, "site-header__popover-panel");
+    assert.equal(findings[0].data?.ownerComponentName, "SiteHeader");
+    assert.equal(findings[0].data?.consumerComponentName, "ProfileMenu");
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("style-used-outside-owner does not treat single importer alone as private ownership", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(

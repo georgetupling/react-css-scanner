@@ -91,6 +91,59 @@ export function findPrivateComponentOwnerCandidate<
   );
 }
 
+export function isOwnerFamilyConsumer(input: {
+  ownerComponentFilePath: string | undefined;
+  consumerComponentFilePath: string | undefined;
+  stylesheetFilePath: string | undefined;
+}): boolean {
+  if (
+    !input.ownerComponentFilePath ||
+    !input.consumerComponentFilePath ||
+    !input.stylesheetFilePath
+  ) {
+    return false;
+  }
+
+  const ownerDirectory = getDirectoryPath(normalizeProjectPath(input.ownerComponentFilePath));
+  const consumerDirectory = getDirectoryPath(normalizeProjectPath(input.consumerComponentFilePath));
+  const stylesheetDirectory = getDirectoryPath(normalizeProjectPath(input.stylesheetFilePath));
+
+  return (
+    ownerDirectory.length > 0 &&
+    ownerDirectory === consumerDirectory &&
+    ownerDirectory === stylesheetDirectory
+  );
+}
+
+export function isGenericStateClassToken(className: string): boolean {
+  return /^is-[a-z0-9-]+$/.test(className) || /^has-[a-z0-9-]+$/.test(className);
+}
+
+export function isContextualPrimitiveOverrideClass(input: {
+  className: string;
+  selectorKind: string;
+  contextClassNames: string[];
+  ownerComponentName: string | undefined;
+  stylesheetFilePath: string | undefined;
+}): boolean {
+  if (input.selectorKind !== "contextual" || input.contextClassNames.length === 0) {
+    return false;
+  }
+
+  const ownerBlocks = getOwnerBlockNames({
+    ownerComponentName: input.ownerComponentName,
+    stylesheetFilePath: input.stylesheetFilePath,
+  });
+  if (ownerBlocks.length === 0) {
+    return false;
+  }
+
+  return (
+    input.contextClassNames.some((className) => belongsToAnyOwnerBlock(className, ownerBlocks)) &&
+    !belongsToAnyOwnerBlock(input.className, ownerBlocks)
+  );
+}
+
 export function isIntentionallySharedStylesheetForConsumers(input: {
   stylesheetFilePath: string | undefined;
   consumerComponentNames: string[];
@@ -178,6 +231,47 @@ function getBaseNameWithoutExtension(filePath: string): string {
   const normalized = filePath.split("\\").join("/");
   const fileName = normalized.split("/").at(-1) ?? normalized;
   return fileName.replace(/\.[^.]+$/, "");
+}
+
+function getDirectoryPath(filePath: string): string {
+  const parts = filePath.split("/").filter(Boolean);
+  parts.pop();
+  return parts.join("/");
+}
+
+function getOwnerBlockNames(input: {
+  ownerComponentName: string | undefined;
+  stylesheetFilePath: string | undefined;
+}): string[] {
+  const blocks = new Set<string>();
+  if (input.ownerComponentName) {
+    const normalizedComponentName = normalizeName(input.ownerComponentName);
+    if (normalizedComponentName) {
+      blocks.add(normalizedComponentName);
+    }
+  }
+
+  if (input.stylesheetFilePath) {
+    const normalizedStylesheetName = normalizeName(
+      getBaseNameWithoutExtension(input.stylesheetFilePath),
+    );
+    if (normalizedStylesheetName) {
+      blocks.add(normalizedStylesheetName);
+    }
+  }
+
+  return [...blocks].sort((left, right) => left.localeCompare(right));
+}
+
+function belongsToAnyOwnerBlock(className: string, ownerBlocks: string[]): boolean {
+  const normalizedClassName = normalizeName(className);
+  return ownerBlocks.some(
+    (block) =>
+      normalizedClassName === block ||
+      normalizedClassName.startsWith(`${block}-`) ||
+      normalizedClassName.startsWith(`${block}__`) ||
+      normalizedClassName.startsWith(`${block}--`),
+  );
 }
 
 function normalizeName(name: string): string {
