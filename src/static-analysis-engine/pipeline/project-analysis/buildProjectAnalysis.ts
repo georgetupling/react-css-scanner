@@ -1,4 +1,5 @@
 import type {
+  ClassContextAnalysis,
   ClassDefinitionAnalysis,
   ClassOwnershipAnalysis,
   ClassDefinitionSelectorKind,
@@ -52,7 +53,13 @@ export function buildProjectAnalysis(input: ProjectAnalysisBuildInput): ProjectA
   const renderSubtrees = buildRenderSubtrees(input.renderSubtrees, indexes);
   const stylesheets = buildStylesheets(input, indexes);
   const classDefinitions = buildClassDefinitions(input, stylesheets, indexes);
-  const classReferences = buildClassReferences(renderSubtrees, indexes, includeTraces);
+  const classContexts = buildClassContexts(input, stylesheets, indexes);
+  const classReferences = buildClassReferences({
+    renderSubtrees,
+    runtimeDomClassReferences: input.runtimeDomClassReferences,
+    indexes,
+    includeTraces,
+  });
   const unsupportedClassReferences = buildUnsupportedClassReferences(input, indexes, includeTraces);
   const selectorQueries = buildSelectorQueries(
     input.selectorQueryResults,
@@ -78,6 +85,7 @@ export function buildProjectAnalysis(input: ProjectAnalysisBuildInput): ProjectA
     stylesheets,
     classReferences,
     classDefinitions,
+    classContexts,
     selectorQueries,
     selectorBranches,
     components,
@@ -145,6 +153,7 @@ export function buildProjectAnalysis(input: ProjectAnalysisBuildInput): ProjectA
       stylesheets,
       classReferences,
       classDefinitions,
+      classContexts,
       selectorQueries,
       selectorBranches,
       classOwnership,
@@ -316,14 +325,57 @@ function buildClassDefinitions(
   return definitions.sort(compareById);
 }
 
-function buildClassReferences(
-  renderSubtrees: RenderSubtreeAnalysis[],
+function buildClassContexts(
+  input: ProjectAnalysisBuildInput,
+  stylesheets: StylesheetAnalysis[],
   indexes: ProjectAnalysisIndexes,
-  includeTraces: boolean,
-): ClassReferenceAnalysis[] {
+): ClassContextAnalysis[] {
+  const stylesheetsByPath = new Map(
+    stylesheets.map((stylesheet) => [stylesheet.filePath ?? stylesheet.id, stylesheet]),
+  );
+  const contexts: ClassContextAnalysis[] = [];
+
+  for (const cssFile of input.cssFiles) {
+    const stylesheet =
+      stylesheetsByPath.get(normalizeOptionalProjectPath(cssFile.filePath) ?? "") ??
+      stylesheets.find((candidate) => candidate.filePath === undefined);
+    if (!stylesheet) {
+      continue;
+    }
+
+    for (const context of cssFile.classContexts) {
+      const id = createClassContextId(stylesheet.id, context);
+      const analysis: ClassContextAnalysis = {
+        id,
+        stylesheetId: stylesheet.id,
+        className: context.className,
+        selectorText: context.selector,
+        selectorKind: getSelectorBranchKind(context.selectorBranch),
+        line: context.line,
+        atRuleContext: [...context.atRuleContext],
+        sourceContext: context,
+      };
+
+      contexts.push(analysis);
+      pushMapValue(indexes.contextsByClassName, context.className, id);
+      pushMapValue(indexes.contextsByStylesheetId, stylesheet.id, id);
+    }
+  }
+
+  sortIndexValues(indexes.contextsByClassName);
+  sortIndexValues(indexes.contextsByStylesheetId);
+  return contexts.sort(compareById);
+}
+
+function buildClassReferences(input: {
+  renderSubtrees: RenderSubtreeAnalysis[];
+  runtimeDomClassReferences: ProjectAnalysisBuildInput["runtimeDomClassReferences"];
+  indexes: ProjectAnalysisIndexes;
+  includeTraces: boolean;
+}): ClassReferenceAnalysis[] {
   const classExpressions = deduplicateRenderClassExpressions(
-    renderSubtrees.flatMap((renderSubtree) =>
-      collectRenderClassExpressions(renderSubtree, indexes),
+    input.renderSubtrees.flatMap((renderSubtree) =>
+      collectRenderClassExpressions(renderSubtree, input.indexes),
     ),
   );
 
@@ -331,7 +383,7 @@ function buildClassReferences(
     const { classExpression, emittedElementLocation, placementLocation, renderSubtreeId } = entry;
     const filePath = normalizeProjectPath(classExpression.sourceAnchor.filePath);
     const sourceFileId =
-      indexes.sourceFileIdByPath.get(filePath) ?? createPathId("source", filePath);
+      input.indexes.sourceFileIdByPath.get(filePath) ?? createPathId("source", filePath);
     const componentId = entry.componentId;
     const id = createAnchorId("class-reference", classExpression.sourceAnchor, index);
     const reference: ClassReferenceAnalysis = {
@@ -349,21 +401,50 @@ function buildClassReferences(
       possibleClassNames: [...classExpression.classes.possible],
       unknownDynamic: classExpression.classes.unknownDynamic,
       confidence: getReferenceConfidence(classExpression),
-      traces: includeTraces ? buildClassReferenceTraces(entry) : [],
+      traces: input.includeTraces ? buildClassReferenceTraces(entry) : [],
       sourceSummary: classExpression,
     };
 
-    pushMapValue(indexes.referencesBySourceFileId, sourceFileId, id);
+    pushMapValue(input.indexes.referencesBySourceFileId, sourceFileId, id);
     for (const className of collectReferenceClassNames(reference)) {
-      pushMapValue(indexes.referencesByClassName, className, id);
+      pushMapValue(input.indexes.referencesByClassName, className, id);
     }
 
     return reference;
   });
 
-  sortIndexValues(indexes.referencesBySourceFileId);
-  sortIndexValues(indexes.referencesByClassName);
-  return references.sort(compareById);
+  const runtimeReferences = input.runtimeDomClassReferences.map((runtimeReference, index) => {
+    const filePath = normalizeProjectPath(runtimeReference.filePath);
+    const sourceFileId =
+      input.indexes.sourceFileIdByPath.get(filePath) ?? createPathId("source", filePath);
+    const classExpression = runtimeReference.classExpression;
+    const id = createAnchorId("runtime-dom-class-reference", runtimeReference.location, index);
+    const reference: ClassReferenceAnalysis = {
+      id,
+      sourceFileId,
+      location: normalizeAnchor(runtimeReference.location),
+      origin: "runtime-dom",
+      expressionKind: getReferenceExpressionKind(classExpression),
+      rawExpressionText: runtimeReference.rawExpressionText,
+      definiteClassNames: [...classExpression.classes.definite],
+      possibleClassNames: [...classExpression.classes.possible],
+      unknownDynamic: classExpression.classes.unknownDynamic,
+      confidence: getReferenceConfidence(classExpression),
+      traces: input.includeTraces ? buildRuntimeDomClassReferenceTraces(runtimeReference) : [],
+      sourceSummary: classExpression,
+    };
+
+    pushMapValue(input.indexes.referencesBySourceFileId, sourceFileId, id);
+    for (const className of collectReferenceClassNames(reference)) {
+      pushMapValue(input.indexes.referencesByClassName, className, id);
+    }
+
+    return reference;
+  });
+
+  sortIndexValues(input.indexes.referencesBySourceFileId);
+  sortIndexValues(input.indexes.referencesByClassName);
+  return [...references, ...runtimeReferences].sort(compareById);
 }
 
 function buildUnsupportedClassReferences(
@@ -689,6 +770,25 @@ function buildClassReferenceTraces(entry: RenderClassExpressionEntry): AnalysisT
         placementFilePath: entry.placementLocation
           ? normalizeProjectPath(entry.placementLocation.filePath)
           : undefined,
+      },
+    },
+  ];
+}
+
+function buildRuntimeDomClassReferenceTraces(
+  reference: ProjectAnalysisBuildInput["runtimeDomClassReferences"][number],
+): AnalysisTrace[] {
+  return [
+    {
+      traceId: `runtime-dom:class-reference:${normalizeProjectPath(reference.location.filePath)}:${reference.location.startLine}:${reference.location.startColumn}`,
+      category: "render-expansion",
+      summary: "runtime DOM class reference was collected outside the React render IR",
+      anchor: normalizeAnchor(reference.location),
+      children: [...reference.classExpression.traces],
+      metadata: {
+        origin: "runtime-dom",
+        adapter: reference.kind,
+        sourceFilePath: normalizeProjectPath(reference.filePath),
       },
     },
   ];
@@ -1562,6 +1662,7 @@ function indexEntities(input: {
   stylesheets: StylesheetAnalysis[];
   classReferences: ClassReferenceAnalysis[];
   classDefinitions: ClassDefinitionAnalysis[];
+  classContexts: ClassContextAnalysis[];
   selectorQueries: SelectorQueryAnalysis[];
   selectorBranches: SelectorBranchAnalysis[];
   components: ComponentAnalysis[];
@@ -1584,6 +1685,9 @@ function indexEntities(input: {
   }
   for (const definition of input.classDefinitions) {
     input.indexes.classDefinitionsById.set(definition.id, definition);
+  }
+  for (const context of input.classContexts) {
+    input.indexes.classContextsById.set(context.id, context);
   }
   for (const selectorQuery of input.selectorQueries) {
     input.indexes.selectorQueriesById.set(selectorQuery.id, selectorQuery);
@@ -1808,19 +1912,22 @@ function isExternalStylesheet(filePath: string, input: ProjectAnalysisBuildInput
 function getDefinitionSelectorKind(
   definition: ClassDefinitionAnalysis["sourceDefinition"],
 ): ClassDefinitionSelectorKind {
-  if (definition.selectorBranch.hasUnknownSemantics) {
+  return getSelectorBranchKind(definition.selectorBranch);
+}
+
+function getSelectorBranchKind(
+  selectorBranch: ClassDefinitionAnalysis["sourceDefinition"]["selectorBranch"],
+): ClassDefinitionSelectorKind {
+  if (selectorBranch.hasUnknownSemantics) {
     return "unsupported";
   }
-  if (
-    definition.selectorBranch.matchKind === "standalone" &&
-    !definition.selectorBranch.hasSubjectModifiers
-  ) {
+  if (selectorBranch.matchKind === "standalone" && !selectorBranch.hasSubjectModifiers) {
     return "simple-root";
   }
-  if (definition.selectorBranch.matchKind === "compound") {
+  if (selectorBranch.matchKind === "compound") {
     return "compound";
   }
-  if (definition.selectorBranch.matchKind === "contextual") {
+  if (selectorBranch.matchKind === "contextual") {
     return "contextual";
   }
   return "complex";
@@ -2000,6 +2107,7 @@ function createEmptyIndexes(): ProjectAnalysisIndexes {
     stylesheetsById: new Map(),
     classReferencesById: new Map(),
     classDefinitionsById: new Map(),
+    classContextsById: new Map(),
     selectorQueriesById: new Map(),
     selectorBranchesById: new Map(),
     classOwnershipById: new Map(),
@@ -2015,6 +2123,8 @@ function createEmptyIndexes(): ProjectAnalysisIndexes {
     componentIdByFilePathAndName: new Map(),
     definitionsByClassName: new Map(),
     definitionsByStylesheetId: new Map(),
+    contextsByClassName: new Map(),
+    contextsByStylesheetId: new Map(),
     referencesByClassName: new Map(),
     referencesBySourceFileId: new Map(),
     reachableStylesheetsBySourceFileId: new Map(),
@@ -2059,6 +2169,23 @@ function createClassDefinitionId(
     definition.line,
     stableHash(
       `${definition.selector}:${definition.atRuleContext
+        .map((entry) => `${entry.name}:${entry.params}`)
+        .join("|")}`,
+    ),
+  ].join(":");
+}
+
+function createClassContextId(
+  stylesheetId: ProjectAnalysisId,
+  context: ClassContextAnalysis["sourceContext"],
+): ProjectAnalysisId {
+  return [
+    "class-context",
+    stylesheetId,
+    context.className,
+    context.line,
+    stableHash(
+      `${context.selector}:${context.atRuleContext
         .map((entry) => `${entry.name}:${entry.params}`)
         .join("|")}`,
     ),

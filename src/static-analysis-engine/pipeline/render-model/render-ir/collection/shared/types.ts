@@ -20,6 +20,8 @@ export type SameFileComponentDefinition = {
         properties: Array<{
           propertyName: string;
           identifierName: string;
+          initializer?: ts.Expression;
+          finiteStringValues?: string[];
         }>;
       }
     | { kind: "unsupported"; reason: UnsupportedParameterBindingReason };

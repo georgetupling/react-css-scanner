@@ -39,3 +39,11 @@ export type CssClassDefinitionFact = {
   line: number;
   atRuleContext: CssAtRuleContextFact[];
 };
+
+export type CssClassContextFact = {
+  className: string;
+  selector: string;
+  selectorBranch: CssSelectorBranchFact;
+  line: number;
+  atRuleContext: CssAtRuleContextFact[];
+};

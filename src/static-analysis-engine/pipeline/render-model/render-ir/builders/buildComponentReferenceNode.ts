@@ -16,7 +16,11 @@ import {
   createRenderExpansionTrace,
   toSourceAnchor,
 } from "../shared/renderIrUtils.js";
-import { mergeExpressionBindings, mergeHelperDefinitions } from "../resolution/resolveBindings.js";
+import {
+  mergeExpressionBindings,
+  mergeHelperDefinitions,
+  resolveBoundExpression,
+} from "../resolution/resolveBindings.js";
 import type { RenderNode } from "../types.js";
 import { buildChildren } from "./buildIntrinsicNode.js";
 
@@ -164,10 +168,12 @@ export function buildComponentReferenceNode(
           expansionBinding.expressionBindings,
           definition.localExpressionBindings,
         ),
+        stringSetBindings: expansionBinding.stringSetBindings,
         helperDefinitions: mergeHelperDefinitions(
-          context.helperDefinitions,
+          context.topLevelHelperDefinitionsByFilePath.get(definition.filePath) ?? new Map(),
           definition.localHelperDefinitions,
         ),
+        topLevelHelperDefinitionsByFilePath: context.topLevelHelperDefinitionsByFilePath,
         helperExpansionStack: [],
         propsObjectBindingName: expansionBinding.propsObjectBindingName,
         propsObjectProperties: expansionBinding.propsObjectProperties,
@@ -209,6 +215,7 @@ function buildComponentExpansionBindings(
 ):
   | {
       expressionBindings: Map<string, ts.Expression>;
+      stringSetBindings: Map<string, string[]>;
       propsObjectBindingName?: string;
       propsObjectProperties: Map<string, ts.Expression>;
       propsObjectSubtreeProperties: Map<string, RenderNode[]>;
@@ -254,6 +261,7 @@ function buildComponentExpansionBindings(
 
     return {
       expressionBindings: new Map(),
+      stringSetBindings: new Map(),
       propsObjectProperties: new Map(),
       propsObjectSubtreeProperties: new Map(),
       subtreeBindings: new Map(),
@@ -269,6 +277,7 @@ function buildComponentExpansionBindings(
 
     return {
       expressionBindings: new Map(),
+      stringSetBindings: new Map(),
       propsObjectBindingName: definition.parameterBinding.identifierName,
       propsObjectProperties: attributeExpressions.properties,
       propsObjectSubtreeProperties,
@@ -277,11 +286,18 @@ function buildComponentExpansionBindings(
   }
 
   const expressionBindings = new Map<string, ts.Expression>();
+  const stringSetBindings = new Map<string, string[]>();
   const subtreeBindings = new Map<string, RenderNode[]>();
   for (const property of definition.parameterBinding.properties) {
     const boundExpression = attributeExpressions.properties.get(property.propertyName);
     if (boundExpression) {
       expressionBindings.set(property.identifierName, boundExpression);
+    } else if (property.initializer) {
+      expressionBindings.set(property.identifierName, property.initializer);
+    }
+
+    if (!boundExpression && property.finiteStringValues) {
+      stringSetBindings.set(property.identifierName, property.finiteStringValues);
     }
 
     const boundSubtree = attributeExpressions.subtreeProperties.get(property.propertyName);
@@ -299,6 +315,7 @@ function buildComponentExpansionBindings(
 
   return {
     expressionBindings,
+    stringSetBindings,
     propsObjectProperties: attributeExpressions.properties,
     propsObjectSubtreeProperties: new Map(attributeExpressions.subtreeProperties),
     subtreeBindings,
@@ -334,27 +351,41 @@ function collectLocalComponentAttributeExpressions(
       };
     }
 
-    if (!property.initializer) {
-      return {
-        reason: buildComponentExpansionReason(expansionScope, "unsupportedProps"),
-      };
-    }
-
-    const expression = unwrapJsxAttributeInitializer(property.initializer);
+    const expression = property.initializer
+      ? unwrapJsxAttributeInitializer(property.initializer)
+      : ts.factory.createTrue();
     if (!expression) {
       return {
         reason: buildComponentExpansionReason(expansionScope, "unsupportedProps"),
       };
     }
 
-    properties.set(property.name.text, expression);
+    const boundExpression = resolveBoundExpression(expression, context) ?? expression;
+    properties.set(property.name.text, boundExpression);
 
-    if (isRenderableExpression(expression)) {
-      subtreeProperties.set(property.name.text, [buildRenderNode(expression, context)]);
+    const renderableExpression = resolveRenderableExpression(boundExpression, context);
+    if (renderableExpression) {
+      subtreeProperties.set(property.name.text, [buildRenderNode(renderableExpression, context)]);
     }
   }
 
   return { properties, subtreeProperties };
+}
+
+function resolveRenderableExpression(
+  expression: ts.Expression,
+  context: BuildContext,
+): ts.Expression | undefined {
+  if (isRenderableExpression(expression)) {
+    return expression;
+  }
+
+  const boundExpression = resolveBoundExpression(expression, context);
+  if (boundExpression && isRenderableExpression(boundExpression)) {
+    return boundExpression;
+  }
+
+  return undefined;
 }
 
 function unwrapJsxAttributeInitializer(

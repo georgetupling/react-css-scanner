@@ -16,6 +16,8 @@ import type {
   StylesheetReachabilityRecord,
 } from "./types.js";
 
+type ProjectWideEntrySource = ExternalCssSummary["projectWideEntrySources"][number];
+
 export function buildReachabilitySummary(input: {
   moduleGraph: ModuleGraph;
   renderGraph: RenderGraph;
@@ -35,6 +37,13 @@ export function buildReachabilitySummary(input: {
       .map((filePath) => normalizeProjectPath(filePath))
       .filter(Boolean) as string[],
   );
+  const projectWideEntrySources = input.externalCssSummary.projectWideEntrySources
+    .map((entrySource) => ({
+      entrySourceFilePath:
+        normalizeProjectPath(entrySource.entrySourceFilePath) ?? entrySource.entrySourceFilePath,
+      appRootPath: normalizeProjectPath(entrySource.appRootPath) ?? entrySource.appRootPath,
+    }))
+    .sort(compareProjectWideEntrySources);
   const packageCssImportBySpecifier = new Map(
     input.externalCssSummary.packageCssImports
       .filter((importRecord) => importRecord.importerKind === "source")
@@ -68,6 +77,7 @@ export function buildReachabilitySummary(input: {
       renderSubtrees: input.renderSubtrees,
       knownCssFilePaths,
       projectWideExternalStylesheetFilePaths,
+      projectWideEntrySources,
       packageCssImportBySpecifier,
       directCssImportersByStylesheetPath,
       reachabilityGraphContext,
@@ -78,8 +88,12 @@ export function buildReachabilitySummary(input: {
   );
 
   return {
-    stylesheets: applyStylesheetPackageImportReachability({
+    stylesheets: applyStylesheetImportReachability({
       stylesheets,
+      localCssImports: collectLocalStylesheetImportRecords({
+        cssSources: input.cssSources,
+        knownCssFilePaths,
+      }),
       packageCssImports: input.externalCssSummary.packageCssImports,
       includeTraces,
     }),
@@ -93,6 +107,7 @@ function buildStylesheetReachabilityRecord(input: {
   renderSubtrees: RenderSubtree[];
   knownCssFilePaths: Set<string>;
   projectWideExternalStylesheetFilePaths: Set<string>;
+  projectWideEntrySources: ProjectWideEntrySource[];
   packageCssImportBySpecifier: Map<string, string>;
   directCssImportersByStylesheetPath: Map<string, string[]>;
   reachabilityGraphContext: ReachabilityGraphContext;
@@ -158,6 +173,60 @@ function buildStylesheetReachabilityRecord(input: {
     }
   }
 
+  const sortedProjectWideEntryImportingSources = input.projectWideEntrySources.filter(
+    (entrySource) => sortedImportingSourceFilePaths.includes(entrySource.entrySourceFilePath),
+  );
+  for (const entrySource of sortedProjectWideEntryImportingSources) {
+    for (const filePath of input.analyzedSourceFilePaths) {
+      if (!isPathInsideProjectPath(filePath, entrySource.appRootPath)) {
+        addContextRecord(
+          contextRecordsByKey,
+          {
+            context: {
+              kind: "source-file",
+              filePath,
+            },
+            availability: "unavailable",
+            reasons: [
+              `source file is outside the app boundary for HTML entry source ${entrySource.entrySourceFilePath}`,
+            ],
+            derivations: [
+              {
+                kind: "source-file-outside-app-entry-css-boundary",
+                entrySourceFilePath: entrySource.entrySourceFilePath,
+                appRootPath: entrySource.appRootPath,
+              },
+            ],
+          },
+          input.includeTraces,
+        );
+        continue;
+      }
+
+      addContextRecord(
+        contextRecordsByKey,
+        {
+          context: {
+            kind: "source-file",
+            filePath,
+          },
+          availability: "definite",
+          reasons: [
+            `source file is covered by CSS imported from HTML entry source ${entrySource.entrySourceFilePath}`,
+          ],
+          derivations: [
+            {
+              kind: "source-file-project-wide-app-entry-css",
+              entrySourceFilePath: entrySource.entrySourceFilePath,
+              appRootPath: entrySource.appRootPath,
+            },
+          ],
+        },
+        input.includeTraces,
+      );
+    }
+  }
+
   const contextRecords = [...contextRecordsByKey.values()].sort(compareContextRecords);
   if (contextRecords.length === 0) {
     return withStylesheetRecordTraces({
@@ -183,6 +252,11 @@ function buildStylesheetReachabilityRecord(input: {
   if (isProjectWideExternalStylesheet) {
     reasons.push(
       "stylesheet is active project-wide through an HTML-linked remote external stylesheet",
+    );
+  }
+  if (sortedProjectWideEntryImportingSources.length > 0) {
+    reasons.push(
+      `stylesheet is active project-wide through ${sortedProjectWideEntryImportingSources.length} HTML entry source import${sortedProjectWideEntryImportingSources.length === 1 ? "" : "s"}`,
     );
   }
   reasons.push(
@@ -259,8 +333,48 @@ function collectDirectCssImportersByStylesheetPath(input: {
   );
 }
 
-function applyStylesheetPackageImportReachability(input: {
+type StylesheetImportRecord = {
+  importerFilePath: string;
+  specifier: string;
+  resolvedFilePath: string;
+};
+
+function collectLocalStylesheetImportRecords(input: {
+  cssSources: SelectorSourceInput[];
+  knownCssFilePaths: Set<string>;
+}): StylesheetImportRecord[] {
+  const imports: StylesheetImportRecord[] = [];
+
+  for (const cssSource of input.cssSources) {
+    const importerFilePath = normalizeProjectPath(cssSource.filePath);
+    if (!importerFilePath) {
+      continue;
+    }
+
+    for (const specifier of extractCssImportSpecifiers(cssSource.cssText)) {
+      const resolvedFilePath = resolveCssImportPath({
+        fromFilePath: importerFilePath,
+        specifier,
+        knownCssFilePaths: input.knownCssFilePaths,
+      });
+      if (!resolvedFilePath) {
+        continue;
+      }
+
+      imports.push({
+        importerFilePath,
+        specifier,
+        resolvedFilePath,
+      });
+    }
+  }
+
+  return imports.sort(compareStylesheetImportRecords);
+}
+
+function applyStylesheetImportReachability(input: {
   stylesheets: StylesheetReachabilityRecord[];
+  localCssImports: StylesheetImportRecord[];
   packageCssImports: ExternalCssSummary["packageCssImports"];
   includeTraces: boolean;
 }): StylesheetReachabilityRecord[] {
@@ -274,20 +388,18 @@ function applyStylesheetPackageImportReachability(input: {
         (entry): entry is [string, StylesheetReachabilityRecord] => typeof entry[0] === "string",
       ),
   );
-  const stylesheetImports = input.packageCssImports
-    .filter((importRecord) => importRecord.importerKind === "stylesheet")
-    .map((importRecord) => ({
-      ...importRecord,
-      importerFilePath:
-        normalizeProjectPath(importRecord.importerFilePath) ?? importRecord.importerFilePath,
-      resolvedFilePath:
-        normalizeProjectPath(importRecord.resolvedFilePath) ?? importRecord.resolvedFilePath,
-    }))
-    .sort((left, right) =>
-      `${left.importerFilePath}:${left.specifier}:${left.resolvedFilePath}`.localeCompare(
-        `${right.importerFilePath}:${right.specifier}:${right.resolvedFilePath}`,
-      ),
-    );
+  const stylesheetImports = [
+    ...input.localCssImports,
+    ...input.packageCssImports
+      .filter((importRecord) => importRecord.importerKind === "stylesheet")
+      .map((importRecord) => ({
+        importerFilePath:
+          normalizeProjectPath(importRecord.importerFilePath) ?? importRecord.importerFilePath,
+        specifier: importRecord.specifier,
+        resolvedFilePath:
+          normalizeProjectPath(importRecord.resolvedFilePath) ?? importRecord.resolvedFilePath,
+      })),
+  ].sort(compareStylesheetImportRecords);
 
   let changed = true;
   let remainingIterations = stylesheetImports.length + input.stylesheets.length + 1;
@@ -1775,6 +1887,10 @@ function serializeDerivation(derivation: ReachabilityDerivation): string {
     case "source-file-project-wide-external-css":
       key = [derivation.kind, derivation.stylesheetHref].join(":");
       break;
+    case "source-file-project-wide-app-entry-css":
+    case "source-file-outside-app-entry-css-boundary":
+      key = [derivation.kind, derivation.entrySourceFilePath, derivation.appRootPath].join(":");
+      break;
     case "whole-component-direct-import":
     case "whole-component-all-known-renderers-definite":
     case "whole-component-at-least-one-renderer":
@@ -1911,6 +2027,51 @@ function resolveCssImportPath(input: {
   const specifierSegments = normalizedSpecifier.split("/").filter((segment) => segment.length > 0);
   const candidatePath = normalizeSegments([...fromSegments, ...specifierSegments]);
   return input.knownCssFilePaths.has(candidatePath) ? candidatePath : undefined;
+}
+
+function extractCssImportSpecifiers(cssText: string): string[] {
+  const specifiers: string[] = [];
+  const importPattern =
+    /@import\s+(?:url\(\s*)?(?:"([^"]+)"|'([^']+)'|([^"')\s;]+))(?:\s*\))?[^;]*;/gi;
+  let match: RegExpExecArray | null;
+
+  while ((match = importPattern.exec(cssText)) !== null) {
+    const specifier = match[1] ?? match[2] ?? match[3];
+    if (specifier) {
+      specifiers.push(specifier);
+    }
+  }
+
+  return [...new Set(specifiers)].sort((left, right) => left.localeCompare(right));
+}
+
+function compareStylesheetImportRecords(
+  left: StylesheetImportRecord,
+  right: StylesheetImportRecord,
+): number {
+  return `${left.importerFilePath}:${left.specifier}:${left.resolvedFilePath}`.localeCompare(
+    `${right.importerFilePath}:${right.specifier}:${right.resolvedFilePath}`,
+  );
+}
+
+function compareProjectWideEntrySources(
+  left: ProjectWideEntrySource,
+  right: ProjectWideEntrySource,
+): number {
+  return (
+    left.entrySourceFilePath.localeCompare(right.entrySourceFilePath) ||
+    left.appRootPath.localeCompare(right.appRootPath)
+  );
+}
+
+function isPathInsideProjectPath(filePath: string, rootPath: string): boolean {
+  const normalizedFilePath = normalizeProjectPath(filePath) ?? filePath;
+  const normalizedRootPath = normalizeProjectPath(rootPath) ?? rootPath;
+  return (
+    normalizedRootPath === "." ||
+    normalizedFilePath === normalizedRootPath ||
+    normalizedFilePath.startsWith(`${normalizedRootPath}/`)
+  );
 }
 
 function normalizeSegments(segments: string[]): string {

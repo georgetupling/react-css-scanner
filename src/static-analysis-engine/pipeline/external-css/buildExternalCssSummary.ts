@@ -3,6 +3,7 @@ import type {
   ExternalCssAnalysisInput,
   ExternalCssGlobalProviderConfig,
   ExternalCssSummary,
+  HtmlScriptSourceInput,
   HtmlStylesheetLinkInput,
   PackageCssImportInput,
 } from "./types.js";
@@ -12,6 +13,7 @@ export function buildExternalCssSummary(
 ): ExternalCssSummary {
   const fetchRemote = input?.fetchRemote ?? false;
   const htmlStylesheetLinks = normalizeHtmlStylesheetLinks(input?.htmlStylesheetLinks ?? []);
+  const htmlScriptSources = normalizeHtmlScriptSources(input?.htmlScriptSources ?? []);
   const packageCssImports = normalizePackageCssImports(input?.packageCssImports ?? []);
   const globalProviders = normalizeGlobalProviders(input?.globalProviders ?? []);
   const activeProviders = buildActiveProviders({
@@ -24,6 +26,7 @@ export function buildExternalCssSummary(
     fetchRemote,
     activeProviders,
     packageCssImports,
+    projectWideEntrySources: collectProjectWideEntrySources(htmlScriptSources),
     projectWideStylesheetFilePaths: collectProjectWideStylesheetFilePaths({
       htmlStylesheetLinks,
       fetchRemote,
@@ -106,6 +109,27 @@ function normalizeGlobalProviders(
     .sort((left, right) => left.provider.localeCompare(right.provider));
 }
 
+function normalizeHtmlScriptSources(
+  scriptSources: HtmlScriptSourceInput[],
+): HtmlScriptSourceInput[] {
+  return [...scriptSources]
+    .map((scriptSource) => ({
+      filePath: scriptSource.filePath.replace(/\\/g, "/"),
+      src: scriptSource.src,
+      ...(scriptSource.resolvedFilePath
+        ? { resolvedFilePath: scriptSource.resolvedFilePath.replace(/\\/g, "/") }
+        : {}),
+      ...(scriptSource.appRootPath
+        ? { appRootPath: scriptSource.appRootPath.replace(/\\/g, "/") }
+        : {}),
+    }))
+    .sort((left, right) =>
+      `${left.filePath}:${left.src}:${left.resolvedFilePath ?? ""}:${left.appRootPath ?? ""}`.localeCompare(
+        `${right.filePath}:${right.src}:${right.resolvedFilePath ?? ""}:${right.appRootPath ?? ""}`,
+      ),
+    );
+}
+
 function normalizeHtmlStylesheetLinks(
   stylesheetLinks: HtmlStylesheetLinkInput[],
 ): HtmlStylesheetLinkInput[] {
@@ -169,6 +193,36 @@ function uniqueStylesheetLinks(
     );
   }
   return [...linksByKey.values()].sort(compareStylesheetLinks);
+}
+
+function collectProjectWideEntrySources(
+  scriptSources: HtmlScriptSourceInput[],
+): ExternalCssSummary["projectWideEntrySources"] {
+  const entrySourcesByKey = new Map<
+    string,
+    ExternalCssSummary["projectWideEntrySources"][number]
+  >();
+
+  for (const scriptSource of scriptSources) {
+    if (!scriptSource.resolvedFilePath) {
+      continue;
+    }
+
+    const entrySource = {
+      entrySourceFilePath: scriptSource.resolvedFilePath,
+      appRootPath: scriptSource.appRootPath ?? ".",
+    };
+    entrySourcesByKey.set(
+      `${entrySource.entrySourceFilePath}:${entrySource.appRootPath}`,
+      entrySource,
+    );
+  }
+
+  return [...entrySourcesByKey.values()].sort(
+    (left, right) =>
+      left.entrySourceFilePath.localeCompare(right.entrySourceFilePath) ||
+      left.appRootPath.localeCompare(right.appRootPath),
+  );
 }
 
 function collectProjectWideStylesheetFilePaths(input: {

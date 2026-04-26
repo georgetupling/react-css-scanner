@@ -205,11 +205,20 @@ and treated as project-wide reachable. JavaScript and TypeScript package CSS imp
 parsed, and treated as external imports. Provider declarations are only activated by configured
 external stylesheet evidence such as HTML/CDN links, not by package CSS imports. Package CSS loaded
 through CSS `@import` is also resolved under `node_modules`, parsed, and treated as reachable through
-the importing stylesheet. Package CSS resolution searches upward from the scan root for the nearest
-usable `node_modules` directory, so subdirectory scans can still resolve workspace-level packages.
+the importing stylesheet. Local CSS `@import` chains also inherit reachability from their importing
+stylesheet. HTML module scripts such as `<script type="module" src="/src/main.tsx">` mark CSS
+imported by that entry source, and local CSS imported from it, as project-wide reachable inside the
+nearest app boundary inferred from the HTML file and script path. Package CSS resolution searches
+upward from the importing file for usable `node_modules` directories, so subdirectory scans can still
+resolve workspace-level packages.
 Remote stylesheet links are fetched only when `externalCss.fetchRemote` is `true`; fetched CSS is
 parsed into concrete classes, uses `remoteTimeoutMs`, and fetch failures are reported as warning
 diagnostics. Default scans perform no network requests.
+
+The scanner also recognizes a small set of usage-only runtime DOM class APIs. ProseMirror
+`new EditorView(..., { attributes: { class: "..." } })` static class strings are indexed as
+`runtime-dom` class references so CSS used by the editor surface is not reported as unused. These
+references prove usage only; they do not add render-tree placement for selector layout matching.
 
 ## Rules
 
@@ -223,6 +232,7 @@ Default rules:
 - `unsatisfiable-selector` defaults to `warn`
 - `compound-selector-never-matched` defaults to `warn`
 - `unused-compound-selector-branch` defaults to `warn`
+- `selector-only-matches-in-unknown-contexts` defaults to `debug`
 - `single-component-style-not-colocated` defaults to `info`
 - `style-used-outside-owner` defaults to `warn`
 - `style-shared-without-shared-owner` defaults to `info`
@@ -234,6 +244,15 @@ default `--output-min-severity info` threshold. The scanner-internal uncertainty
 `dynamic-class-reference` and `unsupported-syntax-affecting-analysis` default to debug so routine
 bounded-analysis traces do not appear as user-facing findings unless a project opts in with
 `--output-min-severity debug` or a rule severity override.
+
+Compound selector context classes, such as the ancestor class in `.shell .button`, count as CSS
+evidence for `missing-css-class` but are not indexed as ordinary definitions for
+`unused-css-class`.
+
+Ownership rules are conservative about private CSS. A single importing component is not enough to
+prove private ownership; the scanner looks for stronger mirrored naming or component-folder evidence
+before reporting `style-used-outside-owner`. Generic family stylesheets such as `Card.css` used by
+`ArticleCard` and `TopicCard` are treated as intentionally shared.
 
 ## Node API
 

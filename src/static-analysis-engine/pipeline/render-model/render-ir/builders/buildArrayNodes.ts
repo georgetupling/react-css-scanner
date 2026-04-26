@@ -424,6 +424,7 @@ function buildArrayCallbackContext(input: {
   return {
     ...input.context,
     expressionBindings: mergeExpressionBindings(input.context.expressionBindings, callbackBindings),
+    stringSetBindings: input.context.stringSetBindings,
   };
 }
 

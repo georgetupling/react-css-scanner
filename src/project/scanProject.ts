@@ -8,6 +8,7 @@ import {
   type HtmlStylesheetLinkInput,
 } from "../static-analysis-engine/index.js";
 import { discoverProjectFiles } from "./discovery.js";
+import { extractHtmlScriptSources } from "./htmlScriptSources.js";
 import { extractHtmlStylesheetLinks } from "./htmlStylesheetLinks.js";
 import { loadPackageCssImports } from "./packageCssImports.js";
 import { normalizeProjectPath } from "./pathUtils.js";
@@ -62,9 +63,20 @@ export async function scanProject(input: ScanProjectInput = {}): Promise<ScanPro
       htmlText: htmlFile.htmlText,
     }),
   );
+  const htmlScriptSources = htmlFiles.flatMap((htmlFile) =>
+    extractHtmlScriptSources({
+      filePath: htmlFile.filePath,
+      htmlText: htmlFile.htmlText,
+    }),
+  );
   const resolvedHtmlStylesheetLinks = resolveLocalHtmlStylesheetLinks({
     rootDir: discovered.rootDir,
     htmlStylesheetLinks,
+    diagnostics,
+  });
+  const resolvedHtmlScriptSources = resolveLocalHtmlScriptSources({
+    rootDir: discovered.rootDir,
+    htmlScriptSources,
     diagnostics,
   });
   const linkedCssFiles = await runScanStage(
@@ -117,6 +129,7 @@ export async function scanProject(input: ScanProjectInput = {}): Promise<ScanPro
       fetchRemote: config.externalCss.fetchRemote,
       globalProviders: config.externalCss.globals,
       htmlStylesheetLinks: resolvedHtmlStylesheetLinks,
+      htmlScriptSources: resolvedHtmlScriptSources,
       packageCssImports: packageCssImports.imports,
     },
     includeTraces: input.includeTraces ?? true,
@@ -349,6 +362,47 @@ async function readProjectFile(
   }
 }
 
+function resolveLocalHtmlScriptSources(input: {
+  rootDir: string;
+  htmlScriptSources: import("./htmlScriptSources.js").HtmlScriptSourceInput[];
+  diagnostics: ScanDiagnostic[];
+}): import("./htmlScriptSources.js").HtmlScriptSourceInput[] {
+  return input.htmlScriptSources.map((scriptSource) => {
+    if (!isLocalSourceHref(scriptSource.src)) {
+      return scriptSource;
+    }
+
+    const resolvedFilePath = resolveLocalHrefProjectPath({
+      htmlFilePath: scriptSource.filePath,
+      href: scriptSource.src,
+    });
+    if (!resolvedFilePath) {
+      return scriptSource;
+    }
+
+    const absolutePath = path.resolve(input.rootDir, resolvedFilePath);
+    if (!isPathInsideRoot(input.rootDir, absolutePath)) {
+      input.diagnostics.push({
+        code: "loading.html-script-outside-root",
+        severity: "warning",
+        phase: "loading",
+        filePath: scriptSource.filePath,
+        message: `HTML script source points outside the scan root and was ignored: ${scriptSource.src}`,
+      });
+      return scriptSource;
+    }
+
+    return {
+      ...scriptSource,
+      resolvedFilePath,
+      appRootPath: inferHtmlScriptAppRootPath({
+        htmlFilePath: scriptSource.filePath,
+        scriptFilePath: resolvedFilePath,
+      }),
+    };
+  });
+}
+
 function resolveLocalHtmlStylesheetLinks(input: {
   rootDir: string;
   htmlStylesheetLinks: HtmlStylesheetLinkInput[];
@@ -422,22 +476,36 @@ function mergeCssSources(
 }
 
 function isLocalCssHref(href: string): boolean {
-  if (!href.endsWith(".css")) {
+  const hrefPath = stripUrlSuffix(href);
+  if (!hrefPath.endsWith(".css")) {
     return false;
   }
 
-  if (href.startsWith("//")) {
+  if (hrefPath.startsWith("//")) {
     return false;
   }
 
-  return !/^[a-z][a-z0-9+.-]*:/i.test(href);
+  return !/^[a-z][a-z0-9+.-]*:/i.test(hrefPath);
+}
+
+function isLocalSourceHref(href: string): boolean {
+  const hrefPath = stripUrlSuffix(href);
+  if (!/\.[cm]?[jt]sx?$/.test(hrefPath)) {
+    return false;
+  }
+
+  if (hrefPath.startsWith("//")) {
+    return false;
+  }
+
+  return !/^[a-z][a-z0-9+.-]*:/i.test(hrefPath);
 }
 
 function resolveLocalHrefProjectPath(input: {
   htmlFilePath: string;
   href: string;
 }): string | undefined {
-  const hrefPath = input.href.replace(/\\/g, "/");
+  const hrefPath = stripUrlSuffix(input.href).replace(/\\/g, "/");
   if (hrefPath.startsWith("/")) {
     return normalizeProjectPath(hrefPath.replace(/^\/+/, ""));
   }
@@ -445,6 +513,32 @@ function resolveLocalHrefProjectPath(input: {
   const htmlDirectory = path.posix.dirname(input.htmlFilePath.replace(/\\/g, "/"));
   const relativePath = htmlDirectory === "." ? hrefPath : path.posix.join(htmlDirectory, hrefPath);
   return normalizeProjectPath(relativePath);
+}
+
+function inferHtmlScriptAppRootPath(input: {
+  htmlFilePath: string;
+  scriptFilePath: string;
+}): string {
+  const htmlDirectory = path.posix.dirname(input.htmlFilePath.replace(/\\/g, "/"));
+  const scriptDirectory = path.posix.dirname(input.scriptFilePath.replace(/\\/g, "/"));
+  const htmlSegments = htmlDirectory === "." ? [] : htmlDirectory.split("/");
+  const scriptSegments = scriptDirectory === "." ? [] : scriptDirectory.split("/");
+  const commonSegments: string[] = [];
+
+  for (
+    let index = 0;
+    index < Math.min(htmlSegments.length, scriptSegments.length) &&
+    htmlSegments[index] === scriptSegments[index];
+    index += 1
+  ) {
+    commonSegments.push(htmlSegments[index]);
+  }
+
+  return commonSegments.join("/") || ".";
+}
+
+function stripUrlSuffix(href: string): string {
+  return href.split(/[?#]/, 1)[0] ?? href;
 }
 
 function isPathInsideRoot(rootDir: string, absolutePath: string): boolean {

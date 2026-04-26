@@ -35,7 +35,7 @@ The initial catalogue should be small enough to implement coherently and large e
 
 Default severity: `error`
 
-Triggers when a statically known class reference has no matching reachable project CSS definition, CSS Module export, or declared external provider match.
+Triggers when a statically known class reference has no matching reachable project CSS definition, selector context mention, CSS Module export, or declared external provider match.
 
 Meaning:
 
@@ -47,6 +47,7 @@ Config:
 - may support ignore patterns for generated class names
 - may support configured global providers
 - should respect CSS Module and external CSS configuration when those systems exist
+- selector context mentions, such as ancestor classes in `.shell .button`, satisfy this rule but are not treated as normal CSS class definitions for `unused-css-class`
 
 #### `conditionally-missing-css-class`
 
@@ -163,7 +164,7 @@ The reboot should prefer relational ownership over the old fixed bucket model. I
 
 #### `single-component-style-not-colocated`
 
-Default severity: `info`
+Default severity: `debug`
 
 Triggers when a class is only used by one component, but its definition is not colocated with that component according to configured or inferred conventions.
 
@@ -183,7 +184,7 @@ Config:
 
 Default severity: `warn`
 
-Triggers when a stylesheet class has a high-confidence single importing component owner, but is
+Triggers when a stylesheet class has high-confidence private component ownership evidence, but is
 used by another component.
 
 Meaning:
@@ -193,7 +194,8 @@ Meaning:
 
 Config:
 
-- currently requires high-confidence import-based component ownership
+- requires private ownership evidence such as mirrored component/stylesheet names or component-folder
+  conventions; a single importer alone is not enough
 - may later support feature root patterns
 - may later support allowed cross-owner dependency lists
 
@@ -201,8 +203,8 @@ Config:
 
 Default severity: `info`
 
-Triggers when a class is used by multiple components, has no high-confidence single importing
-component owner, and is not defined in a path that looks intentionally broad.
+Triggers when a class is used by multiple components, has no private component owner, and is not
+defined in a path or stylesheet family that looks intentionally broad/shared.
 
 Meaning:
 
@@ -213,6 +215,8 @@ Config:
 
 - currently uses built-in broad path signals such as `shared`, `global`, `common`, `utilities`,
   `design-system`, `theme`, and `tokens`
+- treats generic family stylesheets such as `Card.css` consumed by `ArticleCard` and `TopicCard` as
+  intentionally shared
 - may later support configured broad path conventions
 - may later support feature-boundary grouping
 

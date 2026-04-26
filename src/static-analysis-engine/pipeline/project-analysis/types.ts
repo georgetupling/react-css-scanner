@@ -8,12 +8,14 @@ import type {
 } from "../reachability/types.js";
 import type { RenderGraphEdge } from "../render-model/render-graph/types.js";
 import type { RenderSubtree } from "../render-model/render-ir/types.js";
+import type { RuntimeDomClassReference } from "../runtime-dom/types.js";
 import type { SelectorConstraint, SelectorQueryResult } from "../selector-analysis/types.js";
 import type { AnalysisConfidence, AnalysisTrace } from "../../types/analysis.js";
 import type { SourceAnchor } from "../../types/core.js";
 import type { CssModuleAnalysis } from "../css-modules/types.js";
 import type {
   CssAtRuleContextFact,
+  CssClassContextFact,
   CssClassDefinitionFact,
   CssDeclarationFact,
 } from "../../types/css.js";
@@ -55,6 +57,7 @@ export type ProjectAnalysisEntities = {
   stylesheets: StylesheetAnalysis[];
   classReferences: ClassReferenceAnalysis[];
   classDefinitions: ClassDefinitionAnalysis[];
+  classContexts: ClassContextAnalysis[];
   selectorQueries: SelectorQueryAnalysis[];
   selectorBranches: SelectorBranchAnalysis[];
   classOwnership: ClassOwnershipAnalysis[];
@@ -80,7 +83,7 @@ export type StylesheetAnalysis = CssFileRecord & {
   selectors: ProjectAnalysisId[];
 };
 
-export type ClassReferenceOrigin = "render-ir" | "unknown";
+export type ClassReferenceOrigin = "render-ir" | "runtime-dom" | "unknown";
 
 export type ClassReferenceExpressionKind =
   | "exact-string"
@@ -126,6 +129,17 @@ export type ClassDefinitionAnalysis = {
   declarationSignature: string;
   isCssModule: boolean;
   sourceDefinition: CssClassDefinitionFact;
+};
+
+export type ClassContextAnalysis = {
+  id: ProjectAnalysisId;
+  stylesheetId: ProjectAnalysisId;
+  className: string;
+  selectorText: string;
+  selectorKind: ClassDefinitionSelectorKind;
+  line: number;
+  atRuleContext: CssAtRuleContextFact[];
+  sourceContext: CssClassContextFact;
 };
 
 export type SelectorQueryAnalysis = {
@@ -383,6 +397,7 @@ export type ProjectAnalysisIndexes = {
   stylesheetsById: Map<ProjectAnalysisId, StylesheetAnalysis>;
   classReferencesById: Map<ProjectAnalysisId, ClassReferenceAnalysis>;
   classDefinitionsById: Map<ProjectAnalysisId, ClassDefinitionAnalysis>;
+  classContextsById: Map<ProjectAnalysisId, ClassContextAnalysis>;
   selectorQueriesById: Map<ProjectAnalysisId, SelectorQueryAnalysis>;
   selectorBranchesById: Map<ProjectAnalysisId, SelectorBranchAnalysis>;
   classOwnershipById: Map<ProjectAnalysisId, ClassOwnershipAnalysis>;
@@ -398,6 +413,8 @@ export type ProjectAnalysisIndexes = {
   componentIdByFilePathAndName: Map<string, ProjectAnalysisId>;
   definitionsByClassName: Map<string, ProjectAnalysisId[]>;
   definitionsByStylesheetId: Map<ProjectAnalysisId, ProjectAnalysisId[]>;
+  contextsByClassName: Map<string, ProjectAnalysisId[]>;
+  contextsByStylesheetId: Map<ProjectAnalysisId, ProjectAnalysisId[]>;
   referencesByClassName: Map<string, ProjectAnalysisId[]>;
   referencesBySourceFileId: Map<ProjectAnalysisId, ProjectAnalysisId[]>;
   reachableStylesheetsBySourceFileId: Map<ProjectAnalysisId, ProjectAnalysisId[]>;
@@ -447,6 +464,7 @@ export type ProjectAnalysisBuildInput = {
   renderGraph: import("../render-model/render-graph/types.js").RenderGraph;
   renderSubtrees: RenderSubtree[];
   unsupportedClassReferences: UnsupportedClassReferenceDiagnostic[];
+  runtimeDomClassReferences: RuntimeDomClassReference[];
   selectorQueryResults: SelectorQueryResult[];
   includeTraces?: boolean;
 };

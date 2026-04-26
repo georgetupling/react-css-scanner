@@ -23,6 +23,7 @@ import type { RenderNode } from "../types.js";
 
 const MAX_CLASS_NAME_RESOLUTION_DEPTH = 100;
 const MAX_EXACT_CLASS_ARRAY_RESOLUTION_DEPTH = 100;
+const MAX_TEMPLATE_STRING_COMBINATIONS = 32;
 
 type ClassNameResolutionState = {
   activeExpressions: Set<string>;
@@ -226,6 +227,26 @@ function summarizeBoundClassNameExpression(
       );
     }
 
+    if (ts.isIdentifier(expression)) {
+      const stringValues = context.stringSetBindings.get(expression.text);
+      if (stringValues) {
+        return {
+          value: {
+            kind: "string-set",
+            values: stringValues,
+          },
+          sourceExpression: expression,
+        };
+      }
+    }
+
+    if (ts.isTemplateExpression(expression)) {
+      return {
+        value: summarizeBoundTemplateExpression(expression, context, state),
+        sourceExpression: expression,
+      };
+    }
+
     if (ts.isConditionalExpression(expression)) {
       const whenTrue = summarizeBoundClassNameExpression(
         expression.whenTrue,
@@ -268,6 +289,33 @@ function summarizeBoundClassNameExpression(
     }
 
     if (
+      ts.isBinaryExpression(expression) &&
+      expression.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken
+    ) {
+      const left = summarizeBoundClassNameExpression(
+        expression.left,
+        context,
+        nextClassNameResolutionState(state),
+      );
+      if (left.value.kind !== "unknown") {
+        return {
+          value: left.value,
+          sourceExpression: expression,
+        };
+      }
+
+      const right = summarizeBoundClassNameExpression(
+        expression.right,
+        context,
+        nextClassNameResolutionState(state),
+      );
+      return {
+        value: mergeClassNameValues([left.value, right.value], "nullish coalescing expression"),
+        sourceExpression: expression,
+      };
+    }
+
+    if (
       ts.isParenthesizedExpression(expression) ||
       ts.isAsExpression(expression) ||
       ts.isSatisfiesExpression(expression)
@@ -286,6 +334,35 @@ function summarizeBoundClassNameExpression(
   } finally {
     state.activeExpressions.delete(expressionKey);
   }
+}
+
+function summarizeBoundTemplateExpression(
+  expression: ts.TemplateExpression,
+  context: BuildContext,
+  state: ClassNameResolutionState,
+): ReturnType<typeof summarizeClassNameExpression> {
+  let candidates = [expression.head.text];
+
+  for (const span of expression.templateSpans) {
+    const spanValue = summarizeBoundClassNameExpression(
+      span.expression,
+      context,
+      nextClassNameResolutionState(state),
+    ).value;
+    const spanCandidates = getStringCandidates(spanValue);
+    if (!spanCandidates) {
+      return { kind: "unknown", reason: "unsupported-template-interpolation" };
+    }
+
+    candidates = combineStrings(candidates, spanCandidates);
+    if (candidates.length > MAX_TEMPLATE_STRING_COMBINATIONS) {
+      return { kind: "unknown", reason: "template-interpolation-budget-exceeded" };
+    }
+
+    candidates = candidates.map((candidate) => `${candidate}${span.literal.text}`);
+  }
+
+  return toStringValue(candidates);
 }
 
 function summarizeJoinedClassArrayExpression(
@@ -525,6 +602,7 @@ function buildArrayCallbackContext(input: {
   return {
     ...input.context,
     expressionBindings: mergeExpressionBindings(input.context.expressionBindings, callbackBindings),
+    stringSetBindings: input.context.stringSetBindings,
   };
 }
 
@@ -546,4 +624,39 @@ function nextExactClassArrayResolutionState(
 
 function getExpressionResolutionKey(expression: ts.Expression, context: BuildContext): string {
   return `${context.filePath}:${expression.pos}:${expression.end}:${expression.kind}`;
+}
+
+function getStringCandidates(
+  value: ReturnType<typeof summarizeClassNameExpression>,
+): string[] | undefined {
+  if (value.kind === "string-exact") {
+    return [value.value];
+  }
+
+  if (value.kind === "string-set") {
+    return value.values;
+  }
+
+  return undefined;
+}
+
+function combineStrings(left: string[], right: string[]): string[] {
+  return left.flatMap((leftValue) => right.map((rightValue) => `${leftValue}${rightValue}`));
+}
+
+function toStringValue(candidates: string[]): ReturnType<typeof summarizeClassNameExpression> {
+  const uniqueCandidates = [...new Set(candidates)].sort((left, right) =>
+    left.localeCompare(right),
+  );
+  if (uniqueCandidates.length === 1) {
+    return {
+      kind: "string-exact",
+      value: uniqueCandidates[0],
+    };
+  }
+
+  return {
+    kind: "string-set",
+    values: uniqueCandidates,
+  };
 }

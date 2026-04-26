@@ -1,6 +1,9 @@
 import type { AnalysisTrace } from "../../static-analysis-engine/index.js";
 import type { RuleContext, RuleDefinition, UnresolvedFinding } from "../types.js";
-import { isIntentionallyBroadStylesheetPath } from "./ownershipRuleUtils.js";
+import {
+  hasPrivateComponentOwnerEvidence,
+  isIntentionallySharedStylesheetForConsumers,
+} from "./ownershipRuleUtils.js";
 
 export const styleSharedWithoutSharedOwnerRule: RuleDefinition = {
   id: "style-shared-without-shared-owner",
@@ -23,8 +26,7 @@ function runStyleSharedWithoutSharedOwnerRule(context: RuleContext): UnresolvedF
       definition.isCssModule ||
       stylesheet.origin !== "project-css" ||
       ownership.consumerSummary.consumerComponentIds.length < 2 ||
-      hasHighConfidenceComponentOwner(ownership) ||
-      isIntentionallyBroadStylesheetPath(stylesheet.filePath)
+      hasPrivateComponentOwnerEvidence({ ownerCandidates: ownership.ownerCandidates })
     ) {
       continue;
     }
@@ -33,6 +35,15 @@ function runStyleSharedWithoutSharedOwnerRule(context: RuleContext): UnresolvedF
       .map((componentId) => context.analysis.indexes.componentsById.get(componentId))
       .filter((component): component is NonNullable<typeof component> => Boolean(component));
     if (consumerComponents.length < 2) {
+      continue;
+    }
+
+    if (
+      isIntentionallySharedStylesheetForConsumers({
+        stylesheetFilePath: stylesheet.filePath,
+        consumerComponentNames: consumerComponents.map((component) => component.componentName),
+      })
+    ) {
       continue;
     }
 
@@ -83,17 +94,6 @@ function runStyleSharedWithoutSharedOwnerRule(context: RuleContext): UnresolvedF
   }
 
   return findings.sort((left, right) => left.id.localeCompare(right.id));
-}
-
-function hasHighConfidenceComponentOwner(
-  ownership: RuleContext["analysis"]["entities"]["classOwnership"][number],
-): boolean {
-  return ownership.ownerCandidates.some(
-    (candidate) =>
-      candidate.kind === "component" &&
-      candidate.confidence === "high" &&
-      candidate.reasons.includes("single-importing-component"),
-  );
 }
 
 function buildSharedWithoutOwnerTraces(input: {

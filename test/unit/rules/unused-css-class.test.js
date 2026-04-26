@@ -52,6 +52,194 @@ test("unused-css-class does not report referenced classes", async () => {
   }
 });
 
+test("unused-css-class treats finite template literal variants through helpers as used", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/Button.tsx",
+      [
+        'import "./Button.css";',
+        'type ButtonVariant = "primary" | "ghost" | "ghost-round" | "destructive";',
+        "type ButtonProps = { variant?: ButtonVariant; className?: string };",
+        "function joinClasses(...classes: Array<string | false | null | undefined>) {",
+        "  return classes.filter(Boolean).join(' ');",
+        "}",
+        "export function Button({ variant = 'primary', className }: ButtonProps) {",
+        "  return <button className={joinClasses('button', `button--${variant}`, className)}>Save</button>;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile(
+      "src/Button.css",
+      [
+        ".button { display: inline-flex; }",
+        ".button--primary { color: white; }",
+        ".button--ghost { color: inherit; }",
+        ".button--ghost-round { border-radius: 999px; }",
+        ".button--destructive { color: red; }",
+        "",
+      ].join("\n"),
+    )
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", [
+      "button--primary",
+      "button--ghost",
+      "button--ghost-round",
+      "button--destructive",
+    ]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unused-css-class treats className forwarded through primitives as used", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/Page.tsx",
+      [
+        'import "./Page.css";',
+        'import { WorldMembersTableSection } from "./WorldMembersTableSection";',
+        "export function Page() {",
+        "  const members = [{ userId: '1', username: 'Ada', role: 'admin' }];",
+        "  return (",
+        "    <WorldMembersTableSection",
+        "      filteredMembers={members}",
+        "      sortedMembers={members}",
+        '      query=""',
+        "      setQuery={() => {}}",
+        "      onRoleChange={() => {}}",
+        "    />",
+        "  );",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/WorldMembersTableSection.tsx",
+      [
+        'import { SearchBar } from "./SearchBar";',
+        'import { Select } from "./Select";',
+        'import { TableWrap } from "./TableWrap";',
+        "export function WorldMembersTableSection({ filteredMembers, sortedMembers, query, setQuery, onRoleChange }) {",
+        "  return (",
+        '    <section className="world-members-page">',
+        '      <SearchBar id="worldMembersSearch" name="worldMembersSearch" value={query}',
+        '        placeholder="Search username or role..." onChange={setQuery}',
+        '        className="world-members-page__search" />',
+        '      <TableWrap className="world-members-page__table-wrap" stackedOnMobile>',
+        '        <table className="world-members-page__table"><tbody>',
+        "          {sortedMembers.map((member) => (",
+        "            <tr key={member.userId}>",
+        '              <td className="world-members-page__user-cell">{member.username}</td>',
+        '              <td><Select className="world-members-page__role-select"',
+        "                value={member.role}",
+        "                onChange={(event) => onRoleChange(member.userId, event.target.value)} />",
+        "              </td>",
+        "            </tr>",
+        "          ))}",
+        "          {filteredMembers.length === 0 ? (",
+        '            <tr><td className="world-members-page__empty">No members</td></tr>',
+        "          ) : null}",
+        "        </tbody></table>",
+        "      </TableWrap>",
+        "    </section>",
+        "  );",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/SearchBar.tsx",
+      "export function SearchBar({ className, ...props }) { return <div className={['search-bar', className].filter(Boolean).join(' ')}><input {...props} className=\"search-bar__input\" /></div>; }\n",
+    )
+    .withSourceFile(
+      "src/Select.tsx",
+      "export function Select({ className, ...props }) { return <div className={['select', className].filter(Boolean).join(' ')}><select {...props} className=\"select__input\" /></div>; }\n",
+    )
+    .withSourceFile(
+      "src/TableWrap.tsx",
+      "export function TableWrap({ children, className, stackedOnMobile = false }) { return <div className={['app-table-wrap', stackedOnMobile ? 'app-table-wrap--stacked-mobile' : '', className ?? ''].filter(Boolean).join(' ')}>{children}</div>; }\n",
+    )
+    .withCssFile(
+      "src/Page.css",
+      [
+        ".world-members-page { display: block; }",
+        ".world-members-page__search { margin-block: 1rem; }",
+        ".world-members-page__role-select { min-width: 12rem; }",
+        ".world-members-page__table-wrap { overflow-x: auto; }",
+        ".world-members-page__table { width: 100%; }",
+        ".world-members-page__user-cell { font-weight: 600; }",
+        ".world-members-page__empty { text-align: center; }",
+        "",
+      ].join("\n"),
+    )
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", [
+      "world-members-page__search",
+      "world-members-page__role-select",
+      "world-members-page__table-wrap",
+      "world-members-page__user-cell",
+    ]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unused-css-class treats runtime DOM attributes object classes as used", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/RichTextEditor.tsx",
+      [
+        'import "./RichTextEditor.css";',
+        "export function RichTextEditor({ mount, state }) {",
+        "  new EditorView(",
+        "    { mount },",
+        "    {",
+        "      state,",
+        "      attributes: {",
+        '        class: "lm-rich-text-editor__surface article-body ProseMirror",',
+        '        spellcheck: "true",',
+        "      },",
+        "    },",
+        "  );",
+        '  return <div className="lm-rich-text-editor" />;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile(
+      "src/RichTextEditor.css",
+      [
+        ".lm-rich-text-editor { display: block; }",
+        ".lm-rich-text-editor__surface { min-height: 26rem; }",
+        ".article-body { line-height: 1.6; }",
+        ".ProseMirror { white-space: pre-wrap; }",
+        "",
+      ].join("\n"),
+    )
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", [
+      "lm-rich-text-editor__surface",
+      "article-body",
+      "ProseMirror",
+    ]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("unused-css-class reports unreferenced local CSS linked by HTML", async () => {
   const project = await new TestProjectBuilder()
     .withFile("index.html", '<link rel="stylesheet" href="/public/app.css">\n')
@@ -74,6 +262,17 @@ test("unused-css-class reports unreferenced local CSS linked by HTML", async () 
     await project.cleanup();
   }
 });
+
+function assertNoClassFindings(result, ruleId, classNames) {
+  assert.deepEqual(
+    result.findings
+      .filter(
+        (finding) => finding.ruleId === ruleId && classNames.includes(finding.data?.className),
+      )
+      .map((finding) => finding.data?.className),
+    [],
+  );
+}
 
 test("unused-css-class ignores local HTML-linked CSS that matches an external provider", async () => {
   const project = await new TestProjectBuilder()

@@ -36,6 +36,7 @@ Responsibilities:
 - analyze CSS selectors and definitions
 - analyze stylesheet reachability
 - analyze CSS Module imports and member references
+- analyze selected usage-only runtime DOM class references
 - analyze class references
 - analyze class ownership evidence from imports, consumers, and path conventions
 - build direct reference-to-definition and selector-to-context evidence
@@ -135,12 +136,13 @@ An initial implementation now exists under `src/static-analysis-engine/pipeline/
 It is a final projection stage over the existing pipeline outputs and is the only data exposed by
 `StaticAnalysisEngineResult`. Feature-specific extraction should happen before this projection when
 it needs raw syntax or stage-specific context. For example, CSS Module import and member-reference
-extraction lives in `cssModuleAnalysisStage` and `pipeline/css-modules`; `ProjectAnalysis` indexes
+extraction lives in `cssModuleAnalysisStage` and `pipeline/css-modules`, and usage-only runtime DOM
+class extraction lives in `runtimeDomStage` and `pipeline/runtime-dom`; `ProjectAnalysis` indexes
 those records for rules instead of walking parsed source text itself.
 
 This first slice intentionally covers the rule-facing contract that current stages can support:
 
-- source files, stylesheets, components, render subtrees, class references, class definitions, and selector queries
+- source files, stylesheets, components, render subtrees, class references, class definitions, selector context classes, and selector queries
 - selector branches for branch-level selector-list findings
 - class ownership records with consumer summaries and owner candidates
 - module imports, component render edges, stylesheet reachability, class-reference matches, selector matches, and declared-provider class satisfactions
@@ -211,6 +213,7 @@ type ProjectAnalysisEntities = {
   stylesheets: StylesheetAnalysis[];
   classReferences: ClassReferenceAnalysis[];
   classDefinitions: ClassDefinitionAnalysis[];
+  classContexts: ClassContextAnalysis[];
   selectorQueries: SelectorQueryAnalysis[];
   selectorBranches: SelectorBranchAnalysis[];
   cssModuleImports: CssModuleImportAnalysis[];
@@ -261,11 +264,13 @@ These exist specifically to keep rules thin and deterministic.
 ```ts
 type ProjectAnalysisIndexes = {
   definitionsByClassName: Map<string, string[]>;
+  contextsByClassName: Map<string, string[]>;
   referencesByClassName: Map<string, string[]>;
   referencesBySourceFileId: Map<string, string[]>;
   reachableStylesheetsBySourceFileId: Map<string, string[]>;
   reachableStylesheetsByComponentId: Map<string, string[]>;
   selectorQueriesByStylesheetId: Map<string, string[]>;
+  contextsByStylesheetId: Map<string, string[]>;
   matchesByReferenceId: Map<string, string[]>;
   selectorMatchesByQueryId: Map<string, string[]>;
   classOwnershipByClassDefinitionId: Map<string, string>;
@@ -293,7 +298,7 @@ type ClassReferenceAnalysis = {
   sourceFileId: string;
   componentId?: string;
   location: SourceLocation;
-  origin: "jsx-className" | "helper-call" | "css-module-member" | "unknown";
+  origin: "render-ir" | "runtime-dom" | "unknown";
   expressionKind: "exact-string" | "string-set" | "dynamic" | "unsupported";
   rawExpressionText: string;
   definiteClassNames: string[];
@@ -307,6 +312,11 @@ type ClassReferenceAnalysis = {
 `componentId` identifies the component that emitted the class expression. When a parent render tree
 expands a child component, class references from the child's implementation are attributed to the
 child component, while placement and render-subtree fields preserve the parent render context.
+
+`runtime-dom` references come from recognized non-JSX DOM APIs. The current adapter recognizes static
+ProseMirror `EditorView` `attributes.class` / `attributes.className` strings as usage evidence. These
+references participate in class-definition matching and unused-class suppression, but they do not
+claim render IR placement or selector layout context.
 
 ### ClassDefinitionAnalysis
 
@@ -554,14 +564,19 @@ Design rules:
 - local `.css` files linked from HTML are loaded, parsed, and treated as project-wide reachable;
   provider-matched linked CSS is classified as external, while ordinary local linked CSS remains
   project CSS
+- local HTML module scripts identify app entry source files; CSS imported by those entry source
+  files and transitive local CSS `@import` dependencies are treated as project-wide reachable only
+  inside the nearest app boundary inferred from the HTML file and script path
 - JavaScript and TypeScript package CSS imports are resolved under `node_modules`, loaded, parsed,
   classified as external imports, and treated as reachable from the importing source file
-- package CSS resolution searches upward from the scan root for the nearest usable `node_modules`
-  directory, falling back to the nearest package root for deterministic missing-file diagnostics
+- package CSS resolution searches upward from the importing file for usable `node_modules`
+  directories, falling back to the nearest package root for deterministic missing-file diagnostics
 - package CSS imports do not activate declared providers; provider declarations are an alternative to
   fetching externally linked stylesheets such as CDNs, not a substitute for parsed package CSS
 - CSS `@import` package entries are resolved under `node_modules`, loaded, parsed, classified as
   external imports, and treated as reachable through the importing stylesheet
+- local CSS `@import` entries are treated as project CSS and inherit reachability from the importing
+  stylesheet
 - remote HTML stylesheet links are fetched only when `externalCss.fetchRemote` is `true`; fetched CSS is
   parsed into concrete class definitions, uses `remoteTimeoutMs`, is treated as project-wide
   external CSS, and fetch failures emit warning diagnostics

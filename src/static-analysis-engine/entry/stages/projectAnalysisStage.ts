@@ -7,6 +7,7 @@ import { buildProjectAnalysis } from "../../pipeline/project-analysis/index.js";
 import type { ReachabilitySummary } from "../../pipeline/reachability/index.js";
 import type { RenderGraph } from "../../pipeline/render-model/render-graph/index.js";
 import type { RenderSubtree } from "../../pipeline/render-model/render-ir/index.js";
+import type { RuntimeDomClassReference } from "../../pipeline/runtime-dom/index.js";
 import type { ProjectAnalysisStageResult, SelectorAnalysisStageResult } from "./types.js";
 
 export function runProjectAnalysisStage(input: {
@@ -18,6 +19,7 @@ export function runProjectAnalysisStage(input: {
   renderGraph: RenderGraph;
   renderSubtrees: RenderSubtree[];
   unsupportedClassReferences: UnsupportedClassReferenceDiagnostic[];
+  runtimeDomClassReferences: RuntimeDomClassReference[];
   selectorQueryResults: SelectorAnalysisStageResult["selectorQueryResults"];
   includeTraces?: boolean;
 }): ProjectAnalysisStageResult {

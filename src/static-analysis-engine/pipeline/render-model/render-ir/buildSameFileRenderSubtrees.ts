@@ -40,6 +40,10 @@ export function buildSameFileRenderSubtrees(input: {
     string,
     import("./collection/shared/types.js").LocalHelperDefinition
   >;
+  topLevelHelperDefinitionsByFilePath?: Map<
+    string,
+    Map<string, import("./collection/shared/types.js").LocalHelperDefinition>
+  >;
   importedNamespaceExpressionBindings?: Map<string, Map<string, ts.Expression>>;
   importedNamespaceHelperDefinitions?: Map<
     string,
@@ -71,11 +75,19 @@ export function buildSameFileRenderSubtrees(input: {
         ...(input.importedExpressionBindings?.entries() ?? []),
         ...definition.localExpressionBindings.entries(),
       ]),
+      stringSetBindings: buildParameterStringSetBindings(definition),
       helperDefinitions: new Map([
         ...(input.importedHelperDefinitions?.entries() ?? []),
         ...(input.topLevelHelperDefinitions?.entries() ?? []),
         ...definition.localHelperDefinitions.entries(),
       ]),
+      topLevelHelperDefinitionsByFilePath:
+        input.topLevelHelperDefinitionsByFilePath ??
+        new Map(
+          input.topLevelHelperDefinitions
+            ? [[definition.filePath, input.topLevelHelperDefinitions]]
+            : [],
+        ),
       namespaceExpressionBindings: new Map(
         input.importedNamespaceExpressionBindings?.entries() ?? [],
       ),
@@ -95,6 +107,23 @@ export function buildSameFileRenderSubtrees(input: {
     componentName: definition.componentName,
     sourceAnchor: definition.sourceAnchor,
   }));
+}
+
+function buildParameterStringSetBindings(
+  definition: import("./collection/shared/types.js").SameFileComponentDefinition,
+): Map<string, string[]> {
+  const bindings = new Map<string, string[]>();
+  if (definition.parameterBinding.kind !== "destructured-props") {
+    return bindings;
+  }
+
+  for (const property of definition.parameterBinding.properties) {
+    if (property.finiteStringValues) {
+      bindings.set(property.identifierName, property.finiteStringValues);
+    }
+  }
+
+  return bindings;
 }
 
 function buildRenderNode(node: ts.Expression | ts.JsxChild, context: BuildContext): RenderNode {

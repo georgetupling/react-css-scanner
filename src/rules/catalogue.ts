@@ -3,6 +3,7 @@ import { cssClassUnreachableRule } from "./rules/cssClassUnreachable.js";
 import { compoundSelectorNeverMatchedRule } from "./rules/compoundSelectorNeverMatched.js";
 import { dynamicClassReferenceRule } from "./rules/dynamicClassReference.js";
 import { missingCssModuleClassRule } from "./rules/missingCssModuleClass.js";
+import { selectorOnlyMatchesInUnknownContextsRule } from "./rules/selectorOnlyMatchesInUnknownContexts.js";
 import { singleComponentStyleNotColocatedRule } from "./rules/singleComponentStyleNotColocated.js";
 import { styleSharedWithoutSharedOwnerRule } from "./rules/styleSharedWithoutSharedOwner.js";
 import { styleUsedOutsideOwnerRule } from "./rules/styleUsedOutsideOwner.js";
@@ -22,6 +23,7 @@ export const RULE_DEFINITIONS: RuleDefinition[] = [
   unsatisfiableSelectorRule,
   compoundSelectorNeverMatchedRule,
   unusedCompoundSelectorBranchRule,
+  selectorOnlyMatchesInUnknownContextsRule,
   singleComponentStyleNotColocatedRule,
   styleUsedOutsideOwnerRule,
   styleSharedWithoutSharedOwnerRule,
@@ -38,6 +40,7 @@ export const DEFAULT_RULE_SEVERITIES: Record<RuleId, RuleSeverity> = {
   "unsatisfiable-selector": "warn",
   "compound-selector-never-matched": "warn",
   "unused-compound-selector-branch": "warn",
+  "selector-only-matches-in-unknown-contexts": "debug",
   "single-component-style-not-colocated": "info",
   "style-used-outside-owner": "warn",
   "style-shared-without-shared-owner": "info",

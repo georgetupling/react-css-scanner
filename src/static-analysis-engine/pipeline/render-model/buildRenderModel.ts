@@ -120,6 +120,7 @@ function buildRenderSubtrees(input: {
           input.importedHelperDefinitionsByFilePath.get(filePath) ?? new Map(),
         topLevelHelperDefinitions:
           input.topLevelHelperDefinitionsByFilePath.get(filePath) ?? new Map(),
+        topLevelHelperDefinitionsByFilePath: input.topLevelHelperDefinitionsByFilePath,
         importedNamespaceExpressionBindings:
           input.importedNamespaceExpressionBindingsByFilePath.get(filePath) ?? new Map(),
         importedNamespaceHelperDefinitions:

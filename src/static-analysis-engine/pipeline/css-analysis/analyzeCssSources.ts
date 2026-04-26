@@ -16,6 +16,7 @@ export function analyzeCssSources(
       filePath: cssSource.filePath,
       styleRules,
       classDefinitions: extractClassDefinitions(styleRules),
+      classContexts: extractClassContexts(styleRules),
       atRuleContexts: styleRules.map((styleRule) => styleRule.atRuleContext),
     };
   });
@@ -50,6 +51,43 @@ function extractClassDefinitions(
   }
 
   return [...definitions.values()].sort((left, right) => {
+    if (left.className === right.className) {
+      if (left.line === right.line) {
+        return left.selector.localeCompare(right.selector);
+      }
+
+      return left.line - right.line;
+    }
+
+    return left.className.localeCompare(right.className);
+  });
+}
+
+function extractClassContexts(
+  styleRules: CssStyleRuleFact[],
+): ExperimentalCssFileAnalysis["classContexts"] {
+  const contexts = new Map<string, ExperimentalCssFileAnalysis["classContexts"][number]>();
+
+  for (const styleRule of styleRules) {
+    for (const selectorBranch of styleRule.selectorBranches) {
+      for (const className of selectorBranch.contextClassNames) {
+        const contextKey = `${selectorBranch.raw}::${className}::${serializeAtRuleContext(styleRule.atRuleContext)}`;
+        if (contexts.has(contextKey)) {
+          continue;
+        }
+
+        contexts.set(contextKey, {
+          className,
+          selector: selectorBranch.raw,
+          selectorBranch,
+          line: styleRule.line,
+          atRuleContext: [...styleRule.atRuleContext],
+        });
+      }
+    }
+  }
+
+  return [...contexts.values()].sort((left, right) => {
     if (left.className === right.className) {
       if (left.line === right.line) {
         return left.selector.localeCompare(right.selector);

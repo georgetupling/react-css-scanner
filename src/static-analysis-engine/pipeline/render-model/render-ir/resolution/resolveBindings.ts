@@ -172,6 +172,7 @@ export function resolveHelperCallContext(
       inheritedExpressionBindings,
       helperDefinition.localExpressionBindings,
     ),
+    stringSetBindings: context.stringSetBindings,
     namespaceExpressionBindings: context.namespaceExpressionBindings,
     namespaceHelperDefinitions: context.namespaceHelperDefinitions,
     namespaceComponentDefinitions: context.namespaceComponentDefinitions,

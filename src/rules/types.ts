@@ -17,6 +17,7 @@ export type RuleId =
   | "unsatisfiable-selector"
   | "compound-selector-never-matched"
   | "unused-compound-selector-branch"
+  | "selector-only-matches-in-unknown-contexts"
   | "single-component-style-not-colocated"
   | "style-used-outside-owner"
   | "style-shared-without-shared-owner"

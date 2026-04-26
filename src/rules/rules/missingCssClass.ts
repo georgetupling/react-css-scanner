@@ -17,6 +17,10 @@ function runMissingCssClassRule(context: RuleContext): UnresolvedFinding[] {
         continue;
       }
 
+      if (context.analysis.indexes.contextsByClassName.has(className)) {
+        continue;
+      }
+
       if (
         context.analysis.indexes.providerSatisfactionsByReferenceAndClassName.has(
           createReferenceClassKey(reference.id, className),
@@ -29,7 +33,7 @@ function runMissingCssClassRule(context: RuleContext): UnresolvedFinding[] {
         id: `missing-css-class:${reference.id}:${className}`,
         ruleId: "missing-css-class",
         confidence: "high",
-        message: `Class "${className}" is referenced but no matching CSS definition or declared provider was found.`,
+        message: `Class "${className}" is referenced but no matching CSS definition, selector context, or declared provider was found.`,
         subject: {
           kind: "class-reference",
           id: reference.id,
@@ -72,7 +76,7 @@ function buildMissingClassTraces(input: {
     {
       traceId: `rule-evaluation:missing-css-class:${input.reference.id}:${input.className}`,
       category: "rule-evaluation",
-      summary: `class "${input.className}" was looked up from a definite class reference, but no definition or provider satisfaction was found`,
+      summary: `class "${input.className}" was looked up from a definite class reference, but no definition or provider satisfaction was found, and no selector context was indexed`,
       anchor: input.reference.location,
       children: [
         ...input.reference.traces,
@@ -90,6 +94,16 @@ function buildMissingClassTraces(input: {
           traceId: `rule-evaluation:missing-css-class:${input.reference.id}:${input.className}:provider-lookup`,
           category: "rule-evaluation",
           summary: `no declared external provider satisfied "${input.className}" for this reference`,
+          anchor: input.reference.location,
+          children: [],
+          metadata: {
+            className: input.className,
+          },
+        },
+        {
+          traceId: `rule-evaluation:missing-css-class:${input.reference.id}:${input.className}:context-lookup`,
+          category: "rule-evaluation",
+          summary: `no selector context mentions were indexed for "${input.className}"`,
           anchor: input.reference.location,
           children: [],
           metadata: {

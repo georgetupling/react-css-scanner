@@ -9,6 +9,7 @@ export type PackageCssImportRecord = {
   importerFilePath: string;
   specifier: string;
   resolvedFilePath: string;
+  resolvedAbsolutePath: string;
 };
 
 export type LoadedPackageCssImports = {
@@ -22,22 +23,22 @@ export async function loadPackageCssImports(input: {
   cssSources: Array<{ filePath: string; cssText: string }>;
   diagnostics: ScanDiagnostic[];
 }): Promise<LoadedPackageCssImports> {
-  const nodeModulesRoot = await findNearestNodeModulesRoot(input.rootDir);
+  const nodeModulesRootsByStartDir = new Map<string, string[]>();
   const importsByKey = new Map<string, PackageCssImportRecord>();
   const cssSourcesByPath = new Map(
     input.cssSources.map((cssSource) => [cssSource.filePath, cssSource]),
   );
-  const pendingImports = collectSourcePackageCssImportRecords({
+  const pendingImports = await collectSourcePackageCssImportRecords({
     rootDir: input.rootDir,
-    nodeModulesRoot,
+    nodeModulesRootsByStartDir,
     sourceFiles: input.sourceFiles,
   });
   const loadedPackageCssSources: Array<{ filePath: string; cssText: string }> = [];
   const attemptedFilePaths = new Set<string>();
 
-  for (const importRecord of collectStylesheetPackageCssImportRecords({
+  for (const importRecord of await collectStylesheetPackageCssImportRecords({
     rootDir: input.rootDir,
-    nodeModulesRoot,
+    nodeModulesRootsByStartDir,
     cssSources: [...cssSourcesByPath.values()],
   })) {
     pendingImports.push(importRecord);
@@ -67,11 +68,11 @@ export async function loadPackageCssImports(input: {
     loadedPackageCssSources.push(cssSource);
     cssSourcesByPath.set(cssSource.filePath, cssSource);
     pendingImports.push(
-      ...collectStylesheetPackageCssImportRecords({
+      ...(await collectStylesheetPackageCssImportRecords({
         rootDir: input.rootDir,
-        nodeModulesRoot,
+        nodeModulesRootsByStartDir,
         cssSources: [cssSource],
-      }),
+      })),
     );
   }
 
@@ -89,11 +90,11 @@ export async function loadPackageCssImports(input: {
   };
 }
 
-function collectSourcePackageCssImportRecords(input: {
+async function collectSourcePackageCssImportRecords(input: {
   rootDir: string;
-  nodeModulesRoot?: string;
+  nodeModulesRootsByStartDir: Map<string, string[]>;
   sourceFiles: Array<{ filePath: string; sourceText: string }>;
-}): PackageCssImportRecord[] {
+}): Promise<PackageCssImportRecord[]> {
   const imports: PackageCssImportRecord[] = [];
 
   for (const sourceFile of input.sourceFiles) {
@@ -111,12 +112,13 @@ function collectSourcePackageCssImportRecords(input: {
       }
 
       const specifier = statement.moduleSpecifier.text;
-      const resolvedFilePath = resolvePackageCssImport({
+      const resolvedImport = await resolvePackageCssImport({
         rootDir: input.rootDir,
-        nodeModulesRoot: input.nodeModulesRoot,
+        importerFilePath: sourceFile.filePath,
+        nodeModulesRootsByStartDir: input.nodeModulesRootsByStartDir,
         specifier,
       });
-      if (!resolvedFilePath) {
+      if (!resolvedImport) {
         continue;
       }
 
@@ -124,7 +126,8 @@ function collectSourcePackageCssImportRecords(input: {
         importerKind: "source",
         importerFilePath: sourceFile.filePath,
         specifier,
-        resolvedFilePath,
+        resolvedFilePath: resolvedImport.filePath,
+        resolvedAbsolutePath: resolvedImport.absolutePath,
       });
     }
   }
@@ -132,21 +135,22 @@ function collectSourcePackageCssImportRecords(input: {
   return imports.sort(comparePackageCssImports);
 }
 
-function collectStylesheetPackageCssImportRecords(input: {
+async function collectStylesheetPackageCssImportRecords(input: {
   rootDir: string;
-  nodeModulesRoot?: string;
+  nodeModulesRootsByStartDir: Map<string, string[]>;
   cssSources: Array<{ filePath: string; cssText: string }>;
-}): PackageCssImportRecord[] {
+}): Promise<PackageCssImportRecord[]> {
   const imports: PackageCssImportRecord[] = [];
 
   for (const cssSource of input.cssSources) {
     for (const specifier of extractCssImportSpecifiers(cssSource.cssText)) {
-      const resolvedFilePath = resolvePackageCssImport({
+      const resolvedImport = await resolvePackageCssImport({
         rootDir: input.rootDir,
-        nodeModulesRoot: input.nodeModulesRoot,
+        importerFilePath: cssSource.filePath,
+        nodeModulesRootsByStartDir: input.nodeModulesRootsByStartDir,
         specifier,
       });
-      if (!resolvedFilePath) {
+      if (!resolvedImport) {
         continue;
       }
 
@@ -154,7 +158,8 @@ function collectStylesheetPackageCssImportRecords(input: {
         importerKind: "stylesheet",
         importerFilePath: cssSource.filePath,
         specifier,
-        resolvedFilePath,
+        resolvedFilePath: resolvedImport.filePath,
+        resolvedAbsolutePath: resolvedImport.absolutePath,
       });
     }
   }
@@ -167,11 +172,10 @@ async function readPackageCssSource(input: {
   importRecord: PackageCssImportRecord;
   diagnostics: ScanDiagnostic[];
 }): Promise<{ filePath: string; cssText: string } | undefined> {
-  const absolutePath = path.resolve(input.rootDir, input.importRecord.resolvedFilePath);
   try {
     return {
       filePath: input.importRecord.resolvedFilePath,
-      cssText: await readFile(absolutePath, "utf8"),
+      cssText: await readFile(input.importRecord.resolvedAbsolutePath, "utf8"),
     };
   } catch (error) {
     input.diagnostics.push({
@@ -179,34 +183,62 @@ async function readPackageCssSource(input: {
       severity: "warning",
       phase: "loading",
       filePath: input.importRecord.importerFilePath,
-      message: `failed to load package CSS import "${input.importRecord.specifier}" from ${input.importRecord.importerFilePath}: ${error instanceof Error ? error.message : String(error)}`,
+      message: `failed to load package CSS import "${input.importRecord.specifier}" from ${input.importRecord.importerFilePath} at ${input.importRecord.resolvedAbsolutePath}: ${error instanceof Error ? error.message : String(error)}`,
     });
     return undefined;
   }
 }
 
-function resolvePackageCssImport(input: {
+async function resolvePackageCssImport(input: {
   rootDir: string;
-  nodeModulesRoot?: string;
+  importerFilePath: string;
+  nodeModulesRootsByStartDir: Map<string, string[]>;
   specifier: string;
-}): string | undefined {
+}): Promise<{ filePath: string; absolutePath: string } | undefined> {
   const normalizedSpecifier = input.specifier.replace(/\\/g, "/");
   if (!isPackageCssImportSpecifier(normalizedSpecifier)) {
     return undefined;
   }
 
-  const nodeModulesRoot = input.nodeModulesRoot ?? path.resolve(input.rootDir, "node_modules");
-  const absolutePath = path.resolve(nodeModulesRoot, normalizedSpecifier);
-  if (!isPathInsideRoot(nodeModulesRoot, absolutePath)) {
-    return undefined;
+  const importerAbsolutePath = path.resolve(input.rootDir, input.importerFilePath);
+  const startDir = path.dirname(importerAbsolutePath);
+  let nodeModulesRoots = input.nodeModulesRootsByStartDir.get(startDir);
+  if (!nodeModulesRoots) {
+    nodeModulesRoots = await findNodeModulesRoots(startDir);
+    input.nodeModulesRootsByStartDir.set(startDir, nodeModulesRoots);
   }
 
-  return normalizeProjectPath(path.relative(input.rootDir, absolutePath));
+  const candidateRoots =
+    nodeModulesRoots.length > 0 ? nodeModulesRoots : [path.resolve(startDir, "node_modules")];
+  const candidates = candidateRoots
+    .map((nodeModulesRoot) => ({
+      nodeModulesRoot,
+      absolutePath: path.resolve(nodeModulesRoot, normalizedSpecifier),
+    }))
+    .filter((candidate) => isPathInsideRoot(candidate.nodeModulesRoot, candidate.absolutePath));
+
+  for (const candidate of candidates) {
+    if (await isFile(candidate.absolutePath)) {
+      return {
+        absolutePath: candidate.absolutePath,
+        filePath: normalizeProjectPath(path.relative(input.rootDir, candidate.absolutePath)),
+      };
+    }
+  }
+
+  const fallback = candidates[0];
+  return fallback
+    ? {
+        absolutePath: fallback.absolutePath,
+        filePath: normalizeProjectPath(path.relative(input.rootDir, fallback.absolutePath)),
+      }
+    : undefined;
 }
 
-async function findNearestNodeModulesRoot(rootDir: string): Promise<string | undefined> {
+async function findNodeModulesRoots(rootDir: string): Promise<string[]> {
   let currentDir = path.resolve(rootDir);
   let nearestPackageJsonDir: string | undefined;
+  const roots: string[] = [];
 
   while (true) {
     if (!nearestPackageJsonDir && (await isFile(path.join(currentDir, "package.json")))) {
@@ -215,12 +247,15 @@ async function findNearestNodeModulesRoot(rootDir: string): Promise<string | und
 
     const candidate = path.join(currentDir, "node_modules");
     if (await isDirectory(candidate)) {
-      return candidate;
+      roots.push(candidate);
     }
 
     const parentDir = path.dirname(currentDir);
     if (parentDir === currentDir) {
-      return nearestPackageJsonDir ? path.join(nearestPackageJsonDir, "node_modules") : undefined;
+      if (roots.length > 0) {
+        return roots;
+      }
+      return nearestPackageJsonDir ? [path.join(nearestPackageJsonDir, "node_modules")] : [];
     }
 
     currentDir = parentDir;

@@ -1,6 +1,9 @@
 import type { AnalysisTrace } from "../../static-analysis-engine/index.js";
 import type { RuleContext, RuleDefinition, UnresolvedFinding } from "../types.js";
-import { isIntentionallyBroadStylesheetPath } from "./ownershipRuleUtils.js";
+import {
+  findPrivateComponentOwnerCandidate,
+  isIntentionallyBroadStylesheetPath,
+} from "./ownershipRuleUtils.js";
 
 export const styleUsedOutsideOwnerRule: RuleDefinition = {
   id: "style-used-outside-owner",
@@ -27,13 +30,7 @@ function runStyleUsedOutsideOwnerRule(context: RuleContext): UnresolvedFinding[]
       continue;
     }
 
-    const ownerCandidate = ownership.ownerCandidates.find(
-      (candidate) =>
-        candidate.kind === "component" &&
-        candidate.confidence === "high" &&
-        candidate.id &&
-        candidate.reasons.includes("single-importing-component"),
-    );
+    const ownerCandidate = findPrivateComponentOwnerCandidate(ownership.ownerCandidates);
     if (!ownerCandidate?.id) {
       continue;
     }

@@ -10,6 +10,7 @@ import { runParseStage } from "./stages/parseStage.js";
 import { runProjectAnalysisStage } from "./stages/projectAnalysisStage.js";
 import { runReachabilityStage } from "./stages/reachabilityStage.js";
 import { runRenderModelStage } from "./stages/renderModelStage.js";
+import { runRuntimeDomStage } from "./stages/runtimeDomStage.js";
 import { runSelectorAnalysisStage } from "./stages/selectorAnalysisStage.js";
 import { runSymbolResolutionStage } from "./stages/symbolResolutionStage.js";
 
@@ -79,6 +80,16 @@ export function analyzeProjectSourceTexts(input: {
       includeTraces,
     }),
   );
+  const runtimeDomStage = runAnalysisStage(
+    progress,
+    "runtime-dom",
+    "Analyzing runtime DOM class usage",
+    () =>
+      runRuntimeDomStage({
+        parsedFiles: parseStage.parsedFiles,
+        includeTraces,
+      }),
+  );
   const cssAnalysisStage = runAnalysisStage(progress, "css-analysis", "Analyzing CSS", () =>
     runCssAnalysisStage({
       selectorCssSources: input.selectorCssSources ?? [],
@@ -147,6 +158,7 @@ export function analyzeProjectSourceTexts(input: {
         renderGraph: renderModelStage.renderGraph,
         renderSubtrees: renderModelStage.renderSubtrees,
         unsupportedClassReferences: renderModelStage.unsupportedClassReferences,
+        runtimeDomClassReferences: runtimeDomStage.runtimeDomClassReferences,
         selectorQueryResults: selectorAnalysisStage.selectorQueryResults,
         includeTraces,
       }),

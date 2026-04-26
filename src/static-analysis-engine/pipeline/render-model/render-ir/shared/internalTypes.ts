@@ -14,7 +14,9 @@ export type BuildContext = {
   currentDepth: number;
   expansionStack: string[];
   expressionBindings: Map<string, ts.Expression>;
+  stringSetBindings: Map<string, string[]>;
   helperDefinitions: Map<string, LocalHelperDefinition>;
+  topLevelHelperDefinitionsByFilePath: Map<string, Map<string, LocalHelperDefinition>>;
   namespaceExpressionBindings: Map<string, Map<string, ts.Expression>>;
   namespaceHelperDefinitions: Map<string, Map<string, LocalHelperDefinition>>;
   namespaceComponentDefinitions: Map<string, Map<string, SameFileComponentDefinition>>;

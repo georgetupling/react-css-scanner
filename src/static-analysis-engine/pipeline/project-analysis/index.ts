@@ -1,6 +1,7 @@
 export { buildProjectAnalysis } from "./buildProjectAnalysis.js";
 export { serializeProjectAnalysis } from "./serializeProjectAnalysis.js";
 export type {
+  ClassContextAnalysis,
   ClassDefinitionAnalysis,
   ClassDefinitionSelectorKind,
   ClassConsumerSummary,

@@ -10,6 +10,7 @@ export {
 export { collectTopLevelSymbols, createSymbolId } from "./pipeline/symbol-resolution/index.js";
 export { summarizeClassNameExpression, toAbstractClassSet } from "./pipeline/render-model/index.js";
 export { buildExternalCssSummary } from "./pipeline/external-css/index.js";
+export { analyzeRuntimeDomClasses } from "./pipeline/runtime-dom/index.js";
 export { collectUnsupportedClassReferences } from "./pipeline/render-model/index.js";
 export {
   buildSameFileRenderSubtrees,
@@ -28,6 +29,7 @@ export {
 export type { EngineModuleId, EngineSymbolId, SourceAnchor } from "./types/core.js";
 export type {
   CssAtRuleContextFact,
+  CssClassContextFact,
   CssClassDefinitionFact,
   CssDeclarationFact,
   CssSelectorBranchFact,
@@ -65,6 +67,10 @@ export type {
   ExternalCssSummary,
   HtmlStylesheetLinkInput,
 } from "./pipeline/external-css/index.js";
+export type {
+  RuntimeDomClassReference,
+  RuntimeDomClassReferenceKind,
+} from "./pipeline/runtime-dom/index.js";
 export type {
   RenderGraph,
   RenderGraphEdge,
@@ -109,6 +115,7 @@ export type {
   RenderUnknownNode,
 } from "./pipeline/render-model/render-ir/index.js";
 export type {
+  ClassContextAnalysis,
   ClassDefinitionAnalysis,
   ClassDefinitionSelectorKind,
   ClassConsumerSummary,

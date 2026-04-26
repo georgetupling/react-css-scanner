@@ -67,6 +67,82 @@ test("css-class-unreachable does not report reachable definitions", async () => 
   }
 });
 
+test("css-class-unreachable keeps app-entry CSS inside the HTML app boundary", async () => {
+  const project = await new TestProjectBuilder()
+    .withFile(
+      "apps/admin/index.html",
+      '<script type="module" src="/apps/admin/src/main.tsx"></script>\n',
+    )
+    .withFile(
+      "apps/web/index.html",
+      '<script type="module" src="/apps/web/src/main.tsx"></script>\n',
+    )
+    .withSourceFile(
+      "apps/admin/src/main.tsx",
+      'import "./admin.css";\nexport function AdminApp() { return <main className="admin-only">Admin</main>; }\n',
+    )
+    .withSourceFile(
+      "apps/web/src/main.tsx",
+      'import "./web.css";\nexport function WebApp() { return <main className="admin-only">Web</main>; }\n',
+    )
+    .withCssFile("apps/admin/src/admin.css", ".admin-only { color: red; }\n")
+    .withCssFile("apps/web/src/web.css", ".web-only { color: blue; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+    });
+
+    const finding = result.findings.find(
+      (candidate) =>
+        candidate.ruleId === "css-class-unreachable" &&
+        candidate.location?.filePath === "apps/web/src/main.tsx" &&
+        candidate.data?.className === "admin-only",
+    );
+    assert.ok(finding);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("css-class-unreachable treats app-entry imported CSS as reachable from routed components", async () => {
+  const project = await new TestProjectBuilder()
+    .withFile("index.html", '<script type="module" src="/src/main.tsx"></script>\n')
+    .withSourceFile(
+      "src/main.tsx",
+      [
+        'import "./index.css";',
+        'import { HomePage } from "./pages/HomePage";',
+        "export function App() { return <HomePage />; }",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/pages/HomePage.tsx",
+      [
+        "export function HomePage() {",
+        '  return <main className="page-flow"><div className="flex gap-2">Home</div></main>;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/index.css", '@import "./styles/layouts.css";\n')
+    .withCssFile(
+      "src/styles/layouts.css",
+      ".page-flow { display: flex; }\n.flex { display: flex; }\n.gap-2 { gap: .5rem; }\n",
+    )
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "css-class-unreachable", ["page-flow", "flex", "gap-2"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("css-class-unreachable does not report when one matching definition is reachable", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(
@@ -90,6 +166,17 @@ test("css-class-unreachable does not report when one matching definition is reac
     await project.cleanup();
   }
 });
+
+function assertNoClassFindings(result, ruleId, classNames) {
+  assert.deepEqual(
+    result.findings
+      .filter(
+        (finding) => finding.ruleId === ruleId && classNames.includes(finding.data?.className),
+      )
+      .map((finding) => finding.data?.className),
+    [],
+  );
+}
 
 test("css-class-unreachable can be disabled from config", async () => {
   const project = await new TestProjectBuilder()

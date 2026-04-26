@@ -695,6 +695,66 @@ test("missing-css-class does not use raw JSX fallback for unsupported render sha
   }
 });
 
+test("missing-css-class accepts context-only classes from compound selectors", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/SiteHeaderSkeleton.tsx",
+      [
+        'import "./SiteHeader.css";',
+        "export function SiteHeaderSkeleton() {",
+        '  return <header className="site-header site-header--skeleton"><nav className="site-header__nav" /></header>;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile(
+      "src/SiteHeader.css",
+      ".site-header { display: block; }\n.site-header--skeleton .site-header__nav { justify-content: flex-end; }\n",
+    )
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "missing-css-class", ["site-header--skeleton"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("missing-css-class resolves package CSS from ancestor node_modules in nested roots", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "apps/loremaster/client/src/App.tsx",
+      'import "./index.css";\nexport function App() { return <main className="brand-token">Hello</main>; }\n',
+    )
+    .withCssFile(
+      "apps/loremaster/client/src/index.css",
+      '@import "@loremaster/branding/tokens.css";\n',
+    )
+    .withFile("apps/loremaster/client/package.json", '{ "name": "client" }\n')
+    .withFile("apps/loremaster/client/node_modules/.keep", "\n")
+    .withNodeModuleFile("@loremaster/branding/tokens.css", ".brand-token { color: red; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.filePath("apps/loremaster/client/src"),
+    });
+
+    assert.deepEqual(
+      result.diagnostics.filter(
+        (diagnostic) => diagnostic.code === "loading.package-css-import-read-failed",
+      ),
+      [],
+    );
+    assertNoClassFindings(result, "missing-css-class", ["brand-token"]);
+    assertNoClassFindings(result, "css-class-unreachable", ["brand-token"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("missing-css-class deduplicates repeated render IR class references", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(
@@ -721,3 +781,14 @@ test("missing-css-class deduplicates repeated render IR class references", async
     await project.cleanup();
   }
 });
+
+function assertNoClassFindings(result, ruleId, classNames) {
+  assert.deepEqual(
+    result.findings
+      .filter(
+        (finding) => finding.ruleId === ruleId && classNames.includes(finding.data?.className),
+      )
+      .map((finding) => finding.data?.className),
+    [],
+  );
+}

@@ -11,6 +11,16 @@ export type ReachabilityDerivation =
       stylesheetHref: string;
     }
   | {
+      kind: "source-file-project-wide-app-entry-css";
+      entrySourceFilePath: string;
+      appRootPath: string;
+    }
+  | {
+      kind: "source-file-outside-app-entry-css-boundary";
+      entrySourceFilePath: string;
+      appRootPath: string;
+    }
+  | {
       kind: "whole-component-direct-import";
     }
   | {

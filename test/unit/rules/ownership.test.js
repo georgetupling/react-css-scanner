@@ -69,7 +69,50 @@ test("single-component-style-not-colocated does not report colocated sibling sty
   }
 });
 
-test("style-used-outside-owner reports classes consumed outside a single importing component owner", async () => {
+test("style-used-outside-owner reports classes consumed outside a private component stylesheet", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/components/Button/Button.tsx",
+      [
+        'import "./Button.css";',
+        'export function Button() { return <button className="button">Save</button>; }',
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/components/Card.tsx",
+      [
+        'import { Button } from "./Button/Button";',
+        'export function Card() { return <div><Button /><span className="button">Again</span></div>; }',
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/components/Button/Button.css", ".button { display: block; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/components/Button/Button.tsx", "src/components/Card.tsx"],
+      cssFilePaths: ["src/components/Button/Button.css"],
+    });
+
+    const findings = result.findings.filter(
+      (finding) => finding.ruleId === "style-used-outside-owner",
+    );
+    assert.equal(findings.length, 1);
+    assert.equal(findings[0].severity, "warn");
+    assert.equal(findings[0].confidence, "high");
+    assert.equal(findings[0].subject.kind, "class-definition");
+    assert.equal(findings[0].data?.className, "button");
+    assert.equal(findings[0].data?.ownerComponentName, "Button");
+    assert.equal(findings[0].data?.consumerComponentName, "Card");
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("style-used-outside-owner does not treat single importer alone as private ownership", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(
       "src/components/Button.tsx",
@@ -97,16 +140,10 @@ test("style-used-outside-owner reports classes consumed outside a single importi
       cssFilePaths: ["src/styles/button.css"],
     });
 
-    const findings = result.findings.filter(
-      (finding) => finding.ruleId === "style-used-outside-owner",
+    assert.deepEqual(
+      result.findings.filter((finding) => finding.ruleId === "style-used-outside-owner"),
+      [],
     );
-    assert.equal(findings.length, 1);
-    assert.equal(findings[0].severity, "warn");
-    assert.equal(findings[0].confidence, "high");
-    assert.equal(findings[0].subject.kind, "class-definition");
-    assert.equal(findings[0].data?.className, "button");
-    assert.equal(findings[0].data?.ownerComponentName, "Button");
-    assert.equal(findings[0].data?.consumerComponentName, "Card");
   } finally {
     await project.cleanup();
   }
@@ -304,3 +341,109 @@ test("style-shared-without-shared-owner does not report intentionally broad styl
     await project.cleanup();
   }
 });
+
+test("style-shared-without-shared-owner does not report generic family stylesheets shared by matching components", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/features/article/components/ArticleCard/ArticleCard.tsx",
+      [
+        'import "./Card.css";',
+        'export function ArticleCard() { return <article className="card">Article</article>; }',
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/features/topic/components/TopicCard/TopicCard.tsx",
+      [
+        'import "../../../article/components/ArticleCard/Card.css";',
+        'export function TopicCard() { return <article className="card">Topic</article>; }',
+        "",
+      ].join("\n"),
+    )
+    .withCssFile(
+      "src/features/article/components/ArticleCard/Card.css",
+      ".card { display: block; }\n",
+    )
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: [
+        "src/features/article/components/ArticleCard/ArticleCard.tsx",
+        "src/features/topic/components/TopicCard/TopicCard.tsx",
+      ],
+      cssFilePaths: ["src/features/article/components/ArticleCard/Card.css"],
+    });
+
+    assert.deepEqual(
+      result.findings.filter((finding) => finding.ruleId === "style-shared-without-shared-owner"),
+      [],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("style-shared-without-shared-owner ignores intentional cross-feature family stylesheet imports", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/features/article/components/ArticleCard/ArticleCard.tsx",
+      [
+        'import "./Card.css";',
+        "export function ArticleCard() {",
+        '  return <article className="card card--article"><div className="card__body card__body--article" /></article>;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/features/topic/components/TopicCard/TopicCard.tsx",
+      [
+        'import "../../../article/components/ArticleCard/Card.css";',
+        "export function TopicCard() {",
+        '  return <article className="card card--simple"><div className="card__body card__body--simple" /></article>;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile(
+      "src/features/article/components/ArticleCard/Card.css",
+      [
+        ".card { display: block; }",
+        ".card--article { display: block; }",
+        ".card--simple { display: block; }",
+        ".card__body { padding: 1rem; }",
+        ".card__body--article { min-height: 12rem; }",
+        ".card__body--simple { display: flex; }",
+        "",
+      ].join("\n"),
+    )
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "style-shared-without-shared-owner", [
+      "card",
+      "card--article",
+      "card--simple",
+      "card__body",
+      "card__body--article",
+      "card__body--simple",
+    ]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+function assertNoClassFindings(result, ruleId, classNames) {
+  assert.deepEqual(
+    result.findings
+      .filter(
+        (finding) => finding.ruleId === ruleId && classNames.includes(finding.data?.className),
+      )
+      .map((finding) => finding.data?.className),
+    [],
+  );
+}

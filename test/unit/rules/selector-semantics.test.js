@@ -73,6 +73,47 @@ test("unsatisfiable-selector does not report selectors with bounded render match
   }
 });
 
+test("selector-only-matches-in-unknown-contexts reports debug uncertainty for dynamic selector contexts", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        "export function App(props) {",
+        '  return <main className={props.wrapperClass}><span className="title">Hello</span></main>;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".card > .title { color: green; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
+      cssFilePaths: ["src/App.css"],
+    });
+
+    const findings = result.findings.filter(
+      (finding) => finding.ruleId === "selector-only-matches-in-unknown-contexts",
+    );
+    assert.equal(findings.length, 1);
+    assert.equal(findings[0].severity, "debug");
+    assert.equal(findings[0].confidence, "low");
+    assert.equal(findings[0].subject.kind, "selector-query");
+    assert.equal(findings[0].data?.selectorText, ".card > .title");
+    assert.equal(findings[0].data?.outcome, "possible-match");
+    assert.equal(findings[0].data?.status, "unsupported");
+    assert.deepEqual(
+      result.findings.filter((finding) => finding.ruleId === "unsatisfiable-selector"),
+      [],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("compound-selector-never-matched reports same-node class conjunctions with no render match", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(
@@ -217,3 +258,110 @@ test("unused-compound-selector-branch does not report when all selector list bra
     await project.cleanup();
   }
 });
+
+test("selector analysis follows custom class props and renderable slot children", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./Modal.css";',
+        'import { Button } from "./Button";',
+        'import { Field } from "./Field";',
+        'import { Modal } from "./Modal";',
+        "export function App() {",
+        "  const footer = <Button>Confirm</Button>;",
+        "  return (",
+        "    <Modal",
+        '      className="image-gallery-wizard-modal"',
+        '      panelClassName="image-gallery-wizard-modal__panel"',
+        '      bodyClassName="image-gallery-wizard-modal__body"',
+        '      footerClassName="image-gallery-wizard-modal__footer"',
+        "      footer={footer}",
+        "    >",
+        '      <Field className="image-gallery-wizard-modal__crop-field" label="Zoom" />',
+        "    </Modal>",
+        "  );",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/Modal.tsx",
+      [
+        "function joinClasses(...classes) { return classes.filter(Boolean).join(' '); }",
+        "export function Modal({ children, className, panelClassName, bodyClassName, footerClassName, footer }) {",
+        "  return (",
+        "    <div className={joinClasses('modal', className)}>",
+        "      <div className={joinClasses('modal__panel', panelClassName)}>",
+        "        <div className={joinClasses('modal__body', bodyClassName)}>{children}</div>",
+        "        {footer ? <footer className={joinClasses('modal__footer', footerClassName)}>{footer}</footer> : null}",
+        "      </div>",
+        "    </div>",
+        "  );",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/Button.tsx",
+      'export function Button({ children }) { return <button className="button">{children}</button>; }\n',
+    )
+    .withSourceFile(
+      "src/Field.tsx",
+      "export function Field({ className, label }) { return <label className={['field', className].filter(Boolean).join(' ')}><span className=\"field__label\">{label}</span></label>; }\n",
+    )
+    .withCssFile(
+      "src/Modal.css",
+      [
+        ".image-gallery-wizard-modal { display: block; }",
+        ".image-gallery-wizard-modal__panel { display: grid; }",
+        ".image-gallery-wizard-modal__body { padding: 1rem; }",
+        ".image-gallery-wizard-modal__footer { display: flex; }",
+        ".image-gallery-wizard-modal__crop-field { display: block; }",
+        ".image-gallery-wizard-modal__footer .button { margin-inline-start: auto; }",
+        ".image-gallery-wizard-modal__crop-field .field__label { font-weight: 600; }",
+        "",
+      ].join("\n"),
+    )
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", [
+      "image-gallery-wizard-modal__panel",
+      "image-gallery-wizard-modal__body",
+      "image-gallery-wizard-modal__footer",
+      "image-gallery-wizard-modal__crop-field",
+    ]);
+    assertNoSelectorFindings(result, "unsatisfiable-selector", [
+      ".image-gallery-wizard-modal__footer .button",
+      ".image-gallery-wizard-modal__crop-field .field__label",
+    ]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+function assertNoClassFindings(result, ruleId, classNames) {
+  assert.deepEqual(
+    result.findings
+      .filter(
+        (finding) => finding.ruleId === ruleId && classNames.includes(finding.data?.className),
+      )
+      .map((finding) => finding.data?.className),
+    [],
+  );
+}
+
+function assertNoSelectorFindings(result, ruleId, selectorTexts) {
+  assert.deepEqual(
+    result.findings
+      .filter(
+        (finding) =>
+          finding.ruleId === ruleId && selectorTexts.includes(finding.data?.selectorText),
+      )
+      .map((finding) => finding.data?.selectorText),
+    [],
+  );
+}
