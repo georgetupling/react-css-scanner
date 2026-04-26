@@ -330,11 +330,89 @@ test("CLI hides debug findings in CLI output", async () => {
 
   try {
     const defaultOutputPath = project.filePath("default-report.json");
-    await runCli([project.rootDir, "--json", "--output-file", defaultOutputPath]);
+    await runCli(["--json", "--output-file", defaultOutputPath], { cwd: project.rootDir });
     const defaultOutput = await readJsonFile(defaultOutputPath);
     assert.deepEqual(defaultOutput.findings, []);
     assert.equal(defaultOutput.summary.findingCount, 0);
     assert.equal(defaultOutput.summary.findingsBySeverity.debug, 0);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("CLI hides dynamic class reference findings by default and can print debug output", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      "export function App(props) { return <main className={props.className}>Hello</main>; }\n",
+    )
+    .build();
+
+  try {
+    const defaultOutputPath = project.filePath("default-report.json");
+    await runCli([project.rootDir, "--json", "--output-file", defaultOutputPath]);
+    const defaultOutput = await readJsonFile(defaultOutputPath);
+
+    assert.deepEqual(defaultOutput.findings, []);
+    assert.equal(defaultOutput.summary.findingCount, 0);
+    assert.equal(defaultOutput.summary.findingsBySeverity.debug, 0);
+
+    const debugOutputPath = project.filePath("debug-report.json");
+    await runCli(["--json", "--output-file", debugOutputPath, "--output-min-severity", "debug"], {
+      cwd: project.rootDir,
+    });
+    const debugOutput = await readJsonFile(debugOutputPath);
+
+    assert.equal(debugOutput.findings.length, 1);
+    assert.equal(debugOutput.findings[0].ruleId, "dynamic-class-reference");
+    assert.equal(debugOutput.findings[0].severity, "debug");
+    assert.equal(debugOutput.summary.findingCount, 1);
+    assert.equal(debugOutput.summary.findingsBySeverity.debug, 1);
+
+    await writeFile(
+      project.filePath("scan-react-css.json"),
+      `${JSON.stringify({ rules: { "dynamic-class-reference": "info" } }, null, 2)}\n`,
+      "utf8",
+    );
+
+    const overrideOutputPath = project.filePath("override-report.json");
+    await runCli(["--json", "--output-file", overrideOutputPath], { cwd: project.rootDir });
+    const overrideOutput = await readJsonFile(overrideOutputPath);
+
+    assert.equal(overrideOutput.findings.length, 1);
+    assert.equal(overrideOutput.findings[0].ruleId, "dynamic-class-reference");
+    assert.equal(overrideOutput.findings[0].severity, "info");
+    assert.equal(overrideOutput.summary.findingCount, 1);
+    assert.equal(overrideOutput.summary.findingsBySeverity.info, 1);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("CLI output-min-severity filters text output without changing failure status", async () => {
+  const project = await new TestProjectBuilder()
+    .withConfig({
+      failOnSeverity: "warn",
+      rules: {
+        "missing-css-class": "warn",
+        "dynamic-class-reference": "info",
+      },
+    })
+    .withSourceFile(
+      "src/App.tsx",
+      'export function App(props) { return <main className={props.className}><span className="missing" /></main>; }\n',
+    )
+    .build();
+
+  try {
+    const error = await captureRejectedCliRun(["--output-min-severity", "error"], {
+      cwd: project.rootDir,
+    });
+
+    assert.equal(error.code, 1);
+    assert.match(error.stdout, /Findings\n {2}No findings\./);
+    assert.match(error.stdout, /Findings: 0/);
+    assert.match(error.stdout, /Failed: yes/);
   } finally {
     await project.cleanup();
   }
@@ -363,7 +441,6 @@ test("CLI rejects historical options that are recognized but not yet restored", 
   const historicalOptions = [
     ["--print-config", "on"],
     ["--verbosity", "high"],
-    ["--output-min-severity", "warn"],
   ];
 
   for (const args of historicalOptions) {

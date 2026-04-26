@@ -61,7 +61,7 @@ By default this creates a timestamped report such as
 ## CLI Usage
 
 ```bash
-scan-react-css [rootDir] [--config path] [--focus path-or-glob] [--json] [--output-file path] [--overwrite-output] [--timings]
+scan-react-css [rootDir] [--config path] [--focus path-or-glob] [--json] [--output-file path] [--overwrite-output] [--output-min-severity severity] [--timings]
 ```
 
 Supported flags:
@@ -71,6 +71,7 @@ Supported flags:
 - `--json`
 - `--output-file path/to/report.json`
 - `--overwrite-output`
+- `--output-min-severity debug|info|warn|error`
 - `--timings`
 - `--help`
 
@@ -104,9 +105,13 @@ These historical flags are recognized but not supported in this build yet:
 
 - `--print-config`
 - `--verbosity`
-- `--output-min-severity`
 
 `--output-file` and `--overwrite-output` require `--json`.
+
+`--output-min-severity` filters diagnostics and findings in text output and JSON reports. It
+defaults to `info`, which hides debug scanner-internal uncertainty findings. Use
+`--output-min-severity debug` to include debug findings in the report. This does not change
+`failOnSeverity` or the CLI exit code.
 
 Interactive text-mode scans print the active scan stage to `stderr` while analysis is running, for
 example `Building reachability graph`. JSON mode keeps progress output disabled so automation sees
@@ -123,6 +128,7 @@ Default behavior:
 
 - writes to a timestamped file like `scan-react-css-reports/report-2026-04-25-19-42-08.json`
 - preserves existing reports by adding a numeric suffix if a selected report path already exists
+- applies `--output-min-severity` to reported diagnostics, findings, and their summary counts
 - exits non-zero after writing the report if the scan failed
 
 Custom output:
@@ -158,7 +164,7 @@ Current config shape:
   "failOnSeverity": "error",
   "rules": {
     "unused-css-class": "warn",
-    "dynamic-class-reference": "info",
+    "dynamic-class-reference": "debug",
     "unsupported-syntax-affecting-analysis": "off"
   },
   "cssModules": {
@@ -220,10 +226,14 @@ Default rules:
 - `single-component-style-not-colocated` defaults to `info`
 - `style-used-outside-owner` defaults to `warn`
 - `style-shared-without-shared-owner` defaults to `info`
-- `dynamic-class-reference` defaults to `info`
+- `dynamic-class-reference` defaults to `debug`
 - `unsupported-syntax-affecting-analysis` defaults to `debug`
 
-Findings carry both severity and confidence. Debug findings are hidden from CLI output.
+Findings carry both severity and confidence. Debug findings are hidden from CLI output by the
+default `--output-min-severity info` threshold. The scanner-internal uncertainty rules
+`dynamic-class-reference` and `unsupported-syntax-affecting-analysis` default to debug so routine
+bounded-analysis traces do not appear as user-facing findings unless a project opts in with
+`--output-min-severity debug` or a rule severity override.
 
 ## Node API
 

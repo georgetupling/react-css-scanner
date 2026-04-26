@@ -41,6 +41,6 @@ export const DEFAULT_RULE_SEVERITIES: Record<RuleId, RuleSeverity> = {
   "single-component-style-not-colocated": "info",
   "style-used-outside-owner": "warn",
   "style-shared-without-shared-owner": "info",
-  "dynamic-class-reference": "info",
+  "dynamic-class-reference": "debug",
   "unsupported-syntax-affecting-analysis": "debug",
 };

@@ -20,7 +20,7 @@ test("dynamic-class-reference reports class references that cannot be reduced st
 
     assert.equal(result.findings.length, 1);
     assert.equal(result.findings[0].ruleId, "dynamic-class-reference");
-    assert.equal(result.findings[0].severity, "info");
+    assert.equal(result.findings[0].severity, "debug");
     assert.equal(result.findings[0].confidence, "high");
     assert.equal(result.findings[0].subject.kind, "class-reference");
     assert.equal(result.findings[0].evidence[0].kind, "source-file");

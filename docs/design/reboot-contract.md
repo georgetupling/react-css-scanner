@@ -482,12 +482,14 @@ type ScanDiagnostic = {
 
 This separation matters because unsupported or budget-limited analysis should not always become user-facing rule findings.
 
-Unsupported analysis should normally be emitted as `debug` diagnostics. A rule may still produce a
-user-facing finding when uncertainty itself is the subject of that rule, but the default product
-behavior should keep bounded-analysis detail out of normal finding lists.
+Unsupported analysis and unresolved dynamic class expressions should normally be emitted as `debug`
+diagnostics or findings. A rule may still produce a user-facing finding when uncertainty itself is
+the subject of that rule, but the default product behavior should keep bounded-analysis detail out
+of normal finding lists unless a project raises the rule severity.
 
-CLI text and JSON output hide `debug` diagnostics and findings. Detailed trace/debug export should
-be added as a separate report mode rather than mixed into the default user-facing reports.
+CLI text and JSON output hide `debug` diagnostics and findings by default through the
+`--output-min-severity info` threshold. Users may lower the reporting threshold to `debug` to inspect
+scanner-internal uncertainty findings without changing `failOnSeverity` or the scan failure state.
 
 ## Focused CLI Output
 
@@ -589,6 +591,8 @@ Output path behavior:
 - stdout contains only a short human-readable confirmation and final failure status
 - the CLI exit code still follows the scan failure state after the report is written
 - JSON mode does not print progress updates
+- `--output-min-severity` filters reported diagnostics, findings, and report summary counts without
+  changing scan analysis or failure status
 - `--timings` adds the optional `performance` block to JSON output
 
 The JSON object written to disk should contain:
@@ -618,6 +622,7 @@ Text output should:
 - separate file sections with blank lines
 - print finding locations as `path/to/file:line` targets that common terminals and VS Code can open
 - sort findings within a file by severity, line, rule id, and message
+- apply `--output-min-severity` to reported diagnostics and findings
 - put the summary at the end
 - color severity labels in interactive terminals
 - suppress color when stdout is not a TTY or `NO_COLOR` is set

@@ -301,9 +301,9 @@ Config:
 
 ### Dynamic And Diagnostic
 
-#### `dynamic-class-usage`
+#### `dynamic-class-reference`
 
-Default severity: `info`
+Default severity: `debug`
 
 Triggers when a class expression cannot be reduced to a finite exact or possible set of class names.
 
@@ -311,11 +311,14 @@ Meaning:
 
 - the scanner found class usage that affects CSS analysis
 - static analysis cannot fully resolve the expression
+- this is primarily an analysis uncertainty trace rather than a routine user action
 
 Config:
 
 - should support ignore patterns for known helper calls or generated class names
 - may support configured class helper libraries such as `clsx` and `classnames`
+- projects may raise this rule to `info`, `warn`, or `error` when dynamic class references should be
+  visible in normal reports
 
 #### `unsupported-syntax-affecting-analysis`
 
