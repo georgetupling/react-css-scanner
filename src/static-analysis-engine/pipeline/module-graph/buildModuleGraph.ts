@@ -1,4 +1,6 @@
 import ts from "typescript";
+import { normalizeFilePath } from "../project-resolution/pathUtils.js";
+import { resolveSourceSpecifier } from "../project-resolution/resolveSourceSpecifier.js";
 import type { EngineModuleId } from "../../types/core.js";
 import type {
   ModuleExportRecord,
@@ -77,13 +79,13 @@ export function buildModuleGraphFromSources(
   const modulesById = new Map<EngineModuleId, ModuleNode>();
   const importEdges: ModuleGraph["importEdges"] = [];
   const exportEdges: ModuleGraph["exportEdges"] = [];
-  const knownFilePaths = new Set(inputs.map((entry) => normalizeProjectPath(entry.filePath)));
+  const knownFilePaths = new Set(inputs.map((entry) => normalizeFilePath(entry.filePath)));
   const resolveImportSpecifier = (fromFilePath: string, specifier: string) => {
-    const resolvedFilePath = resolveRelativeSourceSpecifier(
+    const resolvedFilePath = resolveSourceSpecifier({
       fromFilePath,
       specifier,
       knownFilePaths,
-    );
+    });
     return resolvedFilePath ? createModuleId(resolvedFilePath) : undefined;
   };
 
@@ -288,55 +290,6 @@ function classifyImportKind(specifier: string, isTypeOnly: boolean): ModuleImpor
   }
 
   return "source";
-}
-
-function resolveRelativeSourceSpecifier(
-  fromFilePath: string,
-  specifier: string,
-  knownFilePaths: Set<string>,
-): string | undefined {
-  const normalizedFromFilePath = normalizeProjectPath(fromFilePath);
-  const fromSegments = normalizedFromFilePath.split("/");
-  fromSegments.pop();
-  const baseSegments = specifier.split("/").filter((segment) => segment.length > 0);
-  const candidateBasePath = normalizeSegments([...fromSegments, ...baseSegments]);
-
-  const candidatePaths = [
-    candidateBasePath,
-    `${candidateBasePath}.ts`,
-    `${candidateBasePath}.tsx`,
-    `${candidateBasePath}.js`,
-    `${candidateBasePath}.jsx`,
-    `${candidateBasePath}/index.ts`,
-    `${candidateBasePath}/index.tsx`,
-    `${candidateBasePath}/index.js`,
-    `${candidateBasePath}/index.jsx`,
-  ];
-
-  return candidatePaths.find((candidatePath) => knownFilePaths.has(candidatePath));
-}
-
-function normalizeSegments(segments: string[]): string {
-  const normalized: string[] = [];
-
-  for (const segment of segments) {
-    if (segment === ".") {
-      continue;
-    }
-
-    if (segment === "..") {
-      normalized.pop();
-      continue;
-    }
-
-    normalized.push(segment);
-  }
-
-  return normalized.join("/");
-}
-
-function normalizeProjectPath(filePath: string): string {
-  return filePath.replace(/\\/g, "/");
 }
 
 function createTopLevelSymbolId(moduleId: EngineModuleId, localName: string): string {

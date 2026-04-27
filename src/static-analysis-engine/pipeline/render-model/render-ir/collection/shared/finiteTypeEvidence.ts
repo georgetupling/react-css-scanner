@@ -1,4 +1,6 @@
 import ts from "typescript";
+import { normalizeFilePath } from "../../../../project-resolution/pathUtils.js";
+import { resolveSourceSpecifier } from "../../../../project-resolution/resolveSourceSpecifier.js";
 
 type LocalTypeEvidence = {
   filePath: string;
@@ -42,7 +44,7 @@ export function createFiniteTypeEvidenceCache(
   return {
     parsedSourceFilesByFilePath: new Map(
       parsedFiles.map((parsedFile) => [
-        normalizeProjectPath(parsedFile.filePath),
+        normalizeFilePath(parsedFile.filePath),
         parsedFile.parsedSourceFile,
       ]),
     ),
@@ -62,7 +64,7 @@ export function collectFiniteStringValuesByProperty(
   }
 
   const evidence = getLocalTypeEvidence(
-    normalizeProjectPath(parameter.getSourceFile().fileName),
+    normalizeFilePath(parameter.getSourceFile().fileName),
     parameter.getSourceFile(),
     cache,
   );
@@ -88,7 +90,7 @@ function getLocalTypeEvidence(
   sourceFile: ts.SourceFile,
   cache: FiniteTypeEvidenceCache | undefined,
 ): LocalTypeEvidence {
-  const normalizedFilePath = normalizeProjectPath(filePath);
+  const normalizedFilePath = normalizeFilePath(filePath);
   const cachedEvidence = cache?.evidenceByFilePath.get(normalizedFilePath);
   if (cachedEvidence) {
     return cachedEvidence;
@@ -668,7 +670,7 @@ function resolveExportedTypeDeclaration(
   cache: FiniteTypeEvidenceCache | undefined,
   state: TypeResolutionState,
 ): ResolvedTypeDeclaration | undefined {
-  const normalizedFilePath = normalizeProjectPath(filePath);
+  const normalizedFilePath = normalizeFilePath(filePath);
   const exportKey = createTypeKey(normalizedFilePath, exportedName);
   if (state.seenExportNames.has(exportKey)) {
     return undefined;
@@ -752,79 +754,13 @@ function resolveProjectLocalSourceSpecifier(
     return undefined;
   }
 
-  if (!specifier.startsWith(".")) {
-    return resolveWorkspacePackageSpecifier(specifier, cache);
-  }
-
-  const normalizedFromFilePath = normalizeProjectPath(fromFilePath);
-  const fromSegments = normalizedFromFilePath.split("/");
-  fromSegments.pop();
-  const baseSegments = specifier.split("/").filter((segment) => segment.length > 0);
-  const candidateBasePath = normalizeSegments([...fromSegments, ...baseSegments]);
-  const candidatePaths = [
-    candidateBasePath,
-    ...getTypeScriptSourceAlternatesForSpecifier(candidateBasePath),
-    `${candidateBasePath}.ts`,
-    `${candidateBasePath}.tsx`,
-    `${candidateBasePath}.js`,
-    `${candidateBasePath}.jsx`,
-    `${candidateBasePath}/index.ts`,
-    `${candidateBasePath}/index.tsx`,
-    `${candidateBasePath}/index.js`,
-    `${candidateBasePath}/index.jsx`,
-  ];
-
-  return candidatePaths.find((candidatePath) =>
-    cache.parsedSourceFilesByFilePath.has(candidatePath),
-  );
-}
-
-function getTypeScriptSourceAlternatesForSpecifier(candidateBasePath: string): string[] {
-  if (candidateBasePath.endsWith(".js")) {
-    return [
-      `${candidateBasePath.slice(0, -".js".length)}.ts`,
-      `${candidateBasePath.slice(0, -".js".length)}.tsx`,
-    ];
-  }
-
-  if (candidateBasePath.endsWith(".jsx")) {
-    return [`${candidateBasePath.slice(0, -".jsx".length)}.tsx`];
-  }
-
-  if (candidateBasePath.endsWith(".mjs") || candidateBasePath.endsWith(".cjs")) {
-    return [
-      `${candidateBasePath.slice(0, -".mjs".length)}.mts`,
-      `${candidateBasePath.slice(0, -".mjs".length)}.cts`,
-    ];
-  }
-
-  return [];
-}
-
-function resolveWorkspacePackageSpecifier(
-  specifier: string,
-  cache: FiniteTypeEvidenceCache,
-): string | undefined {
-  const packageName = getPackageNameFromSpecifier(specifier);
-  if (!packageName) {
-    return undefined;
-  }
-
-  const entryPoints = cache.workspacePackageEntryPointsByPackageName.get(packageName) ?? [];
-  return entryPoints.length === 1 ? entryPoints[0] : undefined;
-}
-
-function getPackageNameFromSpecifier(specifier: string): string | undefined {
-  if (specifier.startsWith(".") || specifier.startsWith("/") || specifier.startsWith("//")) {
-    return undefined;
-  }
-
-  const segments = specifier.split("/").filter((segment) => segment.length > 0);
-  if (segments.length === 0) {
-    return undefined;
-  }
-
-  return segments[0].startsWith("@") ? segments[1] : segments[0];
+  return resolveSourceSpecifier({
+    fromFilePath,
+    specifier,
+    knownFilePaths: cache.parsedSourceFilesByFilePath,
+    includeTypeScriptExtensionAlternates: true,
+    workspacePackageEntryPointsByPackageName: cache.workspacePackageEntryPointsByPackageName,
+  });
 }
 
 function collectWorkspacePackageEntryPoints(
@@ -836,7 +772,7 @@ function collectWorkspacePackageEntryPoints(
   const entryPointsByPackageName = new Map<string, string[]>();
 
   for (const parsedFile of parsedFiles) {
-    const normalizedFilePath = normalizeProjectPath(parsedFile.filePath);
+    const normalizedFilePath = normalizeFilePath(parsedFile.filePath);
     const packageName = getWorkspacePackageEntryPointName(normalizedFilePath);
     if (!packageName) {
       continue;
@@ -870,25 +806,6 @@ function getWorkspacePackageEntryPointName(filePath: string): string | undefined
   return parentDirectory;
 }
 
-function normalizeSegments(segments: string[]): string {
-  const normalized: string[] = [];
-
-  for (const segment of segments) {
-    if (segment === ".") {
-      continue;
-    }
-
-    if (segment === "..") {
-      normalized.pop();
-      continue;
-    }
-
-    normalized.push(segment);
-  }
-
-  return normalized.join("/");
-}
-
 function unwrapConstExpression(expression: ts.Expression): ts.Expression {
   let current = expression;
   while (
@@ -912,7 +829,7 @@ function unwrapTypeNode(typeNode: ts.TypeNode): ts.TypeNode {
 }
 
 function createTypeKey(filePath: string, typeName: string): string {
-  return `${normalizeProjectPath(filePath)}:${typeName}`;
+  return `${normalizeFilePath(filePath)}:${typeName}`;
 }
 
 function uniqueSorted(values: string[]): string[] {
@@ -931,8 +848,4 @@ function isExported(
   node: ts.TypeAliasDeclaration | ts.InterfaceDeclaration | ts.ExportDeclaration,
 ): boolean {
   return node.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword) ?? false;
-}
-
-function normalizeProjectPath(filePath: string): string {
-  return filePath.replace(/\\/g, "/");
 }

@@ -4,6 +4,7 @@ import test from "node:test";
 import ts from "typescript";
 
 import { buildProjectResolution } from "../../dist/static-analysis-engine/pipeline/project-resolution/buildProjectResolution.js";
+import { resolveSourceSpecifier } from "../../dist/static-analysis-engine/pipeline/project-resolution/resolveSourceSpecifier.js";
 
 test("project resolution indexes imports, exports, declarations, and workspace entrypoints", () => {
   const resolution = buildProjectResolution({
@@ -158,6 +159,55 @@ test("project resolution initializes shared caches without doing expensive resol
   assert.equal(resolution.caches.moduleSpecifiers.size, 0);
   assert.equal(resolution.caches.importedBindings.size, 0);
   assert.equal(resolution.caches.finiteTypeEvidence.size, 0);
+});
+
+test("source specifier resolver preserves explicit TypeScript alternate opt-in", () => {
+  const knownFilePaths = new Set(["src/worlds.enums.ts"]);
+
+  assert.equal(
+    resolveSourceSpecifier({
+      fromFilePath: "src/index.ts",
+      specifier: "./worlds.enums.js",
+      knownFilePaths,
+    }),
+    undefined,
+  );
+
+  assert.equal(
+    resolveSourceSpecifier({
+      fromFilePath: "src/index.ts",
+      specifier: "./worlds.enums.js",
+      knownFilePaths,
+      includeTypeScriptExtensionAlternates: true,
+    }),
+    "src/worlds.enums.ts",
+  );
+});
+
+test("source specifier resolver can use unique workspace package entrypoint evidence", () => {
+  assert.equal(
+    resolveSourceSpecifier({
+      fromFilePath: "src/MemberRoleBadge.tsx",
+      specifier: "@loremaster/domain",
+      knownFilePaths: new Set(["packages/domain/src/index.ts"]),
+      workspacePackageEntryPointsByPackageName: new Map([
+        ["domain", ["packages/domain/src/index.ts"]],
+      ]),
+    }),
+    "packages/domain/src/index.ts",
+  );
+
+  assert.equal(
+    resolveSourceSpecifier({
+      fromFilePath: "src/MemberRoleBadge.tsx",
+      specifier: "@loremaster/domain",
+      knownFilePaths: new Set(["packages/domain/src/index.ts", "libs/domain/src/index.ts"]),
+      workspacePackageEntryPointsByPackageName: new Map([
+        ["domain", ["packages/domain/src/index.ts", "libs/domain/src/index.ts"]],
+      ]),
+    }),
+    undefined,
+  );
 });
 
 function sourceFile(filePath, sourceText) {

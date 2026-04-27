@@ -1,4 +1,9 @@
 export { buildProjectResolution } from "./buildProjectResolution.js";
+export {
+  getSourceSpecifierCandidatePaths,
+  resolveSourceSpecifier,
+} from "./resolveSourceSpecifier.js";
+export type { ResolveSourceSpecifierInput } from "./resolveSourceSpecifier.js";
 export type {
   ProjectResolution,
   ProjectResolutionCacheEntry,
