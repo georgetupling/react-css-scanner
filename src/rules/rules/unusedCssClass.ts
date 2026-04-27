@@ -138,12 +138,18 @@ function buildUnusedClassFinding(input: {
   const selectorTexts = [
     ...new Set(definitions.map((entry) => entry.definition.selectorText)),
   ].sort((left, right) => left.localeCompare(right));
+  const skippedReferences = getStaticallySkippedReferences(input.context, className);
+  const skippedReferenceLocations = buildSkippedReferenceLocations(skippedReferences);
 
   return {
     id: `unused-css-class:${first.definition.stylesheetId}:${className}`,
     ruleId: "unused-css-class",
     confidence: input.hasUnknownDynamicReferences ? "medium" : "high",
-    message: buildUnusedClassMessage(className, definitions.length),
+    message: buildUnusedClassMessage({
+      className,
+      definitionCount: definitions.length,
+      hasOnlyStaticallySkippedReferences: skippedReferences.length > 0,
+    }),
     subject: {
       kind: "class-definition",
       id: first.definition.id,
@@ -155,7 +161,7 @@ function buildUnusedClassFinding(input: {
           startColumn: 1,
         }
       : undefined,
-    evidence: buildUnusedClassEvidence(definitions),
+    evidence: buildUnusedClassEvidence(definitions, skippedReferences),
     traces:
       input.context.includeTraces === false
         ? []
@@ -174,14 +180,29 @@ function buildUnusedClassFinding(input: {
       definitionLocations,
       stylesheetId: first.definition.stylesheetId,
       stylesheetFilePath: stylesheet.filePath,
+      usageReason:
+        skippedReferences.length > 0
+          ? "only-in-statically-skipped-render-branches"
+          : "no-known-react-class-reference",
+      ...(skippedReferenceLocations.length > 0
+        ? { staticallySkippedReferenceLocations: skippedReferenceLocations }
+        : {}),
     },
   };
 }
 
-function buildUnusedClassMessage(className: string, definitionCount: number): string {
+function buildUnusedClassMessage(input: {
+  className: string;
+  definitionCount: number;
+  hasOnlyStaticallySkippedReferences: boolean;
+}): string {
   const definitionText =
-    definitionCount === 1 ? "is defined" : `is defined ${definitionCount} times`;
-  return `Class "${className}" ${definitionText} but no known React class reference uses it.`;
+    input.definitionCount === 1 ? "is defined" : `is defined ${input.definitionCount} times`;
+  if (input.hasOnlyStaticallySkippedReferences) {
+    return `Class "${input.className}" ${definitionText} and is only referenced in render branches that static analysis determined never run.`;
+  }
+
+  return `Class "${input.className}" ${definitionText} but no known React class reference uses it.`;
 }
 
 function buildUnusedClassEvidence(
@@ -191,6 +212,7 @@ function buildUnusedClassEvidence(
       ReturnType<RuleContext["analysis"]["indexes"]["stylesheetsById"]["get"]>
     >;
   }>,
+  skippedReferences: RuleContext["analysis"]["entities"]["staticallySkippedClassReferences"],
 ): UnresolvedFinding["evidence"] {
   const evidenceByKey = new Map<string, UnresolvedFinding["evidence"][number]>();
 
@@ -205,7 +227,60 @@ function buildUnusedClassEvidence(
     });
   }
 
+  for (const reference of skippedReferences) {
+    evidenceByKey.set(`statically-skipped-class-reference:${reference.id}`, {
+      kind: "statically-skipped-class-reference",
+      id: reference.id,
+    });
+  }
+
   return [...evidenceByKey.values()];
+}
+
+function getStaticallySkippedReferences(
+  context: RuleContext,
+  className: string,
+): RuleContext["analysis"]["entities"]["staticallySkippedClassReferences"] {
+  if (
+    !context.analysis.indexes.staticallySkippedReferencesByClassName ||
+    !context.analysis.indexes.staticallySkippedClassReferencesById
+  ) {
+    return [];
+  }
+
+  const referenceIds =
+    context.analysis.indexes.staticallySkippedReferencesByClassName.get(className) ?? [];
+  return referenceIds
+    .map((referenceId) =>
+      context.analysis.indexes.staticallySkippedClassReferencesById.get(referenceId),
+    )
+    .filter((reference): reference is NonNullable<typeof reference> => Boolean(reference))
+    .sort(
+      (left, right) =>
+        left.location.filePath.localeCompare(right.location.filePath) ||
+        left.location.startLine - right.location.startLine ||
+        left.location.startColumn - right.location.startColumn,
+    );
+}
+
+function buildSkippedReferenceLocations(
+  references: RuleContext["analysis"]["entities"]["staticallySkippedClassReferences"],
+): Array<{
+  filePath: string;
+  startLine: number;
+  rawExpressionText: string;
+  conditionSourceText: string;
+  skippedBranch: "when-true" | "when-false";
+  reason: string;
+}> {
+  return references.map((reference) => ({
+    filePath: reference.location.filePath,
+    startLine: reference.location.startLine,
+    rawExpressionText: reference.rawExpressionText,
+    conditionSourceText: reference.conditionSourceText,
+    skippedBranch: reference.skippedBranch,
+    reason: reference.reason,
+  }));
 }
 
 function buildDefinitionLocations(

@@ -30,6 +30,7 @@ export type AnalysisEntityRef =
   | { kind: "component"; id: ProjectAnalysisId }
   | { kind: "stylesheet"; id: ProjectAnalysisId }
   | { kind: "class-reference"; id: ProjectAnalysisId }
+  | { kind: "statically-skipped-class-reference"; id: ProjectAnalysisId }
   | { kind: "unsupported-class-reference"; id: ProjectAnalysisId }
   | { kind: "class-definition"; id: ProjectAnalysisId }
   | { kind: "selector-branch"; id: ProjectAnalysisId }

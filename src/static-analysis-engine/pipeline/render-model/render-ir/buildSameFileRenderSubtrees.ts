@@ -19,6 +19,7 @@ import {
   createRenderExpansionTrace,
   isUndefinedIdentifier,
   toSourceAnchor,
+  withStaticallySkippedBranch,
 } from "./shared/renderIrUtils.js";
 import {
   getHelperCallResolutionFailureReason,
@@ -182,16 +183,34 @@ function buildRenderNode(node: ts.Expression | ts.JsxChild, context: BuildContex
   if (ts.isConditionalExpression(node)) {
     const resolvedCondition = resolveExactBooleanExpression(node.condition, context);
     if (resolvedCondition === true) {
-      return applyPlacementAnchor(
-        buildRenderNode(node.whenTrue, context),
-        toSourceAnchor(node.whenTrue, context.parsedSourceFile, context.filePath),
+      return withStaticallySkippedBranch(
+        applyPlacementAnchor(
+          buildRenderNode(node.whenTrue, context),
+          toSourceAnchor(node.whenTrue, context.parsedSourceFile, context.filePath),
+        ),
+        {
+          reason: "condition-resolved-true",
+          conditionSourceText: node.condition.getText(context.parsedSourceFile),
+          skippedBranch: "when-false",
+          sourceAnchor: toSourceAnchor(node, context.parsedSourceFile, context.filePath),
+          node: buildRenderNode(node.whenFalse, context),
+        },
       );
     }
 
     if (resolvedCondition === false) {
-      return applyPlacementAnchor(
-        buildRenderNode(node.whenFalse, context),
-        toSourceAnchor(node.whenFalse, context.parsedSourceFile, context.filePath),
+      return withStaticallySkippedBranch(
+        applyPlacementAnchor(
+          buildRenderNode(node.whenFalse, context),
+          toSourceAnchor(node.whenFalse, context.parsedSourceFile, context.filePath),
+        ),
+        {
+          reason: "condition-resolved-false",
+          conditionSourceText: node.condition.getText(context.parsedSourceFile),
+          skippedBranch: "when-true",
+          sourceAnchor: toSourceAnchor(node, context.parsedSourceFile, context.filePath),
+          node: buildRenderNode(node.whenTrue, context),
+        },
       );
     }
 

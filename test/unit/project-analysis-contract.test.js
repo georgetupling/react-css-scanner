@@ -50,6 +50,43 @@ test("ProjectAnalysis exposes reference match semantics for reachable and unreac
   assert.equal(maybeMatch.referenceClassKind, "possible");
 });
 
+test("ProjectAnalysis records class references from statically skipped render branches", () => {
+  const result = analyzeProjectSourceTexts({
+    sourceFiles: [
+      {
+        filePath: "src/App.tsx",
+        sourceText: [
+          "export function App() {",
+          "  const count = 0;",
+          "  const hasItems = count > 0;",
+          '  return hasItems ? <span className="badge-count" /> : null;',
+          "}",
+          "",
+        ].join("\n"),
+      },
+    ],
+    selectorCssSources: [
+      {
+        filePath: "src/App.css",
+        cssText: ".badge-count { color: red; }\n",
+      },
+    ],
+  });
+
+  const analysis = result.projectAnalysis;
+  assert.equal(analysis.indexes.referencesByClassName.get("badge-count"), undefined);
+  const skippedReferenceIds =
+    analysis.indexes.staticallySkippedReferencesByClassName.get("badge-count") ?? [];
+  assert.equal(skippedReferenceIds.length, 1);
+  const skippedReference = analysis.indexes.staticallySkippedClassReferencesById.get(
+    skippedReferenceIds[0],
+  );
+  assert.ok(skippedReference);
+  assert.equal(skippedReference.conditionSourceText, "hasItems");
+  assert.equal(skippedReference.skippedBranch, "when-true");
+  assert.equal(skippedReference.reason, "condition-resolved-false");
+});
+
 test("ProjectAnalysis indexes declared-provider satisfaction edges by reference and class", () => {
   const result = analyzeProjectSourceTexts({
     sourceFiles: [

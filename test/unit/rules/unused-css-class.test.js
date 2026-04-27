@@ -30,6 +30,62 @@ test("unused-css-class reports unreferenced local CSS classes", async () => {
   }
 });
 
+test("unused-css-class explains classes only referenced in statically skipped branches", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        "export function App() {",
+        "  const unreadNotificationCount = 0;",
+        "  const hasUnreadNotifications = unreadNotificationCount > 0;",
+        "  return (",
+        "    <button>",
+        "      {hasUnreadNotifications ? (",
+        '        <span className="notification-count">{unreadNotificationCount}</span>',
+        "      ) : null}",
+        "    </button>",
+        "  );",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".notification-count { min-width: 1rem; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
+      cssFilePaths: ["src/App.css"],
+    });
+    const finding = result.findings.find(
+      (candidate) =>
+        candidate.ruleId === "unused-css-class" &&
+        candidate.data?.className === "notification-count",
+    );
+
+    assert.ok(finding);
+    assert.match(finding.message, /only referenced in render branches/);
+    assert.equal(finding.data?.usageReason, "only-in-statically-skipped-render-branches");
+    assert.equal(
+      finding.evidence.some((entry) => entry.kind === "statically-skipped-class-reference"),
+      true,
+    );
+    assert.deepEqual(finding.data?.staticallySkippedReferenceLocations, [
+      {
+        filePath: "src/App.tsx",
+        startLine: 7,
+        rawExpressionText: '"notification-count"',
+        conditionSourceText: "hasUnreadNotifications",
+        skippedBranch: "when-true",
+        reason: "condition-resolved-false",
+      },
+    ]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("unused-css-class aggregates repeated definitions for the same class", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile("src/App.tsx", "export function App() { return <main>Hello</main>; }\n")

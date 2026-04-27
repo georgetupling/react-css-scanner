@@ -20,6 +20,16 @@ export function applyPlacementAnchor(node: RenderNode, placementAnchor: SourceAn
   };
 }
 
+export function withStaticallySkippedBranch(
+  node: RenderNode,
+  skippedBranch: NonNullable<RenderNode["staticallySkippedBranches"]>[number],
+): RenderNode {
+  return {
+    ...node,
+    staticallySkippedBranches: [...(node.staticallySkippedBranches ?? []), skippedBranch],
+  };
+}
+
 export function applyComponentReferenceExpansion(
   node: RenderNode,
   expandedFromComponentReference: NonNullable<RenderNode["expandedFromComponentReference"]>,

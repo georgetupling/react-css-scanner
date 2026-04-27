@@ -56,6 +56,7 @@ export type ProjectAnalysisEntities = {
   sourceFiles: SourceFileAnalysis[];
   stylesheets: StylesheetAnalysis[];
   classReferences: ClassReferenceAnalysis[];
+  staticallySkippedClassReferences: StaticallySkippedClassReferenceAnalysis[];
   classDefinitions: ClassDefinitionAnalysis[];
   classContexts: ClassContextAnalysis[];
   selectorQueries: SelectorQueryAnalysis[];
@@ -105,6 +106,25 @@ export type ClassReferenceAnalysis = {
   origin: ClassReferenceOrigin;
   runtimeLibraryHint?: RuntimeDomLibraryHint;
   expressionKind: ClassReferenceExpressionKind;
+  rawExpressionText: string;
+  definiteClassNames: string[];
+  possibleClassNames: string[];
+  unknownDynamic: boolean;
+  confidence: AnalysisConfidence;
+  traces: AnalysisTrace[];
+  sourceSummary: ClassExpressionSummary;
+};
+
+export type StaticallySkippedClassReferenceAnalysis = {
+  id: ProjectAnalysisId;
+  sourceFileId: ProjectAnalysisId;
+  componentId?: ProjectAnalysisId;
+  renderSubtreeId?: ProjectAnalysisId;
+  location: SourceAnchor;
+  branchLocation: SourceAnchor;
+  conditionSourceText: string;
+  skippedBranch: "when-true" | "when-false";
+  reason: "condition-resolved-true" | "condition-resolved-false" | "expression-resolved-nullish";
   rawExpressionText: string;
   definiteClassNames: string[];
   possibleClassNames: string[];
@@ -400,6 +420,10 @@ export type ProjectAnalysisIndexes = {
   sourceFilesById: Map<ProjectAnalysisId, SourceFileAnalysis>;
   stylesheetsById: Map<ProjectAnalysisId, StylesheetAnalysis>;
   classReferencesById: Map<ProjectAnalysisId, ClassReferenceAnalysis>;
+  staticallySkippedClassReferencesById: Map<
+    ProjectAnalysisId,
+    StaticallySkippedClassReferenceAnalysis
+  >;
   classDefinitionsById: Map<ProjectAnalysisId, ClassDefinitionAnalysis>;
   classContextsById: Map<ProjectAnalysisId, ClassContextAnalysis>;
   selectorQueriesById: Map<ProjectAnalysisId, SelectorQueryAnalysis>;
@@ -420,6 +444,7 @@ export type ProjectAnalysisIndexes = {
   contextsByClassName: Map<string, ProjectAnalysisId[]>;
   contextsByStylesheetId: Map<ProjectAnalysisId, ProjectAnalysisId[]>;
   referencesByClassName: Map<string, ProjectAnalysisId[]>;
+  staticallySkippedReferencesByClassName: Map<string, ProjectAnalysisId[]>;
   referencesBySourceFileId: Map<ProjectAnalysisId, ProjectAnalysisId[]>;
   reachableStylesheetsBySourceFileId: Map<ProjectAnalysisId, ProjectAnalysisId[]>;
   reachableStylesheetsByComponentId: Map<ProjectAnalysisId, ProjectAnalysisId[]>;

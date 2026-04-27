@@ -15,7 +15,16 @@ export type RenderNodeBase = {
   sourceAnchor: SourceAnchor;
   placementAnchor?: SourceAnchor;
   expandedFromComponentReference?: RenderComponentReferenceExpansion;
+  staticallySkippedBranches?: RenderSkippedBranch[];
   traces?: AnalysisTrace[];
+};
+
+export type RenderSkippedBranch = {
+  reason: "condition-resolved-true" | "condition-resolved-false" | "expression-resolved-nullish";
+  conditionSourceText: string;
+  skippedBranch: "when-true" | "when-false";
+  sourceAnchor: SourceAnchor;
+  node: RenderNode;
 };
 
 export type RenderComponentReferenceExpansion = {

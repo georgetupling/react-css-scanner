@@ -5,6 +5,7 @@ import {
   createEmptyFragmentNode,
   createRenderExpansionTrace,
   toSourceAnchor,
+  withStaticallySkippedBranch,
 } from "../shared/renderIrUtils.js";
 import {
   resolveExactNullishExpression,
@@ -26,7 +27,13 @@ export function buildLogicalRenderNode(input: {
     }
 
     if (leftTruthy === false) {
-      return createEmptyFragmentNode(node, context);
+      return withStaticallySkippedBranch(createEmptyFragmentNode(node, context), {
+        reason: "condition-resolved-false",
+        conditionSourceText: node.left.getText(context.parsedSourceFile),
+        skippedBranch: "when-true",
+        sourceAnchor: toSourceAnchor(node, context.parsedSourceFile, context.filePath),
+        node: buildRenderNode(node.right, context),
+      });
     }
 
     return {
@@ -40,7 +47,13 @@ export function buildLogicalRenderNode(input: {
 
   if (node.operatorToken.kind === ts.SyntaxKind.BarBarToken) {
     if (leftTruthy === true) {
-      return createEmptyFragmentNode(node, context);
+      return withStaticallySkippedBranch(createEmptyFragmentNode(node, context), {
+        reason: "condition-resolved-true",
+        conditionSourceText: node.left.getText(context.parsedSourceFile),
+        skippedBranch: "when-false",
+        sourceAnchor: toSourceAnchor(node, context.parsedSourceFile, context.filePath),
+        node: buildRenderNode(node.right, context),
+      });
     }
 
     if (leftTruthy === false) {
@@ -59,11 +72,23 @@ export function buildLogicalRenderNode(input: {
   if (node.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken) {
     const leftNullish = resolveExactNullishExpression(node.left, context);
     if (leftNullish === false) {
-      return buildRenderNode(node.left, context);
+      return withStaticallySkippedBranch(buildRenderNode(node.left, context), {
+        reason: "expression-resolved-nullish",
+        conditionSourceText: `${node.left.getText(context.parsedSourceFile)} == null`,
+        skippedBranch: "when-true",
+        sourceAnchor: toSourceAnchor(node, context.parsedSourceFile, context.filePath),
+        node: buildRenderNode(node.right, context),
+      });
     }
 
     if (leftNullish === true) {
-      return buildRenderNode(node.right, context);
+      return withStaticallySkippedBranch(buildRenderNode(node.right, context), {
+        reason: "expression-resolved-nullish",
+        conditionSourceText: `${node.left.getText(context.parsedSourceFile)} == null`,
+        skippedBranch: "when-false",
+        sourceAnchor: toSourceAnchor(node, context.parsedSourceFile, context.filePath),
+        node: buildRenderNode(node.left, context),
+      });
     }
 
     return {

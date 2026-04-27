@@ -28,6 +28,7 @@ import type {
   SelectorBranchAnalysis,
   SelectorQueryAnalysis,
   SourceFileAnalysis,
+  StaticallySkippedClassReferenceAnalysis,
   StylesheetAnalysis,
   StylesheetOrigin,
   StylesheetReachabilityRelation,
@@ -61,6 +62,11 @@ export function buildProjectAnalysis(input: ProjectAnalysisBuildInput): ProjectA
     indexes,
     includeTraces,
   });
+  const staticallySkippedClassReferences = buildStaticallySkippedClassReferences({
+    renderSubtrees,
+    indexes,
+    includeTraces,
+  });
   const unsupportedClassReferences = buildUnsupportedClassReferences(input, indexes, includeTraces);
   const selectorQueries = buildSelectorQueries(
     input.selectorQueryResults,
@@ -85,6 +91,7 @@ export function buildProjectAnalysis(input: ProjectAnalysisBuildInput): ProjectA
     sourceFiles,
     stylesheets,
     classReferences,
+    staticallySkippedClassReferences,
     classDefinitions,
     classContexts,
     selectorQueries,
@@ -153,6 +160,7 @@ export function buildProjectAnalysis(input: ProjectAnalysisBuildInput): ProjectA
       sourceFiles,
       stylesheets,
       classReferences,
+      staticallySkippedClassReferences,
       classDefinitions,
       classContexts,
       selectorQueries,
@@ -452,6 +460,57 @@ function buildClassReferences(input: {
   return [...references, ...runtimeReferences].sort(compareById);
 }
 
+function buildStaticallySkippedClassReferences(input: {
+  renderSubtrees: RenderSubtreeAnalysis[];
+  indexes: ProjectAnalysisIndexes;
+  includeTraces: boolean;
+}): StaticallySkippedClassReferenceAnalysis[] {
+  const entries = deduplicateSkippedRenderClassExpressions(
+    input.renderSubtrees.flatMap((renderSubtree) =>
+      collectStaticallySkippedRenderClassExpressions(renderSubtree, input.indexes),
+    ),
+  );
+
+  const references = entries.map((entry, index) => {
+    const { classExpression, skippedBranch, renderSubtreeId } = entry;
+    const filePath = normalizeProjectPath(classExpression.sourceAnchor.filePath);
+    const sourceFileId =
+      input.indexes.sourceFileIdByPath.get(filePath) ?? createPathId("source", filePath);
+    const id = createAnchorId(
+      "statically-skipped-class-reference",
+      classExpression.sourceAnchor,
+      index,
+    );
+    const reference: StaticallySkippedClassReferenceAnalysis = {
+      id,
+      sourceFileId,
+      componentId: entry.emittedByComponentId,
+      renderSubtreeId,
+      location: normalizeAnchor(classExpression.sourceAnchor),
+      branchLocation: normalizeAnchor(skippedBranch.sourceAnchor),
+      conditionSourceText: skippedBranch.conditionSourceText,
+      skippedBranch: skippedBranch.skippedBranch,
+      reason: skippedBranch.reason,
+      rawExpressionText: classExpression.sourceText,
+      definiteClassNames: [...classExpression.classes.definite],
+      possibleClassNames: [...classExpression.classes.possible],
+      unknownDynamic: classExpression.classes.unknownDynamic,
+      confidence: getReferenceConfidence(classExpression),
+      traces: input.includeTraces ? buildStaticallySkippedClassReferenceTraces(entry) : [],
+      sourceSummary: classExpression,
+    };
+
+    for (const className of collectSkippedReferenceClassNames(reference)) {
+      pushMapValue(input.indexes.staticallySkippedReferencesByClassName, className, id);
+    }
+
+    return reference;
+  });
+
+  sortIndexValues(input.indexes.staticallySkippedReferencesByClassName);
+  return references.sort(compareById);
+}
+
 function buildUnsupportedClassReferences(
   input: ProjectAnalysisBuildInput,
   indexes: ProjectAnalysisIndexes,
@@ -655,6 +714,10 @@ type RenderClassExpressionEntry = {
   placementLocation?: SourceAnchor;
 };
 
+type SkippedRenderClassExpressionEntry = RenderClassExpressionEntry & {
+  skippedBranch: NonNullable<RenderNode["staticallySkippedBranches"]>[number];
+};
+
 function collectRenderClassExpressions(
   input: RenderSubtreeAnalysis,
   indexes: ProjectAnalysisIndexes,
@@ -709,6 +772,88 @@ function collectRenderClassExpressions(
   );
 }
 
+function collectStaticallySkippedRenderClassExpressions(
+  input: RenderSubtreeAnalysis,
+  indexes: ProjectAnalysisIndexes,
+): SkippedRenderClassExpressionEntry[] {
+  const entries: SkippedRenderClassExpressionEntry[] = [];
+
+  visitStaticallySkippedBranches(
+    input.sourceSubtree.root,
+    undefined,
+    undefined,
+    (skippedBranch, inheritedPlacementLocation, inheritedExpansion) => {
+      for (const entry of collectRenderClassExpressionsFromNode({
+        node: skippedBranch.node,
+        renderSubtree: input,
+        indexes,
+        inheritedPlacementLocation,
+        inheritedExpansion,
+      })) {
+        entries.push({
+          ...entry,
+          skippedBranch,
+        });
+      }
+    },
+  );
+
+  return entries.sort(compareSkippedRenderClassExpressionEntries);
+}
+
+function collectRenderClassExpressionsFromNode(input: {
+  node: RenderNode;
+  renderSubtree: RenderSubtreeAnalysis;
+  indexes: ProjectAnalysisIndexes;
+  inheritedPlacementLocation: SourceAnchor | undefined;
+  inheritedExpansion: NonNullable<RenderNode["expandedFromComponentReference"]> | undefined;
+}): RenderClassExpressionEntry[] {
+  const entries: RenderClassExpressionEntry[] = [];
+
+  visitRenderNode(
+    input.node,
+    input.inheritedPlacementLocation,
+    input.inheritedExpansion,
+    (node, inheritedPlacementLocation, inheritedExpansion) => {
+      if (!node.className) {
+        return;
+      }
+
+      const emittedByComponentId = resolveEffectiveComponentId({
+        renderSubtree: input.renderSubtree,
+        inheritedExpansion,
+        indexes: input.indexes,
+      });
+
+      entries.push({
+        classExpression: node.className,
+        suppliedByComponentId: resolveSupplierComponentId({
+          renderSubtree: input.renderSubtree,
+          inheritedExpansion,
+          classExpression: node.className,
+          emittedByComponentId,
+          indexes: input.indexes,
+        }),
+        emittedByComponentId,
+        classNameComponentIds: buildClassNameComponentIds({
+          renderSubtree: input.renderSubtree,
+          inheritedExpansion,
+          classExpression: node.className,
+          emittedByComponentId,
+          indexes: input.indexes,
+        }),
+        renderSubtreeId: input.renderSubtree.id,
+        emittedElementLocation: normalizeAnchor(node.sourceAnchor),
+        placementLocation: normalizeOptionalAnchor(
+          node.placementAnchor ?? inheritedPlacementLocation,
+        ),
+      });
+    },
+  );
+
+  return entries.sort(compareRenderClassExpressionEntries);
+}
+
 function deduplicateRenderClassExpressions(
   entries: RenderClassExpressionEntry[],
 ): RenderClassExpressionEntry[] {
@@ -723,6 +868,29 @@ function deduplicateRenderClassExpressions(
   }
 
   return [...entriesByKey.values()].sort(compareRenderClassExpressionEntries);
+}
+
+function deduplicateSkippedRenderClassExpressions(
+  entries: SkippedRenderClassExpressionEntry[],
+): SkippedRenderClassExpressionEntry[] {
+  const entriesByKey = new Map<string, SkippedRenderClassExpressionEntry>();
+
+  for (const entry of entries) {
+    const key = [
+      createRenderClassExpressionDedupeKey(entry),
+      entry.skippedBranch.sourceAnchor.filePath,
+      entry.skippedBranch.sourceAnchor.startLine,
+      entry.skippedBranch.sourceAnchor.startColumn,
+      entry.skippedBranch.skippedBranch,
+      entry.skippedBranch.reason,
+    ].join(":");
+    const existing = entriesByKey.get(key);
+    if (!existing || compareSkippedRenderClassExpressionEntries(entry, existing) < 0) {
+      entriesByKey.set(key, entry);
+    }
+  }
+
+  return [...entriesByKey.values()].sort(compareSkippedRenderClassExpressionEntries);
 }
 
 function createRenderClassExpressionDedupeKey(entry: RenderClassExpressionEntry): string {
@@ -762,6 +930,18 @@ function compareRenderClassExpressionEntries(
     (left.emittedByComponentId ?? "").localeCompare(right.emittedByComponentId ?? "") ||
     compareStringRecords(left.classNameComponentIds, right.classNameComponentIds) ||
     left.renderSubtreeId.localeCompare(right.renderSubtreeId)
+  );
+}
+
+function compareSkippedRenderClassExpressionEntries(
+  left: SkippedRenderClassExpressionEntry,
+  right: SkippedRenderClassExpressionEntry,
+): number {
+  return (
+    compareRenderClassExpressionEntries(left, right) ||
+    compareAnchors(left.skippedBranch.sourceAnchor, right.skippedBranch.sourceAnchor) ||
+    left.skippedBranch.skippedBranch.localeCompare(right.skippedBranch.skippedBranch) ||
+    left.skippedBranch.reason.localeCompare(right.skippedBranch.reason)
   );
 }
 
@@ -898,6 +1078,30 @@ function buildClassReferenceTraces(entry: RenderClassExpressionEntry): AnalysisT
   ];
 }
 
+function buildStaticallySkippedClassReferenceTraces(
+  entry: SkippedRenderClassExpressionEntry,
+): AnalysisTrace[] {
+  return [
+    {
+      traceId: `render-expansion:statically-skipped-class-reference:${normalizeProjectPath(entry.classExpression.sourceAnchor.filePath)}:${entry.classExpression.sourceAnchor.startLine}:${entry.classExpression.sourceAnchor.startColumn}`,
+      category: "render-expansion",
+      summary: "class reference was collected from a render branch that static analysis skipped",
+      anchor: normalizeAnchor(entry.emittedElementLocation),
+      children: [...entry.classExpression.traces],
+      metadata: {
+        renderSubtreeId: entry.renderSubtreeId,
+        componentId: entry.suppliedByComponentId ?? entry.emittedByComponentId,
+        suppliedByComponentId: entry.suppliedByComponentId,
+        emittedByComponentId: entry.emittedByComponentId,
+        classNameComponentIds: entry.classNameComponentIds,
+        conditionSourceText: entry.skippedBranch.conditionSourceText,
+        skippedBranch: entry.skippedBranch.skippedBranch,
+        skippedReason: entry.skippedBranch.reason,
+      },
+    },
+  ];
+}
+
 function buildRuntimeDomClassReferenceTraces(
   reference: ProjectAnalysisBuildInput["runtimeDomClassReferences"][number],
 ): AnalysisTrace[] {
@@ -959,6 +1163,59 @@ function visitRenderNode(
 
   if (node.kind === "repeated-region") {
     visitRenderNode(node.template, placementLocation, expansion, visitElement);
+  }
+}
+
+function visitStaticallySkippedBranches(
+  node: RenderNode,
+  inheritedPlacementLocation: SourceAnchor | undefined,
+  inheritedExpansion: NonNullable<RenderNode["expandedFromComponentReference"]> | undefined,
+  visitSkippedBranch: (
+    skippedBranch: NonNullable<RenderNode["staticallySkippedBranches"]>[number],
+    inheritedPlacementLocation: SourceAnchor | undefined,
+    inheritedExpansion: NonNullable<RenderNode["expandedFromComponentReference"]> | undefined,
+  ) => void,
+): void {
+  const placementLocation = node.placementAnchor ?? inheritedPlacementLocation;
+  const expansion = node.expandedFromComponentReference ?? inheritedExpansion;
+
+  for (const skippedBranch of node.staticallySkippedBranches ?? []) {
+    visitSkippedBranch(skippedBranch, placementLocation, expansion);
+    visitStaticallySkippedBranches(
+      skippedBranch.node,
+      placementLocation,
+      expansion,
+      visitSkippedBranch,
+    );
+  }
+
+  if (node.kind === "element") {
+    for (const child of node.children) {
+      visitStaticallySkippedBranches(child, placementLocation, expansion, visitSkippedBranch);
+    }
+    return;
+  }
+
+  if (node.kind === "fragment") {
+    for (const child of node.children) {
+      visitStaticallySkippedBranches(child, placementLocation, expansion, visitSkippedBranch);
+    }
+    return;
+  }
+
+  if (node.kind === "conditional") {
+    visitStaticallySkippedBranches(node.whenTrue, placementLocation, expansion, visitSkippedBranch);
+    visitStaticallySkippedBranches(
+      node.whenFalse,
+      placementLocation,
+      expansion,
+      visitSkippedBranch,
+    );
+    return;
+  }
+
+  if (node.kind === "repeated-region") {
+    visitStaticallySkippedBranches(node.template, placementLocation, expansion, visitSkippedBranch);
   }
 }
 
@@ -1793,6 +2050,7 @@ function indexEntities(input: {
   sourceFiles: SourceFileAnalysis[];
   stylesheets: StylesheetAnalysis[];
   classReferences: ClassReferenceAnalysis[];
+  staticallySkippedClassReferences: StaticallySkippedClassReferenceAnalysis[];
   classDefinitions: ClassDefinitionAnalysis[];
   classContexts: ClassContextAnalysis[];
   selectorQueries: SelectorQueryAnalysis[];
@@ -1814,6 +2072,9 @@ function indexEntities(input: {
   }
   for (const reference of input.classReferences) {
     input.indexes.classReferencesById.set(reference.id, reference);
+  }
+  for (const reference of input.staticallySkippedClassReferences) {
+    input.indexes.staticallySkippedClassReferencesById.set(reference.id, reference);
   }
   for (const definition of input.classDefinitions) {
     input.indexes.classDefinitionsById.set(definition.id, definition);
@@ -2096,6 +2357,14 @@ function collectReferenceClassNames(reference: ClassReferenceAnalysis): string[]
   );
 }
 
+function collectSkippedReferenceClassNames(
+  reference: StaticallySkippedClassReferenceAnalysis,
+): string[] {
+  return [...new Set([...reference.definiteClassNames, ...reference.possibleClassNames])].sort(
+    (left, right) => left.localeCompare(right),
+  );
+}
+
 function getBestReachabilityForReference(input: {
   reference: ClassReferenceAnalysis;
   stylesheetId: ProjectAnalysisId;
@@ -2238,6 +2507,7 @@ function createEmptyIndexes(): ProjectAnalysisIndexes {
     sourceFilesById: new Map(),
     stylesheetsById: new Map(),
     classReferencesById: new Map(),
+    staticallySkippedClassReferencesById: new Map(),
     classDefinitionsById: new Map(),
     classContextsById: new Map(),
     selectorQueriesById: new Map(),
@@ -2258,6 +2528,7 @@ function createEmptyIndexes(): ProjectAnalysisIndexes {
     contextsByClassName: new Map(),
     contextsByStylesheetId: new Map(),
     referencesByClassName: new Map(),
+    staticallySkippedReferencesByClassName: new Map(),
     referencesBySourceFileId: new Map(),
     reachableStylesheetsBySourceFileId: new Map(),
     reachableStylesheetsByComponentId: new Map(),
