@@ -16,9 +16,10 @@ export function collectLocalBodyBindings(
     }
 
     if (ts.isObjectBindingPattern(declaration.name)) {
-      collectDestructuredStringSetBindings(
+      collectDestructuredBindings(
         declaration.name,
         declaration.initializer,
+        bindings,
         stringSetBindings,
         finiteStringValuesByObjectName,
       );
@@ -48,9 +49,10 @@ export function isConstDeclarationList(declarationList: ts.VariableDeclarationLi
   return (declarationList.flags & ts.NodeFlags.Const) !== 0;
 }
 
-function collectDestructuredStringSetBindings(
+function collectDestructuredBindings(
   pattern: ts.ObjectBindingPattern,
   initializer: ts.Expression,
+  bindings: Map<string, ts.Expression>,
   stringSetBindings: Map<string, string[]>,
   finiteStringValuesByObjectName: Map<string, Map<string, string[]>>,
 ): void {
@@ -59,9 +61,6 @@ function collectDestructuredStringSetBindings(
   }
 
   const finiteStringValuesByProperty = finiteStringValuesByObjectName.get(initializer.text);
-  if (!finiteStringValuesByProperty) {
-    return;
-  }
 
   for (const element of pattern.elements) {
     if (element.dotDotDotToken || !ts.isIdentifier(element.name)) {
@@ -78,9 +77,31 @@ function collectDestructuredStringSetBindings(
     }
 
     const propertyName = propertyNameNode?.text ?? element.name.text;
-    const values = finiteStringValuesByProperty.get(propertyName);
+    if (!element.initializer) {
+      bindings.set(
+        element.name.text,
+        createPropertyAccessExpression(initializer, propertyName, element.name),
+      );
+    }
+
+    const values = finiteStringValuesByProperty?.get(propertyName);
     if (values) {
       stringSetBindings.set(element.name.text, values);
     }
   }
+}
+
+function createPropertyAccessExpression(
+  initializer: ts.Identifier,
+  propertyName: string,
+  anchorNode: ts.Node,
+): ts.Expression {
+  const expression = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(propertyName)
+    ? ts.factory.createPropertyAccessExpression(initializer, propertyName)
+    : ts.factory.createElementAccessExpression(
+        initializer,
+        ts.factory.createStringLiteral(propertyName),
+      );
+
+  return ts.setTextRange(expression, anchorNode);
 }

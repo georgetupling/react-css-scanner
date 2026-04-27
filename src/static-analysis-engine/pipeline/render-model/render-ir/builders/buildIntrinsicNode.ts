@@ -121,7 +121,7 @@ export function summarizeClassNameExpressionForRender(
 ): ClassExpressionSummary {
   const summary = summarizeBoundClassNameExpression(expression, context);
   const sourceExpression = summary.sourceExpression ?? expression;
-  const sourceFile = sourceExpression.getSourceFile();
+  const sourceFile = sourceExpression.getSourceFile() ?? context.parsedSourceFile;
   const sourceAnchor = toSourceAnchor(sourceExpression, sourceFile, sourceFile.fileName);
   const sourceText = sourceExpression.getText(sourceFile);
 

@@ -414,6 +414,88 @@ test("unused-css-class preserves finite helper evidence through helper body dest
   }
 });
 
+test("unused-css-class treats caller classes forwarded through props-object destructuring as used", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/pages/BrowsePage.tsx",
+      [
+        'import { Button } from "../ui/Button";',
+        'import "./BrowseControls.css";',
+        'export function BrowsePage() { return <Button className="browse-toolbar-button" />; }',
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/ui/Button.tsx",
+      [
+        'import "./Button.css";',
+        "function joinClasses(...classes: Array<string | false | null | undefined>) {",
+        "  return classes.filter(Boolean).join(' ');",
+        "}",
+        "export function Button(props: { className?: string; variant?: string }) {",
+        "  const { className, variant = 'primary' } = props;",
+        "  const classes = joinClasses('button', `button--${variant}`, className);",
+        "  return <button className={classes}>Save</button>;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/pages/BrowseControls.css", ".browse-toolbar-button { width: 100%; }\n")
+    .withCssFile("src/ui/Button.css", ".button { display: inline-flex; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", ["browse-toolbar-button"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unused-css-class treats switch-helper classes in filtered arrays as used", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/TriStateFilterChip.tsx",
+      [
+        'import "./BrowseControls.css";',
+        "function getTriStateFilterChipClassName(state: 'require' | 'exclude' | 'neutral') {",
+        "  switch (state) {",
+        '    case "require": return "browse-filter-chip browse-filter-chip--require";',
+        '    case "exclude": return "browse-filter-chip browse-filter-chip--exclude";',
+        '    default: return "browse-filter-chip";',
+        "  }",
+        "}",
+        "export function TriStateFilterChip({ state, className }: { state: 'require' | 'exclude' | 'neutral'; className?: string }) {",
+        '  return <button className={[getTriStateFilterChipClassName(state), className].filter(Boolean).join(" ")} />;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile(
+      "src/BrowseControls.css",
+      [
+        ".browse-filter-chip { display: inline-flex; }",
+        ".browse-filter-chip--require { color: green; }",
+        ".browse-filter-chip--exclude { color: red; }",
+        "",
+      ].join("\n"),
+    )
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", [
+      "browse-filter-chip",
+      "browse-filter-chip--require",
+      "browse-filter-chip--exclude",
+    ]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("unused-css-class resolves finite variants from local interfaces and indexed access", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(

@@ -232,6 +232,94 @@ test("ProjectAnalysis records per-class suppliers for merged forwarded class pro
   );
 });
 
+test("ProjectAnalysis preserves caller class props through props-object destructuring", () => {
+  const result = analyzeProjectSourceTexts({
+    sourceFiles: [
+      {
+        filePath: "src/pages/BrowsePage.tsx",
+        sourceText: [
+          'import { Button } from "../ui/Button";',
+          'export function BrowsePage() { return <Button className="browse-toolbar-button" />; }',
+          "",
+        ].join("\n"),
+      },
+      {
+        filePath: "src/ui/Button.tsx",
+        sourceText: [
+          "function joinClasses(...classes) { return classes.filter(Boolean).join(' '); }",
+          "export function Button(props) {",
+          "  const { className, variant = 'primary' } = props;",
+          "  const classes = joinClasses('button', `button--${variant}`, className);",
+          "  return <button className={classes}>Save</button>;",
+          "}",
+          "",
+        ].join("\n"),
+      },
+    ],
+    selectorCssSources: [
+      {
+        filePath: "src/pages/BrowseControls.css",
+        cssText: ".browse-toolbar-button { width: 100%; }\n",
+      },
+      {
+        filePath: "src/ui/Button.css",
+        cssText: ".button { display: inline-flex; }\n",
+      },
+    ],
+  });
+
+  const reference = result.projectAnalysis.entities.classReferences.find((candidate) =>
+    candidate.definiteClassNames.includes("browse-toolbar-button"),
+  );
+
+  assert.ok(reference);
+  assert.equal(
+    reference.classNameComponentIds?.["browse-toolbar-button"],
+    "component:src/pages/BrowsePage.tsx:BrowsePage",
+  );
+  assert.equal(reference.classNameComponentIds?.button, "component:src/ui/Button.tsx:Button");
+});
+
+test("ProjectAnalysis preserves finite switch helper classes in filtered class arrays", () => {
+  const result = analyzeProjectSourceTexts({
+    sourceFiles: [
+      {
+        filePath: "src/TriStateFilterChip.tsx",
+        sourceText: [
+          "function getTriStateFilterChipClassName(state) {",
+          "  switch (state) {",
+          '    case "require": return "browse-filter-chip browse-filter-chip--require";',
+          '    case "exclude": return "browse-filter-chip browse-filter-chip--exclude";',
+          '    default: return "browse-filter-chip";',
+          "  }",
+          "}",
+          "export function TriStateFilterChip({ state, className }) {",
+          '  return <button className={[getTriStateFilterChipClassName(state), className].filter(Boolean).join(" ")} />;',
+          "}",
+          "",
+        ].join("\n"),
+      },
+    ],
+    selectorCssSources: [
+      {
+        filePath: "src/BrowseControls.css",
+        cssText: [
+          ".browse-filter-chip { display: inline-flex; }",
+          ".browse-filter-chip--require { color: green; }",
+          ".browse-filter-chip--exclude { color: red; }",
+          "",
+        ].join("\n"),
+      },
+    ],
+  });
+
+  assertIndexedClassReferences(result.projectAnalysis, [
+    "browse-filter-chip",
+    "browse-filter-chip--require",
+    "browse-filter-chip--exclude",
+  ]);
+});
+
 test("ProjectAnalysis indexes React child transform references by class name", () => {
   const result = analyzeProjectSourceTexts({
     sourceFiles: [

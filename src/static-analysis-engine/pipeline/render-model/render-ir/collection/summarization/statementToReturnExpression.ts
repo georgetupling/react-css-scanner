@@ -57,7 +57,7 @@ export function summarizeSwitchStatementAsExpression(
         ts.factory.createToken(ts.SyntaxKind.ColonToken),
         fallbackExpression,
       ),
-      statement,
+      caseGroup.returnExpression,
     );
   }
 
