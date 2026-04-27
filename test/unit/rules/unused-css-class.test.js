@@ -344,6 +344,341 @@ test("unused-css-class treats helper-forwarded class props as used across compon
   }
 });
 
+test(
+  "unused-css-class should treat data-driven object literal class values in array maps as used",
+  {
+    skip: "known gap: template interpolation does not preserve exact object-property values from mapped array elements",
+  },
+  async () => {
+    const project = await new TestProjectBuilder()
+      .withSourceFile(
+        "src/HomePageGuestView.tsx",
+        [
+          'import "./HomePageGuestView.css";',
+          "const howItWorksItems = [",
+          "  { title: 'Create worlds', graphicClassName: 'home-page__how-it-works-graphic--world' },",
+          "  { title: 'Collaborate safely', graphicClassName: 'home-page__how-it-works-graphic--collaborate' },",
+          "  { title: 'Track canon', graphicClassName: 'home-page__how-it-works-graphic--control' },",
+          "  { title: 'Host beautifully', graphicClassName: 'home-page__how-it-works-graphic--hosted' },",
+          "];",
+          "export function HomePageGuestView() {",
+          "  return (",
+          '    <div className="home-page__how-it-works-grid">',
+          "      {howItWorksItems.map((item) => (",
+          '        <article className="home-page__how-it-works-card" key={item.title}>',
+          "          <div",
+          "            className={`home-page__how-it-works-graphic ${item.graphicClassName}`}",
+          '            aria-hidden="true"',
+          "          />",
+          "        </article>",
+          "      ))}",
+          "    </div>",
+          "  );",
+          "}",
+          "",
+        ].join("\n"),
+      )
+      .withCssFile(
+        "src/HomePageGuestView.css",
+        [
+          ".home-page__how-it-works-graphic { display: block; }",
+          ".home-page__how-it-works-graphic--world { color: green; }",
+          ".home-page__how-it-works-graphic--collaborate { color: blue; }",
+          ".home-page__how-it-works-graphic--control { color: purple; }",
+          ".home-page__how-it-works-graphic--hosted { color: gold; }",
+          "",
+        ].join("\n"),
+      )
+      .build();
+
+    try {
+      const result = await scanProject({ rootDir: project.rootDir });
+
+      assertNoClassFindings(result, "unused-css-class", [
+        "home-page__how-it-works-graphic--world",
+        "home-page__how-it-works-graphic--collaborate",
+        "home-page__how-it-works-graphic--control",
+        "home-page__how-it-works-graphic--hosted",
+      ]);
+    } finally {
+      await project.cleanup();
+    }
+  },
+);
+
+test("unused-css-class treats finite role template literal class variants as used", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/MemberRoleBadge.tsx",
+      [
+        'import "./MemberRoleBadge.css";',
+        'type MemberRole = "owner" | "editor" | "reader";',
+        "type MemberRoleBadgeProps = { role: MemberRole };",
+        "function joinClasses(...classes: Array<string | false | null | undefined>) {",
+        "  return classes.filter(Boolean).join(' ');",
+        "}",
+        "export function MemberRoleBadge({ role }: MemberRoleBadgeProps) {",
+        "  return <span className={joinClasses('member-role-badge', `member-role-badge--${role}`)} />;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile(
+      "src/MemberRoleBadge.css",
+      [
+        ".member-role-badge { display: inline-flex; }",
+        ".member-role-badge--owner { color: red; }",
+        ".member-role-badge--editor { color: blue; }",
+        ".member-role-badge--reader { color: green; }",
+        "",
+      ].join("\n"),
+    )
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", [
+      "member-role-badge--owner",
+      "member-role-badge--editor",
+      "member-role-badge--reader",
+    ]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test(
+  "unused-css-class should resolve finite variants through imported const-derived tuple aliases",
+  {
+    skip: "known gap: imported (typeof CONST_TUPLE)[number] aliases do not preserve finite values through template interpolation",
+  },
+  async () => {
+    const project = await new TestProjectBuilder()
+      .withSourceFile(
+        "src/domain.ts",
+        [
+          "export const WORLD_ROLES = ['owner', 'editor', 'reader'] as const;",
+          "export type WorldRole = (typeof WORLD_ROLES)[number];",
+          "",
+        ].join("\n"),
+      )
+      .withSourceFile(
+        "src/api-contracts.ts",
+        [
+          'import type { WorldRole } from "./domain";',
+          "export type WorldMemberRole = WorldRole;",
+          "",
+        ].join("\n"),
+      )
+      .withSourceFile(
+        "src/MemberRoleBadge.tsx",
+        [
+          'import type { WorldMemberRole } from "./api-contracts";',
+          'import "./MemberRoleBadge.css";',
+          "type MemberRoleBadgeProps = { role: WorldMemberRole };",
+          "function joinClasses(...classes: Array<string | false | null | undefined>) {",
+          "  return classes.filter(Boolean).join(' ');",
+          "}",
+          "export function MemberRoleBadge({ role }: MemberRoleBadgeProps) {",
+          "  return <span className={joinClasses('member-role-badge', `member-role-badge--${role}`)} />;",
+          "}",
+          "",
+        ].join("\n"),
+      )
+      .withCssFile(
+        "src/MemberRoleBadge.css",
+        [
+          ".member-role-badge { display: inline-flex; }",
+          ".member-role-badge--owner { color: red; }",
+          ".member-role-badge--editor { color: blue; }",
+          ".member-role-badge--reader { color: green; }",
+          "",
+        ].join("\n"),
+      )
+      .build();
+
+    try {
+      const result = await scanProject({ rootDir: project.rootDir });
+
+      assertNoClassFindings(result, "unused-css-class", [
+        "member-role-badge--owner",
+        "member-role-badge--editor",
+        "member-role-badge--reader",
+      ]);
+    } finally {
+      await project.cleanup();
+    }
+  },
+);
+
+test("unused-css-class treats computed shared primitive base classes as used", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/PageState.tsx",
+      [
+        'import "./PageState.css";',
+        "type PageStateProps = { title: string; message: string; className?: string };",
+        "export function PageState({ title, message, className }: PageStateProps) {",
+        "  const rootClassName = className ? `page-state ${className}` : 'page-state';",
+        "  return (",
+        "    <div className={rootClassName}>",
+        '      <h1 className="page-state__title">{title}</h1>',
+        '      <p className="page-state__message">{message}</p>',
+        "    </div>",
+        "  );",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile(
+      "src/PageState.css",
+      [
+        ".page-state { display: grid; }",
+        ".page-state__title { font-weight: 700; }",
+        ".page-state__message { color: currentColor; }",
+        "",
+      ].join("\n"),
+    )
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", [
+      "page-state",
+      "page-state__title",
+      "page-state__message",
+    ]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test(
+  "unused-css-class should preserve local class aliases declared inside mapped render callback bodies",
+  { skip: "known gap: array-map render callbacks currently drop callback-local const bindings" },
+  async () => {
+    const project = await new TestProjectBuilder()
+      .withSourceFile(
+        "src/DesktopPublicWorldPanel.tsx",
+        [
+          'import { HomepageDiscoveryCard } from "./HomepageDiscoveryCard";',
+          'import "./DesktopPublicWorldPanel.css";',
+          "export function DesktopPublicWorldPanel({ discovery }) {",
+          "  const safeActiveDiscoveryIndex = 0;",
+          "  const previousDiscoveryIndex = 1;",
+          "  const nextDiscoveryIndex = 2;",
+          "  return (",
+          '    <div className="home-page__discovery-stage">',
+          "      {discovery.slots.map((slot, index) => {",
+          "        const isActive = index === safeActiveDiscoveryIndex;",
+          "        const isPrevious = index === previousDiscoveryIndex;",
+          "        const isNext = index === nextDiscoveryIndex;",
+          "        const cardPositionClass = isActive",
+          "          ? 'home-page__discovery-card--active'",
+          "          : isPrevious",
+          "            ? 'home-page__discovery-card--previous'",
+          "            : isNext",
+          "              ? 'home-page__discovery-card--next'",
+          "              : 'home-page__discovery-card--hidden';",
+          "        return <HomepageDiscoveryCard slot={slot} className={cardPositionClass} />;",
+          "      })}",
+          "    </div>",
+          "  );",
+          "}",
+          "",
+        ].join("\n"),
+      )
+      .withSourceFile(
+        "src/HomepageDiscoveryCard.tsx",
+        [
+          'import "./HomepageDiscoveryCard.css";',
+          "function joinClasses(...classes) { return classes.filter(Boolean).join(' '); }",
+          "export function HomepageDiscoveryCard({ className }) {",
+          "  return <a className={joinClasses('home-page__discovery-card', className)} />;",
+          "}",
+          "",
+        ].join("\n"),
+      )
+      .withCssFile(
+        "src/DesktopPublicWorldPanel.css",
+        [
+          ".home-page__discovery-card--active { opacity: 1; }",
+          ".home-page__discovery-card--previous { opacity: 0.8; }",
+          ".home-page__discovery-card--next { opacity: 0.8; }",
+          ".home-page__discovery-card--hidden { opacity: 0; }",
+          "",
+        ].join("\n"),
+      )
+      .withCssFile(
+        "src/HomepageDiscoveryCard.css",
+        ".home-page__discovery-card { display: block; }\n",
+      )
+      .build();
+
+    try {
+      const result = await scanProject({ rootDir: project.rootDir });
+
+      assertNoClassFindings(result, "unused-css-class", [
+        "home-page__discovery-card--active",
+        "home-page__discovery-card--previous",
+        "home-page__discovery-card--next",
+        "home-page__discovery-card--hidden",
+      ]);
+    } finally {
+      await project.cleanup();
+    }
+  },
+);
+
+test(
+  "unused-css-class should scan JSX literals passed into side-effect setters",
+  {
+    skip: "known gap: render extraction currently starts at returned JSX and render props/children",
+  },
+  async () => {
+    const project = await new TestProjectBuilder()
+      .withSourceFile(
+        "src/WorldLayout.tsx",
+        [
+          'import "./WorldLayout.css";',
+          "function useAppChrome() { return { setTopBar(_node) {} }; }",
+          "export function WorldLayout() {",
+          "  const { setTopBar } = useAppChrome();",
+          "  setTopBar(",
+          '    <section className="world-layout__subnav-shell">',
+          '      <div className="world-layout__subnav-shell-inner" />',
+          "    </section>,",
+          "  );",
+          "  return null;",
+          "}",
+          "",
+        ].join("\n"),
+      )
+      .withCssFile(
+        "src/WorldLayout.css",
+        [
+          ".world-layout__subnav-shell { display: block; }",
+          ".world-layout__subnav-shell-inner { max-width: 80rem; }",
+          "",
+        ].join("\n"),
+      )
+      .build();
+
+    try {
+      const result = await scanProject({ rootDir: project.rootDir });
+
+      assertNoClassFindings(result, "unused-css-class", [
+        "world-layout__subnav-shell",
+        "world-layout__subnav-shell-inner",
+      ]);
+    } finally {
+      await project.cleanup();
+    }
+  },
+);
+
 test("unused-css-class treats finite template literal variants through helpers as used", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(

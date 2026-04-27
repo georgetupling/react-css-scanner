@@ -221,23 +221,38 @@ function unwrapExpression(expression: ts.Expression): ts.Expression {
 
 function summarizeTemplateExpression(expression: ts.TemplateExpression): AbstractValue {
   let candidates = [expression.head.text];
+  const staticTokens = collectSafeStaticTemplateClassTokens(expression);
 
   for (const span of expression.templateSpans) {
     const spanValue = summarizeClassNameExpression(span.expression);
     const spanCandidates = getStringCandidates(spanValue);
     if (!spanCandidates) {
-      return { kind: "unknown", reason: "unsupported-template-interpolation" };
+      return buildPartialTemplateClassSet(staticTokens, "unsupported-template-interpolation");
     }
 
     candidates = combineStrings(candidates, spanCandidates);
     if (candidates.length > MAX_STRING_COMBINATIONS) {
-      return { kind: "unknown", reason: "template-interpolation-budget-exceeded" };
+      return buildPartialTemplateClassSet(staticTokens, "template-interpolation-budget-exceeded");
     }
 
     candidates = candidates.map((candidate) => `${candidate}${span.literal.text}`);
   }
 
   return toStringValue(candidates);
+}
+
+function buildPartialTemplateClassSet(staticTokens: string[], reason: string): AbstractValue {
+  if (staticTokens.length === 0) {
+    return { kind: "unknown", reason };
+  }
+
+  return {
+    kind: "class-set",
+    definite: uniqueSorted(staticTokens),
+    possible: [],
+    unknownDynamic: true,
+    reason: `partial-template:${reason}`,
+  };
 }
 
 function summarizeLogicalExpression(expression: ts.BinaryExpression): AbstractValue {
@@ -481,6 +496,53 @@ function collectStringCandidates(...values: AbstractValue[]): string[] | undefin
   }
 
   return [...candidates].sort((left, right) => left.localeCompare(right));
+}
+
+function collectSafeStaticTemplateClassTokens(expression: ts.TemplateExpression): string[] {
+  const templateParts = [
+    expression.head.text,
+    ...expression.templateSpans.map((span) => span.literal.text),
+  ];
+  const tokens: string[] = [];
+
+  for (let index = 0; index < templateParts.length; index += 1) {
+    tokens.push(
+      ...collectSafeStaticClassTokensFromTemplatePart(templateParts[index], {
+        isTemplateStart: index === 0,
+        isTemplateEnd: index === templateParts.length - 1,
+      }),
+    );
+  }
+
+  return uniqueSorted(tokens);
+}
+
+function collectSafeStaticClassTokensFromTemplatePart(
+  text: string,
+  boundaries: {
+    isTemplateStart: boolean;
+    isTemplateEnd: boolean;
+  },
+): string[] {
+  const tokens: string[] = [];
+  const tokenPattern = /\S+/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = tokenPattern.exec(text)) !== null) {
+    const token = match[0];
+    const startIndex = match.index;
+    const endIndex = startIndex + token.length;
+    const hasSafeStart =
+      startIndex > 0 ? /\s/.test(text[startIndex - 1]) : boundaries.isTemplateStart;
+    const hasSafeEnd =
+      endIndex < text.length ? /\s/.test(text[endIndex]) : boundaries.isTemplateEnd;
+
+    if (hasSafeStart && hasSafeEnd) {
+      tokens.push(token);
+    }
+  }
+
+  return tokens;
 }
 
 function combineStrings(left: string[], right: string[]): string[] {
