@@ -10,6 +10,8 @@ export {
   getSourceSpecifierCandidatePaths,
   resolveSourceSpecifier,
 } from "./resolveSourceSpecifier.js";
+export { buildTypescriptResolution } from "./typescriptResolution.js";
+export type { ProjectResolutionTypescriptResolution } from "./types.js";
 export type {
   ResolvedProjectResolutionExport,
   ResolveProjectResolutionExportResult,

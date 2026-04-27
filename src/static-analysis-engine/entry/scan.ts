@@ -46,6 +46,7 @@ export function analyzeProjectSourceTexts(input: {
     filePath: string;
     sourceText: string;
   }>;
+  projectRoot?: string;
   selectorQueries?: string[];
   selectorCssSources?: SelectorSourceInput[];
   externalCss?: ExternalCssAnalysisInput;
@@ -65,6 +66,7 @@ export function analyzeProjectSourceTexts(input: {
     () =>
       runProjectResolutionStage({
         parsedFiles: parseStage.parsedFiles,
+        projectRoot: input.projectRoot,
       }),
   );
   const moduleGraphStage = runAnalysisStage(progress, "module-graph", "Building module graph", () =>

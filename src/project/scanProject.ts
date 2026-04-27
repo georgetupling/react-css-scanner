@@ -132,6 +132,7 @@ export async function scanProject(input: ScanProjectInput = {}): Promise<ScanPro
 
   const engineResult = analyzeProjectSourceTexts({
     sourceFiles,
+    projectRoot: discovered.rootDir,
     selectorCssSources,
     cssModules: config.cssModules,
     externalCss: {

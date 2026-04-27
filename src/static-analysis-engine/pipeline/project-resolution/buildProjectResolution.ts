@@ -8,6 +8,7 @@ import { applyExportEvidenceToDeclarations, collectExports } from "./collectExpo
 import { collectImports } from "./collectImports.js";
 import { collectWorkspacePackageEntryPoints } from "./workspaceEntryPoints.js";
 import { normalizeFilePath } from "./pathUtils.js";
+import { buildTypescriptResolution } from "./typescriptResolution.js";
 import type {
   ProjectResolution,
   ProjectResolutionExportRecord,
@@ -17,6 +18,8 @@ import type {
 
 export function buildProjectResolution(input: {
   parsedFiles: ParsedProjectFile[];
+  projectRoot?: string;
+  compilerOptions?: ts.CompilerOptions;
 }): ProjectResolution {
   const sortedParsedFiles = [...input.parsedFiles].sort((left, right) =>
     normalizeFilePath(left.filePath).localeCompare(normalizeFilePath(right.filePath)),
@@ -51,6 +54,11 @@ export function buildProjectResolution(input: {
     declarationsByFilePath,
     exportedExpressionBindingsByFilePath,
     workspacePackageEntryPointsByPackageName: collectWorkspacePackageEntryPoints(sortedParsedFiles),
+    typescriptResolution: buildTypescriptResolution({
+      projectRoot: input.projectRoot,
+      filePaths: parsedSourceFilesByFilePath.keys(),
+      compilerOptions: input.compilerOptions,
+    }),
     caches: createProjectResolutionCaches(),
   };
 }

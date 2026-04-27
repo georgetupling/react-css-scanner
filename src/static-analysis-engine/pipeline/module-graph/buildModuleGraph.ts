@@ -138,6 +138,7 @@ function buildImportRecord(
 
   const specifier = statement.moduleSpecifier.text;
   const importClause = statement.importClause;
+  const importKind = classifyImportKind(specifier, importClause?.isTypeOnly === true);
   const importedNames: ModuleImportRecord["importedNames"] = [];
 
   if (importClause?.name) {
@@ -165,12 +166,35 @@ function buildImportRecord(
 
   return {
     specifier,
-    resolvedModuleId: specifier.startsWith(".")
-      ? (resolveImportSpecifier?.(fromFilePath, specifier) ?? createModuleId(specifier))
-      : undefined,
-    importKind: classifyImportKind(specifier, importClause?.isTypeOnly === true),
+    resolvedModuleId: resolveImportModuleId({
+      fromFilePath,
+      specifier,
+      importKind,
+      resolveImportSpecifier,
+    }),
+    importKind,
     importedNames,
   };
+}
+
+function resolveImportModuleId(input: {
+  fromFilePath: string;
+  specifier: string;
+  importKind: ModuleImportKind;
+  resolveImportSpecifier?: (fromFilePath: string, specifier: string) => EngineModuleId | undefined;
+}): EngineModuleId | undefined {
+  if (input.importKind === "source" || input.importKind === "type-only") {
+    return (
+      input.resolveImportSpecifier?.(input.fromFilePath, input.specifier) ??
+      (input.specifier.startsWith(".") ? createModuleId(input.specifier) : undefined)
+    );
+  }
+
+  if (input.importKind === "css" && input.specifier.startsWith(".")) {
+    return createModuleId(input.specifier);
+  }
+
+  return undefined;
 }
 
 function buildExportRecords(

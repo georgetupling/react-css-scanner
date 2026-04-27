@@ -1,4 +1,5 @@
 import { resolveSourceSpecifier } from "./resolveSourceSpecifier.js";
+import { resolveTypescriptModuleSpecifier } from "./typescriptResolution.js";
 import type { ProjectResolution } from "./types.js";
 
 export function resolveProjectSourceSpecifier(input: {
@@ -12,14 +13,22 @@ export function resolveProjectSourceSpecifier(input: {
     return cached.status === "resolved" ? cached.value : undefined;
   }
 
-  const resolvedFilePath = resolveSourceSpecifier({
-    fromFilePath: input.fromFilePath,
-    specifier: input.specifier,
-    knownFilePaths: input.projectResolution.parsedSourceFilesByFilePath,
-    includeTypeScriptExtensionAlternates: true,
-    workspacePackageEntryPointsByPackageName:
-      input.projectResolution.workspacePackageEntryPointsByPackageName,
-  });
+  const resolvedFilePath =
+    resolveSourceSpecifier({
+      fromFilePath: input.fromFilePath,
+      specifier: input.specifier,
+      knownFilePaths: input.projectResolution.parsedSourceFilesByFilePath,
+      includeTypeScriptExtensionAlternates: true,
+      workspacePackageEntryPointsByPackageName:
+        input.projectResolution.workspacePackageEntryPointsByPackageName,
+    }) ??
+    (input.projectResolution.typescriptResolution
+      ? resolveTypescriptModuleSpecifier({
+          typescriptResolution: input.projectResolution.typescriptResolution,
+          fromFilePath: input.fromFilePath,
+          specifier: input.specifier,
+        })
+      : undefined);
 
   input.projectResolution.caches.moduleSpecifiers.set(
     cacheKey,

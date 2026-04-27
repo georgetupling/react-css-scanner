@@ -81,6 +81,13 @@ export type ProjectResolutionCaches = {
   finiteTypeEvidence: Map<string, ProjectResolutionCacheEntry<readonly string[]>>;
 };
 
+export type ProjectResolutionTypescriptResolution = {
+  projectRoot: string;
+  compilerOptions: ts.CompilerOptions;
+  moduleResolutionHost: ts.ModuleResolutionHost;
+  knownFilePathsByAbsolutePath: Map<string, string>;
+};
+
 export type WorkspacePackageEntryPoint = {
   packageName: string;
   filePath: string;
@@ -95,5 +102,6 @@ export type ProjectResolution = {
   declarationsByFilePath: Map<string, ProjectResolutionFileDeclarationIndex>;
   exportedExpressionBindingsByFilePath: Map<string, Map<string, ts.Expression>>;
   workspacePackageEntryPointsByPackageName: Map<string, WorkspacePackageEntryPoint[]>;
+  typescriptResolution?: ProjectResolutionTypescriptResolution;
   caches: ProjectResolutionCaches;
 };
