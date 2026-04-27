@@ -2,5 +2,6 @@ node_modules/
 dist/
 docs/observations/
 docs/temp/
+docs/reviews/
 scan-react-css-reports/
 tmp/
