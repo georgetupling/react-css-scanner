@@ -442,69 +442,126 @@ test("unused-css-class treats finite role template literal class variants as use
   }
 });
 
-test(
-  "unused-css-class should resolve finite variants through imported const-derived tuple aliases",
-  {
-    skip: "known gap: imported (typeof CONST_TUPLE)[number] aliases do not preserve finite values through template interpolation",
-  },
-  async () => {
-    const project = await new TestProjectBuilder()
-      .withSourceFile(
-        "src/domain.ts",
-        [
-          "export const WORLD_ROLES = ['owner', 'editor', 'reader'] as const;",
-          "export type WorldRole = (typeof WORLD_ROLES)[number];",
-          "",
-        ].join("\n"),
-      )
-      .withSourceFile(
-        "src/api-contracts.ts",
-        [
-          'import type { WorldRole } from "./domain";',
-          "export type WorldMemberRole = WorldRole;",
-          "",
-        ].join("\n"),
-      )
-      .withSourceFile(
-        "src/MemberRoleBadge.tsx",
-        [
-          'import type { WorldMemberRole } from "./api-contracts";',
-          'import "./MemberRoleBadge.css";',
-          "type MemberRoleBadgeProps = { role: WorldMemberRole };",
-          "function joinClasses(...classes: Array<string | false | null | undefined>) {",
-          "  return classes.filter(Boolean).join(' ');",
-          "}",
-          "export function MemberRoleBadge({ role }: MemberRoleBadgeProps) {",
-          "  return <span className={joinClasses('member-role-badge', `member-role-badge--${role}`)} />;",
-          "}",
-          "",
-        ].join("\n"),
-      )
-      .withCssFile(
-        "src/MemberRoleBadge.css",
-        [
-          ".member-role-badge { display: inline-flex; }",
-          ".member-role-badge--owner { color: red; }",
-          ".member-role-badge--editor { color: blue; }",
-          ".member-role-badge--reader { color: green; }",
-          "",
-        ].join("\n"),
-      )
-      .build();
+test("unused-css-class resolves finite variants through imported const-derived tuple aliases", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/domain.ts",
+      [
+        "export const WORLD_ROLES = ['owner', 'editor', 'reader'] as const;",
+        "export type WorldRole = (typeof WORLD_ROLES)[number];",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/api-contracts.ts",
+      [
+        'import type { WorldRole } from "./domain";',
+        "export type WorldMemberRole = WorldRole;",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/MemberRoleBadge.tsx",
+      [
+        'import type { WorldMemberRole } from "./api-contracts";',
+        'import "./MemberRoleBadge.css";',
+        "type MemberRoleBadgeProps = { role: WorldMemberRole };",
+        "function joinClasses(...classes: Array<string | false | null | undefined>) {",
+        "  return classes.filter(Boolean).join(' ');",
+        "}",
+        "export function MemberRoleBadge({ role }: MemberRoleBadgeProps) {",
+        "  return <span className={joinClasses('member-role-badge', `member-role-badge--${role}`)} />;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile(
+      "src/MemberRoleBadge.css",
+      [
+        ".member-role-badge { display: inline-flex; }",
+        ".member-role-badge--owner { color: red; }",
+        ".member-role-badge--editor { color: blue; }",
+        ".member-role-badge--reader { color: green; }",
+        "",
+      ].join("\n"),
+    )
+    .build();
 
-    try {
-      const result = await scanProject({ rootDir: project.rootDir });
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
 
-      assertNoClassFindings(result, "unused-css-class", [
-        "member-role-badge--owner",
-        "member-role-badge--editor",
-        "member-role-badge--reader",
-      ]);
-    } finally {
-      await project.cleanup();
-    }
-  },
-);
+    assertNoClassFindings(result, "unused-css-class", [
+      "member-role-badge--owner",
+      "member-role-badge--editor",
+      "member-role-badge--reader",
+    ]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unused-css-class resolves const-derived variants through workspace package barrels", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "packages/domain/src/index.ts",
+      ['export * from "./worlds.enums.js";', ""].join("\n"),
+    )
+    .withSourceFile(
+      "packages/domain/src/worlds.enums.ts",
+      [
+        "export const WORLD_ROLES = ['owner', 'editor', 'reader'] as const;",
+        "export type WorldRole = (typeof WORLD_ROLES)[number];",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "packages/api-contracts/src/index.ts",
+      ['export * from "./worlds/world-members.contract.js";', ""].join("\n"),
+    )
+    .withSourceFile(
+      "packages/api-contracts/src/worlds/world-members.contract.ts",
+      [
+        'import type { WorldRole } from "@loremaster/domain";',
+        "export type WorldMemberRole = WorldRole;",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/MemberRoleBadge.tsx",
+      [
+        'import type { WorldMemberRole } from "@loremaster/api-contracts";',
+        'import "./MemberRoleBadge.css";',
+        "type MemberRoleBadgeProps = { role: WorldMemberRole };",
+        "export function MemberRoleBadge({ role }: MemberRoleBadgeProps) {",
+        "  return <span className={`member-role-badge member-role-badge--${role}`} />;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile(
+      "src/MemberRoleBadge.css",
+      [
+        ".member-role-badge { display: inline-flex; }",
+        ".member-role-badge--owner { color: red; }",
+        ".member-role-badge--editor { color: blue; }",
+        ".member-role-badge--reader { color: green; }",
+        "",
+      ].join("\n"),
+    )
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", [
+      "member-role-badge--owner",
+      "member-role-badge--editor",
+      "member-role-badge--reader",
+    ]);
+  } finally {
+    await project.cleanup();
+  }
+});
 
 test("unused-css-class treats computed shared primitive base classes as used", async () => {
   const project = await new TestProjectBuilder()

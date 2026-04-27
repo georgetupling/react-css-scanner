@@ -5,9 +5,11 @@ type LocalTypeEvidence = {
   cache?: FiniteTypeEvidenceCache;
   typeAliases: Map<string, ts.TypeNode>;
   interfaces: Map<string, ts.InterfaceDeclaration>;
+  constBindings: Map<string, ts.Expression>;
   importedTypes: Map<string, ImportedTypeReference>;
   localExportNames: Map<string, string>;
   reExportedTypes: Map<string, ImportedTypeReference>;
+  starReExportedFilePaths: string[];
 };
 
 type ImportedTypeReference = {
@@ -28,6 +30,7 @@ export type FiniteTypeEvidenceCache = {
   parsedSourceFilesByFilePath: Map<string, ts.SourceFile>;
   evidenceByFilePath: Map<string, LocalTypeEvidence>;
   resolvedExportedTypesByKey: Map<string, ResolvedTypeDeclaration | undefined>;
+  workspacePackageEntryPointsByPackageName: Map<string, string[]>;
 };
 
 export function createFiniteTypeEvidenceCache(
@@ -45,6 +48,7 @@ export function createFiniteTypeEvidenceCache(
     ),
     evidenceByFilePath: new Map(),
     resolvedExportedTypesByKey: new Map(),
+    workspacePackageEntryPointsByPackageName: collectWorkspacePackageEntryPoints(parsedFiles),
   };
 }
 
@@ -102,11 +106,17 @@ function collectLocalTypeEvidence(
 ): LocalTypeEvidence {
   const typeAliases = new Map<string, ts.TypeNode>();
   const interfaces = new Map<string, ts.InterfaceDeclaration>();
+  const constBindings = new Map<string, ts.Expression>();
   const importedTypes = new Map<string, ImportedTypeReference>();
   const localExportNames = new Map<string, string>();
   const reExportedTypes = new Map<string, ImportedTypeReference>();
+  const starReExportedFilePaths: string[] = [];
 
   for (const statement of sourceFile.statements) {
+    if (ts.isVariableStatement(statement)) {
+      collectConstBindings(statement, constBindings);
+    }
+
     if (ts.isTypeAliasDeclaration(statement)) {
       typeAliases.set(statement.name.text, statement.type);
       if (isExported(statement)) {
@@ -128,12 +138,15 @@ function collectLocalTypeEvidence(
       continue;
     }
 
-    if (
-      ts.isExportDeclaration(statement) &&
-      statement.exportClause &&
-      ts.isNamedExports(statement.exportClause)
-    ) {
-      collectExportedTypeReferences(statement, filePath, cache, localExportNames, reExportedTypes);
+    if (ts.isExportDeclaration(statement)) {
+      collectExportedTypeReferences(
+        statement,
+        filePath,
+        cache,
+        localExportNames,
+        reExportedTypes,
+        starReExportedFilePaths,
+      );
     }
   }
 
@@ -142,9 +155,11 @@ function collectLocalTypeEvidence(
     cache,
     typeAliases,
     interfaces,
+    constBindings,
     importedTypes,
     localExportNames,
     reExportedTypes,
+    starReExportedFilePaths,
   };
 }
 
@@ -183,18 +198,36 @@ function collectImportedTypeReferences(
   }
 }
 
+function collectConstBindings(
+  statement: ts.VariableStatement,
+  constBindings: Map<string, ts.Expression>,
+): void {
+  if ((statement.declarationList.flags & ts.NodeFlags.Const) === 0) {
+    return;
+  }
+
+  for (const declaration of statement.declarationList.declarations) {
+    if (!ts.isIdentifier(declaration.name) || !declaration.initializer) {
+      continue;
+    }
+
+    constBindings.set(declaration.name.text, declaration.initializer);
+  }
+}
+
 function collectExportedTypeReferences(
   statement: ts.ExportDeclaration,
   filePath: string,
   cache: FiniteTypeEvidenceCache | undefined,
   localExportNames: Map<string, string>,
   reExportedTypes: Map<string, ImportedTypeReference>,
+  starReExportedFilePaths: string[],
 ): void {
-  if (!statement.exportClause || !ts.isNamedExports(statement.exportClause)) {
-    return;
-  }
-
   if (!statement.moduleSpecifier) {
+    if (!statement.exportClause || !ts.isNamedExports(statement.exportClause)) {
+      return;
+    }
+
     for (const element of statement.exportClause.elements) {
       if (statement.isTypeOnly || element.isTypeOnly) {
         localExportNames.set(element.name.text, element.propertyName?.text ?? element.name.text);
@@ -213,6 +246,15 @@ function collectExportedTypeReferences(
     cache,
   );
   if (!importedFilePath) {
+    return;
+  }
+
+  if (!statement.exportClause) {
+    starReExportedFilePaths.push(importedFilePath);
+    return;
+  }
+
+  if (!ts.isNamedExports(statement.exportClause)) {
     return;
   }
 
@@ -487,6 +529,11 @@ function resolveIndexedAccessFiniteStringType(
   evidence: LocalTypeEvidence,
   state: TypeResolutionState,
 ): string[] {
+  const tupleValues = resolveConstTupleIndexedAccess(typeNode, evidence);
+  if (tupleValues.length > 0) {
+    return tupleValues;
+  }
+
   const propertyNames = resolveFiniteStringType(typeNode.indexType, evidence, {
     seenTypeNames: new Set(),
     seenExportNames: new Set(),
@@ -507,6 +554,54 @@ function resolveIndexedAccessFiniteStringType(
         : [];
     }),
   );
+}
+
+function resolveConstTupleIndexedAccess(
+  typeNode: ts.IndexedAccessTypeNode,
+  evidence: LocalTypeEvidence,
+): string[] {
+  if (typeNode.indexType.kind !== ts.SyntaxKind.NumberKeyword) {
+    return [];
+  }
+
+  const objectType = unwrapTypeNode(typeNode.objectType);
+  if (!ts.isTypeQueryNode(objectType) || !ts.isIdentifier(objectType.exprName)) {
+    return [];
+  }
+
+  const expression = evidence.constBindings.get(objectType.exprName.text);
+  if (!expression) {
+    return [];
+  }
+
+  return resolveConstTupleStringValues(expression);
+}
+
+function resolveConstTupleStringValues(expression: ts.Expression): string[] {
+  const unwrappedExpression = unwrapConstExpression(expression);
+  if (!ts.isArrayLiteralExpression(unwrappedExpression)) {
+    return [];
+  }
+
+  const values: string[] = [];
+  for (const element of unwrappedExpression.elements) {
+    if (ts.isSpreadElement(element)) {
+      return [];
+    }
+
+    const valueExpression = unwrapConstExpression(element);
+    if (
+      ts.isStringLiteral(valueExpression) ||
+      ts.isNoSubstitutionTemplateLiteral(valueExpression)
+    ) {
+      values.push(valueExpression.text);
+      continue;
+    }
+
+    return [];
+  }
+
+  return uniqueSorted(values);
 }
 
 function resolveSupportedUtilityFiniteStringType(
@@ -602,19 +697,37 @@ function resolveExportedTypeDeclaration(
   }
 
   const reExportedType = targetEvidence.reExportedTypes.get(exportedName);
-  if (!reExportedType) {
-    cache.resolvedExportedTypesByKey.set(exportKey, undefined);
-    return undefined;
+  if (reExportedType) {
+    const reExportedDeclaration = resolveExportedTypeDeclaration(
+      reExportedType.filePath,
+      reExportedType.importedName,
+      cache,
+      nextState,
+    );
+    cache.resolvedExportedTypesByKey.set(exportKey, reExportedDeclaration);
+    return reExportedDeclaration;
   }
 
-  const reExportedDeclaration = resolveExportedTypeDeclaration(
-    reExportedType.filePath,
-    reExportedType.importedName,
-    cache,
-    nextState,
-  );
-  cache.resolvedExportedTypesByKey.set(exportKey, reExportedDeclaration);
-  return reExportedDeclaration;
+  for (const starReExportedFilePath of targetEvidence.starReExportedFilePaths) {
+    const starExportKey = createTypeKey(starReExportedFilePath, exportedName);
+    if (nextState.seenExportNames.has(starExportKey)) {
+      continue;
+    }
+
+    const starReExportedDeclaration = resolveExportedTypeDeclaration(
+      starReExportedFilePath,
+      exportedName,
+      cache,
+      nextState,
+    );
+    if (starReExportedDeclaration) {
+      cache.resolvedExportedTypesByKey.set(exportKey, starReExportedDeclaration);
+      return starReExportedDeclaration;
+    }
+  }
+
+  cache.resolvedExportedTypesByKey.set(exportKey, undefined);
+  return undefined;
 }
 
 function resolveLocalTypeDeclaration(
@@ -635,8 +748,12 @@ function resolveProjectLocalSourceSpecifier(
   specifier: string,
   cache: FiniteTypeEvidenceCache | undefined,
 ): string | undefined {
-  if (!cache || !specifier.startsWith(".")) {
+  if (!cache) {
     return undefined;
+  }
+
+  if (!specifier.startsWith(".")) {
+    return resolveWorkspacePackageSpecifier(specifier, cache);
   }
 
   const normalizedFromFilePath = normalizeProjectPath(fromFilePath);
@@ -646,6 +763,7 @@ function resolveProjectLocalSourceSpecifier(
   const candidateBasePath = normalizeSegments([...fromSegments, ...baseSegments]);
   const candidatePaths = [
     candidateBasePath,
+    ...getTypeScriptSourceAlternatesForSpecifier(candidateBasePath),
     `${candidateBasePath}.ts`,
     `${candidateBasePath}.tsx`,
     `${candidateBasePath}.js`,
@@ -659,6 +777,97 @@ function resolveProjectLocalSourceSpecifier(
   return candidatePaths.find((candidatePath) =>
     cache.parsedSourceFilesByFilePath.has(candidatePath),
   );
+}
+
+function getTypeScriptSourceAlternatesForSpecifier(candidateBasePath: string): string[] {
+  if (candidateBasePath.endsWith(".js")) {
+    return [
+      `${candidateBasePath.slice(0, -".js".length)}.ts`,
+      `${candidateBasePath.slice(0, -".js".length)}.tsx`,
+    ];
+  }
+
+  if (candidateBasePath.endsWith(".jsx")) {
+    return [`${candidateBasePath.slice(0, -".jsx".length)}.tsx`];
+  }
+
+  if (candidateBasePath.endsWith(".mjs") || candidateBasePath.endsWith(".cjs")) {
+    return [
+      `${candidateBasePath.slice(0, -".mjs".length)}.mts`,
+      `${candidateBasePath.slice(0, -".mjs".length)}.cts`,
+    ];
+  }
+
+  return [];
+}
+
+function resolveWorkspacePackageSpecifier(
+  specifier: string,
+  cache: FiniteTypeEvidenceCache,
+): string | undefined {
+  const packageName = getPackageNameFromSpecifier(specifier);
+  if (!packageName) {
+    return undefined;
+  }
+
+  const entryPoints = cache.workspacePackageEntryPointsByPackageName.get(packageName) ?? [];
+  return entryPoints.length === 1 ? entryPoints[0] : undefined;
+}
+
+function getPackageNameFromSpecifier(specifier: string): string | undefined {
+  if (specifier.startsWith(".") || specifier.startsWith("/") || specifier.startsWith("//")) {
+    return undefined;
+  }
+
+  const segments = specifier.split("/").filter((segment) => segment.length > 0);
+  if (segments.length === 0) {
+    return undefined;
+  }
+
+  return segments[0].startsWith("@") ? segments[1] : segments[0];
+}
+
+function collectWorkspacePackageEntryPoints(
+  parsedFiles: Array<{
+    filePath: string;
+    parsedSourceFile: ts.SourceFile;
+  }>,
+): Map<string, string[]> {
+  const entryPointsByPackageName = new Map<string, string[]>();
+
+  for (const parsedFile of parsedFiles) {
+    const normalizedFilePath = normalizeProjectPath(parsedFile.filePath);
+    const packageName = getWorkspacePackageEntryPointName(normalizedFilePath);
+    if (!packageName) {
+      continue;
+    }
+
+    const entryPoints = entryPointsByPackageName.get(packageName) ?? [];
+    entryPoints.push(normalizedFilePath);
+    entryPointsByPackageName.set(packageName, entryPoints);
+  }
+
+  return new Map(
+    [...entryPointsByPackageName.entries()].map(([packageName, entryPoints]) => [
+      packageName,
+      entryPoints.sort((left, right) => left.localeCompare(right)),
+    ]),
+  );
+}
+
+function getWorkspacePackageEntryPointName(filePath: string): string | undefined {
+  const segments = filePath.split("/");
+  const fileName = segments.at(-1);
+  if (!fileName || !/^index\.[cm]?[jt]sx?$/.test(fileName)) {
+    return undefined;
+  }
+
+  const parentDirectory = segments.at(-2);
+  if (parentDirectory === "src") {
+    return segments.at(-3);
+  }
+
+  return parentDirectory;
 }
 
 function normalizeSegments(segments: string[]): string {
@@ -678,6 +887,28 @@ function normalizeSegments(segments: string[]): string {
   }
 
   return normalized.join("/");
+}
+
+function unwrapConstExpression(expression: ts.Expression): ts.Expression {
+  let current = expression;
+  while (
+    ts.isParenthesizedExpression(current) ||
+    ts.isAsExpression(current) ||
+    ts.isSatisfiesExpression(current)
+  ) {
+    current = current.expression;
+  }
+
+  return current;
+}
+
+function unwrapTypeNode(typeNode: ts.TypeNode): ts.TypeNode {
+  let current = typeNode;
+  while (ts.isParenthesizedTypeNode(current)) {
+    current = current.type;
+  }
+
+  return current;
 }
 
 function createTypeKey(filePath: string, typeName: string): string {
