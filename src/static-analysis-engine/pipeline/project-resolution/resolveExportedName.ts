@@ -2,7 +2,7 @@ import { MAX_CROSS_FILE_IMPORT_PROPAGATION_DEPTH } from "../../libraries/policy/
 import type { AnalysisTrace } from "../../types/analysis.js";
 import type { SourceAnchor } from "../../types/core.js";
 import { normalizeFilePath } from "./pathUtils.js";
-import { resolveSourceSpecifier } from "./resolveSourceSpecifier.js";
+import { resolveProjectSourceSpecifier } from "./resolveProjectSourceSpecifier.js";
 import type { ProjectResolution, ProjectResolutionExportRecord } from "./types.js";
 
 export type ResolvedProjectResolutionExport = {
@@ -259,13 +259,10 @@ export function resolveReExportTargetFilePath(input: {
     return cached.status === "resolved" ? cached.value : undefined;
   }
 
-  const targetFilePath = resolveSourceSpecifier({
+  const targetFilePath = resolveProjectSourceSpecifier({
+    projectResolution: input.projectResolution,
     fromFilePath: input.exportRecord.filePath,
     specifier: input.exportRecord.specifier,
-    knownFilePaths: input.projectResolution.parsedSourceFilesByFilePath,
-    includeTypeScriptExtensionAlternates: true,
-    workspacePackageEntryPointsByPackageName:
-      input.projectResolution.workspacePackageEntryPointsByPackageName,
   });
 
   input.projectResolution.caches.moduleSpecifiers.set(

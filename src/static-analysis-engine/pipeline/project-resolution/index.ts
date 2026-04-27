@@ -5,6 +5,7 @@ export {
   resolveProjectExport,
   resolveReExportTargetFilePath,
 } from "./resolveExportedName.js";
+export { resolveProjectSourceSpecifier } from "./resolveProjectSourceSpecifier.js";
 export {
   getSourceSpecifierCandidatePaths,
   resolveSourceSpecifier,

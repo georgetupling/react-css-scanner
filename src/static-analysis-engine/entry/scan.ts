@@ -70,6 +70,7 @@ export function analyzeProjectSourceTexts(input: {
   const moduleGraphStage = runAnalysisStage(progress, "module-graph", "Building module graph", () =>
     runModuleGraphStage({
       parsedFiles: parseStage.parsedFiles,
+      projectResolution: projectResolutionStage.projectResolution,
     }),
   );
   const symbolResolutionStage = runAnalysisStage(

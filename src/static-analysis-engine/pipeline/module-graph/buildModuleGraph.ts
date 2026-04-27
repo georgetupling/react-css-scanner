@@ -1,5 +1,9 @@
 import ts from "typescript";
 import { normalizeFilePath } from "../project-resolution/pathUtils.js";
+import {
+  resolveProjectSourceSpecifier,
+  type ProjectResolution,
+} from "../project-resolution/index.js";
 import { resolveSourceSpecifier } from "../project-resolution/resolveSourceSpecifier.js";
 import type { EngineModuleId } from "../../types/core.js";
 import type {
@@ -75,17 +79,26 @@ export function buildModuleGraphFromSources(
     filePath: string;
     parsedSourceFile: ts.SourceFile;
   }>,
+  options: {
+    projectResolution?: ProjectResolution;
+  } = {},
 ): ModuleGraph {
   const modulesById = new Map<EngineModuleId, ModuleNode>();
   const importEdges: ModuleGraph["importEdges"] = [];
   const exportEdges: ModuleGraph["exportEdges"] = [];
   const knownFilePaths = new Set(inputs.map((entry) => normalizeFilePath(entry.filePath)));
   const resolveImportSpecifier = (fromFilePath: string, specifier: string) => {
-    const resolvedFilePath = resolveSourceSpecifier({
-      fromFilePath,
-      specifier,
-      knownFilePaths,
-    });
+    const resolvedFilePath = options.projectResolution
+      ? resolveProjectSourceSpecifier({
+          projectResolution: options.projectResolution,
+          fromFilePath,
+          specifier,
+        })
+      : resolveSourceSpecifier({
+          fromFilePath,
+          specifier,
+          knownFilePaths,
+        });
     return resolvedFilePath ? createModuleId(resolvedFilePath) : undefined;
   };
 
