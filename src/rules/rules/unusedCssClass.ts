@@ -33,6 +33,10 @@ function runUnusedCssClassRule(context: RuleContext): UnresolvedFinding[] {
       continue;
     }
 
+    if (isDefinitionMatchedBySelectorBranch(context, definition)) {
+      continue;
+    }
+
     const key = `${definition.stylesheetId}:${definition.className}`;
     const definitions = definitionsByClassAndStylesheet.get(key);
     if (definitions) {
@@ -51,6 +55,67 @@ function runUnusedCssClassRule(context: RuleContext): UnresolvedFinding[] {
       }),
     )
     .sort((left, right) => left.id.localeCompare(right.id));
+}
+
+function isDefinitionMatchedBySelectorBranch(
+  context: RuleContext,
+  definition: RuleContext["analysis"]["entities"]["classDefinitions"][number],
+): boolean {
+  if (
+    definition.selectorKind === "simple-root" ||
+    definition.selectorKind === "unsupported" ||
+    !definition.sourceDefinition.selectorBranch.subjectClassNames.includes(definition.className)
+  ) {
+    return false;
+  }
+
+  const stylesheet = context.analysis.indexes.stylesheetsById.get(definition.stylesheetId);
+  const branchIds = context.analysis.indexes.selectorBranchesByStylesheetId.get(
+    definition.stylesheetId,
+  );
+  const branchesById = new Map<
+    string,
+    RuleContext["analysis"]["entities"]["selectorBranches"][number]
+  >();
+  for (const branchId of branchIds ?? []) {
+    const branch = context.analysis.indexes.selectorBranchesById.get(branchId);
+    if (branch) {
+      branchesById.set(branch.id, branch);
+    }
+  }
+  for (const branch of context.analysis.entities.selectorBranches) {
+    if (sameAnalysisPath(branch.location?.filePath, stylesheet?.filePath)) {
+      branchesById.set(branch.id, branch);
+    }
+  }
+  const branches = [...branchesById.values()];
+
+  return branches.some((branch) => {
+    return (
+      (branch.outcome === "match" || branch.outcome === "possible-match") &&
+      branch.selectorText === definition.selectorText &&
+      (branch.stylesheetId === definition.stylesheetId ||
+        sameAnalysisPath(branch.location?.filePath, stylesheet?.filePath))
+    );
+  });
+}
+
+function sameAnalysisPath(left?: string, right?: string): boolean {
+  if (left === undefined || right === undefined) {
+    return false;
+  }
+
+  const normalizedLeft = normalizeAnalysisPath(left);
+  const normalizedRight = normalizeAnalysisPath(right);
+  return (
+    normalizedLeft === normalizedRight ||
+    normalizedLeft.endsWith(`/${normalizedRight}`) ||
+    normalizedRight.endsWith(`/${normalizedLeft}`)
+  );
+}
+
+function normalizeAnalysisPath(filePath: string): string {
+  return filePath.replace(/\\/g, "/");
 }
 
 function buildUnusedClassFinding(input: {

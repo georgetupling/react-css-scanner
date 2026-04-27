@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { scanProject } from "../../../dist/index.js";
+import { unusedCssClassRule } from "../../../dist/rules/rules/unusedCssClass.js";
 import { TestProjectBuilder } from "../../support/TestProjectBuilder.js";
 
 test("unused-css-class reports unreferenced local CSS classes", async () => {
@@ -95,6 +96,28 @@ test("unused-css-class aggregates repeated definitions for the same class", asyn
   } finally {
     await project.cleanup();
   }
+});
+
+test("unused-css-class treats matchable contextual selector subjects as used", () => {
+  const context = buildUnusedClassRuleContext({
+    outcome: "possible-match",
+    status: "unsupported",
+  });
+
+  assert.deepEqual(unusedCssClassRule.run(context), []);
+});
+
+test("unused-css-class still reports contextual selector subjects with no bounded match", () => {
+  const context = buildUnusedClassRuleContext({
+    outcome: "no-match-under-bounded-analysis",
+    status: "resolved",
+  });
+
+  const findings = unusedCssClassRule.run(context);
+
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0].ruleId, "unused-css-class");
+  assert.equal(findings[0].data?.className, "popover__trigger");
 });
 
 test("unused-css-class does not report referenced classes", async () => {
@@ -1311,6 +1334,130 @@ function assertNoClassFindings(result, ruleId, classNames) {
       .map((finding) => finding.data?.className),
     [],
   );
+}
+
+function buildUnusedClassRuleContext({ outcome, status }) {
+  const stylesheetId = "stylesheet:src/BrowseControls.css";
+  const definitionId = "class-definition:popover__trigger";
+  const selectorBranchId = "selector-branch:popover__trigger";
+  const selectorQueryId = "selector-query:popover__trigger";
+  const selectorText = ".browse-toolbar-group .popover__trigger";
+
+  const definition = {
+    id: definitionId,
+    stylesheetId,
+    className: "popover__trigger",
+    selectorText,
+    selectorKind: "contextual",
+    line: 4,
+    atRuleContext: [],
+    declarationProperties: ["color"],
+    declarationSignature: "color",
+    isCssModule: false,
+    sourceDefinition: {
+      className: "popover__trigger",
+      selector: selectorText,
+      selectorBranch: {
+        raw: selectorText,
+        matchKind: "contextual",
+        subjectClassNames: ["popover__trigger"],
+        requiredClassNames: ["browse-toolbar-group", "popover__trigger"],
+        contextClassNames: ["browse-toolbar-group"],
+        negativeClassNames: [],
+        hasCombinators: true,
+        hasSubjectModifiers: false,
+        hasUnknownSemantics: false,
+      },
+      declarations: ["color"],
+      declarationDetails: [{ property: "color", value: "red" }],
+      line: 4,
+      atRuleContext: [],
+    },
+  };
+  const branch = {
+    id: selectorBranchId,
+    selectorQueryId,
+    selectorText,
+    selectorListText: selectorText,
+    branchIndex: 0,
+    branchCount: 1,
+    ruleKey: `${stylesheetId}:4:${selectorText}`,
+    location: {
+      filePath: "C:\\repo\\src\\BrowseControls.css",
+      startLine: 6,
+      startColumn: 1,
+    },
+    constraint: {
+      kind: "ancestor-descendant",
+      ancestorClassName: "browse-toolbar-group",
+      subjectClassName: "popover__trigger",
+    },
+    outcome,
+    status,
+    confidence: status === "resolved" ? "high" : "medium",
+    traces: [],
+    sourceQuery: {
+      id: selectorQueryId,
+      stylesheetId,
+      selectorText,
+      location: {
+        filePath: "C:\\repo\\src\\BrowseControls.css",
+        startLine: 6,
+        startColumn: 1,
+      },
+      outcome,
+      status,
+      confidence: status === "resolved" ? "high" : "medium",
+      traces: [],
+      sourceResult: {
+        selectorText,
+        outcome,
+        status,
+        confidence: status === "resolved" ? "high" : "medium",
+        reasons: [],
+        traces: [],
+      },
+    },
+  };
+  const indexedUnrelatedBranch = {
+    ...branch,
+    id: "selector-branch:unrelated",
+    selectorText: ".other",
+    outcome: "no-match-under-bounded-analysis",
+    status: "resolved",
+  };
+
+  return {
+    includeTraces: false,
+    analysis: {
+      entities: {
+        classDefinitions: [definition],
+        classReferences: [],
+        selectorBranches: [indexedUnrelatedBranch, branch],
+      },
+      indexes: {
+        referencesByClassName: new Map(),
+        stylesheetsById: new Map([
+          [
+            stylesheetId,
+            {
+              id: stylesheetId,
+              origin: "project",
+              filePath: "src/BrowseControls.css",
+            },
+          ],
+        ]),
+        selectorBranchesByStylesheetId: new Map([[stylesheetId, [indexedUnrelatedBranch.id]]]),
+        selectorBranchesById: new Map([
+          [selectorBranchId, branch],
+          [indexedUnrelatedBranch.id, indexedUnrelatedBranch],
+        ]),
+      },
+      relations: {
+        stylesheetReachability: [],
+      },
+    },
+  };
 }
 
 test("unused-css-class ignores local HTML-linked CSS that matches an external provider", async () => {
