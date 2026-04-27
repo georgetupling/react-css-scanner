@@ -5,13 +5,9 @@ import type {
   HelperParameterBinding,
   LocalHelperDefinition,
 } from "../shared/types.js";
+import { collectFiniteStringValuesByProperty } from "../shared/finiteTypeEvidence.js";
 import { unwrapExpression } from "../shared/utils.js";
 import { summarizeExpressionReturningBody } from "./summarizeExpressionReturningBody.js";
-import {
-  collectLocalTypeAliases,
-  collectObjectPropertyTypes,
-  resolveFiniteStringType,
-} from "./summarizeParameterBinding.js";
 
 export function summarizeTopLevelHelperDefinition(input: {
   helperName: string;
@@ -155,26 +151,6 @@ function collectDestructuredHelperProperties(
   }
 
   return properties;
-}
-
-function collectFiniteStringValuesByProperty(
-  parameter: ts.ParameterDeclaration,
-): Map<string, string[]> {
-  const valuesByProperty = new Map<string, string[]>();
-  if (!parameter.type) {
-    return valuesByProperty;
-  }
-
-  const typeAliases = collectLocalTypeAliases(parameter.getSourceFile());
-  const propertyTypes = collectObjectPropertyTypes(parameter.type, typeAliases, new Set());
-  for (const [propertyName, typeNode] of propertyTypes.entries()) {
-    const values = resolveFiniteStringType(typeNode, typeAliases, new Set());
-    if (values.length > 0) {
-      valuesByProperty.set(propertyName, values);
-    }
-  }
-
-  return valuesByProperty;
 }
 
 function buildFiniteStringValuesByObjectName(

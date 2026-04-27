@@ -414,6 +414,133 @@ test("unused-css-class preserves finite helper evidence through helper body dest
   }
 });
 
+test("unused-css-class resolves finite variants from local interfaces and indexed access", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/Badge.tsx",
+      [
+        'import "./Badge.css";',
+        'type BadgeTone = "info" | "success";',
+        "interface BadgeBaseProps {",
+        "  tone?: BadgeTone;",
+        "}",
+        "interface BadgeProps extends BadgeBaseProps {",
+        '  size?: "sm" | "lg";',
+        "}",
+        'type ResolvedTone = NonNullable<BadgeProps["tone"]>;',
+        'type ResolvedSize = BadgeProps["size"];',
+        "type PublicBadgeProps = { tone?: ResolvedTone; size?: ResolvedSize };",
+        "export function Badge({ tone = 'info', size = 'sm' }: PublicBadgeProps) {",
+        "  return <span className={[`badge--${tone}`, `badge--${size}`].join(' ')}>Badge</span>;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile(
+      "src/Badge.css",
+      [
+        ".badge--info { color: blue; }",
+        ".badge--success { color: green; }",
+        ".badge--sm { font-size: 0.75rem; }",
+        ".badge--lg { font-size: 1rem; }",
+        "",
+      ].join("\n"),
+    )
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", [
+      "badge--info",
+      "badge--success",
+      "badge--sm",
+      "badge--lg",
+    ]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unused-css-class resolves finite variants through local object utility types", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/Tag.tsx",
+      [
+        'import "./Tag.css";',
+        "interface TagProps {",
+        '  variant?: "genre" | "topic";',
+        '  size?: "sm" | "lg";',
+        "  className?: string;",
+        "  children?: unknown;",
+        "}",
+        'type HelperProps = Readonly<Required<Partial<Omit<Pick<TagProps, "variant" | "size" | "className" | "children">, "children" | "className">>>>;',
+        "function getTagClassName({ variant = 'genre', size = 'sm' }: HelperProps) {",
+        "  return [`tag--${variant}`, `tag--${size}`].join(' ');",
+        "}",
+        "export function Tag({ variant, size }: TagProps) {",
+        "  return <span className={getTagClassName({ variant, size })}>Tag</span>;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile(
+      "src/Tag.css",
+      [
+        ".tag--genre { color: green; }",
+        ".tag--topic { color: purple; }",
+        ".tag--sm { min-height: 1rem; }",
+        ".tag--lg { min-height: 2rem; }",
+        "",
+      ].join("\n"),
+    )
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", [
+      "tag--genre",
+      "tag--topic",
+      "tag--sm",
+      "tag--lg",
+    ]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unused-css-class resolves finite variants through local union utility types", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/Button.tsx",
+      [
+        'import "./Button.css";',
+        'type ButtonVariant = "default" | "primary" | "ghost";',
+        'type ActionVariant = Exclude<ButtonVariant, "default">;',
+        'type QuietVariant = Extract<ButtonVariant, "ghost" | "link">;',
+        "type ButtonProps = { variant?: ActionVariant; quiet?: QuietVariant };",
+        "export function Button({ variant = 'primary', quiet = 'ghost' }: ButtonProps) {",
+        "  return <button className={[`button--${variant}`, `button--${quiet}`].join(' ')}>Save</button>;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile(
+      "src/Button.css",
+      [".button--primary { color: white; }", ".button--ghost { color: inherit; }", ""].join("\n"),
+    )
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", ["button--primary", "button--ghost"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("unused-css-class treats static JSX classes inside assigned conditional content as used", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(
