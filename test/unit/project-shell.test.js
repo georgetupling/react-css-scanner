@@ -5,6 +5,22 @@ import { discoverProjectFiles } from "../../dist/project/discovery.js";
 import { TestProjectBuilder } from "../support/TestProjectBuilder.js";
 
 const { scanProject } = publicApi;
+const ZERO_FINDINGS_BY_RULE = {
+  "missing-css-class": 0,
+  "css-class-unreachable": 0,
+  "unused-css-class": 0,
+  "missing-css-module-class": 0,
+  "unused-css-module-class": 0,
+  "unsatisfiable-selector": 0,
+  "compound-selector-never-matched": 0,
+  "unused-compound-selector-branch": 0,
+  "selector-only-matches-in-unknown-contexts": 0,
+  "single-component-style-not-colocated": 0,
+  "style-used-outside-owner": 0,
+  "style-shared-without-shared-owner": 0,
+  "dynamic-class-reference": 0,
+  "unsupported-syntax-affecting-analysis": 0,
+};
 
 test("root package export exposes the stable product contract", () => {
   assert.equal(typeof publicApi.scanProject, "function");
@@ -332,6 +348,7 @@ test("scanProject returns deterministic public summary from discovered files", a
       cssFileCount: 1,
       findingCount: 0,
       ignoredFindingCount: 0,
+      findingsByRule: ZERO_FINDINGS_BY_RULE,
       findingsBySeverity: {
         debug: 0,
         info: 0,

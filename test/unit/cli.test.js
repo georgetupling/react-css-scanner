@@ -379,6 +379,7 @@ test("CLI exit code follows configured fail threshold", async () => {
 
     const output = await readJsonFile(outputPath);
     assert.equal(output.failed, true);
+    assert.equal(output.summary.findingsByRule["missing-css-class"], 1);
     assert.equal(output.summary.findingsBySeverity.warn, 1);
     assert.equal(output.findings[0].severity, "warn");
     assert.match(error.stdout, /JSON report written to /);
@@ -401,6 +402,7 @@ test("CLI hides debug findings in CLI output", async () => {
     const defaultOutput = await readJsonFile(defaultOutputPath);
     assert.deepEqual(defaultOutput.findings, []);
     assert.equal(defaultOutput.summary.findingCount, 0);
+    assert.equal(defaultOutput.summary.findingsByRule["unsupported-syntax-affecting-analysis"], 0);
     assert.equal(defaultOutput.summary.findingsBySeverity.debug, 0);
   } finally {
     await project.cleanup();
@@ -422,6 +424,7 @@ test("CLI hides dynamic class reference findings by default and can print debug 
 
     assert.deepEqual(defaultOutput.findings, []);
     assert.equal(defaultOutput.summary.findingCount, 0);
+    assert.equal(defaultOutput.summary.findingsByRule["dynamic-class-reference"], 0);
     assert.equal(defaultOutput.summary.findingsBySeverity.debug, 0);
 
     const debugOutputPath = project.filePath("debug-report.json");
@@ -434,6 +437,7 @@ test("CLI hides dynamic class reference findings by default and can print debug 
     assert.equal(debugOutput.findings[0].ruleId, "dynamic-class-reference");
     assert.equal(debugOutput.findings[0].severity, "debug");
     assert.equal(debugOutput.summary.findingCount, 1);
+    assert.equal(debugOutput.summary.findingsByRule["dynamic-class-reference"], 1);
     assert.equal(debugOutput.summary.findingsBySeverity.debug, 1);
 
     await writeFile(
@@ -450,6 +454,7 @@ test("CLI hides dynamic class reference findings by default and can print debug 
     assert.equal(overrideOutput.findings[0].ruleId, "dynamic-class-reference");
     assert.equal(overrideOutput.findings[0].severity, "info");
     assert.equal(overrideOutput.summary.findingCount, 1);
+    assert.equal(overrideOutput.summary.findingsByRule["dynamic-class-reference"], 1);
     assert.equal(overrideOutput.summary.findingsBySeverity.info, 1);
   } finally {
     await project.cleanup();
@@ -801,6 +806,7 @@ test("CLI applies config and repeatable CLI ignores before focus output", async 
 
     assert.equal(error.code, 1);
     assert.equal(output.summary.ignoredFindingCount, 3);
+    assert.equal(output.summary.findingsByRule["missing-css-class"], 1);
     assert.deepEqual(
       output.findings.map((finding) => finding.data.className),
       ["visible-missing"],
@@ -834,6 +840,7 @@ test("CLI ignored findings do not fail CI", async () => {
     assert.equal(output.failed, false);
     assert.equal(output.summary.findingCount, 0);
     assert.equal(output.summary.ignoredFindingCount, 1);
+    assert.equal(output.summary.findingsByRule["missing-css-class"], 0);
     assert.deepEqual(output.findings, []);
   } finally {
     await project.cleanup();

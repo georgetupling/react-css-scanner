@@ -443,6 +443,8 @@ Recommended intent:
 
 - `findings` is always present.
 - `summary` is derived from findings and diagnostics, not vice versa.
+- `summary.findingsByRule` and `summary.findingsBySeverity` expose separate deterministic count
+  matrices for tooling and trend reports.
 - raw `ProjectAnalysis` is not part of the public result contract
 - debug information should be surfaced through diagnostics, traces, and stable summary fields rather than by dumping engine internals
 - JSON output should be human-readable, deterministic, and close to the public result shape
@@ -664,6 +666,7 @@ Output path behavior:
 - JSON mode does not print progress updates
 - `--output-min-severity` filters reported diagnostics, findings, and report summary counts without
   changing scan analysis or failure status
+- JSON report summaries include separate `findingsByRule` and `findingsBySeverity` count matrices
 - `ignoredFindingCount` is retained in the summary after output severity filtering
 - `--timings` adds the optional `performance` block to JSON output
 

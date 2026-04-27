@@ -1,4 +1,4 @@
-import type { Finding } from "../rules/index.js";
+import type { Finding, RuleId } from "../rules/index.js";
 import type { ResolvedScannerConfig } from "../config/index.js";
 import type { RuleSeverity } from "../rules/index.js";
 
@@ -55,6 +55,7 @@ export type ProjectDiscoveryResult = {
 };
 
 export type SeverityCounts = Record<RuleSeverity, number>;
+export type RuleCounts = Record<RuleId, number>;
 export type DiagnosticSeverityCounts = Record<ScanDiagnosticSeverity, number>;
 
 export type ScanSummary = {
@@ -62,6 +63,7 @@ export type ScanSummary = {
   cssFileCount: number;
   findingCount: number;
   ignoredFindingCount: number;
+  findingsByRule: RuleCounts;
   findingsBySeverity: SeverityCounts;
   diagnosticCount: number;
   diagnosticsBySeverity: DiagnosticSeverityCounts;

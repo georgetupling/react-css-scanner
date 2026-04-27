@@ -15,5 +15,6 @@ export type {
   ScanProjectInput,
   ScanProjectResult,
   ScanSummary,
+  RuleCounts,
   SeverityCounts,
 } from "./types.js";

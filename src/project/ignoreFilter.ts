@@ -1,6 +1,7 @@
 import type { ScannerConfig } from "../config/index.js";
-import type { Finding, RuleSeverity } from "../rules/index.js";
+import type { Finding } from "../rules/index.js";
 import { severityMeetsThreshold } from "../rules/severity.js";
+import { countFindingsByRule, countFindingsBySeverity } from "./summaryCounts.js";
 import type { ScanProjectResult } from "./types.js";
 
 type IgnoreMatcher = (value: string) => boolean;
@@ -35,12 +36,8 @@ export function applyIgnoreFilter(
       ...result.summary,
       findingCount: findings.length,
       ignoredFindingCount: result.summary.ignoredFindingCount + ignoredFindingCount,
-      findingsBySeverity: {
-        debug: countFindingsBySeverity(findings, "debug"),
-        info: countFindingsBySeverity(findings, "info"),
-        warn: countFindingsBySeverity(findings, "warn"),
-        error: countFindingsBySeverity(findings, "error"),
-      },
+      findingsByRule: countFindingsByRule(findings),
+      findingsBySeverity: countFindingsBySeverity(findings),
       failed,
     },
   };
@@ -244,10 +241,6 @@ function normalizePath(filePath: string): string {
     .join("/")
     .replace(/\/+/g, "/")
     .replace(/^\.\/+/, "");
-}
-
-function countFindingsBySeverity(findings: Finding[], severity: RuleSeverity): number {
-  return findings.filter((finding) => finding.severity === severity).length;
 }
 
 function escapeRegExp(value: string): string {

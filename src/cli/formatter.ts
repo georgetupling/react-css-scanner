@@ -1,4 +1,5 @@
 import type { ScanDiagnostic, ScanProjectResult } from "../project/index.js";
+import { countFindingsByRule, countFindingsBySeverity } from "../project/summaryCounts.js";
 import type { Finding, RuleSeverity } from "../rules/index.js";
 import { severityMeetsThreshold } from "../rules/severity.js";
 import type { CliVerbosity } from "./types.js";
@@ -436,12 +437,8 @@ function withOutputCounts(
   return {
     ...summary,
     findingCount: findings.length,
-    findingsBySeverity: {
-      debug: countFindingsBySeverity(findings, "debug"),
-      info: countFindingsBySeverity(findings, "info"),
-      warn: countFindingsBySeverity(findings, "warn"),
-      error: countFindingsBySeverity(findings, "error"),
-    },
+    findingsByRule: countFindingsByRule(findings),
+    findingsBySeverity: countFindingsBySeverity(findings),
     diagnosticCount: diagnostics.length,
     diagnosticsBySeverity: {
       debug: countDiagnosticsBySeverity(diagnostics, "debug"),
@@ -475,10 +472,6 @@ function ruleSeverityRankForThreshold(severity: RuleSeverity): number {
     info: 1,
     debug: 0,
   }[severity];
-}
-
-function countFindingsBySeverity(findings: Finding[], severity: RuleSeverity): number {
-  return findings.filter((finding) => finding.severity === severity).length;
 }
 
 function countDiagnosticsBySeverity(

@@ -14,6 +14,7 @@ import { applyIgnoreFilter, mergeIgnoreConfig } from "./ignoreFilter.js";
 import { loadPackageCssImports } from "./packageCssImports.js";
 import { normalizeProjectPath, resolveRootDir } from "./pathUtils.js";
 import { fetchRemoteCssSources } from "./remoteCss.js";
+import { countFindingsByRule, countFindingsBySeverity } from "./summaryCounts.js";
 import type {
   ProjectFileRecord,
   ScanDiagnostic,
@@ -287,12 +288,8 @@ function buildScanSummary(input: {
     cssFileCount: input.cssFileCount,
     findingCount: input.findings.length,
     ignoredFindingCount: 0,
-    findingsBySeverity: {
-      debug: countFindingsBySeverity(input.findings, "debug"),
-      info: countFindingsBySeverity(input.findings, "info"),
-      warn: countFindingsBySeverity(input.findings, "warn"),
-      error: countFindingsBySeverity(input.findings, "error"),
-    },
+    findingsByRule: countFindingsByRule(input.findings),
+    findingsBySeverity: countFindingsBySeverity(input.findings),
     diagnosticCount: input.diagnostics.length,
     diagnosticsBySeverity: {
       debug: countDiagnosticsBySeverity(input.diagnostics, "debug"),
@@ -305,13 +302,6 @@ function buildScanSummary(input: {
     selectorQueryCount: input.selectorQueryCount,
     failed: input.failed,
   };
-}
-
-function countFindingsBySeverity(
-  findings: ScanProjectResult["findings"],
-  severity: keyof ScanSummary["findingsBySeverity"],
-): number {
-  return findings.filter((finding) => finding.severity === severity).length;
 }
 
 function countDiagnosticsBySeverity(

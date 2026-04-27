@@ -144,6 +144,7 @@ Details:
 - CLI ignores are additive with config ignores for one-off local triage.
 - Ignored findings do not contribute to the CLI exit code.
 - Text and JSON summaries include `ignoredFindingCount` for auditability.
+- JSON summaries include finding count matrices by rule and by severity.
 
 Examples:
 
@@ -163,6 +164,7 @@ Default behavior:
 - writes to a timestamped file like `scan-react-css-reports/report-2026-04-25-19-42-08.json`
 - preserves existing reports by adding a numeric suffix if a selected report path already exists
 - applies `--output-min-severity` to reported diagnostics, findings, and their summary counts
+- includes separate `summary.findingsByRule` and `summary.findingsBySeverity` count matrices
 - exits non-zero after writing the report if the scan failed
 
 Custom output:

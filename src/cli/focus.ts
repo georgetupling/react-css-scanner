@@ -1,5 +1,6 @@
-import type { Finding, RuleSeverity } from "../rules/index.js";
+import type { Finding } from "../rules/index.js";
 import { severityMeetsThreshold } from "../rules/severity.js";
+import { countFindingsByRule, countFindingsBySeverity } from "../project/summaryCounts.js";
 import type { ScanProjectResult } from "../project/index.js";
 import { extractPathFromEntityId } from "./formatter.js";
 
@@ -28,12 +29,8 @@ export function applyFocusFilter(
     summary: {
       ...result.summary,
       findingCount: findings.length,
-      findingsBySeverity: {
-        debug: countFindingsBySeverity(findings, "debug"),
-        info: countFindingsBySeverity(findings, "info"),
-        warn: countFindingsBySeverity(findings, "warn"),
-        error: countFindingsBySeverity(findings, "error"),
-      },
+      findingsByRule: countFindingsByRule(findings),
+      findingsBySeverity: countFindingsBySeverity(findings),
       failed,
     },
   };
@@ -147,10 +144,6 @@ function globToRegExp(glob: string): RegExp {
 
   source += "(?:/.*)?$";
   return new RegExp(source);
-}
-
-function countFindingsBySeverity(findings: Finding[], severity: RuleSeverity): number {
-  return findings.filter((finding) => finding.severity === severity).length;
 }
 
 function escapeRegExp(value: string): string {
