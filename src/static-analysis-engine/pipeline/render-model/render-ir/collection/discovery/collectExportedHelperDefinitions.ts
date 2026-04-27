@@ -1,12 +1,14 @@
 import ts from "typescript";
 
 import type { LocalHelperDefinition } from "../shared/types.js";
+import type { FiniteTypeEvidenceCache } from "../shared/finiteTypeEvidence.js";
 import { isDefaultExported, isExported, unwrapExpression } from "../shared/utils.js";
 import { summarizeTopLevelHelperDefinition } from "../summarization/summarizeLocalHelperDefinition.js";
 
 export function collectExportedHelperDefinitions(input: {
   filePath: string;
   parsedSourceFile: ts.SourceFile;
+  finiteTypeEvidenceCache?: FiniteTypeEvidenceCache;
 }): Map<string, LocalHelperDefinition> {
   const helperDefinitions = new Map<string, LocalHelperDefinition>();
   const topLevelHelperDefinitions = collectTopLevelHelperDefinitions(input);
@@ -66,6 +68,7 @@ export function collectExportedHelperDefinitions(input: {
 export function collectTopLevelHelperDefinitions(input: {
   filePath: string;
   parsedSourceFile: ts.SourceFile;
+  finiteTypeEvidenceCache?: FiniteTypeEvidenceCache;
 }): Map<string, LocalHelperDefinition> {
   const topLevelHelperDefinitions = new Map<string, LocalHelperDefinition>();
 
@@ -77,6 +80,7 @@ export function collectTopLevelHelperDefinitions(input: {
         parsedSourceFile: input.parsedSourceFile,
         parameters: statement.parameters,
         body: statement.body,
+        finiteTypeEvidenceCache: input.finiteTypeEvidenceCache,
       });
       if (!helperDefinition) {
         continue;
@@ -110,6 +114,7 @@ export function collectTopLevelHelperDefinitions(input: {
         parsedSourceFile: input.parsedSourceFile,
         parameters: unwrappedInitializer.parameters,
         body: unwrappedInitializer.body,
+        finiteTypeEvidenceCache: input.finiteTypeEvidenceCache,
       });
       if (helperDefinition) {
         topLevelHelperDefinitions.set(helperDefinition.helperName, helperDefinition);

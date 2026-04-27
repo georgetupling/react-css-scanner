@@ -541,6 +541,141 @@ test("unused-css-class resolves finite variants through local union utility type
   }
 });
 
+test("unused-css-class resolves finite variants from imported type aliases and props aliases", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/types.ts",
+      [
+        'export type TagVariant = "genre" | "topic";',
+        "export type TagProps = { variant?: TagVariant };",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/Tag.tsx",
+      [
+        'import "./Tag.css";',
+        'import type { TagProps, TagVariant as ImportedVariant } from "./types";',
+        "type LocalProps = TagProps & { tone?: ImportedVariant };",
+        "export function Tag({ variant = 'genre', tone = 'topic' }: LocalProps) {",
+        "  return <span className={[`tag--${variant}`, `tag--${tone}`].join(' ')}>Tag</span>;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile(
+      "src/Tag.css",
+      [".tag--genre { color: green; }", ".tag--topic { color: purple; }", ""].join("\n"),
+    )
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", ["tag--genre", "tag--topic"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unused-css-class resolves finite variants from imported interfaces and re-export barrels", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/types.ts",
+      [
+        'export type ButtonVariant = "primary" | "ghost";',
+        "export interface ButtonBaseProps {",
+        "  variant?: ButtonVariant;",
+        "}",
+        "export interface ButtonProps extends ButtonBaseProps {",
+        '  size?: "sm" | "lg";',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/barrel.ts",
+      [
+        'export type { ButtonProps, ButtonVariant as ExportedVariant } from "./types";',
+        'export { type ButtonProps as AliasedButtonProps } from "./types";',
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/Button.tsx",
+      [
+        'import "./Button.css";',
+        'import type { AliasedButtonProps, ExportedVariant } from "./barrel";',
+        'import type { ButtonProps as DirectButtonProps } from "./types";',
+        'type PublicButtonProps = Pick<AliasedButtonProps, "variant" | "size"> & { tone?: ExportedVariant };',
+        'function getVariantClassName({ variant = "primary" }: Pick<DirectButtonProps, "variant">) {',
+        "  return `button--${variant}`;",
+        "}",
+        "export function Button({ variant = 'primary', size = 'sm', tone = 'ghost' }: PublicButtonProps) {",
+        "  return <button className={[getVariantClassName({ variant }), `button--${size}`, `button--${tone}`].join(' ')}>Save</button>;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile(
+      "src/Button.css",
+      [
+        ".button--primary { color: white; }",
+        ".button--ghost { color: inherit; }",
+        ".button--sm { min-height: 2rem; }",
+        ".button--lg { min-height: 3rem; }",
+        "",
+      ].join("\n"),
+    )
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", [
+      "button--primary",
+      "button--ghost",
+      "button--sm",
+      "button--lg",
+    ]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unused-css-class degrades imported type cycles without crashing", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/a.ts",
+      ['import type { PropsB } from "./b";', "export type PropsA = PropsB;"].join("\n"),
+    )
+    .withSourceFile(
+      "src/b.ts",
+      ['import type { PropsA } from "./a";', "export type PropsB = PropsA;"].join("\n"),
+    )
+    .withSourceFile(
+      "src/Cycle.tsx",
+      [
+        'import "./Cycle.css";',
+        'import type { PropsA } from "./a";',
+        "export function Cycle({ variant }: PropsA) {",
+        "  return <span className={`cycle--${variant}`}>Cycle</span>;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/Cycle.css", ".cycle--primary { color: blue; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assert.ok(Array.isArray(result.findings));
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("unused-css-class treats static JSX classes inside assigned conditional content as used", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(

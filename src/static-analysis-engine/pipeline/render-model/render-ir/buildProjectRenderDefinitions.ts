@@ -6,6 +6,7 @@ import {
   collectTopLevelHelperDefinitions,
 } from "./collection/discovery/collectExportedHelperDefinitions.js";
 import { collectSameFileComponents } from "./collection/discovery/collectSameFileComponents.js";
+import { createFiniteTypeEvidenceCache } from "./collection/shared/finiteTypeEvidence.js";
 import type {
   LocalHelperDefinition,
   SameFileComponentDefinition,
@@ -24,12 +25,14 @@ export function buildProjectRenderDefinitions(input: {
     parsedSourceFile: ts.SourceFile;
   }>;
 }): ProjectRenderDefinitions {
+  const finiteTypeEvidenceCache = createFiniteTypeEvidenceCache(input.parsedFiles);
   const componentDefinitionsByFilePath = new Map<string, SameFileComponentDefinition[]>(
     input.parsedFiles.map((parsedFile) => [
       parsedFile.filePath,
       collectSameFileComponents({
         filePath: parsedFile.filePath,
         parsedSourceFile: parsedFile.parsedSourceFile,
+        finiteTypeEvidenceCache,
       }),
     ]),
   );
@@ -51,6 +54,7 @@ export function buildProjectRenderDefinitions(input: {
         collectExportedHelperDefinitions({
           filePath: parsedFile.filePath,
           parsedSourceFile: parsedFile.parsedSourceFile,
+          finiteTypeEvidenceCache,
         }),
       ]),
     ),
@@ -60,6 +64,7 @@ export function buildProjectRenderDefinitions(input: {
         collectTopLevelHelperDefinitions({
           filePath: parsedFile.filePath,
           parsedSourceFile: parsedFile.parsedSourceFile,
+          finiteTypeEvidenceCache,
         }),
       ]),
     ),

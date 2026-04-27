@@ -2,10 +2,14 @@ import ts from "typescript";
 
 import type { DestructuredPropBinding, SameFileComponentDefinition } from "../shared/types.js";
 import { UNSUPPORTED_PARAMETER_BINDING_REASONS } from "../../shared/expansionSemantics.js";
-import { collectFiniteStringValuesByProperty } from "../shared/finiteTypeEvidence.js";
+import {
+  collectFiniteStringValuesByProperty,
+  type FiniteTypeEvidenceCache,
+} from "../shared/finiteTypeEvidence.js";
 
 export function summarizeParameterBinding(
   parameters: readonly ts.ParameterDeclaration[],
+  finiteTypeEvidenceCache?: FiniteTypeEvidenceCache,
 ): SameFileComponentDefinition["parameterBinding"] {
   if (parameters.length === 0) {
     return { kind: "none" };
@@ -19,7 +23,10 @@ export function summarizeParameterBinding(
   }
 
   const [parameter] = parameters;
-  const finiteStringValuesByProperty = collectFiniteStringValuesByProperty(parameter);
+  const finiteStringValuesByProperty = collectFiniteStringValuesByProperty(
+    parameter,
+    finiteTypeEvidenceCache,
+  );
   if (ts.isIdentifier(parameter.name)) {
     return {
       kind: "props-identifier",
