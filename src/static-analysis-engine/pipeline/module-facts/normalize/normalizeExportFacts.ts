@@ -1,10 +1,14 @@
 import type { EngineModuleId, EngineSymbolId } from "../../../types/core.js";
 import { resolveModuleFactReExportTargetFilePath } from "../resolve/resolveExportedName.js";
-import type { ModuleFacts, ModuleFactsExportRecord, ResolvedModuleExportFact } from "../types.js";
+import type {
+  ModuleFactsExportRecord,
+  ModuleFactsStore,
+  ResolvedModuleExportFact,
+} from "../types.js";
 import { createModuleFactsBindingId, createModuleFactsModuleId } from "./moduleIds.js";
 
 export function normalizeExportFacts(input: {
-  moduleFacts: ModuleFacts;
+  moduleFacts: ModuleFactsStore;
   moduleId: EngineModuleId;
   localBindingIdsByName: Map<string, EngineSymbolId>;
   exports: ModuleFactsExportRecord[];
@@ -20,7 +24,7 @@ export function normalizeExportFacts(input: {
 }
 
 function normalizeExportFact(input: {
-  moduleFacts: ModuleFacts;
+  moduleFacts: ModuleFactsStore;
   moduleId: EngineModuleId;
   localBindingIdsByName: Map<string, EngineSymbolId>;
   exportRecord: ModuleFactsExportRecord;
@@ -49,7 +53,7 @@ function normalizeExportFact(input: {
 }
 
 function resolveExportFactReexport(input: {
-  moduleFacts: ModuleFacts;
+  moduleFacts: ModuleFactsStore;
   exportRecord: ModuleFactsExportRecord;
 }): ResolvedModuleExportFact["reexport"] {
   if (!input.exportRecord.specifier) {

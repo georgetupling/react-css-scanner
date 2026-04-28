@@ -1,9 +1,9 @@
 import { resolveSourceSpecifier } from "./resolveSourceSpecifier.js";
 import { resolveTypescriptModuleSpecifier } from "./typescriptResolution.js";
-import type { ModuleFacts } from "../types.js";
+import type { ModuleFactsStore } from "../types.js";
 
 export function resolveModuleFactSourceSpecifier(input: {
-  moduleFacts: ModuleFacts;
+  moduleFacts: ModuleFactsStore;
   fromFilePath: string;
   specifier: string;
 }): string | undefined {

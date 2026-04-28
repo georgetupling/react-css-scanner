@@ -3,10 +3,10 @@ import {
   collectTopLevelSymbols,
 } from "../../pipeline/symbol-resolution/index.js";
 import type { EngineSymbol } from "../../pipeline/symbol-resolution/index.js";
-import { createModuleFactsModuleId } from "../../pipeline/module-facts/index.js";
+import { createModuleFactsModuleId } from "../../pipeline/module-facts/normalize/moduleIds.js";
+import type { ModuleFacts } from "../../pipeline/module-facts/index.js";
 import type { EngineSymbolId } from "../../types/core.js";
 import type {
-  ModuleFactsStageResult,
   ParsedProjectFile,
   ProjectSymbolCollection,
   SymbolResolutionStageResult,
@@ -14,7 +14,7 @@ import type {
 
 export function runSymbolResolutionStage(input: {
   parsedFiles: ParsedProjectFile[];
-  moduleFacts: ModuleFactsStageResult["moduleFacts"];
+  moduleFacts: ModuleFacts;
   includeTraces?: boolean;
 }): SymbolResolutionStageResult {
   const collectedSymbols = collectProjectSymbols({

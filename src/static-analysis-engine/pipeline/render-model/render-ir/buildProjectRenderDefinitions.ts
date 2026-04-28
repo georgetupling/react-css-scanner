@@ -28,7 +28,10 @@ export function buildProjectRenderDefinitions(input: {
   }>;
   projectResolution: ModuleFacts;
 }): ProjectRenderDefinitions {
-  const finiteTypeEvidenceCache = createFiniteTypeEvidenceCache(input.projectResolution);
+  const finiteTypeEvidenceCache = createFiniteTypeEvidenceCache({
+    moduleFacts: input.projectResolution,
+    parsedFiles: input.parsedFiles,
+  });
   const componentDefinitionsByFilePath = new Map<string, SameFileComponentDefinition[]>(
     input.parsedFiles.map((parsedFile) => [
       parsedFile.filePath,

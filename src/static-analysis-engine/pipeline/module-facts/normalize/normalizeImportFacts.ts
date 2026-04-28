@@ -1,10 +1,14 @@
 import type { EngineModuleId } from "../../../types/core.js";
 import { resolveModuleFactSourceSpecifier } from "../resolve/resolveModuleFactSourceSpecifier.js";
-import type { ModuleFacts, ModuleFactsImportRecord, ResolvedModuleImportFact } from "../types.js";
+import type {
+  ModuleFactsImportRecord,
+  ModuleFactsStore,
+  ResolvedModuleImportFact,
+} from "../types.js";
 import { createModuleFactsBindingId, createModuleFactsModuleId } from "./moduleIds.js";
 
 export function normalizeImportFacts(input: {
-  moduleFacts: ModuleFacts;
+  moduleFacts: ModuleFactsStore;
   filePath: string;
   moduleId: EngineModuleId;
   imports: ModuleFactsImportRecord[];
@@ -20,7 +24,7 @@ export function normalizeImportFacts(input: {
 }
 
 function normalizeImportFact(input: {
-  moduleFacts: ModuleFacts;
+  moduleFacts: ModuleFactsStore;
   filePath: string;
   moduleId: EngineModuleId;
   importRecord: ModuleFactsImportRecord;
@@ -49,7 +53,7 @@ function normalizeImportFact(input: {
 }
 
 function resolveImportFact(input: {
-  moduleFacts: ModuleFacts;
+  moduleFacts: ModuleFactsStore;
   filePath: string;
   importRecord: ModuleFactsImportRecord;
 }): ResolvedModuleImportFact["resolution"] {

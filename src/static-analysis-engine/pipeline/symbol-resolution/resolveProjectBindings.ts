@@ -4,15 +4,14 @@ import { MAX_CROSS_FILE_IMPORT_PROPAGATION_DEPTH } from "../../libraries/policy/
 import type { ParsedProjectFile } from "../../entry/stages/types.js";
 import {
   collectAvailableExportedNames,
-  createModuleFactsModuleId,
   getAllResolvedModuleFacts,
   getDirectSourceImportFacts,
   getResolvedModuleFacts,
   resolveModuleFactExport,
-  resolveModuleFactReExportTargetFilePath,
-  type ModuleFacts,
   type ResolvedModuleFactExport,
+  type ModuleFacts,
 } from "../module-facts/index.js";
+import { createModuleFactsModuleId } from "../module-facts/normalize/moduleIds.js";
 import type { AnalysisTrace } from "../../types/analysis.js";
 import type { EngineSymbolId } from "../../types/core.js";
 import { collectExportedExpressionBindings } from "./collectExportedExpressionBindings.js";
@@ -348,27 +347,25 @@ function resolveNamedNamespaceImport(input: {
     return undefined;
   }
 
-  const exportRecords = input.projectResolution.exportsByFilePath.get(input.filePath);
-  if (!exportRecords) {
+  const moduleFacts = getResolvedModuleFacts({
+    moduleFacts: input.projectResolution,
+    filePath: input.filePath,
+  });
+  if (!moduleFacts) {
     return undefined;
   }
 
-  for (const exportRecord of exportRecords) {
+  for (const exportRecord of moduleFacts.exports) {
     if (
       exportRecord.exportedName !== input.exportedName ||
       exportRecord.reexportKind !== "namespace" ||
-      !exportRecord.specifier
+      exportRecord.reexport.status !== "resolved" ||
+      !exportRecord.reexport.resolvedFilePath
     ) {
       continue;
     }
 
-    const targetFilePath = resolveModuleFactReExportTargetFilePath({
-      moduleFacts: input.projectResolution,
-      exportRecord,
-    });
-    if (!targetFilePath) {
-      continue;
-    }
+    const targetFilePath = exportRecord.reexport.resolvedFilePath;
 
     return resolveNamespaceBundle({
       filePath: targetFilePath,
@@ -378,23 +375,18 @@ function resolveNamedNamespaceImport(input: {
     });
   }
 
-  for (const exportRecord of exportRecords) {
+  for (const exportRecord of moduleFacts.exports) {
     if (
       exportRecord.exportedName !== input.exportedName ||
       exportRecord.reexportKind === "namespace" ||
-      !exportRecord.specifier
+      exportRecord.reexport.status !== "resolved" ||
+      !exportRecord.reexport.resolvedFilePath
     ) {
       continue;
     }
 
     const sourceExportedName = exportRecord.sourceExportedName ?? exportRecord.exportedName;
-    const targetFilePath = resolveModuleFactReExportTargetFilePath({
-      moduleFacts: input.projectResolution,
-      exportRecord,
-    });
-    if (!targetFilePath) {
-      continue;
-    }
+    const targetFilePath = exportRecord.reexport.resolvedFilePath;
 
     const exportKey = `${targetFilePath}:${sourceExportedName}`;
     if (input.visitedNamespaceExports.has(exportKey)) {

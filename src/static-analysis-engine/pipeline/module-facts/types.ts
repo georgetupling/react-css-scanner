@@ -166,11 +166,14 @@ export type ResolvedModuleFacts = {
 };
 
 export type ModuleFacts = {
+  resolvedModuleFactsByFilePath: Map<string, ResolvedModuleFacts>;
+};
+
+export type ModuleFactsStore = ModuleFacts & {
   parsedSourceFilesByFilePath: Map<string, ts.SourceFile>;
   importsByFilePath: Map<string, ModuleFactsImportRecord[]>;
   exportsByFilePath: Map<string, ModuleFactsExportRecord[]>;
   declarationsByFilePath: Map<string, ModuleFactsDeclarationIndex>;
-  resolvedModuleFactsByFilePath: Map<string, ResolvedModuleFacts>;
   workspacePackageEntryPointsByPackageName: Map<string, WorkspacePackageEntryPoint[]>;
   typescriptResolution?: ModuleFactsTypescriptResolution;
   caches: ModuleFactsCaches;

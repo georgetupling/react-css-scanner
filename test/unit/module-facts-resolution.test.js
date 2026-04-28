@@ -9,13 +9,13 @@ import ts from "typescript";
 import {
   buildModuleFacts,
   collectAvailableExportedNames,
+  getResolvedModuleFacts,
   resolveModuleFactExport,
-  resolveModuleFactSourceSpecifier,
   resolveSourceSpecifier,
 } from "../../dist/static-analysis-engine.js";
 
-test("project resolution indexes imports, exports, declarations, and workspace entrypoints", () => {
-  const resolution = buildModuleFacts({
+test("module facts expose resolved imports and exports for workspace barrels", () => {
+  const moduleFacts = buildModuleFacts({
     parsedFiles: [
       sourceFile(
         "packages/domain/src/index.ts",
@@ -49,217 +49,110 @@ test("project resolution indexes imports, exports, declarations, and workspace e
     ],
   });
 
+  const componentFacts = getResolvedModuleFacts({
+    moduleFacts,
+    filePath: "src/MemberRoleBadge.tsx",
+  });
+  assert.ok(componentFacts);
   assert.deepEqual(
-    [...resolution.parsedSourceFilesByFilePath.keys()],
-    [
-      "packages/domain/src/index.ts",
-      "packages/domain/src/worlds.enums.ts",
-      "src/MemberRoleBadge.tsx",
-    ],
-  );
-
-  const componentImports = resolution.importsByFilePath.get("src/MemberRoleBadge.tsx") ?? [];
-  assert.deepEqual(
-    componentImports.map((importRecord) => ({
-      specifier: importRecord.specifier,
-      importKind: importRecord.importKind,
-      importNames: importRecord.importNames.map((importName) => ({
-        kind: importName.kind,
-        importedName: importName.importedName,
-        localName: importName.localName,
-        typeOnly: importName.typeOnly,
-      })),
+    componentFacts.imports.map((importFact) => ({
+      specifier: importFact.specifier,
+      importKind: importFact.importKind,
+      resolution: importFact.resolution,
     })),
     [
       {
         specifier: "./MemberRoleBadge.css",
         importKind: "css",
-        importNames: [],
+        resolution: {
+          status: "resolved",
+          resolvedFilePath: "src/MemberRoleBadge.css",
+          resolvedModuleId: "module:src/MemberRoleBadge.css",
+          confidence: "exact",
+        },
       },
       {
         specifier: "./MemberRoleBadge.module.css",
         importKind: "css",
-        importNames: [
-          {
-            kind: "default",
-            importedName: "default",
-            localName: "styles",
-            typeOnly: false,
-          },
-        ],
+        resolution: {
+          status: "resolved",
+          resolvedFilePath: "src/MemberRoleBadge.module.css",
+          resolvedModuleId: "module:src/MemberRoleBadge.module.css",
+          confidence: "exact",
+        },
       },
       {
         specifier: "@loremaster/domain",
         importKind: "type-only",
-        importNames: [
-          {
-            kind: "named",
-            importedName: "WorldRole",
-            localName: "WorldRole",
-            typeOnly: true,
-          },
-        ],
+        resolution: {
+          status: "resolved",
+          resolvedFilePath: "packages/domain/src/index.ts",
+          resolvedModuleId: "module:packages/domain/src/index.ts",
+          confidence: "heuristic",
+        },
       },
     ],
   );
 
-  const barrelExports = resolution.exportsByFilePath.get("packages/domain/src/index.ts") ?? [];
+  const barrelFacts = getResolvedModuleFacts({
+    moduleFacts,
+    filePath: "packages/domain/src/index.ts",
+  });
+  assert.ok(barrelFacts);
   assert.deepEqual(
-    barrelExports.map((exportRecord) => ({
-      exportedName: exportRecord.exportedName,
-      sourceExportedName: exportRecord.sourceExportedName,
-      specifier: exportRecord.specifier,
-      reexportKind: exportRecord.reexportKind,
-      typeOnly: exportRecord.typeOnly,
-      declarationKind: exportRecord.declarationKind,
+    barrelFacts.exports.map((exportFact) => ({
+      exportedName: exportFact.exportedName,
+      sourceExportedName: exportFact.sourceExportedName,
+      exportKind: exportFact.exportKind,
+      reexportKind: exportFact.reexportKind,
+      typeOnly: exportFact.typeOnly,
+      declarationKind: exportFact.declarationKind,
+      reexport: exportFact.reexport,
     })),
     [
       {
         exportedName: "*",
         sourceExportedName: undefined,
-        specifier: "./worlds.enums.js",
+        exportKind: "export-all",
         reexportKind: "star",
         typeOnly: false,
         declarationKind: "unknown",
+        reexport: {
+          status: "resolved",
+          specifier: "./worlds.enums.js",
+          resolvedFilePath: "packages/domain/src/worlds.enums.ts",
+          resolvedModuleId: "module:packages/domain/src/worlds.enums.ts",
+          confidence: "exact",
+        },
       },
       {
         exportedName: "DomainWorldRole",
         sourceExportedName: "WorldRole",
-        specifier: "./worlds.enums.js",
+        exportKind: "re-export",
         reexportKind: "named",
         typeOnly: true,
         declarationKind: "type",
-      },
-    ],
-  );
-
-  const enumDeclarations = resolution.declarationsByFilePath.get(
-    "packages/domain/src/worlds.enums.ts",
-  );
-  assert.ok(enumDeclarations);
-  assert.ok(enumDeclarations.typeAliases.has("WorldRole"));
-  assert.ok(enumDeclarations.interfaces.has("WorldSummary"));
-  assert.equal(enumDeclarations.valueDeclarations.get("WORLD_ROLES")?.kind, "const");
-
-  assert.deepEqual(
-    resolution.workspacePackageEntryPointsByPackageName.get("domain")?.map((entryPoint) => ({
-      packageName: entryPoint.packageName,
-      filePath: entryPoint.filePath,
-      confidence: entryPoint.confidence,
-      reason: entryPoint.reason,
-    })),
-    [
-      {
-        packageName: "domain",
-        filePath: "packages/domain/src/index.ts",
-        confidence: "heuristic",
-        reason: "discovered-workspace-entrypoint",
+        reexport: {
+          status: "resolved",
+          specifier: "./worlds.enums.js",
+          resolvedFilePath: "packages/domain/src/worlds.enums.ts",
+          resolvedModuleId: "module:packages/domain/src/worlds.enums.ts",
+          confidence: "exact",
+        },
       },
     ],
   );
 });
 
-test("project resolution initializes shared caches without doing expensive resolution work", () => {
-  const resolution = buildModuleFacts({
-    parsedFiles: [sourceFile("src/App.tsx", "export const App = () => null;")],
-  });
-
-  assert.equal(resolution.caches.moduleSpecifiers.size, 0);
-  assert.equal(resolution.caches.importedBindings.size, 0);
-  assert.equal(resolution.caches.finiteTypeEvidence.size, 0);
-});
-
-test("project resolution indexes exported enums and namespace declarations", () => {
-  const resolution = buildModuleFacts({
-    parsedFiles: [
-      sourceFile(
-        "src/tokens.ts",
-        `
-          export enum Role {
-            Owner = "owner",
-          }
-
-          export const enum ConstRole {
-            Viewer = "viewer",
-          }
-
-          export namespace TokenNames {
-            export const root = "token-root";
-          }
-
-          export module LegacyTokenNames {
-            export const root = "legacy-token-root";
-          }
-        `,
-      ),
-    ],
-  });
-
-  assert.deepEqual(
-    (resolution.exportsByFilePath.get("src/tokens.ts") ?? []).map((exportRecord) => ({
-      exportedName: exportRecord.exportedName,
-      sourceExportedName: exportRecord.sourceExportedName,
-      localName: exportRecord.localName,
-      typeOnly: exportRecord.typeOnly,
-      declarationKind: exportRecord.declarationKind,
-    })),
-    [
-      {
-        exportedName: "ConstRole",
-        sourceExportedName: "ConstRole",
-        localName: "ConstRole",
-        typeOnly: false,
-        declarationKind: "value",
-      },
-      {
-        exportedName: "LegacyTokenNames",
-        sourceExportedName: "LegacyTokenNames",
-        localName: "LegacyTokenNames",
-        typeOnly: false,
-        declarationKind: "value",
-      },
-      {
-        exportedName: "Role",
-        sourceExportedName: "Role",
-        localName: "Role",
-        typeOnly: false,
-        declarationKind: "value",
-      },
-      {
-        exportedName: "TokenNames",
-        sourceExportedName: "TokenNames",
-        localName: "TokenNames",
-        typeOnly: false,
-        declarationKind: "value",
-      },
-    ],
-  );
-
-  const declarations = resolution.declarationsByFilePath.get("src/tokens.ts");
-  assert.equal(declarations?.valueDeclarations.get("Role")?.kind, "enum");
-  assert.equal(declarations?.valueDeclarations.get("ConstRole")?.kind, "const-enum");
-  assert.equal(declarations?.valueDeclarations.get("TokenNames")?.kind, "namespace");
-  assert.equal(declarations?.valueDeclarations.get("LegacyTokenNames")?.kind, "namespace");
-});
-
-test("project resolution resolves direct and named re-exports", () => {
-  const resolution = buildModuleFacts({
+test("module facts resolve direct and named re-exports", () => {
+  const moduleFacts = buildModuleFacts({
     parsedFiles: [
       sourceFile("src/index.ts", 'export { primaryButton as button } from "./tokens.ts";'),
       sourceFile("src/tokens.ts", 'export const primaryButton = "btn--primary";'),
     ],
   });
 
-  const result = resolveModuleFactExport({
-    moduleFacts: resolution,
-    filePath: "src/index.ts",
-    exportedName: "button",
-    visitedExports: new Set(["src/index.ts:button"]),
-    currentDepth: 0,
-    includeTraces: false,
-  });
-
-  assert.deepEqual(result, {
+  assert.deepEqual(resolveExportForTest(moduleFacts, "button"), {
     resolvedExport: {
       targetFilePath: "src/tokens.ts",
       targetExportName: "primaryButton",
@@ -269,24 +162,15 @@ test("project resolution resolves direct and named re-exports", () => {
   });
 });
 
-test("project resolution resolves star re-exports with TypeScript extension alternates", () => {
-  const resolution = buildModuleFacts({
+test("module facts resolve star re-exports with TypeScript extension alternates", () => {
+  const moduleFacts = buildModuleFacts({
     parsedFiles: [
       sourceFile("src/index.ts", 'export * from "./roles.js";'),
       sourceFile("src/roles.ts", 'export const memberRole = "owner";'),
     ],
   });
 
-  const result = resolveModuleFactExport({
-    moduleFacts: resolution,
-    filePath: "src/index.ts",
-    exportedName: "memberRole",
-    visitedExports: new Set(["src/index.ts:memberRole"]),
-    currentDepth: 0,
-    includeTraces: false,
-  });
-
-  assert.deepEqual(result, {
+  assert.deepEqual(resolveExportForTest(moduleFacts, "memberRole"), {
     resolvedExport: {
       targetFilePath: "src/roles.ts",
       targetExportName: "memberRole",
@@ -296,36 +180,18 @@ test("project resolution resolves star re-exports with TypeScript extension alte
   });
 });
 
-test("project resolution indexes namespace re-exports as available exported names", () => {
-  const resolution = buildModuleFacts({
+test("module facts index namespace re-exports as available exported names", () => {
+  const moduleFacts = buildModuleFacts({
     parsedFiles: [
       sourceFile("src/index.ts", 'export * as tokens from "./tokens.ts";'),
       sourceFile("src/tokens.ts", 'export const primary = "btn";'),
     ],
   });
 
-  const exports = resolution.exportsByFilePath.get("src/index.ts") ?? [];
-  assert.deepEqual(
-    exports.map((exportRecord) => ({
-      exportedName: exportRecord.exportedName,
-      specifier: exportRecord.specifier,
-      reexportKind: exportRecord.reexportKind,
-      declarationKind: exportRecord.declarationKind,
-    })),
-    [
-      {
-        exportedName: "tokens",
-        specifier: "./tokens.ts",
-        reexportKind: "namespace",
-        declarationKind: "unknown",
-      },
-    ],
-  );
-
   assert.deepEqual(
     [
       ...collectAvailableExportedNames({
-        moduleFacts: resolution,
+        moduleFacts,
         filePath: "src/index.ts",
         visitedFilePaths: new Set(["src/index.ts"]),
         currentDepth: 0,
@@ -335,62 +201,8 @@ test("project resolution indexes namespace re-exports as available exported name
   );
 });
 
-test("project resolution resolves default re-exports", () => {
-  const resolution = buildModuleFacts({
-    parsedFiles: [
-      sourceFile("src/index.ts", 'export { default as Button } from "./Button.tsx";'),
-      sourceFile("src/Button.tsx", "export default function Button() { return null; }"),
-    ],
-  });
-
-  const result = resolveModuleFactExport({
-    moduleFacts: resolution,
-    filePath: "src/index.ts",
-    exportedName: "Button",
-    visitedExports: new Set(["src/index.ts:Button"]),
-    currentDepth: 0,
-    includeTraces: false,
-  });
-
-  assert.deepEqual(result, {
-    resolvedExport: {
-      targetFilePath: "src/Button.tsx",
-      targetExportName: "default",
-      targetLocalName: "Button",
-    },
-    traces: [],
-  });
-});
-
-test("project resolution resolves type-only re-exports through barrels", () => {
-  const resolution = buildModuleFacts({
-    parsedFiles: [
-      sourceFile("src/index.ts", 'export type { ButtonProps } from "./types.ts";'),
-      sourceFile("src/types.ts", 'export type ButtonProps = { variant?: "primary" };'),
-    ],
-  });
-
-  const result = resolveModuleFactExport({
-    moduleFacts: resolution,
-    filePath: "src/index.ts",
-    exportedName: "ButtonProps",
-    visitedExports: new Set(["src/index.ts:ButtonProps"]),
-    currentDepth: 0,
-    includeTraces: false,
-  });
-
-  assert.deepEqual(result, {
-    resolvedExport: {
-      targetFilePath: "src/types.ts",
-      targetExportName: "ButtonProps",
-      targetLocalName: "ButtonProps",
-    },
-    traces: [],
-  });
-});
-
-test("project resolution pins supported ESM re-export forms", () => {
-  const resolution = buildModuleFacts({
+test("module facts pin supported ESM re-export forms", () => {
+  const moduleFacts = buildModuleFacts({
     parsedFiles: [
       sourceFile(
         "src/index.ts",
@@ -410,20 +222,23 @@ test("project resolution pins supported ESM re-export forms", () => {
     ],
   });
 
+  const indexFacts = getResolvedModuleFacts({
+    moduleFacts,
+    filePath: "src/index.ts",
+  });
+  assert.ok(indexFacts);
   assert.deepEqual(
-    (resolution.exportsByFilePath.get("src/index.ts") ?? []).map((exportRecord) => ({
-      exportedName: exportRecord.exportedName,
-      sourceExportedName: exportRecord.sourceExportedName,
-      specifier: exportRecord.specifier,
-      reexportKind: exportRecord.reexportKind,
-      typeOnly: exportRecord.typeOnly,
-      declarationKind: exportRecord.declarationKind,
+    indexFacts.exports.map((exportFact) => ({
+      exportedName: exportFact.exportedName,
+      sourceExportedName: exportFact.sourceExportedName,
+      reexportKind: exportFact.reexportKind,
+      typeOnly: exportFact.typeOnly,
+      declarationKind: exportFact.declarationKind,
     })),
     [
       {
         exportedName: "Button",
         sourceExportedName: "default",
-        specifier: "./Button.tsx",
         reexportKind: "named",
         typeOnly: false,
         declarationKind: "unknown",
@@ -431,7 +246,6 @@ test("project resolution pins supported ESM re-export forms", () => {
       {
         exportedName: "ButtonProps",
         sourceExportedName: "ButtonProps",
-        specifier: "./types.ts",
         reexportKind: "named",
         typeOnly: true,
         declarationKind: "type",
@@ -439,7 +253,6 @@ test("project resolution pins supported ESM re-export forms", () => {
       {
         exportedName: "ButtonTokens",
         sourceExportedName: undefined,
-        specifier: "./tokens.ts",
         reexportKind: "namespace",
         typeOnly: false,
         declarationKind: "unknown",
@@ -447,7 +260,6 @@ test("project resolution pins supported ESM re-export forms", () => {
       {
         exportedName: "ButtonVariant",
         sourceExportedName: "ButtonVariant",
-        specifier: "./variants.ts",
         reexportKind: "named",
         typeOnly: true,
         declarationKind: "type",
@@ -455,7 +267,6 @@ test("project resolution pins supported ESM re-export forms", () => {
       {
         exportedName: "default",
         sourceExportedName: "Button",
-        specifier: "./namedButton.tsx",
         reexportKind: "named",
         typeOnly: false,
         declarationKind: "unknown",
@@ -463,7 +274,7 @@ test("project resolution pins supported ESM re-export forms", () => {
     ],
   );
 
-  assert.deepEqual(resolveExportForTest(resolution, "Button"), {
+  assert.deepEqual(resolveExportForTest(moduleFacts, "Button"), {
     resolvedExport: {
       targetFilePath: "src/Button.tsx",
       targetExportName: "default",
@@ -471,7 +282,7 @@ test("project resolution pins supported ESM re-export forms", () => {
     },
     traces: [],
   });
-  assert.deepEqual(resolveExportForTest(resolution, "default"), {
+  assert.deepEqual(resolveExportForTest(moduleFacts, "default"), {
     resolvedExport: {
       targetFilePath: "src/namedButton.tsx",
       targetExportName: "Button",
@@ -479,7 +290,7 @@ test("project resolution pins supported ESM re-export forms", () => {
     },
     traces: [],
   });
-  assert.deepEqual(resolveExportForTest(resolution, "ButtonProps"), {
+  assert.deepEqual(resolveExportForTest(moduleFacts, "ButtonProps"), {
     resolvedExport: {
       targetFilePath: "src/types.ts",
       targetExportName: "ButtonProps",
@@ -487,7 +298,7 @@ test("project resolution pins supported ESM re-export forms", () => {
     },
     traces: [],
   });
-  assert.deepEqual(resolveExportForTest(resolution, "ButtonVariant"), {
+  assert.deepEqual(resolveExportForTest(moduleFacts, "ButtonVariant"), {
     resolvedExport: {
       targetFilePath: "src/variants.ts",
       targetExportName: "ButtonVariant",
@@ -495,101 +306,13 @@ test("project resolution pins supported ESM re-export forms", () => {
     },
     traces: [],
   });
-
-  assert.deepEqual(resolveExportForTest(resolution, "ButtonTokens"), {
+  assert.deepEqual(resolveExportForTest(moduleFacts, "ButtonTokens"), {
     reason: "export-not-found",
     traces: [],
   });
-  assert.deepEqual(
-    [
-      ...collectAvailableExportedNames({
-        moduleFacts: resolution,
-        filePath: "src/index.ts",
-        visitedFilePaths: new Set(["src/index.ts"]),
-        currentDepth: 0,
-      }),
-    ].sort(),
-    ["Button", "ButtonProps", "ButtonTokens", "ButtonVariant", "default"],
-  );
 });
 
-test("project resolution caches repeated source-specifier lookups", () => {
-  const resolution = buildModuleFacts({
-    parsedFiles: [
-      sourceFile("src/App.tsx", 'import { token } from "./tokens.ts";'),
-      sourceFile("src/tokens.ts", 'export const token = "btn";'),
-    ],
-  });
-
-  assert.equal(
-    resolveModuleFactSourceSpecifier({
-      moduleFacts: resolution,
-      fromFilePath: "src/App.tsx",
-      specifier: "./tokens.ts",
-    }),
-    "src/tokens.ts",
-  );
-  assert.equal(
-    resolveModuleFactSourceSpecifier({
-      moduleFacts: resolution,
-      fromFilePath: "src/App.tsx",
-      specifier: "./tokens.ts",
-    }),
-    "src/tokens.ts",
-  );
-
-  assert.deepEqual(
-    [...resolution.caches.moduleSpecifiers.entries()],
-    [
-      [
-        "src/App.tsx\0./tokens.ts\0source",
-        {
-          status: "resolved",
-          confidence: "exact",
-          value: "src/tokens.ts",
-        },
-      ],
-    ],
-  );
-});
-
-test("project resolution caches negative source-specifier lookups", () => {
-  const resolution = buildModuleFacts({
-    parsedFiles: [sourceFile("src/App.tsx", 'import { token } from "./missing";')],
-  });
-
-  assert.equal(
-    resolveModuleFactSourceSpecifier({
-      moduleFacts: resolution,
-      fromFilePath: "src/App.tsx",
-      specifier: "./missing",
-    }),
-    undefined,
-  );
-  assert.equal(
-    resolveModuleFactSourceSpecifier({
-      moduleFacts: resolution,
-      fromFilePath: "src/App.tsx",
-      specifier: "./missing",
-    }),
-    undefined,
-  );
-
-  assert.deepEqual(
-    [...resolution.caches.moduleSpecifiers.entries()],
-    [
-      [
-        "src/App.tsx\0./missing\0source",
-        {
-          status: "not-found",
-          reason: "source-specifier-not-found",
-        },
-      ],
-    ],
-  );
-});
-
-test("project resolution resolves package exports subpaths through TypeScript", async () => {
+test("module facts resolve package exports subpaths through TypeScript", async () => {
   const projectRoot = await mkdtemp(path.join(os.tmpdir(), "scan-react-css-project-resolution-"));
   try {
     await mkdir(path.join(projectRoot, "node_modules/pkg"), { recursive: true });
@@ -605,7 +328,7 @@ test("project resolution resolves package exports subpaths through TypeScript", 
       "utf8",
     );
 
-    const resolution = buildModuleFacts({
+    const moduleFacts = buildModuleFacts({
       parsedFiles: [
         sourceFile("src/App.tsx", 'import { buttonClass } from "pkg/button";'),
         sourceFile("node_modules/pkg/src/button.ts", 'export const buttonClass = "btn";'),
@@ -617,12 +340,13 @@ test("project resolution resolves package exports subpaths through TypeScript", 
       },
     });
 
+    const appFacts = getResolvedModuleFacts({
+      moduleFacts,
+      filePath: "src/App.tsx",
+    });
     assert.equal(
-      resolveModuleFactSourceSpecifier({
-        moduleFacts: resolution,
-        fromFilePath: "src/App.tsx",
-        specifier: "pkg/button",
-      }),
+      appFacts?.imports.find((importFact) => importFact.specifier === "pkg/button")?.resolution
+        .resolvedFilePath,
       "node_modules/pkg/src/button.ts",
     );
   } finally {
@@ -630,8 +354,8 @@ test("project resolution resolves package exports subpaths through TypeScript", 
   }
 });
 
-test("project resolution resolves tsconfig path aliases with fallback targets", () => {
-  const resolution = buildModuleFacts({
+test("module facts resolve tsconfig path aliases with fallback targets", () => {
+  const moduleFacts = buildModuleFacts({
     parsedFiles: [
       sourceFile("src/App.tsx", 'import { buttonClass } from "@app/tokens";'),
       sourceFile("src/generated/tokens.ts", 'export const buttonClass = "btn";'),
@@ -647,17 +371,18 @@ test("project resolution resolves tsconfig path aliases with fallback targets", 
     },
   });
 
+  const appFacts = getResolvedModuleFacts({
+    moduleFacts,
+    filePath: "src/App.tsx",
+  });
   assert.equal(
-    resolveModuleFactSourceSpecifier({
-      moduleFacts: resolution,
-      fromFilePath: "src/App.tsx",
-      specifier: "@app/tokens",
-    }),
+    appFacts?.imports.find((importFact) => importFact.specifier === "@app/tokens")?.resolution
+      .resolvedFilePath,
     "src/generated/tokens.ts",
   );
 });
 
-test("project resolution rejects TypeScript-resolved modules that were not parsed", async () => {
+test("module facts reject TypeScript-resolved modules that were not parsed", async () => {
   const projectRoot = await mkdtemp(path.join(os.tmpdir(), "scan-react-css-project-resolution-"));
   try {
     await mkdir(path.join(projectRoot, "node_modules/unparsed-lib/src"), { recursive: true });
@@ -678,7 +403,7 @@ test("project resolution rejects TypeScript-resolved modules that were not parse
       "utf8",
     );
 
-    const resolution = buildModuleFacts({
+    const moduleFacts = buildModuleFacts({
       parsedFiles: [sourceFile("src/App.tsx", 'import { buttonClass } from "unparsed-lib";')],
       projectRoot,
       compilerOptions: {
@@ -687,25 +412,16 @@ test("project resolution rejects TypeScript-resolved modules that were not parse
       },
     });
 
-    assert.equal(
-      resolveModuleFactSourceSpecifier({
-        moduleFacts: resolution,
-        fromFilePath: "src/App.tsx",
-        specifier: "unparsed-lib",
-      }),
-      undefined,
-    );
+    const appFacts = getResolvedModuleFacts({
+      moduleFacts,
+      filePath: "src/App.tsx",
+    });
     assert.deepEqual(
-      [...resolution.caches.moduleSpecifiers.entries()],
-      [
-        [
-          "src/App.tsx\0unparsed-lib\0source",
-          {
-            status: "not-found",
-            reason: "source-specifier-not-found",
-          },
-        ],
-      ],
+      appFacts?.imports.find((importFact) => importFact.specifier === "unparsed-lib")?.resolution,
+      {
+        status: "unresolved",
+        reason: "source-specifier-not-found",
+      },
     );
   } finally {
     await rm(projectRoot, { recursive: true, force: true });
@@ -774,9 +490,9 @@ function sourceFile(filePath, sourceText) {
   };
 }
 
-function resolveExportForTest(projectResolution, exportedName) {
+function resolveExportForTest(moduleFacts, exportedName) {
   return resolveModuleFactExport({
-    moduleFacts: projectResolution,
+    moduleFacts,
     filePath: "src/index.ts",
     exportedName,
     visitedExports: new Set([`src/index.ts:${exportedName}`]),

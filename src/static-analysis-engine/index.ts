@@ -8,9 +8,9 @@ export {
   getAnalyzedModuleFilePaths,
   getDirectSourceImportFacts,
   getDirectStylesheetImportFacts,
+  getResolvedModuleExportsByFilePath,
   getResolvedModuleFacts,
   resolveModuleFactExport,
-  resolveModuleFactReExportTargetFilePath,
   resolveModuleFactSourceSpecifier,
   resolveSourceSpecifier,
 } from "./pipeline/module-facts/index.js";
@@ -98,11 +98,7 @@ export type {
 export type {
   ModuleFacts,
   ModuleFactsCssSemantics,
-  ModuleFactsDeclarationIndex,
-  ModuleFactsExportRecord,
   ModuleFactsImportKind,
-  ModuleFactsImportRecord,
-  ModuleFactsTypescriptResolution,
   ResolvedModuleExportFact,
   ResolvedModuleFacts,
   ResolvedModuleImportFact,

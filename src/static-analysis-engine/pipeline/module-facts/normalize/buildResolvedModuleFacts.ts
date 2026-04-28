@@ -1,4 +1,4 @@
-import type { ModuleFacts, ResolvedModuleFacts } from "../types.js";
+import type { ModuleFactsStore, ResolvedModuleFacts } from "../types.js";
 import { normalizeFilePath } from "../shared/pathUtils.js";
 import { createModuleFactsModuleId } from "./moduleIds.js";
 import { normalizeExportFacts } from "./normalizeExportFacts.js";
@@ -6,7 +6,7 @@ import { normalizeImportFacts } from "./normalizeImportFacts.js";
 import { normalizeTopLevelBindings } from "./normalizeTopLevelBindings.js";
 
 export function buildResolvedModuleFacts(input: {
-  moduleFacts: ModuleFacts;
+  moduleFacts: ModuleFactsStore;
 }): Map<string, ResolvedModuleFacts> {
   const factsByFilePath = new Map<string, ResolvedModuleFacts>();
   const filePaths = [...input.moduleFacts.parsedSourceFilesByFilePath.keys()].sort((left, right) =>

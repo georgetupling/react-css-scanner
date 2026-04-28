@@ -1,4 +1,9 @@
-import type { ModuleFacts, ResolvedModuleFacts, ResolvedModuleImportFact } from "../types.js";
+import type {
+  ModuleFacts,
+  ResolvedModuleExportFact,
+  ResolvedModuleFacts,
+  ResolvedModuleImportFact,
+} from "../types.js";
 import { normalizeFilePath } from "../shared/pathUtils.js";
 
 export function getResolvedModuleFacts(input: {
@@ -18,6 +23,14 @@ export function getAllResolvedModuleFacts(input: {
 
 export function getAnalyzedModuleFilePaths(input: { moduleFacts: ModuleFacts }): string[] {
   return getAllResolvedModuleFacts(input).map((fact) => fact.filePath);
+}
+
+export function getResolvedModuleExportsByFilePath(input: {
+  moduleFacts: ModuleFacts;
+}): Map<string, ResolvedModuleExportFact[]> {
+  return new Map(
+    getAllResolvedModuleFacts(input).map((fact) => [fact.filePath, [...fact.exports]]),
+  );
 }
 
 export function getDirectSourceImportFacts(input: {

@@ -1,8 +1,5 @@
 import ts from "typescript";
-import {
-  resolveModuleFactSourceSpecifier,
-  type ModuleFacts,
-} from "../../../../module-facts/index.js";
+import { getResolvedModuleFacts, type ModuleFacts } from "../../../../module-facts/index.js";
 import { normalizeFilePath } from "../../../../module-facts/shared/pathUtils.js";
 
 type LocalTypeEvidence = {
@@ -32,16 +29,27 @@ type TypeResolutionState = {
 };
 
 export type FiniteTypeEvidenceCache = {
-  projectResolution: ModuleFacts;
+  moduleFacts: ModuleFacts;
+  sourceFilesByFilePath: Map<string, ts.SourceFile>;
   evidenceByFilePath: Map<string, LocalTypeEvidence>;
   resolvedExportedTypesByKey: Map<string, ResolvedTypeDeclaration | undefined>;
 };
 
-export function createFiniteTypeEvidenceCache(
-  projectResolution: ModuleFacts,
-): FiniteTypeEvidenceCache {
+export function createFiniteTypeEvidenceCache(input: {
+  moduleFacts: ModuleFacts;
+  parsedFiles: Array<{
+    filePath: string;
+    parsedSourceFile: ts.SourceFile;
+  }>;
+}): FiniteTypeEvidenceCache {
   return {
-    projectResolution,
+    moduleFacts: input.moduleFacts,
+    sourceFilesByFilePath: new Map(
+      input.parsedFiles.map((parsedFile) => [
+        normalizeFilePath(parsedFile.filePath),
+        parsedFile.parsedSourceFile,
+      ]),
+    ),
     evidenceByFilePath: new Map(),
     resolvedExportedTypesByKey: new Map(),
   };
@@ -669,7 +677,7 @@ function resolveExportedTypeDeclaration(
     return undefined;
   }
 
-  const sourceFile = cache?.projectResolution.parsedSourceFilesByFilePath.get(normalizedFilePath);
+  const sourceFile = cache?.sourceFilesByFilePath.get(normalizedFilePath);
   if (!cache || !sourceFile) {
     return undefined;
   }
@@ -747,11 +755,22 @@ function resolveProjectLocalSourceSpecifier(
     return undefined;
   }
 
-  return resolveModuleFactSourceSpecifier({
-    moduleFacts: cache.projectResolution,
-    fromFilePath,
-    specifier,
-  });
+  return (
+    getResolvedModuleFacts({
+      moduleFacts: cache.moduleFacts,
+      filePath: fromFilePath,
+    })?.imports.find(
+      (importFact) =>
+        importFact.specifier === specifier && importFact.resolution.status === "resolved",
+    )?.resolution.resolvedFilePath ??
+    getResolvedModuleFacts({
+      moduleFacts: cache.moduleFacts,
+      filePath: fromFilePath,
+    })?.exports.find(
+      (exportFact) =>
+        exportFact.reexport.specifier === specifier && exportFact.reexport.status === "resolved",
+    )?.reexport.resolvedFilePath
+  );
 }
 
 function unwrapConstExpression(expression: ts.Expression): ts.Expression {

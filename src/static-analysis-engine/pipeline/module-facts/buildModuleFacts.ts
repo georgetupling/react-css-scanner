@@ -11,6 +11,7 @@ import { collectWorkspacePackageEntryPoints } from "./resolve/workspaceEntryPoin
 import { normalizeFilePath } from "./shared/pathUtils.js";
 import type {
   ModuleFacts,
+  ModuleFactsStore,
   ModuleFactsDeclarationIndex,
   ModuleFactsExportRecord,
   ModuleFactsImportRecord,
@@ -21,6 +22,17 @@ export function buildModuleFacts(input: {
   projectRoot?: string;
   compilerOptions?: ts.CompilerOptions;
 }): ModuleFacts {
+  const moduleFactsStore = buildModuleFactsStore(input);
+  return {
+    resolvedModuleFactsByFilePath: new Map(moduleFactsStore.resolvedModuleFactsByFilePath),
+  };
+}
+
+export function buildModuleFactsStore(input: {
+  parsedFiles: ParsedProjectFile[];
+  projectRoot?: string;
+  compilerOptions?: ts.CompilerOptions;
+}): ModuleFactsStore {
   const sortedParsedFiles = [...input.parsedFiles].sort((left, right) =>
     normalizeFilePath(left.filePath).localeCompare(normalizeFilePath(right.filePath)),
   );
@@ -42,7 +54,7 @@ export function buildModuleFacts(input: {
     declarationsByFilePath.set(filePath, declarations);
   }
 
-  const moduleFacts: ModuleFacts = {
+  const moduleFacts: ModuleFactsStore = {
     parsedSourceFilesByFilePath,
     importsByFilePath,
     exportsByFilePath,

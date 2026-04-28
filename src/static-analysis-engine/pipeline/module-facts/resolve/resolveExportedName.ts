@@ -2,8 +2,9 @@ import { MAX_CROSS_FILE_IMPORT_PROPAGATION_DEPTH } from "../../../libraries/poli
 import type { AnalysisTrace } from "../../../types/analysis.js";
 import type { SourceAnchor } from "../../../types/core.js";
 import { normalizeFilePath } from "../shared/pathUtils.js";
+import { getResolvedModuleFacts } from "../api/getModuleFacts.js";
 import { resolveModuleFactSourceSpecifier } from "./resolveModuleFactSourceSpecifier.js";
-import type { ModuleFacts, ModuleFactsExportRecord } from "../types.js";
+import type { ModuleFacts, ModuleFactsExportRecord, ModuleFactsStore } from "../types.js";
 
 export type ResolvedModuleFactExport = {
   targetFilePath: string;
@@ -28,7 +29,11 @@ export function resolveModuleFactExport(input: {
 }): ResolveModuleFactExportResult {
   const filePath = normalizeFilePath(input.filePath);
   const includeTraces = input.includeTraces ?? true;
-  const exportRecords = input.moduleFacts.exportsByFilePath.get(filePath);
+  const moduleFacts = getResolvedModuleFacts({
+    moduleFacts: input.moduleFacts,
+    filePath,
+  });
+  const exportRecords = moduleFacts?.exports;
 
   if (!exportRecords) {
     return {
@@ -51,7 +56,8 @@ export function resolveModuleFactExport(input: {
   }
 
   const directExport = exportRecords.find(
-    (exportRecord) => exportRecord.exportedName === input.exportedName && !exportRecord.specifier,
+    (exportRecord) =>
+      exportRecord.exportedName === input.exportedName && exportRecord.reexport.status === "none",
   );
   if (directExport) {
     return {
@@ -99,10 +105,10 @@ export function resolveModuleFactExport(input: {
   }
 
   for (const exportRecord of exportRecords) {
-    const targetFilePath = resolveModuleFactReExportTargetFilePath({
-      moduleFacts: input.moduleFacts,
-      exportRecord,
-    });
+    const targetFilePath =
+      exportRecord.reexport.status === "resolved"
+        ? exportRecord.reexport.resolvedFilePath
+        : undefined;
     if (!targetFilePath) {
       continue;
     }
@@ -209,7 +215,11 @@ export function collectAvailableExportedNames(input: {
   currentDepth: number;
 }): Set<string> {
   const filePath = normalizeFilePath(input.filePath);
-  const exportRecords = input.moduleFacts.exportsByFilePath.get(filePath);
+  const moduleFacts = getResolvedModuleFacts({
+    moduleFacts: input.moduleFacts,
+    filePath,
+  });
+  const exportRecords = moduleFacts?.exports;
   const exportedNames = new Set<string>(
     exportRecords?.map((exportRecord) => exportRecord.exportedName) ?? [],
   );
@@ -223,10 +233,10 @@ export function collectAvailableExportedNames(input: {
       continue;
     }
 
-    const targetFilePath = resolveModuleFactReExportTargetFilePath({
-      moduleFacts: input.moduleFacts,
-      exportRecord,
-    });
+    const targetFilePath =
+      exportRecord.reexport.status === "resolved"
+        ? exportRecord.reexport.resolvedFilePath
+        : undefined;
     if (!targetFilePath || input.visitedFilePaths.has(targetFilePath)) {
       continue;
     }
@@ -246,37 +256,18 @@ export function collectAvailableExportedNames(input: {
 }
 
 export function resolveModuleFactReExportTargetFilePath(input: {
-  moduleFacts: ModuleFacts;
+  moduleFacts: ModuleFactsStore;
   exportRecord: ModuleFactsExportRecord;
 }): string | undefined {
   if (!input.exportRecord.specifier) {
     return undefined;
   }
 
-  const cacheKey = `${input.exportRecord.filePath}\0${input.exportRecord.specifier}\0re-export`;
-  const cached = input.moduleFacts.caches.moduleSpecifiers.get(cacheKey);
-  if (cached) {
-    return cached.status === "resolved" ? cached.value : undefined;
-  }
-
-  const targetFilePath = resolveModuleFactSourceSpecifier({
+  return resolveModuleFactSourceSpecifier({
     moduleFacts: input.moduleFacts,
     fromFilePath: input.exportRecord.filePath,
     specifier: input.exportRecord.specifier,
   });
-
-  input.moduleFacts.caches.moduleSpecifiers.set(
-    cacheKey,
-    targetFilePath
-      ? {
-          status: "resolved",
-          confidence: input.exportRecord.specifier.startsWith(".") ? "exact" : "heuristic",
-          value: targetFilePath,
-        }
-      : { status: "not-found", reason: "re-export-target-not-found" },
-  );
-
-  return targetFilePath;
 }
 
 function createSymbolResolutionTrace(input: {
