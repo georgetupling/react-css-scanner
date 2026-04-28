@@ -28,7 +28,7 @@ export function buildModuleFacts(input: {
   };
 }
 
-export function buildModuleFactsStore(input: {
+function buildModuleFactsStore(input: {
   parsedFiles: ParsedProjectFile[];
   projectRoot?: string;
   compilerOptions?: ts.CompilerOptions;

@@ -8,7 +8,6 @@ export {
   getAnalyzedModuleFilePaths,
   getDirectSourceImportFacts,
   getDirectStylesheetImportFacts,
-  getResolvedModuleExportsByFilePath,
   getResolvedModuleFacts,
   resolveModuleFactExport,
   resolveModuleFactSourceSpecifier,
@@ -97,12 +96,8 @@ export type {
 } from "./pipeline/reachability/index.js";
 export type {
   ModuleFacts,
-  ModuleFactsCssSemantics,
   ModuleFactsImportKind,
-  ResolvedModuleExportFact,
   ResolvedModuleFacts,
-  ResolvedModuleImportFact,
-  ResolvedTopLevelBindingFact,
 } from "./pipeline/module-facts/index.js";
 export type {
   EngineSymbol,
