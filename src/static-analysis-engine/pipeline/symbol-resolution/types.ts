@@ -6,8 +6,13 @@ import type { EngineModuleId, EngineSymbolId, SourceAnchor } from "../../types/c
 export type SymbolKind =
   | "component"
   | "function"
+  | "class"
   | "constant"
   | "variable"
+  | "enum"
+  | "namespace"
+  | "type-alias"
+  | "interface"
   | "prop"
   | "imported-binding"
   | "css-resource"

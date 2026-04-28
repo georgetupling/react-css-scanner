@@ -3,6 +3,7 @@ import type {
   ResolvedModuleExportFact,
   ResolvedModuleFacts,
   ResolvedModuleImportFact,
+  ResolvedTopLevelBindingFact,
 } from "../types.js";
 import { normalizeFilePath } from "../shared/pathUtils.js";
 
@@ -31,6 +32,36 @@ export function getResolvedModuleExportsByFilePath(input: {
   return new Map(
     getAllResolvedModuleFacts(input).map((fact) => [fact.filePath, [...fact.exports]]),
   );
+}
+
+export function getTopLevelBindingFacts(input: {
+  moduleFacts: ModuleFacts;
+  filePath: string;
+}): ResolvedTopLevelBindingFact[] {
+  return [...(getResolvedModuleFacts(input)?.topLevelBindings ?? [])];
+}
+
+export function getExportedNamesByLocalName(input: {
+  moduleFacts: ModuleFacts;
+  filePath: string;
+}): Map<string, string[]> {
+  const exportedNamesByLocalName = new Map<string, string[]>();
+
+  for (const exportFact of getResolvedModuleFacts(input)?.exports ?? []) {
+    if (!exportFact.localName) {
+      continue;
+    }
+
+    const exportedNames = exportedNamesByLocalName.get(exportFact.localName);
+    if (exportedNames) {
+      exportedNames.push(exportFact.exportedName);
+      continue;
+    }
+
+    exportedNamesByLocalName.set(exportFact.localName, [exportFact.exportedName]);
+  }
+
+  return exportedNamesByLocalName;
 }
 
 export function getDirectSourceImportFacts(input: {

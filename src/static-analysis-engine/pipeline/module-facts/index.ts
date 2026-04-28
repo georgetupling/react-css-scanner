@@ -1,9 +1,11 @@
 import {
+  getExportedNamesByLocalName,
   getAllResolvedModuleFacts,
   getAnalyzedModuleFilePaths,
   getDirectSourceImportFacts,
   getDirectStylesheetImportFacts,
   getResolvedModuleFacts,
+  getTopLevelBindingFacts,
 } from "./api/getModuleFacts.js";
 import { buildModuleFacts } from "./buildModuleFacts.js";
 import {
@@ -16,11 +18,13 @@ import { resolveSourceSpecifier } from "./resolve/resolveSourceSpecifier.js";
 export {
   buildModuleFacts,
   collectAvailableExportedNames,
+  getExportedNamesByLocalName,
   getAllResolvedModuleFacts,
   getAnalyzedModuleFilePaths,
   getDirectSourceImportFacts,
   getDirectStylesheetImportFacts,
   getResolvedModuleFacts,
+  getTopLevelBindingFacts,
   resolveModuleFactExport,
   resolveModuleFactSourceSpecifier,
   resolveSourceSpecifier,

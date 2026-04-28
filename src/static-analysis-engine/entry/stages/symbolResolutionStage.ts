@@ -19,6 +19,7 @@ export function runSymbolResolutionStage(input: {
 }): SymbolResolutionStageResult {
   const collectedSymbols = collectProjectSymbols({
     parsedFiles: input.parsedFiles,
+    moduleFacts: input.moduleFacts,
   });
 
   return buildProjectBindingResolution({
@@ -31,6 +32,7 @@ export function runSymbolResolutionStage(input: {
 
 function collectProjectSymbols(input: {
   parsedFiles: ParsedProjectFile[];
+  moduleFacts: ModuleFacts;
 }): ProjectSymbolCollection {
   const symbols = new Map<EngineSymbolId, EngineSymbol>();
   const symbolsByFilePath = new Map<string, Map<EngineSymbolId, EngineSymbol>>();
@@ -41,6 +43,7 @@ function collectProjectSymbols(input: {
       filePath: parsedFile.filePath,
       parsedSourceFile: parsedFile.parsedSourceFile,
       moduleId,
+      moduleFacts: input.moduleFacts,
     });
     symbolsByFilePath.set(parsedFile.filePath, fileSymbols);
 

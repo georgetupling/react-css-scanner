@@ -40,6 +40,7 @@ test("symbol resolution owns exported expression bindings and imported expressio
         filePath: parsedFile.filePath,
         parsedSourceFile: parsedFile.parsedSourceFile,
         moduleId: `module:${parsedFile.filePath}`,
+        moduleFacts,
       }),
     ]),
   );
@@ -77,6 +78,49 @@ test("symbol resolution owns exported expression bindings and imported expressio
     ),
     '"public-token"',
   );
+});
+
+test("symbol resolution derives exported names from module facts and collects richer symbol kinds", () => {
+  const parsedFiles = [
+    sourceFile(
+      "src/library.tsx",
+      `
+        class PlainModel {}
+        export class Widget extends React.Component {}
+        class InternalButton {}
+        export { InternalButton as Button, InternalButton as PrimaryButton };
+        export interface ButtonProps { variant: "primary" | "secondary"; }
+        export type ButtonTone = ButtonProps["variant"];
+        export enum Size { Small = "small" }
+        export namespace Theme { export const root = "root"; }
+      `,
+    ),
+  ];
+  const moduleFacts = buildModuleFacts({
+    parsedFiles,
+  });
+
+  const symbols = collectTopLevelSymbols({
+    filePath: "src/library.tsx",
+    parsedSourceFile: parsedFiles[0].parsedSourceFile,
+    moduleId: "module:src/library.tsx",
+    moduleFacts,
+  });
+  const symbolsByLocalName = new Map(
+    [...symbols.values()].map((symbol) => [symbol.localName, symbol]),
+  );
+
+  assert.equal(symbolsByLocalName.get("PlainModel")?.kind, "class");
+  assert.equal(symbolsByLocalName.get("Widget")?.kind, "component");
+  assert.deepEqual(symbolsByLocalName.get("InternalButton")?.exportedNames, [
+    "Button",
+    "PrimaryButton",
+  ]);
+  assert.equal(symbolsByLocalName.get("ButtonProps")?.kind, "interface");
+  assert.deepEqual(symbolsByLocalName.get("ButtonProps")?.exportedNames, ["ButtonProps"]);
+  assert.equal(symbolsByLocalName.get("ButtonTone")?.kind, "type-alias");
+  assert.equal(symbolsByLocalName.get("Size")?.kind, "enum");
+  assert.equal(symbolsByLocalName.get("Theme")?.kind, "namespace");
 });
 
 function sourceFile(filePath, sourceText) {
