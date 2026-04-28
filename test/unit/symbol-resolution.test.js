@@ -9,6 +9,7 @@ import {
   collectTopLevelSymbols,
   getExportedExpressionBindingsForFile,
   getCssModuleBindingsForFile,
+  getImportedComponentBindingsForFile,
   getImportedExpressionBindingsForFile,
   getNamespaceImportsForFile,
   getSymbol,
@@ -153,6 +154,58 @@ test("symbol resolution derives exported names from module facts and collects ri
       symbolSpace: "value",
     }),
     undefined,
+  );
+});
+
+test("symbol resolution uses syntax-backed component detection for imported component bindings", () => {
+  const parsedFiles = [
+    sourceFile(
+      "src/components.tsx",
+      `
+        export const API_URL = "https://example.test";
+        function BaseButton() { return <button />; }
+        export const Button = memo(BaseButton);
+        export const Link = React.forwardRef(function LinkImpl() { return <a />; });
+        export const helper = format(Button);
+      `,
+    ),
+    sourceFile(
+      "src/consumer.tsx",
+      `
+        import { API_URL, Button, Link, helper } from "./components.tsx";
+      `,
+    ),
+  ];
+  const moduleFacts = buildModuleFacts({
+    parsedFiles,
+  });
+
+  const resolution = buildProjectBindingResolution({
+    parsedFiles,
+    moduleFacts,
+    includeTraces: false,
+  });
+
+  const sourceSymbols = collectTopLevelSymbols({
+    filePath: "src/components.tsx",
+    parsedSourceFile: parsedFiles[0].parsedSourceFile,
+    moduleId: "module:src/components.tsx",
+    moduleFacts,
+  });
+  const symbolsByLocalName = new Map(
+    [...sourceSymbols.values()].map((symbol) => [symbol.localName, symbol]),
+  );
+
+  assert.equal(symbolsByLocalName.get("API_URL")?.kind, "constant");
+  assert.equal(symbolsByLocalName.get("Button")?.kind, "component");
+  assert.equal(symbolsByLocalName.get("Link")?.kind, "component");
+  assert.equal(symbolsByLocalName.get("helper")?.kind, "constant");
+  assert.deepEqual(
+    getImportedComponentBindingsForFile({
+      symbolResolution: resolution,
+      filePath: "src/consumer.tsx",
+    }).map((binding) => binding.localName),
+    ["Button", "Link"],
   );
 });
 

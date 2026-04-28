@@ -1,5 +1,6 @@
 import ts from "typescript";
 
+import { collectComponentLikeDefinitions } from "../../../libraries/react-components/index.js";
 import {
   getExportedNamesByLocalName,
   getResolvedModuleFacts,
@@ -22,6 +23,12 @@ export function collectTopLevelSymbols(input: {
 }): Map<EngineSymbolId, EngineSymbol> {
   const symbols = new Map<EngineSymbolId, EngineSymbol>();
   const declarationIndex = collectSourceDeclarationIndex(input.parsedSourceFile);
+  const componentLikeNames = new Set(
+    collectComponentLikeDefinitions({
+      filePath: input.filePath,
+      parsedSourceFile: input.parsedSourceFile,
+    }).map((definition) => definition.componentName),
+  );
   const resolvedModuleFacts = input.moduleFacts
     ? getResolvedModuleFacts({
         moduleFacts: input.moduleFacts,
@@ -45,7 +52,12 @@ export function collectTopLevelSymbols(input: {
     moduleFacts: input.moduleFacts!,
     filePath: input.filePath,
   })) {
-    const symbolKind = toSymbolKind(binding.bindingKind, declarationIndex, binding.localName);
+    const symbolKind = toSymbolKind(
+      binding.bindingKind,
+      declarationIndex,
+      binding.localName,
+      componentLikeNames,
+    );
     const declaration = toDeclarationAnchor({
       localName: binding.localName,
       bindingKind: binding.bindingKind,
@@ -191,6 +203,7 @@ function toSymbolKind(
   bindingKind: ResolvedTopLevelBindingFact["bindingKind"],
   declarationIndex: SourceDeclarationIndex,
   localName: string,
+  componentLikeNames: ReadonlySet<string>,
 ): SymbolKind {
   switch (bindingKind) {
     case "import-default":
@@ -198,62 +211,33 @@ function toSymbolKind(
     case "import-namespace":
       return "imported-binding";
     case "function":
-      return /^[A-Z]/.test(localName) ? "component" : "function";
+      return componentLikeNames.has(localName) ? "component" : "function";
     case "class":
-      return isClassComponentLike(declarationIndex.valueDeclarations.get(localName))
-        ? "component"
-        : "class";
+      return componentLikeNames.has(localName) ? "component" : "class";
     case "enum":
       return "enum";
     case "namespace":
       return "namespace";
     case "variable":
-      return classifyVariableKind(declarationIndex.valueDeclarations.get(localName), localName);
+      return classifyVariableKind(
+        declarationIndex.valueDeclarations.get(localName),
+        localName,
+        componentLikeNames,
+      );
   }
 }
 
 function classifyVariableKind(
   declaration: SourceValueDeclaration | undefined,
   localName: string,
+  componentLikeNames: ReadonlySet<string>,
 ): SymbolKind {
   const isConst = declaration?.kind === "const";
-  if (/^[A-Z]/.test(localName)) {
+  if (componentLikeNames.has(localName)) {
     return "component";
   }
 
   return isConst ? "constant" : "variable";
-}
-
-function isClassComponentLike(declaration: SourceValueDeclaration | undefined): boolean {
-  if (!declaration || declaration.kind !== "class") {
-    return false;
-  }
-
-  const heritageClauses = declaration.node.heritageClauses ?? [];
-  for (const heritageClause of heritageClauses) {
-    if (heritageClause.token !== ts.SyntaxKind.ExtendsKeyword) {
-      continue;
-    }
-    for (const typeNode of heritageClause.types) {
-      const expression = typeNode.expression;
-      if (
-        ts.isIdentifier(expression) &&
-        (expression.text === "Component" || expression.text === "PureComponent")
-      ) {
-        return true;
-      }
-      if (
-        ts.isPropertyAccessExpression(expression) &&
-        ts.isIdentifier(expression.expression) &&
-        expression.expression.text === "React" &&
-        (expression.name.text === "Component" || expression.name.text === "PureComponent")
-      ) {
-        return true;
-      }
-    }
-  }
-
-  return false;
 }
 
 function collectLegacyTopLevelSymbols(

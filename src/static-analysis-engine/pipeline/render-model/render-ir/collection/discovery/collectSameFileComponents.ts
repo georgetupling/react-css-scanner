@@ -1,5 +1,6 @@
 import ts from "typescript";
-import { isExported, toSourceAnchor, unwrapExpression } from "../shared/utils.js";
+
+import { collectComponentLikeDefinitions } from "../../../../../libraries/react-components/index.js";
 import type { SameFileComponentDefinition } from "../shared/types.js";
 import type { FiniteTypeInterpreterCache } from "../shared/finiteTypeInterpreter.js";
 import { summarizeParameterBinding } from "../summarization/summarizeParameterBinding.js";
@@ -12,71 +13,35 @@ export function collectSameFileComponents(input: {
 }): SameFileComponentDefinition[] {
   const components: SameFileComponentDefinition[] = [];
 
-  for (const statement of input.parsedSourceFile.statements) {
-    if (ts.isFunctionDeclaration(statement) && statement.name && statement.body) {
-      const parameterBinding = summarizeParameterBinding(
-        statement.parameters,
-        input.finiteTypeInterpreterCache,
-      );
-      const bodySummary = summarizeComponentBody(statement.body, parameterBinding);
-      if (!bodySummary) {
-        continue;
-      }
-
-      components.push({
-        componentName: statement.name.text,
-        exported: isExported(statement),
-        filePath: input.filePath,
-        parsedSourceFile: input.parsedSourceFile,
-        sourceAnchor: toSourceAnchor(statement.name, input.parsedSourceFile, input.filePath),
-        rootExpression: bodySummary.rootExpression,
-        localExpressionBindings: bodySummary.localExpressionBindings,
-        localStringSetBindings: bodySummary.localStringSetBindings,
-        localHelperDefinitions: bodySummary.localHelperDefinitions,
-        parameterBinding,
-      });
+  for (const definition of collectComponentLikeDefinitions({
+    filePath: input.filePath,
+    parsedSourceFile: input.parsedSourceFile,
+  })) {
+    if (!definition.functionLikeNode) {
       continue;
     }
 
-    if (!ts.isVariableStatement(statement)) {
+    const parameterBinding = summarizeParameterBinding(
+      definition.functionLikeNode.parameters,
+      input.finiteTypeInterpreterCache,
+    );
+    const bodySummary = summarizeComponentBody(definition.functionLikeNode.body, parameterBinding);
+    if (!bodySummary) {
       continue;
     }
 
-    for (const declaration of statement.declarationList.declarations) {
-      if (!ts.isIdentifier(declaration.name) || !declaration.initializer) {
-        continue;
-      }
-
-      const componentLikeExpression = unwrapExpression(declaration.initializer);
-      if (
-        !ts.isArrowFunction(componentLikeExpression) &&
-        !ts.isFunctionExpression(componentLikeExpression)
-      ) {
-        continue;
-      }
-
-      const parameterBinding = summarizeParameterBinding(
-        componentLikeExpression.parameters,
-        input.finiteTypeInterpreterCache,
-      );
-      const bodySummary = summarizeComponentBody(componentLikeExpression.body, parameterBinding);
-      if (!bodySummary) {
-        continue;
-      }
-
-      components.push({
-        componentName: declaration.name.text,
-        exported: isExported(statement),
-        filePath: input.filePath,
-        parsedSourceFile: input.parsedSourceFile,
-        sourceAnchor: toSourceAnchor(declaration.name, input.parsedSourceFile, input.filePath),
-        rootExpression: bodySummary.rootExpression,
-        localExpressionBindings: bodySummary.localExpressionBindings,
-        localStringSetBindings: bodySummary.localStringSetBindings,
-        localHelperDefinitions: bodySummary.localHelperDefinitions,
-        parameterBinding,
-      });
-    }
+    components.push({
+      componentName: definition.componentName,
+      exported: definition.exported,
+      filePath: input.filePath,
+      parsedSourceFile: input.parsedSourceFile,
+      sourceAnchor: definition.sourceAnchor,
+      rootExpression: bodySummary.rootExpression,
+      localExpressionBindings: bodySummary.localExpressionBindings,
+      localStringSetBindings: bodySummary.localStringSetBindings,
+      localHelperDefinitions: bodySummary.localHelperDefinitions,
+      parameterBinding,
+    });
   }
 
   return components;

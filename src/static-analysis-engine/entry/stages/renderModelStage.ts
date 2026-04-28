@@ -14,6 +14,5 @@ export function runRenderModelStage(input: {
 }): RenderModelStageResult {
   return buildRenderModel({
     ...input,
-    moduleFacts: input.moduleFacts,
   });
 }
