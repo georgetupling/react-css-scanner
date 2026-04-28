@@ -406,12 +406,14 @@ export function resolveEffectiveComponentId(input: {
   }
 
   return (
-    input.indexes.componentIdByFilePathAndName.get(
-      createComponentKey(
-        normalizeProjectPath(input.inheritedExpansion.filePath),
-        input.inheritedExpansion.componentName,
-      ),
-    ) ?? input.renderSubtree.componentId
+    (input.inheritedExpansion.componentKey
+      ? input.indexes.componentIdByComponentKey.get(input.inheritedExpansion.componentKey)
+      : input.indexes.componentIdByFilePathAndName.get(
+          createComponentKey(
+            normalizeProjectPath(input.inheritedExpansion.filePath),
+            input.inheritedExpansion.componentName,
+          ),
+        )) ?? input.renderSubtree.componentId
   );
 }
 

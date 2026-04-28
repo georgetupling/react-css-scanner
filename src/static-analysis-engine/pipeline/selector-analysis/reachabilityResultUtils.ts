@@ -89,13 +89,14 @@ function serializeContextRecord(
   }
 
   if (context.kind === "component") {
-    return `${context.kind}:${context.filePath}:${context.componentName}:${contextRecord.availability}`;
+    return `${context.kind}:${context.componentKey ?? ""}:${context.filePath}:${context.componentName}:${contextRecord.availability}`;
   }
 
   if (context.kind === "render-subtree-root") {
     return [
       context.kind,
       context.filePath,
+      context.componentKey ?? "",
       context.componentName ?? "",
       context.rootAnchor.startLine,
       context.rootAnchor.startColumn,
@@ -108,6 +109,7 @@ function serializeContextRecord(
   return [
     context.kind,
     context.filePath,
+    context.componentKey ?? "",
     context.componentName ?? "",
     context.regionKind,
     context.sourceAnchor.startLine,

@@ -1,6 +1,7 @@
 import ts from "typescript";
 
 import { collectComponentLikeDefinitions } from "../../../../../libraries/react-components/index.js";
+import { createComponentKey } from "../../../componentIdentity.js";
 import {
   indexExpressionBindingsBySymbolId,
   normalizeHelperDefinitionSymbolBindings,
@@ -36,6 +37,11 @@ export function collectSameFileComponents(input: {
     }
 
     components.push({
+      componentKey: createComponentKey({
+        filePath: input.filePath,
+        sourceAnchor: definition.sourceAnchor,
+        componentName: definition.componentName,
+      }),
       componentName: definition.componentName,
       exported: definition.exported,
       filePath: input.filePath,

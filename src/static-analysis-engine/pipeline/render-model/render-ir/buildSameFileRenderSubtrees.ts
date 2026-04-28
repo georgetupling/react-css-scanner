@@ -95,10 +95,11 @@ export function buildSameFileRenderSubtrees(input: {
       filePath: definition.filePath,
       parsedSourceFile: definition.parsedSourceFile,
       currentComponentFilePath: definition.filePath,
+      currentComponentKey: definition.componentKey,
       symbolResolution: input.symbolResolution,
       componentsByFilePath,
       currentDepth: 0,
-      expansionStack: [definition.componentName],
+      expansionStack: [definition.componentKey],
       expressionBindings: new Map([...definition.localExpressionBindings.entries()]),
       expressionBindingsBySymbolId: new Map([
         ...(input.importedExpressionBindingsBySymbolId?.entries() ?? []),
@@ -142,6 +143,7 @@ export function buildSameFileRenderSubtrees(input: {
       includeTraces,
     }),
     exported: definition.exported,
+    componentKey: definition.componentKey,
     componentName: definition.componentName,
     sourceAnchor: definition.sourceAnchor,
   }));

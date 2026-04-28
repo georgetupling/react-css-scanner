@@ -28,6 +28,7 @@ export type RenderSkippedBranch = {
 };
 
 export type RenderComponentReferenceExpansion = {
+  componentKey: string;
   componentName: string;
   filePath: string;
   targetSourceAnchor: SourceAnchor;
@@ -63,6 +64,7 @@ export type RenderRepeatedRegionNode = RenderNodeBase & {
 export type RenderComponentReferenceNode = RenderNodeBase & {
   kind: "component-reference";
   componentName: string;
+  componentKey?: string;
   className?: ClassExpressionSummary;
   reason: string;
 };
@@ -83,6 +85,7 @@ export type RenderNode =
 export type RenderSubtree = {
   root: RenderNode;
   exported: boolean;
+  componentKey?: string;
   componentName?: string;
   sourceAnchor: SourceAnchor;
 };
@@ -97,6 +100,7 @@ export type RenderRegionKind = "subtree-root" | "conditional-branch" | "repeated
 
 export type RenderRegion = {
   filePath: string;
+  componentKey?: string;
   componentName?: string;
   kind: RenderRegionKind;
   path: RenderRegionPathSegment[];

@@ -69,10 +69,12 @@ export function buildComponents(
   const components = renderGraphNodes.map((node) => {
     const filePath = normalizeProjectPath(node.filePath);
     const id = createComponentId(filePath, node.componentName);
+    indexes.componentIdByComponentKey.set(node.componentKey, id);
     indexes.componentIdByFilePathAndName.set(createComponentKey(filePath, node.componentName), id);
 
     return {
       id,
+      componentKey: node.componentKey,
       filePath,
       componentName: node.componentName,
       exported: node.exported,
@@ -91,14 +93,17 @@ export function buildRenderSubtrees(
     .map((renderSubtree, index) => {
       const filePath = normalizeProjectPath(renderSubtree.sourceAnchor.filePath);
       const componentId = renderSubtree.componentName
-        ? indexes.componentIdByFilePathAndName.get(
-            createComponentKey(filePath, renderSubtree.componentName),
-          )
+        ? renderSubtree.componentKey
+          ? indexes.componentIdByComponentKey.get(renderSubtree.componentKey)
+          : indexes.componentIdByFilePathAndName.get(
+              createComponentKey(filePath, renderSubtree.componentName),
+            )
         : undefined;
 
       return {
         id: createAnchorId("render-subtree", renderSubtree.sourceAnchor, index),
         componentId,
+        componentKey: renderSubtree.componentKey,
         filePath,
         componentName: renderSubtree.componentName,
         exported: renderSubtree.exported,

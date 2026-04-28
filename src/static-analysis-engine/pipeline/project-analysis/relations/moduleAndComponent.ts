@@ -47,18 +47,22 @@ export function buildComponentRenders(
   const relations: ComponentRenderRelation[] = [];
 
   for (const edge of edges) {
-    const fromComponentId = indexes.componentIdByFilePathAndName.get(
-      createComponentKey(normalizeProjectPath(edge.fromFilePath), edge.fromComponentName),
-    );
+    const fromComponentId =
+      indexes.componentIdByComponentKey.get(edge.fromComponentKey) ??
+      indexes.componentIdByFilePathAndName.get(
+        createComponentKey(normalizeProjectPath(edge.fromFilePath), edge.fromComponentName),
+      );
     if (!fromComponentId) {
       continue;
     }
 
-    const toComponentId = edge.toFilePath
-      ? indexes.componentIdByFilePathAndName.get(
-          createComponentKey(normalizeProjectPath(edge.toFilePath), edge.toComponentName),
-        )
-      : undefined;
+    const toComponentId = edge.toComponentKey
+      ? indexes.componentIdByComponentKey.get(edge.toComponentKey)
+      : edge.toFilePath
+        ? indexes.componentIdByFilePathAndName.get(
+            createComponentKey(normalizeProjectPath(edge.toFilePath), edge.toComponentName),
+          )
+        : undefined;
 
     relations.push({
       fromComponentId,

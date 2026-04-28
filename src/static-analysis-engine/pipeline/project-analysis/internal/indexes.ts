@@ -253,6 +253,7 @@ export function createEmptyIndexes(): ProjectAnalysisIndexes {
     sourceFileIdByPath: new Map(),
     stylesheetIdByPath: new Map(),
     componentIdByFilePathAndName: new Map(),
+    componentIdByComponentKey: new Map(),
     definitionsByClassName: new Map(),
     definitionsByStylesheetId: new Map(),
     contextsByClassName: new Map(),

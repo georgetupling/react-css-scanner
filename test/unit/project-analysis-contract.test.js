@@ -615,6 +615,67 @@ test("ProjectAnalysis keeps unbounded cloneElement className values uncertain", 
   );
 });
 
+test("ProjectAnalysis preserves distinct same-name component identities across expansion chains", () => {
+  const result = analyzeProjectSourceTexts({
+    sourceFiles: [
+      {
+        filePath: "src/App.tsx",
+        sourceText: [
+          'import { Button } from "./outer/Button";',
+          "export function App() { return <Button />; }",
+          "",
+        ].join("\n"),
+      },
+      {
+        filePath: "src/outer/Button.tsx",
+        sourceText: [
+          'import { Button as InnerButton } from "../inner/Button";',
+          'export function Button() { return <section className="outer"><InnerButton /></section>; }',
+          "",
+        ].join("\n"),
+      },
+      {
+        filePath: "src/inner/Button.tsx",
+        sourceText: 'export function Button() { return <span className="inner" />; }\n',
+      },
+    ],
+    selectorCssSources: [
+      {
+        filePath: "src/App.css",
+        cssText: ".outer { display: block; }\n.inner { display: inline; }\n",
+      },
+    ],
+  });
+
+  const analysis = result.projectAnalysis;
+  const outerButton = analysis.entities.components.find(
+    (component) =>
+      component.filePath === "src/outer/Button.tsx" && component.componentName === "Button",
+  );
+  const innerButton = analysis.entities.components.find(
+    (component) =>
+      component.filePath === "src/inner/Button.tsx" && component.componentName === "Button",
+  );
+
+  assert.ok(outerButton);
+  assert.ok(innerButton);
+  assert.notEqual(outerButton.componentKey, innerButton.componentKey);
+
+  assert.ok(
+    analysis.relations.componentRenders.some(
+      (relation) =>
+        relation.fromComponentId === "component:src/App.tsx:App" &&
+        relation.toComponentId === outerButton.id,
+    ),
+  );
+  assert.ok(
+    analysis.relations.componentRenders.some(
+      (relation) =>
+        relation.fromComponentId === outerButton.id && relation.toComponentId === innerButton.id,
+    ),
+  );
+});
+
 function assertIndexedClassReferences(analysis, classNames) {
   for (const className of classNames) {
     assert.ok(

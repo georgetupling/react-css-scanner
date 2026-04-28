@@ -17,6 +17,7 @@ function collectRegionsForSubtree(renderSubtree: RenderSubtree): RenderRegion[] 
   const regions: RenderRegion[] = [
     {
       filePath,
+      componentKey: renderSubtree.componentKey,
       componentName: renderSubtree.componentName,
       kind: "subtree-root",
       path: [{ kind: "root" }],
@@ -27,6 +28,7 @@ function collectRegionsForSubtree(renderSubtree: RenderSubtree): RenderRegion[] 
   collectNestedRegions({
     node: renderSubtree.root,
     filePath,
+    componentKey: renderSubtree.componentKey,
     componentName: renderSubtree.componentName,
     path: [{ kind: "root" }],
     regions,
@@ -38,6 +40,7 @@ function collectRegionsForSubtree(renderSubtree: RenderSubtree): RenderRegion[] 
 function collectNestedRegions(input: {
   node: RenderNode;
   filePath: string;
+  componentKey?: string;
   componentName?: string;
   path: RenderRegionPathSegment[];
   regions: RenderRegion[];
@@ -46,6 +49,7 @@ function collectNestedRegions(input: {
     collectConditionalRegions({
       node: input.node,
       filePath: input.filePath,
+      componentKey: input.componentKey,
       componentName: input.componentName,
       path: input.path,
       regions: input.regions,
@@ -57,6 +61,7 @@ function collectNestedRegions(input: {
     collectRepeatedTemplateRegion({
       node: input.node,
       filePath: input.filePath,
+      componentKey: input.componentKey,
       componentName: input.componentName,
       path: input.path,
       regions: input.regions,
@@ -69,6 +74,7 @@ function collectNestedRegions(input: {
       collectNestedRegions({
         node: child,
         filePath: input.filePath,
+        componentKey: input.componentKey,
         componentName: input.componentName,
         path: [...input.path, { kind: "fragment-child", childIndex }],
         regions: input.regions,
@@ -80,6 +86,7 @@ function collectNestedRegions(input: {
 function collectConditionalRegions(input: {
   node: RenderConditionalNode;
   filePath: string;
+  componentKey?: string;
   componentName?: string;
   path: RenderRegionPathSegment[];
   regions: RenderRegion[];
@@ -96,6 +103,7 @@ function collectConditionalRegions(input: {
   input.regions.push(
     {
       filePath: input.filePath,
+      componentKey: input.componentKey,
       componentName: input.componentName,
       kind: "conditional-branch",
       path: whenTruePath,
@@ -103,6 +111,7 @@ function collectConditionalRegions(input: {
     },
     {
       filePath: input.filePath,
+      componentKey: input.componentKey,
       componentName: input.componentName,
       kind: "conditional-branch",
       path: whenFalsePath,
@@ -113,6 +122,7 @@ function collectConditionalRegions(input: {
   collectNestedRegions({
     node: input.node.whenTrue,
     filePath: input.filePath,
+    componentKey: input.componentKey,
     componentName: input.componentName,
     path: whenTruePath,
     regions: input.regions,
@@ -120,6 +130,7 @@ function collectConditionalRegions(input: {
   collectNestedRegions({
     node: input.node.whenFalse,
     filePath: input.filePath,
+    componentKey: input.componentKey,
     componentName: input.componentName,
     path: whenFalsePath,
     regions: input.regions,
@@ -129,6 +140,7 @@ function collectConditionalRegions(input: {
 function collectRepeatedTemplateRegion(input: {
   node: RenderRepeatedRegionNode;
   filePath: string;
+  componentKey?: string;
   componentName?: string;
   path: RenderRegionPathSegment[];
   regions: RenderRegion[];
@@ -136,6 +148,7 @@ function collectRepeatedTemplateRegion(input: {
   const templatePath: RenderRegionPathSegment[] = [...input.path, { kind: "repeated-template" }];
   input.regions.push({
     filePath: input.filePath,
+    componentKey: input.componentKey,
     componentName: input.componentName,
     kind: "repeated-template",
     path: templatePath,
@@ -145,6 +158,7 @@ function collectRepeatedTemplateRegion(input: {
   collectNestedRegions({
     node: input.node.template,
     filePath: input.filePath,
+    componentKey: input.componentKey,
     componentName: input.componentName,
     path: templatePath,
     regions: input.regions,

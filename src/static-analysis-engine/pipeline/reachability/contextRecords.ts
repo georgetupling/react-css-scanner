@@ -9,7 +9,7 @@ import type {
 } from "./internalTypes.js";
 import { normalizeProjectPath } from "./pathUtils.js";
 import { addContextRecord } from "./recordUtils.js";
-import { compareContextRecords, createComponentKey, serializeRegionPath } from "./sortAndKeys.js";
+import { compareContextRecords, serializeRegionPath } from "./sortAndKeys.js";
 
 export function buildContextRecords(input: {
   importingSourceFilePaths: string[];
@@ -57,6 +57,7 @@ export function buildContextRecords(input: {
         context: {
           kind: "component",
           filePath: normalizeProjectPath(node.filePath) ?? node.filePath,
+          componentKey: node.componentKey,
           componentName: node.componentName,
         },
         availability: "definite",
@@ -86,6 +87,7 @@ export function buildContextRecords(input: {
           context: {
             kind: "component",
             filePath: normalizeProjectPath(node.filePath) ?? node.filePath,
+            componentKey: node.componentKey,
             componentName: node.componentName,
           },
           availability: wholeComponentRegionAvailability.availability,
@@ -113,7 +115,7 @@ export function buildContextRecords(input: {
         predicate: (subtree) =>
           (normalizeProjectPath(subtree.sourceAnchor.filePath) ?? subtree.sourceAnchor.filePath) ===
             (normalizeProjectPath(node.filePath) ?? node.filePath) &&
-          subtree.componentName === node.componentName,
+          subtree.componentKey === node.componentKey,
       });
       addRenderRegionContexts({
         contextRecordsByKey,
@@ -212,9 +214,9 @@ function addPlacedChildRenderRegionContexts(input: {
 }): void {
   for (const placement of input.placedChildRenderRegions) {
     const { edge } = placement;
-    const childAvailability = input.componentAvailabilityByKey.get(
-      createComponentKey(edge.toFilePath ?? "", edge.toComponentName),
-    );
+    const childAvailability = edge.toComponentKey
+      ? input.componentAvailabilityByKey.get(edge.toComponentKey)
+      : undefined;
     if (
       !childAvailability ||
       (childAvailability.availability !== "definite" &&
@@ -238,6 +240,7 @@ function addPlacedChildRenderRegionContexts(input: {
     const derivations: ReachabilityDerivation[] = [
       {
         kind: "placement-derived-region",
+        toComponentKey: edge.toComponentKey,
         toComponentName: edge.toComponentName,
         toFilePath: edge.toFilePath,
         renderPath: edge.renderPath,
@@ -251,6 +254,7 @@ function addPlacedChildRenderRegionContexts(input: {
           context: {
             kind: "render-region",
             filePath: renderRegion.filePath,
+            componentKey: renderRegion.componentKey,
             componentName: renderRegion.componentName,
             regionKind: renderRegion.kind,
             path: renderRegion.path,
@@ -304,6 +308,7 @@ function addUnknownBarrierContexts(input: {
         filePath:
           normalizeProjectPath(input.renderSubtree.sourceAnchor.filePath) ??
           input.renderSubtree.sourceAnchor.filePath,
+        componentKey: input.renderSubtree.componentKey,
         componentName: input.renderSubtree.componentName,
       },
       availability: "unknown",
@@ -323,6 +328,7 @@ function addUnknownBarrierContexts(input: {
         filePath:
           normalizeProjectPath(input.renderSubtree.sourceAnchor.filePath) ??
           input.renderSubtree.sourceAnchor.filePath,
+        componentKey: input.renderSubtree.componentKey,
         componentName: input.renderSubtree.componentName,
         rootAnchor: {
           startLine: input.renderSubtree.root.sourceAnchor.startLine,
@@ -355,6 +361,7 @@ function addUnknownBarrierContexts(input: {
           context: {
             kind: "render-region",
             filePath: renderRegion.filePath,
+            componentKey: renderRegion.componentKey,
             componentName: renderRegion.componentName,
             regionKind: renderRegion.kind,
             path: renderRegion.path,
@@ -552,6 +559,7 @@ function addRenderSubtreeRootContexts(input: {
           kind: "render-subtree-root",
           filePath:
             normalizeProjectPath(subtree.sourceAnchor.filePath) ?? subtree.sourceAnchor.filePath,
+          componentKey: subtree.componentKey,
           componentName: subtree.componentName,
           rootAnchor: {
             startLine: subtree.root.sourceAnchor.startLine,
@@ -591,6 +599,7 @@ function addRenderRegionContexts(input: {
         context: {
           kind: "render-region",
           filePath: region.filePath,
+          componentKey: region.componentKey,
           componentName: region.componentName,
           regionKind: region.kind,
           path: region.path,

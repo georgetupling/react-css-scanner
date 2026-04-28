@@ -10,6 +10,7 @@ export type ExpressionBindingEntry = {
 };
 
 export type SameFileComponentDefinition = {
+  componentKey: string;
   componentName: string;
   exported: boolean;
   filePath: string;

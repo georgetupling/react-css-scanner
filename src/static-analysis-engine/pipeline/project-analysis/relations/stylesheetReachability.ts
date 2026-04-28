@@ -181,11 +181,17 @@ export function getComponentIdForContext(
     (context.kind === "component" ||
       context.kind === "render-subtree-root" ||
       context.kind === "render-region") &&
-    context.componentName
+    (context.componentKey || context.componentName)
   ) {
-    return indexes.componentIdByFilePathAndName.get(
-      createComponentKey(normalizeProjectPath(context.filePath), context.componentName),
-    );
+    if (context.componentKey) {
+      return indexes.componentIdByComponentKey.get(context.componentKey);
+    }
+
+    if (context.componentName) {
+      return indexes.componentIdByFilePathAndName.get(
+        createComponentKey(normalizeProjectPath(context.filePath), context.componentName),
+      );
+    }
   }
 
   return undefined;

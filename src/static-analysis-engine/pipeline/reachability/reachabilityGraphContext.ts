@@ -11,7 +11,7 @@ import type {
   UnknownReachabilityBarrier,
 } from "./internalTypes.js";
 import { normalizeProjectPath } from "./pathUtils.js";
-import { compareEdges, createComponentKey, serializeRegionPath } from "./sortAndKeys.js";
+import { compareEdges, serializeRegionPath } from "./sortAndKeys.js";
 
 export function buildReachabilityGraphContext(input: {
   renderGraph: RenderGraph;
@@ -22,10 +22,7 @@ export function buildReachabilityGraphContext(input: {
   const renderSubtreesByComponentKey = new Map<string, RenderSubtree>();
   const unknownBarriersByComponentKey = new Map<string, UnknownReachabilityBarrier[]>();
   const renderGraphNodesByKey = new Map(
-    input.renderGraph.nodes.map((node) => [
-      createComponentKey(node.filePath, node.componentName),
-      node,
-    ]),
+    input.renderGraph.nodes.map((node) => [node.componentKey, node]),
   );
   const outgoingEdgesByComponentKey = new Map<
     string,
@@ -38,11 +35,11 @@ export function buildReachabilityGraphContext(input: {
   const componentKeysByFilePath = new Map<string, string[]>();
 
   for (const renderRegion of collectRenderRegionsFromSubtrees(input.renderSubtrees)) {
-    if (!renderRegion.componentName) {
+    if (!renderRegion.componentKey) {
       continue;
     }
 
-    const componentKey = createComponentKey(renderRegion.filePath, renderRegion.componentName);
+    const componentKey = renderRegion.componentKey;
     const renderRegions = renderRegionsByComponentKey.get(componentKey) ?? [];
     renderRegions.push(renderRegion);
     renderRegionsByComponentKey.set(componentKey, renderRegions);
@@ -57,14 +54,11 @@ export function buildReachabilityGraphContext(input: {
   }
 
   for (const renderSubtree of input.renderSubtrees) {
-    if (!renderSubtree.componentName) {
+    if (!renderSubtree.componentKey) {
       continue;
     }
 
-    const filePath =
-      normalizeProjectPath(renderSubtree.sourceAnchor.filePath) ??
-      renderSubtree.sourceAnchor.filePath;
-    const componentKey = createComponentKey(filePath, renderSubtree.componentName);
+    const componentKey = renderSubtree.componentKey;
     renderSubtreesByComponentKey.set(componentKey, renderSubtree);
     unknownBarriersByComponentKey.set(
       componentKey,
@@ -77,8 +71,11 @@ export function buildReachabilityGraphContext(input: {
       continue;
     }
 
-    const fromKey = createComponentKey(edge.fromFilePath, edge.fromComponentName);
-    const toKey = createComponentKey(edge.toFilePath, edge.toComponentName);
+    const fromKey = edge.fromComponentKey;
+    const toKey = edge.toComponentKey;
+    if (!toKey) {
+      continue;
+    }
     const outgoingEdges = outgoingEdgesByComponentKey.get(fromKey) ?? [];
     outgoingEdges.push(edge);
     outgoingEdgesByComponentKey.set(fromKey, outgoingEdges);

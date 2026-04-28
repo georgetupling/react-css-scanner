@@ -19,6 +19,7 @@ export type BuildContext = {
   filePath: string;
   parsedSourceFile: ts.SourceFile;
   currentComponentFilePath: string;
+  currentComponentKey: string;
   symbolResolution: ProjectBindingResolution;
   componentsByFilePath: Map<string, Map<string, SameFileComponentDefinition>>;
   currentDepth: number;

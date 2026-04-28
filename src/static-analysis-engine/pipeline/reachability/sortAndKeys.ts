@@ -9,13 +9,14 @@ export function serializeContextKey(contextRecord: StylesheetReachabilityContext
   }
 
   if (contextRecord.context.kind === "component") {
-    return `component:${contextRecord.context.filePath}:${contextRecord.context.componentName}`;
+    return `component:${contextRecord.context.componentKey ?? `${contextRecord.context.filePath}:${contextRecord.context.componentName}`}`;
   }
 
   if (contextRecord.context.kind === "render-region") {
     return [
       "render-region",
       contextRecord.context.filePath,
+      contextRecord.context.componentKey ?? "",
       contextRecord.context.componentName ?? "",
       contextRecord.context.regionKind,
       serializeRegionPath(contextRecord.context.path),
@@ -29,6 +30,7 @@ export function serializeContextKey(contextRecord: StylesheetReachabilityContext
   return [
     "render-subtree-root",
     contextRecord.context.filePath,
+    contextRecord.context.componentKey ?? "",
     contextRecord.context.componentName ?? "",
     contextRecord.context.rootAnchor.startLine,
     contextRecord.context.rootAnchor.startColumn,
@@ -111,6 +113,7 @@ export function compareContextRecords(
   if (left.context.kind === "component" && right.context.kind === "component") {
     return (
       left.context.filePath.localeCompare(right.context.filePath) ||
+      (left.context.componentKey ?? "").localeCompare(right.context.componentKey ?? "") ||
       left.context.componentName.localeCompare(right.context.componentName)
     );
   }
@@ -118,6 +121,7 @@ export function compareContextRecords(
   if (left.context.kind === "render-subtree-root" && right.context.kind === "render-subtree-root") {
     return (
       left.context.filePath.localeCompare(right.context.filePath) ||
+      (left.context.componentKey ?? "").localeCompare(right.context.componentKey ?? "") ||
       (left.context.componentName ?? "").localeCompare(right.context.componentName ?? "") ||
       left.context.rootAnchor.startLine - right.context.rootAnchor.startLine ||
       left.context.rootAnchor.startColumn - right.context.rootAnchor.startColumn ||
@@ -129,6 +133,7 @@ export function compareContextRecords(
   if (left.context.kind === "render-region" && right.context.kind === "render-region") {
     return (
       left.context.filePath.localeCompare(right.context.filePath) ||
+      (left.context.componentKey ?? "").localeCompare(right.context.componentKey ?? "") ||
       (left.context.componentName ?? "").localeCompare(right.context.componentName ?? "") ||
       left.context.regionKind.localeCompare(right.context.regionKind) ||
       serializeRegionPath(left.context.path).localeCompare(
@@ -170,8 +175,10 @@ export function compareEdges(
 ): number {
   return (
     left.fromFilePath.localeCompare(right.fromFilePath) ||
+    (left.fromComponentKey ?? "").localeCompare(right.fromComponentKey ?? "") ||
     left.fromComponentName.localeCompare(right.fromComponentName) ||
     left.toComponentName.localeCompare(right.toComponentName) ||
+    (left.toComponentKey ?? "").localeCompare(right.toComponentKey ?? "") ||
     (left.toFilePath ?? "").localeCompare(right.toFilePath ?? "")
   );
 }

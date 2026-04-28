@@ -224,11 +224,17 @@ export function getComponentIdForContext(
     (context.kind === "component" ||
       context.kind === "render-subtree-root" ||
       context.kind === "render-region") &&
-    context.componentName
+    (context.componentKey || context.componentName)
   ) {
-    return indexes.componentIdByFilePathAndName.get(
-      createComponentKey(normalizeProjectPath(context.filePath), context.componentName),
-    );
+    if (context.componentKey) {
+      return indexes.componentIdByComponentKey.get(context.componentKey);
+    }
+
+    if (context.componentName) {
+      return indexes.componentIdByFilePathAndName.get(
+        createComponentKey(normalizeProjectPath(context.filePath), context.componentName),
+      );
+    }
   }
 
   return undefined;
@@ -279,6 +285,7 @@ export function createEmptyIndexes(): ProjectAnalysisIndexes {
     sourceFileIdByPath: new Map(),
     stylesheetIdByPath: new Map(),
     componentIdByFilePathAndName: new Map(),
+    componentIdByComponentKey: new Map(),
     definitionsByClassName: new Map(),
     definitionsByStylesheetId: new Map(),
     contextsByClassName: new Map(),
@@ -405,6 +412,10 @@ export function createPathId(kind: string, filePath: string): ProjectAnalysisId 
 
 export function createComponentId(filePath: string, componentName: string): ProjectAnalysisId {
   return `component:${filePath}:${componentName}`;
+}
+
+export function createComponentIdFromKey(componentKey: string): ProjectAnalysisId {
+  return `component:${stableHash(componentKey)}`;
 }
 
 export function createComponentKey(filePath: string, componentName: string): string {

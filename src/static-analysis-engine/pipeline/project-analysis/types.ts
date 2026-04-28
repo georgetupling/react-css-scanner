@@ -250,6 +250,7 @@ export type ClassOwnershipAnalysis = {
 
 export type ComponentAnalysis = {
   id: ProjectAnalysisId;
+  componentKey: string;
   filePath: string;
   componentName: string;
   exported: boolean;
@@ -259,6 +260,7 @@ export type ComponentAnalysis = {
 export type RenderSubtreeAnalysis = {
   id: ProjectAnalysisId;
   componentId?: ProjectAnalysisId;
+  componentKey?: string;
   filePath: string;
   componentName?: string;
   exported: boolean;
@@ -443,6 +445,7 @@ export type ProjectAnalysisIndexes = {
   sourceFileIdByPath: Map<string, ProjectAnalysisId>;
   stylesheetIdByPath: Map<string, ProjectAnalysisId>;
   componentIdByFilePathAndName: Map<string, ProjectAnalysisId>;
+  componentIdByComponentKey: Map<string, ProjectAnalysisId>;
   definitionsByClassName: Map<string, ProjectAnalysisId[]>;
   definitionsByStylesheetId: Map<ProjectAnalysisId, ProjectAnalysisId[]>;
   contextsByClassName: Map<string, ProjectAnalysisId[]>;

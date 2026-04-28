@@ -325,7 +325,11 @@ function resolveReachableAnalysisSubtrees(
   reachabilityContextIndex: ReachabilityContextIndex,
 ): ReachableAnalysisSubtree[] {
   const normalizedFilePath = subtree.sourceAnchor.filePath.replace(/\\/g, "/");
-  const componentKey = createComponentContextKey(normalizedFilePath, subtree.componentName);
+  const componentKey = createComponentContextKey(
+    normalizedFilePath,
+    subtree.componentName,
+    subtree.componentKey,
+  );
   const matchingRenderRegionContexts =
     reachabilityContextIndex.renderRegionContextsByComponentKey.get(componentKey) ?? [];
   const sourceFileContexts =
@@ -334,6 +338,7 @@ function resolveReachableAnalysisSubtrees(
     reachabilityContextIndex.subtreeRootContextsByRootKey.get(
       createSubtreeRootContextKey({
         filePath: normalizedFilePath,
+        componentKey: subtree.componentKey,
         componentName: subtree.componentName,
         startLine: subtree.root.sourceAnchor.startLine,
         startColumn: subtree.root.sourceAnchor.startColumn,
@@ -424,7 +429,7 @@ function buildReachabilityContextIndex(
     if (context.kind === "component") {
       appendToMap(
         index.componentContextsByComponentKey,
-        createComponentContextKey(context.filePath, context.componentName),
+        createComponentContextKey(context.filePath, context.componentName, context.componentKey),
         availableContextRecord,
       );
       continue;
@@ -436,6 +441,7 @@ function buildReachabilityContextIndex(
         createSubtreeRootContextKey({
           filePath: context.filePath,
           componentName: context.componentName,
+          componentKey: context.componentKey,
           startLine: context.rootAnchor.startLine,
           startColumn: context.rootAnchor.startColumn,
           endLine: context.rootAnchor.endLine,
@@ -448,7 +454,7 @@ function buildReachabilityContextIndex(
 
     appendToMap(
       index.renderRegionContextsByComponentKey,
-      createComponentContextKey(context.filePath, context.componentName),
+      createComponentContextKey(context.filePath, context.componentName, context.componentKey),
       availableContextRecord as RenderRegionContextRecord,
     );
   }
@@ -466,12 +472,19 @@ function appendToMap<TKey, TValue>(map: Map<TKey, TValue[]>, key: TKey, value: T
   map.set(key, [value]);
 }
 
-function createComponentContextKey(filePath: string, componentName?: string): string {
-  return [normalizeProjectPath(filePath), componentName ?? ""].join(":");
+function createComponentContextKey(
+  filePath: string,
+  componentName?: string,
+  componentKey?: string,
+): string {
+  return componentKey
+    ? componentKey
+    : [normalizeProjectPath(filePath), componentName ?? ""].join(":");
 }
 
 function createSubtreeRootContextKey(input: {
   filePath: string;
+  componentKey?: string;
   componentName?: string;
   startLine: number;
   startColumn: number;
@@ -480,6 +493,7 @@ function createSubtreeRootContextKey(input: {
 }): string {
   return [
     normalizeProjectPath(input.filePath),
+    input.componentKey ?? "",
     input.componentName ?? "",
     input.startLine,
     input.startColumn,

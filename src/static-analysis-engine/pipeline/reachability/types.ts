@@ -34,6 +34,7 @@ export type ReachabilityDerivation =
     }
   | {
       kind: "placement-derived-region";
+      toComponentKey?: string;
       toComponentName: string;
       toFilePath?: string;
       renderPath: "definite" | "possible" | "unknown";
@@ -55,11 +56,13 @@ export type StylesheetReachabilityContext =
   | {
       kind: "component";
       filePath: string;
+      componentKey?: string;
       componentName: string;
     }
   | {
       kind: "render-subtree-root";
       filePath: string;
+      componentKey?: string;
       componentName?: string;
       rootAnchor: {
         startLine: number;
@@ -71,6 +74,7 @@ export type StylesheetReachabilityContext =
   | {
       kind: "render-region";
       filePath: string;
+      componentKey?: string;
       componentName?: string;
       regionKind: import("../render-model/render-ir/types.js").RenderRegionKind;
       path: import("../render-model/render-ir/types.js").RenderRegionPathSegment[];

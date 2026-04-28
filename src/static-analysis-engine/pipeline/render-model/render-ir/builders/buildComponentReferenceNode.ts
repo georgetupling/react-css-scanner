@@ -66,9 +66,9 @@ export function buildComponentReferenceNode(
   }
 
   const expansionScope = getExpansionScope(context.currentComponentFilePath, definition.filePath);
-  const resolvedComponentName = definition.componentName;
+  const resolvedComponentKey = definition.componentKey;
 
-  if (context.expansionStack.includes(resolvedComponentName)) {
+  if (context.expansionStack.includes(resolvedComponentKey)) {
     const sourceAnchor = toSourceAnchor(tagNameNode, context.parsedSourceFile, context.filePath);
     const reason = buildComponentExpansionReason(expansionScope, "cycle");
     return {
@@ -170,8 +170,9 @@ export function buildComponentReferenceNode(
         filePath: definition.filePath,
         parsedSourceFile: definition.parsedSourceFile,
         currentComponentFilePath: definition.filePath,
+        currentComponentKey: definition.componentKey,
         currentDepth: context.currentDepth + 1,
-        expansionStack: [...context.expansionStack, resolvedComponentName],
+        expansionStack: [...context.expansionStack, resolvedComponentKey],
         expressionBindings: mergeExpressionBindings(
           expansionBinding.expressionBindings,
           definition.localExpressionBindings,
@@ -204,6 +205,7 @@ export function buildComponentReferenceNode(
         subtreeBindingsBySymbolId: expansionBinding.subtreeBindingsBySymbolId,
       }),
       {
+        componentKey: definition.componentKey,
         componentName: definition.componentName,
         filePath: definition.filePath,
         targetSourceAnchor: definition.sourceAnchor,

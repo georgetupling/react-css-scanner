@@ -13,8 +13,9 @@ export function buildRenderGraph(input: {
 }): RenderGraph {
   const includeTraces = input.includeTraces ?? true;
   const nodes = input.renderSubtrees
-    .filter((renderSubtree) => renderSubtree.componentName)
+    .filter((renderSubtree) => renderSubtree.componentName && renderSubtree.componentKey)
     .map<RenderGraphNode>((renderSubtree) => ({
+      componentKey: renderSubtree.componentKey ?? "",
       componentName: renderSubtree.componentName ?? "",
       filePath: normalizeProjectPath(renderSubtree.sourceAnchor.filePath),
       exported: renderSubtree.exported,
@@ -23,10 +24,11 @@ export function buildRenderGraph(input: {
     .sort(compareNodes);
 
   const edges = input.renderSubtrees
-    .filter((renderSubtree) => renderSubtree.componentName)
+    .filter((renderSubtree) => renderSubtree.componentName && renderSubtree.componentKey)
     .flatMap((renderSubtree) =>
       collectRenderEdgesFromSubtree({
         renderSubtree,
+        fromComponentKey: renderSubtree.componentKey ?? "",
         fromComponentName: renderSubtree.componentName ?? "",
         fromFilePath: normalizeProjectPath(renderSubtree.sourceAnchor.filePath),
         includeTraces,
@@ -39,6 +41,7 @@ export function buildRenderGraph(input: {
 
 function collectRenderEdgesFromSubtree(input: {
   renderSubtree: RenderSubtree;
+  fromComponentKey: string;
   fromComponentName: string;
   fromFilePath: string;
   includeTraces: boolean;
@@ -49,8 +52,10 @@ function collectRenderEdgesFromSubtree(input: {
     if (node.expandedFromComponentReference) {
       const expansion = node.expandedFromComponentReference;
       edges.push({
+        fromComponentKey: input.fromComponentKey,
         fromComponentName: input.fromComponentName,
         fromFilePath: input.fromFilePath,
+        toComponentKey: expansion.componentKey,
         toComponentName: expansion.componentName,
         toFilePath: normalizeProjectPath(expansion.filePath),
         targetSourceAnchor: normalizeAnchor(expansion.targetSourceAnchor),
@@ -97,6 +102,7 @@ function collectRenderEdgesFromSubtree(input: {
 function buildUnresolvedRenderEdge(input: {
   node: RenderComponentReferenceNode;
   renderSubtree: RenderSubtree;
+  fromComponentKey: string;
   fromComponentName: string;
   fromFilePath: string;
   includeTraces: boolean;
@@ -104,8 +110,10 @@ function buildUnresolvedRenderEdge(input: {
   const sourceAnchor = normalizeAnchor(input.node.sourceAnchor);
 
   return {
+    fromComponentKey: input.fromComponentKey,
     fromComponentName: input.fromComponentName,
     fromFilePath: input.fromFilePath,
+    toComponentKey: input.node.componentKey,
     toComponentName: input.node.componentName,
     sourceAnchor,
     resolution: "unresolved",
@@ -210,6 +218,7 @@ function summarizeRenderEdge(input: {
 function compareNodes(left: RenderGraphNode, right: RenderGraphNode): number {
   return (
     left.filePath.localeCompare(right.filePath) ||
+    left.componentKey.localeCompare(right.componentKey) ||
     left.componentName.localeCompare(right.componentName) ||
     compareAnchors(left.sourceAnchor, right.sourceAnchor)
   );
@@ -218,8 +227,10 @@ function compareNodes(left: RenderGraphNode, right: RenderGraphNode): number {
 function compareEdges(left: RenderGraphEdge, right: RenderGraphEdge): number {
   return (
     left.fromFilePath.localeCompare(right.fromFilePath) ||
+    left.fromComponentKey.localeCompare(right.fromComponentKey) ||
     left.fromComponentName.localeCompare(right.fromComponentName) ||
     compareAnchors(left.sourceAnchor, right.sourceAnchor) ||
+    (left.toComponentKey ?? "").localeCompare(right.toComponentKey ?? "") ||
     left.toComponentName.localeCompare(right.toComponentName) ||
     (left.toFilePath ?? "").localeCompare(right.toFilePath ?? "")
   );
