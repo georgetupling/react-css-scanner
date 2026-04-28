@@ -20,7 +20,8 @@ A stylesheet is treated as a CSS Module when its normalized project path ends wi
 
 Only project CSS sources that are present in the scan inputs can become CSS Module stylesheets. A
 relative import that resolves to a missing or non-module stylesheet is not represented as a CSS
-Module import in the current contract.
+Module import in the current contract. Those imports remain unresolved at the `module-facts` layer
+and do not participate in CSS Module matching.
 
 ## Supported Import Forms
 

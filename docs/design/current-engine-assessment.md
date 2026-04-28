@@ -21,7 +21,7 @@ The engine already has substantial core pieces in place.
 Implemented areas include:
 
 - source parsing
-- module graph construction
+- module-facts collection, source-specifier resolution, and re-export traversal
 - symbol collection and cross-file binding resolution
 - bounded render IR construction
 - render graph construction
@@ -114,15 +114,26 @@ This is a real engine gap because class extraction is foundational.
 
 ### 4. Module resolution is intentionally bounded
 
-The module graph is useful, but it is still limited in ways that matter for a production scanner:
+The `module-facts` stage is now a real module-level fact layer rather than a placeholder graph, but
+resolution remains intentionally bounded in ways that still matter for a production scanner:
 
-- relative-path source resolution is the main supported path
-- no first-class path alias model
-- no package export map or tsconfig path awareness
-- no explicit monorepo workspace resolution contract
-- CSS import handling is still based on basic specifier classification
+- relative-path source resolution is supported directly
+- TypeScript path aliases and package `exports` can resolve when the target module is also present in
+  the parsed source inventory
+- heuristic workspace entry-point resolution exists for common monorepo layouts, including scoped
+  package names
+- CSS import handling distinguishes source, project stylesheet, package stylesheet, and remote
+  stylesheet shapes
 
 This is acceptable for a rebuild, but it is a real functional limit.
+
+Current limits include:
+
+- no full npm/package resolution contract beyond TypeScript-backed and heuristic workspace cases
+- no first-class workspace subpath resolution contract for arbitrary monorepo package structures
+- no guarantee that every filesystem-resolvable module will participate unless it is part of the
+  parsed source inputs
+- no broad semantic validation of remote stylesheet URLs beyond import classification
 
 ### 5. Selector analysis only covers a bounded subset
 

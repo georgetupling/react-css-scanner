@@ -429,6 +429,58 @@ test("module facts reject TypeScript-resolved modules that were not parsed", asy
   }
 });
 
+test("module facts handle circular re-exports without looping", () => {
+  const moduleFacts = buildModuleFacts({
+    parsedFiles: [
+      sourceFile(
+        "src/index.ts",
+        ['export * from "./a.ts";', 'export { aOnly } from "./a.ts";', ""].join("\n"),
+      ),
+      sourceFile(
+        "src/a.ts",
+        [
+          'export * from "./b.ts";',
+          'export const aOnly = "a";',
+          'export { bOnly } from "./b.ts";',
+          "",
+        ].join("\n"),
+      ),
+      sourceFile(
+        "src/b.ts",
+        [
+          'export * from "./a.ts";',
+          'export const bOnly = "b";',
+          'export { aOnly } from "./a.ts";',
+          "",
+        ].join("\n"),
+      ),
+    ],
+  });
+
+  assert.deepEqual(resolveExportForTest(moduleFacts, "aOnly"), {
+    resolvedExport: {
+      targetFilePath: "src/a.ts",
+      targetExportName: "aOnly",
+      targetLocalName: "aOnly",
+    },
+    traces: [],
+  });
+
+  assert.deepEqual(resolveExportForTest(moduleFacts, "bOnly"), {
+    resolvedExport: {
+      targetFilePath: "src/b.ts",
+      targetExportName: "bOnly",
+      targetLocalName: "bOnly",
+    },
+    traces: [],
+  });
+
+  assert.deepEqual(resolveExportForTest(moduleFacts, "missingFromCycle"), {
+    reason: "export-not-found",
+    traces: [],
+  });
+});
+
 test("source specifier resolver preserves explicit TypeScript alternate opt-in", () => {
   const knownFilePaths = new Set(["src/worlds.enums.ts"]);
 
