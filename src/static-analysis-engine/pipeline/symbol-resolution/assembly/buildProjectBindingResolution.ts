@@ -5,15 +5,18 @@ import { getAllResolvedModuleFacts, type ModuleFacts } from "../../module-facts/
 import { createModuleFactsModuleId } from "../../module-facts/normalize/moduleIds.js";
 import type { EngineSymbolId } from "../../../types/core.js";
 import { attachSymbolResolutionInternals } from "../internals.js";
+import { collectModuleScopeSymbolsForFile } from "../api/shared.js";
 import { collectExportedExpressionBindings } from "../collectExportedExpressionBindings.js";
-import { collectTopLevelSymbols } from "../collection/collectTopLevelSymbols.js";
+import { collectLocalAliasResolutions } from "../collection/collectLocalAliasResolutions.js";
+import { collectSymbolReferences } from "../collection/collectSymbolReferences.js";
+import { collectSourceSymbols } from "../collection/collectSourceSymbols.js";
 import type {
   EngineSymbol,
   ProjectBindingResolution,
   ResolvedImportedBinding,
   ResolvedNamespaceImport,
+  SourceScope,
 } from "../types.js";
-import { collectTransitiveImportedExpressionBindings } from "./collectImportedExpressionBindings.js";
 import {
   resolveImportedBindingFailureForSymbol,
   resolveImportedBindingsForFile,
@@ -51,16 +54,51 @@ export function buildProjectBindingResolution(input: {
     knownCssModuleFilePaths: input.knownCssModuleFilePaths,
     includeTraces,
   });
-  const symbolsByFilePath = cloneSymbolsByFilePath(
-    collectProjectSymbols({
-      parsedFiles: input.parsedFiles,
-      moduleFacts: input.moduleFacts,
-    }),
+  const collectedProjectSymbols = collectProjectSymbols({
+    parsedFiles: input.parsedFiles,
+    moduleFacts: input.moduleFacts,
+  });
+  const allSymbolsByFilePath = cloneSymbolsByFilePath(collectedProjectSymbols.allSymbolsByFilePath);
+  const scopesByFilePath = cloneScopesByFilePath(collectedProjectSymbols.scopesByFilePath);
+  const moduleScopeSymbolsByFilePath = cloneSymbolsByFilePath(
+    new Map(
+      [...allSymbolsByFilePath.keys()].map((filePath) => [
+        filePath,
+        collectModuleScopeSymbolsForFile({
+          symbolsByFilePath: allSymbolsByFilePath,
+          scopesByFilePath,
+          filePath,
+        }),
+      ]),
+    ),
+  );
+  const referencesByFilePath = new Map(
+    input.parsedFiles.map((parsedFile) => [
+      parsedFile.filePath,
+      collectSymbolReferences({
+        filePath: parsedFile.filePath,
+        parsedSourceFile: parsedFile.parsedSourceFile,
+        symbols: allSymbolsByFilePath.get(parsedFile.filePath) ?? new Map(),
+        scopes: scopesByFilePath.get(parsedFile.filePath) ?? new Map(),
+      }),
+    ]),
+  );
+  const localAliasesByFilePath = new Map(
+    input.parsedFiles.map((parsedFile) => [
+      parsedFile.filePath,
+      collectLocalAliasResolutions({
+        filePath: parsedFile.filePath,
+        parsedSourceFile: parsedFile.parsedSourceFile,
+        symbols: allSymbolsByFilePath.get(parsedFile.filePath) ?? new Map(),
+        references: referencesByFilePath.get(parsedFile.filePath) ?? [],
+      }),
+    ]),
   );
   const symbols = new Map<EngineSymbolId, EngineSymbol>();
+  const scopes = new Map(collectedProjectSymbols.scopes);
   const resolvedExportedTypeBindingsByFilePath = collectResolvedExportedTypeBindings({
     moduleFacts: input.moduleFacts,
-    symbolsByFilePath,
+    symbolsByFilePath: moduleScopeSymbolsByFilePath,
     includeTraces,
   });
   const exportedExpressionBindingsByFilePath = new Map<string, Map<string, ts.Expression>>(
@@ -78,14 +116,14 @@ export function buildProjectBindingResolution(input: {
       resolveImportedBindingsForFile({
         filePath: moduleFacts.filePath,
         moduleFacts: input.moduleFacts,
-        symbolsByFilePath,
+        symbolsByFilePath: moduleScopeSymbolsByFilePath,
         includeTraces,
       }),
     );
     resolvedImportedComponentBindingsByFilePath.set(
       moduleFacts.filePath,
       (resolvedImportedBindingsByFilePath.get(moduleFacts.filePath) ?? []).filter((binding) =>
-        isResolvedComponentBinding(binding, symbolsByFilePath),
+        isResolvedComponentBinding(binding, moduleScopeSymbolsByFilePath),
       ),
     );
     resolvedTypeBindingsByFilePath.set(
@@ -93,7 +131,7 @@ export function buildProjectBindingResolution(input: {
       resolveImportedTypeBindingsForFile({
         filePath: moduleFacts.filePath,
         moduleFacts: input.moduleFacts,
-        symbolsByFilePath,
+        symbolsByFilePath: moduleScopeSymbolsByFilePath,
         resolvedExportedTypeBindingsByFilePath,
         includeTraces,
       }),
@@ -103,12 +141,12 @@ export function buildProjectBindingResolution(input: {
       resolveNamespaceImportsForFile({
         filePath: moduleFacts.filePath,
         moduleFacts: input.moduleFacts,
-        symbolsByFilePath,
+        symbolsByFilePath: moduleScopeSymbolsByFilePath,
         includeTraces,
       }),
     );
 
-    const fileSymbols = symbolsByFilePath.get(moduleFacts.filePath);
+    const fileSymbols = moduleScopeSymbolsByFilePath.get(moduleFacts.filePath);
     if (!fileSymbols) {
       continue;
     }
@@ -143,6 +181,7 @@ export function buildProjectBindingResolution(input: {
             },
           };
           fileSymbols.set(symbolId, enrichedSymbol);
+          allSymbolsByFilePath.get(moduleFacts.filePath)?.set(symbolId, enrichedSymbol);
           symbols.set(symbolId, enrichedSymbol);
           continue;
         }
@@ -161,11 +200,12 @@ export function buildProjectBindingResolution(input: {
         },
       };
       fileSymbols.set(symbolId, enrichedSymbol);
+      allSymbolsByFilePath.get(moduleFacts.filePath)?.set(symbolId, enrichedSymbol);
       symbols.set(symbolId, enrichedSymbol);
     }
   }
 
-  for (const fileSymbols of symbolsByFilePath.values()) {
+  for (const fileSymbols of allSymbolsByFilePath.values()) {
     for (const [symbolId, symbol] of fileSymbols.entries()) {
       if (!symbols.has(symbolId)) {
         symbols.set(symbolId, symbol);
@@ -176,9 +216,13 @@ export function buildProjectBindingResolution(input: {
   return attachSymbolResolutionInternals({
     symbolResolution: {
       symbols,
+      scopes,
     },
     internals: {
-      symbolsByFilePath,
+      allSymbolsByFilePath,
+      scopesByFilePath,
+      referencesByFilePath,
+      localAliasesByFilePath,
       resolvedImportedBindingsByFilePath,
       resolvedImportedComponentBindingsByFilePath,
       resolvedTypeBindingsByFilePath,
@@ -190,15 +234,14 @@ export function buildProjectBindingResolution(input: {
       resolvedCssModuleMemberReferencesByFilePath,
       resolvedCssModuleBindingDiagnosticsByFilePath,
       exportedExpressionBindingsByFilePath,
-      importedExpressionBindingsByFilePath: new Map(
-        [...symbolsByFilePath.keys()].map((filePath) => [
+      importedExpressionBindingsBySymbolIdByFilePath: new Map(
+        [...moduleScopeSymbolsByFilePath.keys()].map((filePath) => [
           filePath,
-          collectTransitiveImportedExpressionBindings({
+          collectImportedExpressionBindingsBySymbolId({
             filePath,
+            symbolsByFilePath: moduleScopeSymbolsByFilePath,
             resolvedImportedBindingsByFilePath,
             exportedExpressionBindingsByFilePath,
-            visitedFilePaths: new Set([filePath]),
-            currentDepth: 0,
           }),
         ]),
       ),
@@ -209,18 +252,34 @@ export function buildProjectBindingResolution(input: {
 function collectProjectSymbols(input: {
   parsedFiles: ParsedProjectFile[];
   moduleFacts: ModuleFacts;
-}): Map<string, Map<EngineSymbolId, EngineSymbol>> {
-  return new Map(
-    input.parsedFiles.map((parsedFile) => [
-      parsedFile.filePath,
-      collectTopLevelSymbols({
-        filePath: parsedFile.filePath,
-        parsedSourceFile: parsedFile.parsedSourceFile,
-        moduleId: createModuleFactsModuleId(parsedFile.filePath),
-        moduleFacts: input.moduleFacts,
-      }),
-    ]),
-  );
+}): {
+  allSymbolsByFilePath: Map<string, Map<EngineSymbolId, EngineSymbol>>;
+  scopesByFilePath: Map<string, Map<string, SourceScope>>;
+  scopes: Map<string, SourceScope>;
+} {
+  const allSymbolsByFilePath = new Map<string, Map<EngineSymbolId, EngineSymbol>>();
+  const scopesByFilePath = new Map<string, Map<string, SourceScope>>();
+  const scopes = new Map<string, SourceScope>();
+
+  for (const parsedFile of input.parsedFiles) {
+    const collected = collectSourceSymbols({
+      filePath: parsedFile.filePath,
+      parsedSourceFile: parsedFile.parsedSourceFile,
+      moduleId: createModuleFactsModuleId(parsedFile.filePath),
+      moduleFacts: input.moduleFacts,
+    });
+    allSymbolsByFilePath.set(parsedFile.filePath, collected.symbols);
+    scopesByFilePath.set(parsedFile.filePath, collected.scopes);
+    for (const [scopeId, scope] of collected.scopes.entries()) {
+      scopes.set(scopeId, scope);
+    }
+  }
+
+  return {
+    allSymbolsByFilePath,
+    scopesByFilePath,
+    scopes,
+  };
 }
 
 function cloneSymbolsByFilePath(
@@ -239,6 +298,26 @@ function cloneSymbolsByFilePath(
   );
 }
 
+function cloneScopesByFilePath(
+  scopesByFilePath: Map<string, Map<string, SourceScope>>,
+): Map<string, Map<string, SourceScope>> {
+  return new Map(
+    [...scopesByFilePath.entries()].map(([filePath, fileScopes]) => [
+      filePath,
+      new Map(
+        [...fileScopes.entries()].map(([scopeId, scope]) => [
+          scopeId,
+          {
+            ...scope,
+            declaredSymbolIds: [...scope.declaredSymbolIds],
+            childScopeIds: [...scope.childScopeIds],
+          },
+        ]),
+      ),
+    ]),
+  );
+}
+
 function isResolvedComponentBinding(
   binding: ResolvedImportedBinding,
   symbolsByFilePath: Map<string, Map<EngineSymbolId, EngineSymbol>>,
@@ -250,4 +329,33 @@ function isResolvedComponentBinding(
   return (
     symbolsByFilePath.get(binding.targetFilePath)?.get(binding.targetSymbolId)?.kind === "component"
   );
+}
+
+function collectImportedExpressionBindingsBySymbolId(input: {
+  filePath: string;
+  symbolsByFilePath: Map<string, Map<EngineSymbolId, EngineSymbol>>;
+  resolvedImportedBindingsByFilePath: Map<string, ResolvedImportedBinding[]>;
+  exportedExpressionBindingsByFilePath: Map<string, Map<string, ts.Expression>>;
+}): Map<EngineSymbolId, ts.Expression> {
+  const bindings = new Map<EngineSymbolId, ts.Expression>();
+  const localSymbolsByName = new Map(
+    [...(input.symbolsByFilePath.get(input.filePath)?.values() ?? [])]
+      .filter((symbol) => symbol.symbolSpace === "value")
+      .map((symbol) => [symbol.localName, symbol]),
+  );
+
+  for (const resolvedBinding of input.resolvedImportedBindingsByFilePath.get(input.filePath) ??
+    []) {
+    const importedSymbol = localSymbolsByName.get(resolvedBinding.localName);
+    const exportedExpression = input.exportedExpressionBindingsByFilePath
+      .get(resolvedBinding.targetFilePath)
+      ?.get(resolvedBinding.targetExportName);
+    if (!importedSymbol || !exportedExpression) {
+      continue;
+    }
+
+    bindings.set(importedSymbol.id, exportedExpression);
+  }
+
+  return bindings;
 }

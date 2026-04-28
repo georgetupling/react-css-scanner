@@ -22,6 +22,7 @@ export function summarizeComponentBody(
 ):
   | {
       rootExpression: ts.Expression;
+      localExpressionBindingEntries: import("../shared/types.js").ExpressionBindingEntry[];
       localExpressionBindings: Map<string, ts.Expression>;
       localStringSetBindings: Map<string, string[]>;
       localHelperDefinitions: Map<string, LocalHelperDefinition>;
@@ -31,6 +32,7 @@ export function summarizeComponentBody(
     return isRenderableExpression(body)
       ? {
           rootExpression: body,
+          localExpressionBindingEntries: [],
           localExpressionBindings: new Map(),
           localStringSetBindings: new Map(),
           localHelperDefinitions: new Map(),
@@ -39,6 +41,7 @@ export function summarizeComponentBody(
   }
 
   const localExpressionBindings = new Map<string, ts.Expression>();
+  const localExpressionBindingEntries: import("../shared/types.js").ExpressionBindingEntry[] = [];
   const localStringSetBindings = new Map<string, string[]>();
   const localHelperDefinitions = new Map<string, LocalHelperDefinition>();
   const finiteStringValuesByObjectName = buildFiniteStringValuesByObjectName(parameterBinding);
@@ -67,6 +70,7 @@ export function summarizeComponentBody(
         localStringSetBindings,
         localHelperDefinitions,
         finiteStringValuesByObjectName,
+        localExpressionBindingEntries,
       );
       continue;
     }
@@ -79,6 +83,7 @@ export function summarizeComponentBody(
       if (ifReturnExpression) {
         return {
           rootExpression: ifReturnExpression,
+          localExpressionBindingEntries,
           localExpressionBindings,
           localStringSetBindings,
           localHelperDefinitions,
@@ -94,6 +99,7 @@ export function summarizeComponentBody(
         if (switchReturnExpression) {
           return {
             rootExpression: switchReturnExpression,
+            localExpressionBindingEntries,
             localExpressionBindings,
             localStringSetBindings,
             localHelperDefinitions,
@@ -107,6 +113,7 @@ export function summarizeComponentBody(
     if (isRenderableExpression(statement.expression)) {
       return {
         rootExpression: statement.expression,
+        localExpressionBindingEntries,
         localExpressionBindings,
         localStringSetBindings,
         localHelperDefinitions,

@@ -1,7 +1,10 @@
 import ts from "typescript";
 
+import { resolveReferenceAt } from "../../../symbol-resolution/index.js";
+import { resolveDeclaredValueSymbol } from "../collection/shared/indexExpressionBindingsBySymbolId.js";
 import type { LocalHelperDefinition } from "../collection/shared/types.js";
 import type { BoundExpression, BuildContext, ExpressionBinding } from "../shared/internalTypes.js";
+import { resolveAliasedValueSymbolForIdentifier } from "../shared/resolveAliasedValueSymbol.js";
 import { MAX_LOCAL_HELPER_EXPANSION_DEPTH } from "../../../../libraries/policy/index.js";
 import {
   buildHelperExpansionReason,
@@ -33,7 +36,10 @@ export function resolveBoundExpressionContext(
     }
   | undefined {
   if (ts.isIdentifier(expression)) {
-    return unwrapExpressionBinding(context.expressionBindings.get(expression.text), context);
+    return (
+      resolveExpressionBindingForIdentifier(expression, context) ??
+      unwrapExpressionBinding(context.expressionBindings.get(expression.text), context)
+    );
   }
 
   if (ts.isCallExpression(expression)) {
@@ -80,9 +86,8 @@ function resolvePropsObjectPropertyAccess(
     }
   | undefined {
   if (
-    context.propsObjectBindingName &&
     ts.isIdentifier(expression.expression) &&
-    expression.expression.text === context.propsObjectBindingName
+    isPropsObjectReference(expression.expression, context)
   ) {
     return unwrapExpressionBinding(
       context.propsObjectProperties.get(expression.name.text),
@@ -103,10 +108,13 @@ function resolveNamespacePropertyAccess(
     }
   | undefined {
   if (ts.isIdentifier(expression.expression)) {
+    const resolvedSymbol = resolveReferenceAtIdentifier(expression.expression, context);
     return wrapExpressionBinding(
-      context.namespaceExpressionBindings
-        .get(expression.expression.text)
-        ?.get(expression.name.text),
+      resolvedSymbol
+        ? context.namespaceExpressionBindingsBySymbolId
+            .get(resolvedSymbol.id)
+            ?.get(expression.name.text)
+        : undefined,
       context,
     );
   }
@@ -191,6 +199,10 @@ export function resolveHelperCallContext(
     context.expressionBindings,
     helperBindings.expressionBindings,
   );
+  const inheritedExpressionBindingsBySymbolId = mergeExpressionBindings(
+    context.expressionBindingsBySymbolId,
+    helperBindings.expressionBindingsBySymbolId,
+  );
   const helperContext: BuildContext = {
     ...context,
     filePath: helperDefinition.filePath,
@@ -200,13 +212,14 @@ export function resolveHelperCallContext(
       inheritedExpressionBindings,
       helperDefinition.localExpressionBindings,
     ),
+    expressionBindingsBySymbolId: mergeExpressionBindings(
+      inheritedExpressionBindingsBySymbolId,
+      helperDefinition.localExpressionBindingsBySymbolId,
+    ),
     stringSetBindings: mergeStringSetBindings(
       mergeStringSetBindings(context.stringSetBindings, helperBindings.stringSetBindings),
       helperDefinition.localStringSetBindings,
     ),
-    namespaceExpressionBindings: context.namespaceExpressionBindings,
-    namespaceHelperDefinitions: context.namespaceHelperDefinitions,
-    namespaceComponentDefinitions: context.namespaceComponentDefinitions,
     helperExpansionStack: [...context.helperExpansionStack, helperName],
   };
 
@@ -239,9 +252,11 @@ function bindHelperArguments(
   context: BuildContext,
 ): {
   expressionBindings: Map<string, ExpressionBinding>;
+  expressionBindingsBySymbolId: Map<string, ExpressionBinding>;
   stringSetBindings: Map<string, string[]>;
 } {
   const helperExpressionBindings = new Map<string, ExpressionBinding>();
+  const helperExpressionBindingsBySymbolId = new Map<string, ExpressionBinding>();
   const helperStringSetBindings = new Map<string, string[]>();
   const expandedArguments = expandHelperArguments(expression.arguments, context) ?? [];
   for (let index = 0; index < helperDefinition.parameterBindings.length; index += 1) {
@@ -250,6 +265,7 @@ function bindHelperArguments(
       argument: expandedArguments[index],
       context,
       expressionBindings: helperExpressionBindings,
+      expressionBindingsBySymbolId: helperExpressionBindingsBySymbolId,
       stringSetBindings: helperStringSetBindings,
     });
   }
@@ -264,6 +280,7 @@ function bindHelperArguments(
 
   return {
     expressionBindings: helperExpressionBindings,
+    expressionBindingsBySymbolId: helperExpressionBindingsBySymbolId,
     stringSetBindings: helperStringSetBindings,
   };
 }
@@ -273,13 +290,21 @@ function bindHelperArgument(input: {
   argument: ts.Expression;
   context: BuildContext;
   expressionBindings: Map<string, ExpressionBinding>;
+  expressionBindingsBySymbolId: Map<string, ExpressionBinding>;
   stringSetBindings: Map<string, string[]>;
 }): void {
   if (input.parameterBinding.kind === "identifier") {
-    input.expressionBindings.set(
-      input.parameterBinding.identifierName,
-      bindExpression(input.argument, input.context),
-    );
+    const boundExpression = bindExpression(input.argument, input.context);
+    input.expressionBindings.set(input.parameterBinding.identifierName, boundExpression);
+    const parameterSymbol = resolveDeclaredValueSymbol({
+      declaration: input.parameterBinding.declaration,
+      filePath: input.parameterBinding.declaration.getSourceFile().fileName,
+      parsedSourceFile: input.parameterBinding.declaration.getSourceFile(),
+      symbolResolution: input.context.symbolResolution,
+    });
+    if (parameterSymbol) {
+      input.expressionBindingsBySymbolId.set(parameterSymbol.id, boundExpression);
+    }
     return;
   }
 
@@ -292,6 +317,17 @@ function bindHelperArgument(input: {
     for (const property of input.parameterBinding.properties) {
       if (property.initializer) {
         input.expressionBindings.set(property.identifierName, property.initializer);
+        const propertySymbol = property.declaration
+          ? resolveDeclaredValueSymbol({
+              declaration: property.declaration,
+              filePath: property.declaration.getSourceFile().fileName,
+              parsedSourceFile: property.declaration.getSourceFile(),
+              symbolResolution: input.context.symbolResolution,
+            })
+          : undefined;
+        if (propertySymbol) {
+          input.expressionBindingsBySymbolId.set(propertySymbol.id, property.initializer);
+        }
       }
       if (property.finiteStringValues) {
         input.stringSetBindings.set(property.identifierName, property.finiteStringValues);
@@ -311,13 +347,26 @@ function bindHelperArgument(input: {
         expression: propertyExpression,
         context: argumentBinding.context,
         expressionBindings: input.expressionBindings,
+        expressionBindingsBySymbolId: input.expressionBindingsBySymbolId,
         stringSetBindings: input.stringSetBindings,
+        declaration: property.declaration,
       });
       continue;
     }
 
     if (property.initializer) {
       input.expressionBindings.set(property.identifierName, property.initializer);
+      const propertySymbol = property.declaration
+        ? resolveDeclaredValueSymbol({
+            declaration: property.declaration,
+            filePath: property.declaration.getSourceFile().fileName,
+            parsedSourceFile: property.declaration.getSourceFile(),
+            symbolResolution: input.context.symbolResolution,
+          })
+        : undefined;
+      if (propertySymbol) {
+        input.expressionBindingsBySymbolId.set(propertySymbol.id, property.initializer);
+      }
     }
 
     if (property.finiteStringValues) {
@@ -331,7 +380,9 @@ function bindHelperDestructuredProperty(input: {
   expression: ts.Expression;
   context: BuildContext;
   expressionBindings: Map<string, ExpressionBinding>;
+  expressionBindingsBySymbolId: Map<string, ExpressionBinding>;
   stringSetBindings: Map<string, string[]>;
+  declaration?: ts.Identifier;
 }): void {
   if (ts.isIdentifier(input.expression)) {
     const stringValues = input.context.stringSetBindings.get(input.expression.text);
@@ -353,10 +404,19 @@ function bindHelperDestructuredProperty(input: {
     return;
   }
 
-  input.expressionBindings.set(
-    input.identifierName,
-    bindExpression(input.expression, input.context),
-  );
+  const boundExpression = bindExpression(input.expression, input.context);
+  input.expressionBindings.set(input.identifierName, boundExpression);
+  if (input.declaration) {
+    const propertySymbol = resolveDeclaredValueSymbol({
+      declaration: input.declaration,
+      filePath: input.declaration.getSourceFile().fileName,
+      parsedSourceFile: input.declaration.getSourceFile(),
+      symbolResolution: input.context.symbolResolution,
+    });
+    if (propertySymbol) {
+      input.expressionBindingsBySymbolId.set(propertySymbol.id, boundExpression);
+    }
+  }
 }
 
 function containsIdentifier(node: ts.Node, identifierName: string): boolean {
@@ -443,6 +503,50 @@ export function mergeExpressionBindings(
   return merged;
 }
 
+function resolveExpressionBindingForIdentifier(
+  identifier: ts.Identifier,
+  context: BuildContext,
+):
+  | {
+      expression: ts.Expression;
+      context: BuildContext;
+    }
+  | undefined {
+  const declarationLocation = getNodeLocation(identifier, context.parsedSourceFile);
+  const resolvedSymbol = resolveReferenceAt({
+    symbolResolution: context.symbolResolution,
+    filePath: context.filePath,
+    line: declarationLocation.line,
+    column: declarationLocation.column,
+    symbolSpace: "value",
+  });
+  return resolvedSymbol
+    ? unwrapExpressionBinding(context.expressionBindingsBySymbolId.get(resolvedSymbol.id), context)
+    : undefined;
+}
+
+function isPropsObjectReference(identifier: ts.Identifier, context: BuildContext): boolean {
+  const resolvedSymbol = resolveReferenceAtIdentifier(identifier, context);
+  if (resolvedSymbol && context.propsObjectBindingSymbolId) {
+    return resolvedSymbol.id === context.propsObjectBindingSymbolId;
+  }
+
+  return Boolean(
+    context.propsObjectBindingName && identifier.text === context.propsObjectBindingName,
+  );
+}
+
+function resolveReferenceAtIdentifier(identifier: ts.Identifier, context: BuildContext) {
+  const declarationLocation = getNodeLocation(identifier, context.parsedSourceFile);
+  return resolveReferenceAt({
+    symbolResolution: context.symbolResolution,
+    filePath: context.filePath,
+    line: declarationLocation.line,
+    column: declarationLocation.column,
+    symbolSpace: "value",
+  });
+}
+
 function mergeStringSetBindings(
   baseBindings: Map<string, string[]>,
   localBindings: Map<string, string[]>,
@@ -465,13 +569,15 @@ function resolveHelperDefinitionForCall(
     }
   | undefined {
   if (ts.isIdentifier(expression.expression)) {
-    const helperDefinition = context.helperDefinitions.get(expression.expression.text);
-    return helperDefinition
-      ? {
-          helperName: expression.expression.text,
-          helperDefinition,
-        }
-      : undefined;
+    const directHelperDefinition = context.helperDefinitions.get(expression.expression.text);
+    if (directHelperDefinition) {
+      return {
+        helperName: expression.expression.text,
+        helperDefinition: directHelperDefinition,
+      };
+    }
+
+    return resolveAliasedHelperDefinition(expression.expression, context);
   }
 
   if (
@@ -480,13 +586,47 @@ function resolveHelperDefinitionForCall(
   ) {
     const namespaceName = expression.expression.expression.text;
     const helperName = `${namespaceName}.${expression.expression.name.text}`;
-    const helperDefinition = context.namespaceHelperDefinitions
-      .get(namespaceName)
-      ?.get(expression.expression.name.text);
+    const resolvedNamespaceSymbol = resolveReferenceAtIdentifier(
+      expression.expression.expression,
+      context,
+    );
+    const helperDefinition = resolvedNamespaceSymbol
+      ? context.namespaceHelperDefinitionsBySymbolId
+          .get(resolvedNamespaceSymbol.id)
+          ?.get(expression.expression.name.text)
+      : undefined;
     return helperDefinition ? { helperName, helperDefinition } : undefined;
   }
 
   return undefined;
+}
+
+function resolveAliasedHelperDefinition(
+  identifier: ts.Identifier,
+  context: BuildContext,
+):
+  | {
+      helperName: string;
+      helperDefinition: LocalHelperDefinition;
+    }
+  | undefined {
+  const aliasedSymbol = resolveAliasedValueSymbolForIdentifier({
+    identifier,
+    filePath: context.filePath,
+    parsedSourceFile: context.parsedSourceFile,
+    symbolResolution: context.symbolResolution,
+  });
+  if (!aliasedSymbol) {
+    return undefined;
+  }
+
+  const helperDefinition = context.helperDefinitions.get(aliasedSymbol.localName);
+  return helperDefinition
+    ? {
+        helperName: aliasedSymbol.localName,
+        helperDefinition,
+      }
+    : undefined;
 }
 
 export function mergeHelperDefinitions(
@@ -758,4 +898,18 @@ function nextPropertyNameResolutionState(
 
 function getExpressionResolutionKey(expression: ts.Expression, context: BuildContext): string {
   return `${context.filePath}:${expression.pos}:${expression.end}:${expression.kind}`;
+}
+
+function getNodeLocation(
+  node: ts.Node,
+  sourceFile: ts.SourceFile,
+): {
+  line: number;
+  column: number;
+} {
+  const position = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+  return {
+    line: position.line + 1,
+    column: position.character + 1,
+  };
 }

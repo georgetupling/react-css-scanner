@@ -344,6 +344,42 @@ test("unused-css-class treats helper-forwarded class props as used across compon
   }
 });
 
+test("unused-css-class treats helper-forwarded class props as used through local helper aliases", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/pages/HomePage.tsx",
+      [
+        'import { Button } from "../ui/Button";',
+        'import "./HomePage.css";',
+        'export function HomePage() { return <Button className="home-page__cta" />; }',
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/ui/Button.tsx",
+      [
+        'import "./Button.css";',
+        "function joinClasses(...classes) { return classes.filter(Boolean).join(' '); }",
+        "export function Button({ className }) {",
+        "  const cx = joinClasses;",
+        "  return <button className={cx('button', className)}>Save</button>;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/pages/HomePage.css", ".home-page__cta { width: 100%; }\n")
+    .withCssFile("src/ui/Button.css", ".button { display: inline-flex; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", ["home-page__cta"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("unused-css-class treats data-driven object literal class values in array maps as used", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(
@@ -1898,6 +1934,46 @@ test("unused-css-class preserves mapped child classes through Children.map clone
       "invite-form__email",
       "invite-form__message",
     ]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unused-css-class keeps shadowed callback children identifiers distinct from component children", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/FieldList.tsx",
+      [
+        'import { Children } from "react";',
+        'import "./FieldList.css";',
+        "export function FieldList({ children }) {",
+        "  return <div>{Children.map([1], (children) => children)}</div>;",
+        "}",
+        "export function App() {",
+        "  return (",
+        "    <FieldList>",
+        '      <span className="field-list__slot" />',
+        "    </FieldList>",
+        "  );",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/FieldList.css", [".field-list__slot { display: block; }", ""].join("\n"))
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assert.deepEqual(
+      result.findings
+        .filter(
+          (finding) =>
+            finding.ruleId === "unused-css-class" && finding.data?.className === "field-list__slot",
+        )
+        .map((finding) => finding.data?.className),
+      ["field-list__slot"],
+    );
   } finally {
     await project.cleanup();
   }

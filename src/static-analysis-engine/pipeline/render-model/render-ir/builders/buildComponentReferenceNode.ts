@@ -1,6 +1,7 @@
 import ts from "typescript";
 
 import type { SameFileComponentDefinition } from "../collection/shared/types.js";
+import { resolveDeclaredValueSymbol } from "../collection/shared/indexExpressionBindingsBySymbolId.js";
 import { isRenderableExpression } from "../collection/shared/renderableExpressionGuards.js";
 import type { BuildContext } from "../shared/internalTypes.js";
 import { MAX_LOCAL_COMPONENT_EXPANSION_DEPTH } from "../../../../libraries/policy/index.js";
@@ -16,6 +17,7 @@ import {
   createRenderExpansionTrace,
   toSourceAnchor,
 } from "../shared/renderIrUtils.js";
+import { resolveAliasedValueSymbolForIdentifier } from "../shared/resolveAliasedValueSymbol.js";
 import {
   bindExpression,
   mergeExpressionBindings,
@@ -26,6 +28,7 @@ import {
 import type { ExpressionBinding } from "../shared/internalTypes.js";
 import type { RenderNode } from "../types.js";
 import { buildChildren, summarizeClassAttribute } from "./buildIntrinsicNode.js";
+import { resolveReferenceAt } from "../../../symbol-resolution/index.js";
 
 export function buildComponentReferenceNode(
   tagNameNode: ts.JsxTagNameExpression,
@@ -63,8 +66,9 @@ export function buildComponentReferenceNode(
   }
 
   const expansionScope = getExpansionScope(context.currentComponentFilePath, definition.filePath);
+  const resolvedComponentName = definition.componentName;
 
-  if (context.expansionStack.includes(componentName)) {
+  if (context.expansionStack.includes(resolvedComponentName)) {
     const sourceAnchor = toSourceAnchor(tagNameNode, context.parsedSourceFile, context.filePath);
     const reason = buildComponentExpansionReason(expansionScope, "cycle");
     return {
@@ -167,13 +171,18 @@ export function buildComponentReferenceNode(
         parsedSourceFile: definition.parsedSourceFile,
         currentComponentFilePath: definition.filePath,
         currentDepth: context.currentDepth + 1,
-        expansionStack: [...context.expansionStack, componentName],
+        expansionStack: [...context.expansionStack, resolvedComponentName],
         expressionBindings: mergeExpressionBindings(
-          mergeExpressionBindings(
-            context.topLevelExpressionBindingsByFilePath.get(definition.filePath) ?? new Map(),
-            expansionBinding.expressionBindings,
-          ),
+          expansionBinding.expressionBindings,
           definition.localExpressionBindings,
+        ),
+        expressionBindingsBySymbolId: mergeExpressionBindings(
+          mergeExpressionBindings(
+            context.topLevelExpressionBindingsBySymbolIdByFilePath.get(definition.filePath) ??
+              new Map(),
+            expansionBinding.expressionBindingsBySymbolId,
+          ),
+          definition.localExpressionBindingsBySymbolId,
         ),
         stringSetBindings: mergeStringSetBindings(
           expansionBinding.stringSetBindings,
@@ -184,12 +193,15 @@ export function buildComponentReferenceNode(
           definition.localHelperDefinitions,
         ),
         topLevelHelperDefinitionsByFilePath: context.topLevelHelperDefinitionsByFilePath,
-        topLevelExpressionBindingsByFilePath: context.topLevelExpressionBindingsByFilePath,
+        topLevelExpressionBindingsBySymbolIdByFilePath:
+          context.topLevelExpressionBindingsBySymbolIdByFilePath,
         helperExpansionStack: [],
         propsObjectBindingName: expansionBinding.propsObjectBindingName,
+        propsObjectBindingSymbolId: expansionBinding.propsObjectBindingSymbolId,
         propsObjectProperties: expansionBinding.propsObjectProperties,
         propsObjectSubtreeProperties: expansionBinding.propsObjectSubtreeProperties,
         subtreeBindings: expansionBinding.subtreeBindings,
+        subtreeBindingsBySymbolId: expansionBinding.subtreeBindingsBySymbolId,
       }),
       {
         componentName: definition.componentName,
@@ -219,13 +231,51 @@ function resolveComponentDefinition(
   tagNameNode: ts.JsxTagNameExpression,
   context: BuildContext,
 ): SameFileComponentDefinition | undefined {
+  if (ts.isIdentifier(tagNameNode)) {
+    const aliasedSymbol = resolveAliasedValueSymbolForIdentifier({
+      identifier: tagNameNode,
+      filePath: context.filePath,
+      parsedSourceFile: context.parsedSourceFile,
+      symbolResolution: context.symbolResolution,
+    });
+    if (aliasedSymbol) {
+      return context.componentsByFilePath
+        .get(context.currentComponentFilePath)
+        ?.get(aliasedSymbol.localName);
+    }
+  }
+
   if (ts.isPropertyAccessExpression(tagNameNode) && ts.isIdentifier(tagNameNode.expression)) {
-    return context.namespaceComponentDefinitions
-      .get(tagNameNode.expression.text)
-      ?.get(tagNameNode.name.text);
+    const location = getNodeLocation(tagNameNode.expression, context.parsedSourceFile);
+    const resolvedNamespaceSymbol = resolveReferenceAt({
+      symbolResolution: context.symbolResolution,
+      filePath: context.filePath,
+      line: location.line,
+      column: location.column,
+      symbolSpace: "value",
+    });
+    if (resolvedNamespaceSymbol) {
+      return context.namespaceComponentDefinitionsBySymbolId
+        .get(resolvedNamespaceSymbol.id)
+        ?.get(tagNameNode.name.text);
+    }
   }
 
   return undefined;
+}
+
+function getNodeLocation(
+  node: ts.Node,
+  sourceFile: ts.SourceFile,
+): {
+  line: number;
+  column: number;
+} {
+  const position = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+  return {
+    line: position.line + 1,
+    column: position.character + 1,
+  };
 }
 
 function buildComponentExpansionBindings(
@@ -238,11 +288,14 @@ function buildComponentExpansionBindings(
 ):
   | {
       expressionBindings: Map<string, ExpressionBinding>;
+      expressionBindingsBySymbolId: Map<string, ExpressionBinding>;
       stringSetBindings: Map<string, string[]>;
       propsObjectBindingName?: string;
+      propsObjectBindingSymbolId?: string;
       propsObjectProperties: Map<string, ExpressionBinding>;
       propsObjectSubtreeProperties: Map<string, RenderNode[]>;
       subtreeBindings: Map<string, RenderNode[]>;
+      subtreeBindingsBySymbolId: Map<string, RenderNode[]>;
     }
   | {
       reason: string;
@@ -284,42 +337,75 @@ function buildComponentExpansionBindings(
 
     return {
       expressionBindings: new Map(),
+      expressionBindingsBySymbolId: new Map(),
       stringSetBindings: new Map(),
       propsObjectProperties: new Map(),
       propsObjectSubtreeProperties: new Map(),
       subtreeBindings: new Map(),
+      subtreeBindingsBySymbolId: new Map(),
     };
   }
 
   const childrenNodes = buildChildren(children, context, buildRenderNode);
   if (definition.parameterBinding.kind === "props-identifier") {
     const propsObjectSubtreeProperties = new Map(attributeExpressions.subtreeProperties);
+    const propsObjectSymbol = resolveDeclaredValueSymbol({
+      declaration: definition.parameterBinding.declaration,
+      filePath: definition.filePath,
+      parsedSourceFile: definition.parsedSourceFile,
+      symbolResolution: context.symbolResolution,
+    });
     if (childrenNodes.length > 0) {
       propsObjectSubtreeProperties.set("children", childrenNodes);
     }
 
     return {
       expressionBindings: new Map(),
+      expressionBindingsBySymbolId: new Map(),
       stringSetBindings: new Map(),
       propsObjectBindingName: definition.parameterBinding.identifierName,
+      propsObjectBindingSymbolId: propsObjectSymbol?.id,
       propsObjectProperties: attributeExpressions.properties,
       propsObjectSubtreeProperties,
       subtreeBindings: new Map(),
+      subtreeBindingsBySymbolId: new Map(),
     };
   }
 
   const expressionBindings = new Map<string, ExpressionBinding>();
+  const expressionBindingsBySymbolId = new Map<string, ExpressionBinding>();
   const stringSetBindings = new Map<string, string[]>();
   const subtreeBindings = new Map<string, RenderNode[]>();
+  const subtreeBindingsBySymbolId = new Map<string, RenderNode[]>();
   for (const property of definition.parameterBinding.properties) {
     const boundExpression = attributeExpressions.properties.get(property.propertyName);
     if (boundExpression) {
       expressionBindings.set(property.identifierName, boundExpression);
+      const propertySymbol = property.declaration
+        ? resolveDeclaredValueSymbol({
+            declaration: property.declaration,
+            filePath: definition.filePath,
+            parsedSourceFile: definition.parsedSourceFile,
+            symbolResolution: context.symbolResolution,
+          })
+        : undefined;
+      if (propertySymbol) {
+        expressionBindingsBySymbolId.set(propertySymbol.id, boundExpression);
+      }
     } else if (property.initializer) {
-      expressionBindings.set(
-        property.identifierName,
-        bindExpression(property.initializer, context),
-      );
+      const initializerBinding = bindExpression(property.initializer, context);
+      expressionBindings.set(property.identifierName, initializerBinding);
+      const propertySymbol = property.declaration
+        ? resolveDeclaredValueSymbol({
+            declaration: property.declaration,
+            filePath: definition.filePath,
+            parsedSourceFile: definition.parsedSourceFile,
+            symbolResolution: context.symbolResolution,
+          })
+        : undefined;
+      if (propertySymbol) {
+        expressionBindingsBySymbolId.set(propertySymbol.id, initializerBinding);
+      }
     }
 
     if (!boundExpression && property.finiteStringValues) {
@@ -329,22 +415,46 @@ function buildComponentExpansionBindings(
     const boundSubtree = attributeExpressions.subtreeProperties.get(property.propertyName);
     if (boundSubtree) {
       subtreeBindings.set(property.identifierName, boundSubtree);
+      const propertySymbol = property.declaration
+        ? resolveDeclaredValueSymbol({
+            declaration: property.declaration,
+            filePath: definition.filePath,
+            parsedSourceFile: definition.parsedSourceFile,
+            symbolResolution: context.symbolResolution,
+          })
+        : undefined;
+      if (propertySymbol) {
+        subtreeBindingsBySymbolId.set(propertySymbol.id, boundSubtree);
+      }
     }
   }
 
-  const childrenIdentifierName = definition.parameterBinding.properties.find(
+  const childrenProperty = definition.parameterBinding.properties.find(
     (property) => property.propertyName === "children",
-  )?.identifierName;
-  if (childrenIdentifierName && childrenNodes.length > 0) {
-    subtreeBindings.set(childrenIdentifierName, childrenNodes);
+  );
+  if (childrenProperty?.identifierName && childrenNodes.length > 0) {
+    subtreeBindings.set(childrenProperty.identifierName, childrenNodes);
+    const childrenSymbol = childrenProperty.declaration
+      ? resolveDeclaredValueSymbol({
+          declaration: childrenProperty.declaration,
+          filePath: definition.filePath,
+          parsedSourceFile: definition.parsedSourceFile,
+          symbolResolution: context.symbolResolution,
+        })
+      : undefined;
+    if (childrenSymbol) {
+      subtreeBindingsBySymbolId.set(childrenSymbol.id, childrenNodes);
+    }
   }
 
   return {
     expressionBindings,
+    expressionBindingsBySymbolId,
     stringSetBindings,
     propsObjectProperties: attributeExpressions.properties,
     propsObjectSubtreeProperties: new Map(attributeExpressions.subtreeProperties),
     subtreeBindings,
+    subtreeBindingsBySymbolId,
   };
 }
 

@@ -1,6 +1,10 @@
 import ts from "typescript";
 
 import { collectComponentLikeDefinitions } from "../../../../../libraries/react-components/index.js";
+import {
+  indexExpressionBindingsBySymbolId,
+  normalizeHelperDefinitionSymbolBindings,
+} from "../shared/indexExpressionBindingsBySymbolId.js";
 import type { SameFileComponentDefinition } from "../shared/types.js";
 import type { FiniteTypeInterpreterCache } from "../shared/finiteTypeInterpreter.js";
 import { summarizeParameterBinding } from "../summarization/summarizeParameterBinding.js";
@@ -10,6 +14,7 @@ export function collectSameFileComponents(input: {
   filePath: string;
   parsedSourceFile: ts.SourceFile;
   finiteTypeInterpreterCache?: FiniteTypeInterpreterCache;
+  symbolResolution: import("../../../../symbol-resolution/index.js").ProjectBindingResolution;
 }): SameFileComponentDefinition[] {
   const components: SameFileComponentDefinition[] = [];
 
@@ -37,9 +42,24 @@ export function collectSameFileComponents(input: {
       parsedSourceFile: input.parsedSourceFile,
       sourceAnchor: definition.sourceAnchor,
       rootExpression: bodySummary.rootExpression,
+      localExpressionBindingEntries: bodySummary.localExpressionBindingEntries,
       localExpressionBindings: bodySummary.localExpressionBindings,
+      localExpressionBindingsBySymbolId: indexExpressionBindingsBySymbolId({
+        bindingEntries: bodySummary.localExpressionBindingEntries,
+        filePath: input.filePath,
+        parsedSourceFile: input.parsedSourceFile,
+        symbolResolution: input.symbolResolution,
+      }),
       localStringSetBindings: bodySummary.localStringSetBindings,
-      localHelperDefinitions: bodySummary.localHelperDefinitions,
+      localHelperDefinitions: new Map(
+        [...bodySummary.localHelperDefinitions.entries()].map(([helperName, helperDefinition]) => [
+          helperName,
+          normalizeHelperDefinitionSymbolBindings({
+            helperDefinition,
+            symbolResolution: input.symbolResolution,
+          }),
+        ]),
+      ),
       parameterBinding,
     });
   }

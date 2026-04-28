@@ -3,7 +3,10 @@ import ts from "typescript";
 import type { EngineSymbolId } from "../../types/core.js";
 import type {
   EngineSymbol,
+  LocalAliasResolution,
   ProjectBindingResolution,
+  SourceScope,
+  SymbolReference,
   ResolvedCssModuleBindingDiagnostic,
   ResolvedCssModuleImport,
   ResolvedCssModuleMemberBinding,
@@ -15,7 +18,10 @@ import type {
 } from "./types.js";
 
 export type ProjectBindingResolutionInternals = {
-  symbolsByFilePath: Map<string, Map<EngineSymbolId, EngineSymbol>>;
+  allSymbolsByFilePath: Map<string, Map<EngineSymbolId, EngineSymbol>>;
+  scopesByFilePath: Map<string, Map<string, SourceScope>>;
+  referencesByFilePath: Map<string, SymbolReference[]>;
+  localAliasesByFilePath: Map<string, LocalAliasResolution[]>;
   resolvedImportedBindingsByFilePath: Map<string, ResolvedImportedBinding[]>;
   resolvedImportedComponentBindingsByFilePath: Map<string, ResolvedImportedBinding[]>;
   resolvedTypeBindingsByFilePath: Map<string, Map<string, ResolvedTypeBinding>>;
@@ -33,7 +39,7 @@ export type ProjectBindingResolutionInternals = {
   resolvedCssModuleMemberReferencesByFilePath: Map<string, ResolvedCssModuleMemberReference[]>;
   resolvedCssModuleBindingDiagnosticsByFilePath: Map<string, ResolvedCssModuleBindingDiagnostic[]>;
   exportedExpressionBindingsByFilePath: Map<string, Map<string, ts.Expression>>;
-  importedExpressionBindingsByFilePath: Map<string, Map<string, ts.Expression>>;
+  importedExpressionBindingsBySymbolIdByFilePath: Map<string, Map<EngineSymbolId, ts.Expression>>;
 };
 
 export const SYMBOL_RESOLUTION_INTERNALS: unique symbol = Symbol("symbolResolutionInternals");

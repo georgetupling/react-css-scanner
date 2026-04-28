@@ -527,6 +527,156 @@ test("scanProject summarizes component render analysis without exposing engine i
   }
 });
 
+test("scanProject expands imported components through same-file local aliases", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import { Button } from "./Button";',
+        "export function App() {",
+        "  const Cta = Button;",
+        "  return <Cta />;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/Button.tsx",
+      'export function Button() { return <button className="button">Save</button>; }\n',
+    )
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx", "src/Button.tsx"],
+      cssFilePaths: [],
+    });
+
+    assert.equal(
+      result.findings.some(
+        (finding) =>
+          finding.ruleId === "missing-css-class" &&
+          finding.location?.filePath === "src/Button.tsx" &&
+          finding.data?.className === "button",
+      ),
+      true,
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("scanProject does not bind shadowed callback props identifiers to component props", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import { Button } from "./Button";',
+        'export function App() { return <Button className="outer" />; }',
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/Button.tsx",
+      [
+        "export function Button(props) {",
+        "  return [1].map((props) => <span className={props.className} />);",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx", "src/Button.tsx"],
+      cssFilePaths: [],
+    });
+
+    assert.equal(
+      result.findings.some(
+        (finding) => finding.ruleId === "missing-css-class" && finding.data?.className === "outer",
+      ),
+      false,
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("scanProject resolves imported default literal bindings through symbol-aware render lookup", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile("src/tokens.ts", 'export default "button-primary";\n')
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import token from "./tokens";',
+        "export function App() {",
+        "  return <button className={token}>Save</button>;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx", "src/tokens.ts"],
+      cssFilePaths: [],
+    });
+
+    assert.equal(
+      result.findings.some(
+        (finding) =>
+          finding.ruleId === "missing-css-class" &&
+          finding.location?.filePath === "src/tokens.ts" &&
+          finding.data?.className === "button-primary",
+      ),
+      true,
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("scanProject does not bind shadowed namespace identifiers to imported namespace expressions", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile("src/tokens.ts", 'export const primary = "from-namespace";\n')
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import * as tokens from "./tokens";',
+        "export function App() {",
+        '  const tokens = { primary: "local-value" };',
+        "  return <button className={tokens.primary}>Save</button>;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx", "src/tokens.ts"],
+      cssFilePaths: [],
+    });
+
+    assert.equal(
+      result.findings.some(
+        (finding) =>
+          finding.ruleId === "missing-css-class" && finding.data?.className === "from-namespace",
+      ),
+      false,
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("scanProject applies project config rule severity overrides", async () => {
   const project = await new TestProjectBuilder()
     .withConfig({

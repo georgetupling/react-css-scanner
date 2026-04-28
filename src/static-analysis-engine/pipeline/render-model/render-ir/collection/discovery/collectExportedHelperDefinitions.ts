@@ -1,5 +1,6 @@
 import ts from "typescript";
 
+import { normalizeHelperDefinitionSymbolBindings } from "../shared/indexExpressionBindingsBySymbolId.js";
 import type { LocalHelperDefinition } from "../shared/types.js";
 import type { FiniteTypeInterpreterCache } from "../shared/finiteTypeInterpreter.js";
 import { isDefaultExported, isExported, unwrapExpression } from "../shared/utils.js";
@@ -9,6 +10,7 @@ export function collectExportedHelperDefinitions(input: {
   filePath: string;
   parsedSourceFile: ts.SourceFile;
   finiteTypeInterpreterCache?: FiniteTypeInterpreterCache;
+  symbolResolution: import("../../../../symbol-resolution/index.js").ProjectBindingResolution;
 }): Map<string, LocalHelperDefinition> {
   const helperDefinitions = new Map<string, LocalHelperDefinition>();
   const topLevelHelperDefinitions = collectTopLevelHelperDefinitions(input);
@@ -69,6 +71,7 @@ export function collectTopLevelHelperDefinitions(input: {
   filePath: string;
   parsedSourceFile: ts.SourceFile;
   finiteTypeInterpreterCache?: FiniteTypeInterpreterCache;
+  symbolResolution: import("../../../../symbol-resolution/index.js").ProjectBindingResolution;
 }): Map<string, LocalHelperDefinition> {
   const topLevelHelperDefinitions = new Map<string, LocalHelperDefinition>();
 
@@ -86,7 +89,13 @@ export function collectTopLevelHelperDefinitions(input: {
         continue;
       }
 
-      topLevelHelperDefinitions.set(helperDefinition.helperName, helperDefinition);
+      topLevelHelperDefinitions.set(
+        helperDefinition.helperName,
+        normalizeHelperDefinitionSymbolBindings({
+          helperDefinition,
+          symbolResolution: input.symbolResolution,
+        }),
+      );
 
       continue;
     }
@@ -117,7 +126,13 @@ export function collectTopLevelHelperDefinitions(input: {
         finiteTypeInterpreterCache: input.finiteTypeInterpreterCache,
       });
       if (helperDefinition) {
-        topLevelHelperDefinitions.set(helperDefinition.helperName, helperDefinition);
+        topLevelHelperDefinitions.set(
+          helperDefinition.helperName,
+          normalizeHelperDefinitionSymbolBindings({
+            helperDefinition,
+            symbolResolution: input.symbolResolution,
+          }),
+        );
       }
     }
   }

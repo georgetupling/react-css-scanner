@@ -6,16 +6,24 @@ import ts from "typescript";
 import {
   buildModuleFacts,
   buildProjectBindingResolution,
-  collectTopLevelSymbols,
+  collectSourceSymbols,
+  createSymbolId,
   getExportedExpressionBindingsForFile,
   getCssModuleBindingsForFile,
   getImportedComponentBindingsForFile,
-  getImportedExpressionBindingsForFile,
+  getImportedExpressionBindingsBySymbolIdForFile,
+  getLocalAliasAt,
+  getLocalAliasResolutionsForFile,
   getNamespaceImportsForFile,
+  getScopeAt,
   getSymbol,
+  getSymbolAt,
+  getSymbolReferenceAt,
+  resolveLocalAliasAt,
   resolveCssModuleMember,
   resolveCssModuleMemberAccess,
   resolveCssModuleNamespace,
+  resolveReferenceAt,
   resolveExportedTypeDeclaration,
   resolveExportedTypeBinding,
   resolveTypeDeclaration,
@@ -79,12 +87,29 @@ test("symbol resolution owns exported expression bindings and imported expressio
     ),
     '"literal-default"',
   );
+  const importedBindingSymbolId = getSymbol({
+    symbolResolution: resolution,
+    filePath: "src/consumer.ts",
+    localName: "publicToken",
+    symbolSpace: "value",
+  })?.id;
   assert.equal(
     expressionText(
-      getImportedExpressionBindingsForFile({
+      getImportedExpressionBindingsBySymbolIdForFile({
         symbolResolution: resolution,
         filePath: "src/consumer.ts",
-      }).get("publicToken"),
+      }).get(importedBindingSymbolId ?? ""),
+    ),
+    '"public-token"',
+  );
+  assert.equal(
+    expressionText(
+      importedBindingSymbolId
+        ? getImportedExpressionBindingsBySymbolIdForFile({
+            symbolResolution: resolution,
+            filePath: "src/consumer.ts",
+          }).get(importedBindingSymbolId)
+        : undefined,
     ),
     '"public-token"',
   );
@@ -110,12 +135,12 @@ test("symbol resolution derives exported names from module facts and collects ri
     parsedFiles,
   });
 
-  const symbols = collectTopLevelSymbols({
+  const symbols = collectSourceSymbols({
     filePath: "src/library.tsx",
     parsedSourceFile: parsedFiles[0].parsedSourceFile,
     moduleId: "module:src/library.tsx",
     moduleFacts,
-  });
+  }).symbols;
   const symbolsByLocalName = new Map(
     [...symbols.values()].map((symbol) => [symbol.localName, symbol]),
   );
@@ -186,12 +211,12 @@ test("symbol resolution uses syntax-backed component detection for imported comp
     includeTraces: false,
   });
 
-  const sourceSymbols = collectTopLevelSymbols({
+  const sourceSymbols = collectSourceSymbols({
     filePath: "src/components.tsx",
     parsedSourceFile: parsedFiles[0].parsedSourceFile,
     moduleId: "module:src/components.tsx",
     moduleFacts,
-  });
+  }).symbols;
   const symbolsByLocalName = new Map(
     [...sourceSymbols.values()].map((symbol) => [symbol.localName, symbol]),
   );
@@ -244,6 +269,12 @@ test("symbol resolution preserves unresolved namespace members as structured res
     symbolResolution: resolution,
     filePath: "src/consumer.ts",
   })[0];
+  const okSymbolId = getSymbol({
+    symbolResolution: resolution,
+    filePath: "src/source.ts",
+    localName: "ok",
+    symbolSpace: "value",
+  })?.id;
   assert.equal(namespaceImport?.localName, "api");
   assert.deepEqual([...(namespaceImport?.members.keys() ?? [])], ["broken", "ok"]);
   assert.deepEqual(namespaceImport?.members.get("ok"), {
@@ -252,7 +283,7 @@ test("symbol resolution preserves unresolved namespace members as structured res
       targetModuleId: "module:src/source.ts",
       targetFilePath: "src/source.ts",
       targetExportName: "ok",
-      targetSymbolId: "symbol:module:src/source.ts:ok",
+      targetSymbolId: okSymbolId,
     },
   });
   assert.deepEqual(namespaceImport?.members.get("broken"), {
@@ -294,13 +325,25 @@ test("symbol resolution resolves imported type bindings through type re-export b
     moduleFacts,
     includeTraces: false,
   });
+  const buttonPropsSymbolId = getSymbol({
+    symbolResolution: resolution,
+    filePath: "src/types.ts",
+    localName: "ButtonProps",
+    symbolSpace: "type",
+  })?.id;
+  const buttonVariantSymbolId = getSymbol({
+    symbolResolution: resolution,
+    filePath: "src/types.ts",
+    localName: "ButtonVariant",
+    symbolSpace: "type",
+  })?.id;
 
   assert.deepEqual(resolveTypeBindingForTest(resolution, "src/consumer.ts", "ButtonProps"), {
     localName: "ButtonProps",
     targetModuleId: "module:src/types.ts",
     targetFilePath: "src/types.ts",
     targetTypeName: "ButtonProps",
-    targetSymbolId: "symbol:module:src/types.ts:ButtonProps",
+    targetSymbolId: buttonPropsSymbolId,
     traces: [],
   });
   assert.deepEqual(resolveTypeBindingForTest(resolution, "src/consumer.ts", "Tone"), {
@@ -308,7 +351,7 @@ test("symbol resolution resolves imported type bindings through type re-export b
     targetModuleId: "module:src/types.ts",
     targetFilePath: "src/types.ts",
     targetTypeName: "ButtonVariant",
-    targetSymbolId: "symbol:module:src/types.ts:ButtonVariant",
+    targetSymbolId: buttonVariantSymbolId,
     traces: [],
   });
   assert.deepEqual(
@@ -318,7 +361,7 @@ test("symbol resolution resolves imported type bindings through type re-export b
       targetModuleId: "module:src/types.ts",
       targetFilePath: "src/types.ts",
       targetTypeName: "ButtonVariant",
-      targetSymbolId: "symbol:module:src/types.ts:ButtonVariant",
+      targetSymbolId: buttonVariantSymbolId,
       traces: [],
     },
   );
@@ -332,7 +375,7 @@ test("symbol resolution resolves imported type bindings through type re-export b
         targetModuleId: "module:src/types.ts",
         targetFilePath: "src/types.ts",
         targetTypeName: "ButtonProps",
-        targetSymbolId: "symbol:module:src/types.ts:ButtonProps",
+        targetSymbolId: buttonPropsSymbolId,
         traces: [],
       },
     },
@@ -352,7 +395,7 @@ test("symbol resolution resolves imported type bindings through type re-export b
         targetModuleId: "module:src/types.ts",
         targetFilePath: "src/types.ts",
         targetTypeName: "ButtonVariant",
-        targetSymbolId: "symbol:module:src/types.ts:ButtonVariant",
+        targetSymbolId: buttonVariantSymbolId,
         traces: [],
       },
     },
@@ -378,13 +421,25 @@ test("symbol resolution resolves local type declarations through helper APIs", (
     moduleFacts,
     includeTraces: false,
   });
+  const localToneSymbolId = getSymbol({
+    symbolResolution: resolution,
+    filePath: "src/local.ts",
+    localName: "LocalTone",
+    symbolSpace: "type",
+  })?.id;
+  const localPropsSymbolId = getSymbol({
+    symbolResolution: resolution,
+    filePath: "src/local.ts",
+    localName: "LocalProps",
+    symbolSpace: "type",
+  })?.id;
 
   assert.deepEqual(resolveTypeBindingForTest(resolution, "src/local.ts", "LocalTone"), {
     localName: "LocalTone",
     targetModuleId: "module:src/local.ts",
     targetFilePath: "src/local.ts",
     targetTypeName: "LocalTone",
-    targetSymbolId: "symbol:module:src/local.ts:LocalTone",
+    targetSymbolId: localToneSymbolId,
     traces: [],
   });
   assert.deepEqual(
@@ -397,7 +452,7 @@ test("symbol resolution resolves local type declarations through helper APIs", (
         targetModuleId: "module:src/local.ts",
         targetFilePath: "src/local.ts",
         targetTypeName: "LocalProps",
-        targetSymbolId: "symbol:module:src/local.ts:LocalProps",
+        targetSymbolId: localPropsSymbolId,
         traces: [],
       },
     },
@@ -408,7 +463,13 @@ test("symbol resolution resolves local type declarations through helper APIs", (
     localName: "LocalProps",
     symbolSpace: "type",
   });
-  assert.equal(localTypeSymbol?.id, "symbol:module:src/local.ts:LocalProps");
+  assert.equal(
+    localTypeSymbol?.id,
+    createSymbolId("module:src/local.ts", "LocalProps", {
+      declaration: localTypeSymbol?.declaration,
+      symbolSpace: "type",
+    }),
+  );
   assert.equal(localTypeSymbol?.kind, "interface");
   assert.deepEqual(localTypeSymbol?.exportedNames, ["LocalProps"]);
   assert.equal(localTypeSymbol?.resolution.kind, "local");
@@ -645,6 +706,372 @@ test("symbol resolution records unsupported CSS Module binding diagnostics", () 
   );
 });
 
+test("symbol resolution collects nested declaration identities and scope tree records", () => {
+  const parsedFiles = [
+    sourceFile("src/Button.tsx", "export function Button() { return <button />; }"),
+    sourceFile(
+      "src/Page.tsx",
+      [
+        'import { Button } from "./Button.tsx";',
+        "export function Page({ className: initialClassName }) {",
+        "  const { root: rootClass, tone } = theme;",
+        "  function renderRow(item, index) {",
+        "    const Row = Button;",
+        "    return <Row className={initialClassName + rootClass + tone + index} />;",
+        "  }",
+        "  return items.map((item, index) => {",
+        "    const CallbackRow = Button;",
+        "    return <CallbackRow key={index} className={item.className} />;",
+        "  });",
+        "}",
+      ].join("\n"),
+    ),
+  ];
+  const moduleFacts = buildModuleFacts({
+    parsedFiles,
+  });
+
+  const resolution = buildProjectBindingResolution({
+    parsedFiles,
+    moduleFacts,
+    includeTraces: false,
+  });
+
+  const pageSymbol = getSymbol({
+    symbolResolution: resolution,
+    filePath: "src/Page.tsx",
+    localName: "Page",
+    symbolSpace: "value",
+  });
+  const initialClassNameSymbol = findCollectedSymbol(resolution, {
+    filePath: "src/Page.tsx",
+    localName: "initialClassName",
+    startLine: 2,
+  });
+  const rootClassSymbol = findCollectedSymbol(resolution, {
+    filePath: "src/Page.tsx",
+    localName: "rootClass",
+    startLine: 3,
+  });
+  const toneSymbol = findCollectedSymbol(resolution, {
+    filePath: "src/Page.tsx",
+    localName: "tone",
+    startLine: 3,
+  });
+  const renderRowSymbol = findCollectedSymbol(resolution, {
+    filePath: "src/Page.tsx",
+    localName: "renderRow",
+    startLine: 4,
+  });
+  const rowSymbol = findCollectedSymbol(resolution, {
+    filePath: "src/Page.tsx",
+    localName: "Row",
+    startLine: 5,
+  });
+  const callbackItemSymbol = findCollectedSymbol(resolution, {
+    filePath: "src/Page.tsx",
+    localName: "item",
+    startLine: 8,
+  });
+  const callbackIndexSymbol = findCollectedSymbol(resolution, {
+    filePath: "src/Page.tsx",
+    localName: "index",
+    startLine: 8,
+  });
+  const callbackRowSymbol = findCollectedSymbol(resolution, {
+    filePath: "src/Page.tsx",
+    localName: "CallbackRow",
+    startLine: 9,
+  });
+
+  assert.notEqual(pageSymbol?.scopeId, initialClassNameSymbol?.scopeId);
+  assert.equal(resolution.scopes.get(pageSymbol?.scopeId ?? "")?.kind, "module");
+  assert.equal(initialClassNameSymbol?.kind, "prop");
+  assert.equal(resolution.scopes.get(initialClassNameSymbol?.scopeId ?? "")?.kind, "parameter");
+  assert.equal(rootClassSymbol?.kind, "constant");
+  assert.equal(toneSymbol?.kind, "constant");
+  assert.equal(resolution.scopes.get(rootClassSymbol?.scopeId ?? "")?.kind, "block");
+  assert.equal(renderRowSymbol?.kind, "function");
+  assert.equal(resolution.scopes.get(renderRowSymbol?.scopeId ?? "")?.kind, "block");
+  assert.equal(rowSymbol?.kind, "component");
+  assert.equal(callbackItemSymbol?.kind, "prop");
+  assert.equal(callbackIndexSymbol?.kind, "prop");
+  assert.equal(callbackRowSymbol?.kind, "component");
+  assert.equal(
+    callbackRowSymbol?.id,
+    createSymbolId("module:src/Page.tsx", "CallbackRow", {
+      declaration: callbackRowSymbol?.declaration,
+      symbolSpace: "value",
+    }),
+  );
+
+  const pageFunctionScope = findChildScopeByKind(resolution, pageSymbol?.scopeId, "function");
+  const pageParameterScope = findChildScopeByKind(resolution, pageFunctionScope?.id, "parameter");
+  const pageBodyScope = findChildScopeByKind(resolution, pageParameterScope?.id, "block");
+  const callbackParameterScope = resolution.scopes.get(callbackItemSymbol?.scopeId ?? "");
+  const callbackBodyScope = findChildScopeByKind(resolution, callbackParameterScope?.id, "block");
+
+  assert.equal(initialClassNameSymbol?.scopeId, pageParameterScope?.id);
+  assert.equal(rootClassSymbol?.scopeId, pageBodyScope?.id);
+  assert.equal(renderRowSymbol?.scopeId, pageBodyScope?.id);
+  assert.equal(callbackItemSymbol?.scopeId, callbackParameterScope?.id);
+  assert.equal(callbackRowSymbol?.scopeId, callbackBodyScope?.id);
+});
+
+test("symbol resolution resolves nested value references by source location", () => {
+  const parsedFiles = [
+    sourceFile("src/Button.tsx", "export function Button() { return <button />; }"),
+    sourceFile(
+      "src/Page.tsx",
+      [
+        'import { Button } from "./Button.tsx";',
+        "export function Page({ className }) {",
+        "  const Root = Button;",
+        "  return <Root className={className} />;",
+        "}",
+      ].join("\n"),
+    ),
+  ];
+  const moduleFacts = buildModuleFacts({
+    parsedFiles,
+  });
+  const resolution = buildProjectBindingResolution({
+    parsedFiles,
+    moduleFacts,
+    includeTraces: false,
+  });
+
+  const rootDeclaration = getSymbolAt({
+    symbolResolution: resolution,
+    filePath: "src/Page.tsx",
+    line: 3,
+    column: 9,
+    symbolSpace: "value",
+  });
+  const importedButton = resolveReferenceAt({
+    symbolResolution: resolution,
+    filePath: "src/Page.tsx",
+    line: 3,
+    column: 16,
+    symbolSpace: "value",
+  });
+  const rootReference = resolveReferenceAt({
+    symbolResolution: resolution,
+    filePath: "src/Page.tsx",
+    line: 4,
+    column: 11,
+    symbolSpace: "value",
+  });
+  const classNameReference = getSymbolReferenceAt({
+    symbolResolution: resolution,
+    filePath: "src/Page.tsx",
+    line: 4,
+    column: 28,
+    symbolSpace: "value",
+  });
+  const parameterScope = getScopeAt({
+    symbolResolution: resolution,
+    filePath: "src/Page.tsx",
+    line: 2,
+    column: 24,
+  });
+
+  assert.equal(rootDeclaration?.localName, "Root");
+  assert.equal(rootDeclaration?.kind, "component");
+  assert.equal(importedButton?.localName, "Button");
+  assert.equal(importedButton?.resolution.kind, "imported");
+  assert.equal(rootReference?.id, rootDeclaration?.id);
+  assert.equal(classNameReference?.localName, "className");
+  assert.equal(classNameReference?.reason, undefined);
+  assert.equal(parameterScope?.kind, "parameter");
+});
+
+test("symbol resolution resolves local type references by source location", () => {
+  const parsedFiles = [
+    sourceFile(
+      "src/local.ts",
+      [
+        'interface ButtonProps { tone?: "primary" | "secondary"; }',
+        'type ButtonTone = ButtonProps["tone"];',
+      ].join("\n"),
+    ),
+  ];
+  const moduleFacts = buildModuleFacts({
+    parsedFiles,
+  });
+  const resolution = buildProjectBindingResolution({
+    parsedFiles,
+    moduleFacts,
+    includeTraces: false,
+  });
+
+  const typeDeclaration = getSymbolAt({
+    symbolResolution: resolution,
+    filePath: "src/local.ts",
+    line: 1,
+    column: 12,
+    symbolSpace: "type",
+  });
+  const typeReference = resolveReferenceAt({
+    symbolResolution: resolution,
+    filePath: "src/local.ts",
+    line: 2,
+    column: 19,
+    symbolSpace: "type",
+  });
+
+  assert.equal(typeDeclaration?.localName, "ButtonProps");
+  assert.equal(typeDeclaration?.kind, "interface");
+  assert.equal(typeReference?.id, typeDeclaration?.id);
+});
+
+test("symbol resolution resolves bounded local identifier aliases", () => {
+  const parsedFiles = [
+    sourceFile("src/Button.tsx", "export function Button() { return <button />; }"),
+    sourceFile(
+      "src/Page.tsx",
+      [
+        'import { Button } from "./Button.tsx";',
+        "export function Page({ className }) {",
+        "  const forwarded = className;",
+        "  const Cta = Button;",
+        "  return <Cta className={forwarded} />;",
+        "}",
+      ].join("\n"),
+    ),
+  ];
+  const moduleFacts = buildModuleFacts({
+    parsedFiles,
+  });
+  const resolution = buildProjectBindingResolution({
+    parsedFiles,
+    moduleFacts,
+    includeTraces: false,
+  });
+
+  const aliases = getLocalAliasResolutionsForFile({
+    symbolResolution: resolution,
+    filePath: "src/Page.tsx",
+  });
+  const forwardedAlias = getLocalAliasAt({
+    symbolResolution: resolution,
+    filePath: "src/Page.tsx",
+    line: 3,
+    column: 9,
+  });
+  const ctaTarget = resolveLocalAliasAt({
+    symbolResolution: resolution,
+    filePath: "src/Page.tsx",
+    line: 4,
+    column: 9,
+  });
+
+  assert.equal(aliases.filter((alias) => alias.kind === "resolved-alias").length, 2);
+  assert.equal(forwardedAlias?.kind, "resolved-alias");
+  assert.equal(forwardedAlias?.aliasKind, "identifier");
+  assert.equal(ctaTarget?.localName, "Button");
+  assert.equal(ctaTarget?.resolution.kind, "imported");
+});
+
+test("symbol resolution resolves bounded destructured aliases", () => {
+  const parsedFiles = [
+    sourceFile(
+      "src/Page.tsx",
+      [
+        "export function Page(props) {",
+        "  const { className: fieldClassName, tone } = props;",
+        "  return <div className={fieldClassName + tone} />;",
+        "}",
+      ].join("\n"),
+    ),
+  ];
+  const moduleFacts = buildModuleFacts({
+    parsedFiles,
+  });
+  const resolution = buildProjectBindingResolution({
+    parsedFiles,
+    moduleFacts,
+    includeTraces: false,
+  });
+
+  const fieldClassAlias = getLocalAliasAt({
+    symbolResolution: resolution,
+    filePath: "src/Page.tsx",
+    line: 2,
+    column: 22,
+  });
+  const toneAlias = getLocalAliasAt({
+    symbolResolution: resolution,
+    filePath: "src/Page.tsx",
+    line: 2,
+    column: 38,
+  });
+  const propsTarget = resolveLocalAliasAt({
+    symbolResolution: resolution,
+    filePath: "src/Page.tsx",
+    line: 2,
+    column: 22,
+  });
+
+  assert.deepEqual(
+    {
+      kind: fieldClassAlias?.kind,
+      aliasKind: fieldClassAlias?.aliasKind,
+      memberName: fieldClassAlias?.memberName,
+    },
+    {
+      kind: "resolved-alias",
+      aliasKind: "object-destructuring",
+      memberName: "className",
+    },
+  );
+  assert.deepEqual(
+    {
+      kind: toneAlias?.kind,
+      aliasKind: toneAlias?.aliasKind,
+      memberName: toneAlias?.memberName,
+    },
+    {
+      kind: "resolved-alias",
+      aliasKind: "object-destructuring",
+      memberName: "tone",
+    },
+  );
+  assert.equal(propsTarget?.localName, "props");
+});
+
+test("symbol resolution degrades unsupported local alias destructuring shapes", () => {
+  const parsedFiles = [
+    sourceFile(
+      "src/Page.tsx",
+      [
+        "export function Page(props) {",
+        "  const { nested: { className }, ...rest } = props;",
+        "  return <div className={className} data-rest={Boolean(rest)} />;",
+        "}",
+      ].join("\n"),
+    ),
+  ];
+  const moduleFacts = buildModuleFacts({
+    parsedFiles,
+  });
+  const resolution = buildProjectBindingResolution({
+    parsedFiles,
+    moduleFacts,
+    includeTraces: false,
+  });
+
+  assert.deepEqual(
+    getLocalAliasResolutionsForFile({
+      symbolResolution: resolution,
+      filePath: "src/Page.tsx",
+    })
+      .map((alias) => (alias.kind === "unresolved-alias" ? alias.reason : "resolved"))
+      .sort(),
+    ["nested-local-destructuring", "rest-local-destructuring"],
+  );
+});
+
 function sourceFile(filePath, sourceText) {
   return {
     filePath,
@@ -660,6 +1087,26 @@ function sourceFile(filePath, sourceText) {
 
 function expressionText(expression) {
   return expression?.getText();
+}
+
+function findCollectedSymbol(symbolResolution, input) {
+  return [...symbolResolution.symbols.values()].find(
+    (symbol) =>
+      symbol.declaration.filePath === input.filePath &&
+      symbol.localName === input.localName &&
+      symbol.declaration.startLine === input.startLine,
+  );
+}
+
+function findChildScopeByKind(symbolResolution, parentScopeId, kind) {
+  const parentScope = parentScopeId ? symbolResolution.scopes.get(parentScopeId) : undefined;
+  if (!parentScope) {
+    return undefined;
+  }
+
+  return parentScope.childScopeIds
+    .map((scopeId) => symbolResolution.scopes.get(scopeId))
+    .find((scope) => scope?.kind === kind);
 }
 
 function resolveTypeBindingForTest(symbolResolution, filePath, localName) {

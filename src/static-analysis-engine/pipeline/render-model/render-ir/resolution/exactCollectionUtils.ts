@@ -1,5 +1,6 @@
 import ts from "typescript";
 
+import { resolveDeclaredValueSymbol } from "../collection/shared/indexExpressionBindingsBySymbolId.js";
 import type { BuildContext } from "../shared/internalTypes.js";
 import { unwrapExpression } from "../shared/renderIrUtils.js";
 import {
@@ -195,19 +196,43 @@ export function buildArrayCallbackContext(input: {
   index: number;
 }): BuildContext {
   const callbackBindings = new Map<string, ts.Expression>();
+  const callbackBindingsBySymbolId = new Map<string, ts.Expression>();
   const [itemParameter, indexParameter] = input.callback.parameters;
 
   if (itemParameter && ts.isIdentifier(itemParameter.name)) {
     callbackBindings.set(itemParameter.name.text, input.elementExpression);
+    const itemSymbol = resolveDeclaredValueSymbol({
+      declaration: itemParameter.name,
+      filePath: input.context.filePath,
+      parsedSourceFile: input.context.parsedSourceFile,
+      symbolResolution: input.context.symbolResolution,
+    });
+    if (itemSymbol) {
+      callbackBindingsBySymbolId.set(itemSymbol.id, input.elementExpression);
+    }
   }
 
   if (indexParameter && ts.isIdentifier(indexParameter.name)) {
-    callbackBindings.set(indexParameter.name.text, ts.factory.createNumericLiteral(input.index));
+    const indexExpression = ts.factory.createNumericLiteral(input.index);
+    callbackBindings.set(indexParameter.name.text, indexExpression);
+    const indexSymbol = resolveDeclaredValueSymbol({
+      declaration: indexParameter.name,
+      filePath: input.context.filePath,
+      parsedSourceFile: input.context.parsedSourceFile,
+      symbolResolution: input.context.symbolResolution,
+    });
+    if (indexSymbol) {
+      callbackBindingsBySymbolId.set(indexSymbol.id, indexExpression);
+    }
   }
 
   return {
     ...input.context,
     expressionBindings: mergeExpressionBindings(input.context.expressionBindings, callbackBindings),
+    expressionBindingsBySymbolId: mergeExpressionBindings(
+      input.context.expressionBindingsBySymbolId,
+      callbackBindingsBySymbolId,
+    ),
     stringSetBindings: input.context.stringSetBindings,
   };
 }

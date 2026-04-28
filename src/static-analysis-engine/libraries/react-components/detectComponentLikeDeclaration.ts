@@ -18,26 +18,39 @@ export function detectComponentLikeDeclaration(input: {
   knownComponentNames: ReadonlySet<string>;
 }): ComponentLikeDefinition[] {
   if (ts.isFunctionDeclaration(input.statement) && input.statement.name && input.statement.body) {
-    return detectFunctionDeclarationComponent(input);
+    return detectFunctionDeclarationComponent({
+      statement: input.statement as ts.FunctionDeclaration & { body: ts.Block },
+      parsedSourceFile: input.parsedSourceFile,
+      filePath: input.filePath,
+    });
   }
 
   if (ts.isClassDeclaration(input.statement) && input.statement.name) {
-    return detectClassDeclarationComponent(input);
+    return detectClassDeclarationComponent({
+      statement: input.statement,
+      parsedSourceFile: input.parsedSourceFile,
+      filePath: input.filePath,
+    });
   }
 
   if (ts.isVariableStatement(input.statement)) {
-    return detectVariableDeclarationComponents(input);
+    return detectVariableDeclarationComponents({
+      statement: input.statement,
+      parsedSourceFile: input.parsedSourceFile,
+      filePath: input.filePath,
+      knownComponentNames: input.knownComponentNames,
+    });
   }
 
   return [];
 }
 
 function detectFunctionDeclarationComponent(input: {
-  statement: ts.FunctionDeclaration;
+  statement: ts.FunctionDeclaration & { body: ts.Block };
   parsedSourceFile: ts.SourceFile;
   filePath: string;
 }): ComponentLikeDefinition[] {
-  if (!getRenderableRootExpression(input.statement.body!)) {
+  if (!getRenderableRootExpression(input.statement.body)) {
     return [];
   }
 

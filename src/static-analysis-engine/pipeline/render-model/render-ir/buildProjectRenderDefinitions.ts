@@ -6,6 +6,7 @@ import {
   collectTopLevelHelperDefinitions,
 } from "./collection/discovery/collectExportedHelperDefinitions.js";
 import { collectSameFileComponents } from "./collection/discovery/collectSameFileComponents.js";
+import { indexExpressionBindingsBySymbolId } from "./collection/shared/indexExpressionBindingsBySymbolId.js";
 import { createFiniteTypeInterpreterCache } from "./collection/shared/finiteTypeInterpreter.js";
 import type { ModuleFacts } from "../../module-facts/index.js";
 import type { ProjectBindingResolution } from "../../symbol-resolution/index.js";
@@ -19,7 +20,7 @@ export type ProjectRenderDefinitions = {
   exportedComponentsByFilePath: Map<string, Map<string, SameFileComponentDefinition>>;
   exportedHelperDefinitionsByFilePath: Map<string, Map<string, LocalHelperDefinition>>;
   topLevelHelperDefinitionsByFilePath: Map<string, Map<string, LocalHelperDefinition>>;
-  topLevelExpressionBindingsByFilePath: Map<string, Map<string, ts.Expression>>;
+  topLevelExpressionBindingsBySymbolIdByFilePath: Map<string, Map<string, ts.Expression>>;
 };
 
 export function buildProjectRenderDefinitions(input: {
@@ -42,6 +43,7 @@ export function buildProjectRenderDefinitions(input: {
         filePath: parsedFile.filePath,
         parsedSourceFile: parsedFile.parsedSourceFile,
         finiteTypeInterpreterCache,
+        symbolResolution: input.symbolResolution,
       }),
     ]),
   );
@@ -64,6 +66,7 @@ export function buildProjectRenderDefinitions(input: {
           filePath: parsedFile.filePath,
           parsedSourceFile: parsedFile.parsedSourceFile,
           finiteTypeInterpreterCache,
+          symbolResolution: input.symbolResolution,
         }),
       ]),
     ),
@@ -74,22 +77,33 @@ export function buildProjectRenderDefinitions(input: {
           filePath: parsedFile.filePath,
           parsedSourceFile: parsedFile.parsedSourceFile,
           finiteTypeInterpreterCache,
+          symbolResolution: input.symbolResolution,
         }),
       ]),
     ),
-    topLevelExpressionBindingsByFilePath: new Map(
-      input.parsedFiles.map((parsedFile) => [
-        parsedFile.filePath,
-        collectTopLevelExpressionBindings(parsedFile.parsedSourceFile),
-      ]),
+    topLevelExpressionBindingsBySymbolIdByFilePath: new Map(
+      input.parsedFiles.map((parsedFile) => {
+        const bindings = collectTopLevelExpressionBindings(parsedFile.parsedSourceFile);
+        return [
+          parsedFile.filePath,
+          indexExpressionBindingsBySymbolId({
+            bindingEntries: bindings.bindingEntries,
+            filePath: parsedFile.filePath,
+            parsedSourceFile: parsedFile.parsedSourceFile,
+            symbolResolution: input.symbolResolution,
+          }),
+        ];
+      }),
     ),
   };
 }
 
-function collectTopLevelExpressionBindings(
-  parsedSourceFile: ts.SourceFile,
-): Map<string, ts.Expression> {
+function collectTopLevelExpressionBindings(parsedSourceFile: ts.SourceFile): {
+  bindings: Map<string, ts.Expression>;
+  bindingEntries: import("./collection/shared/types.js").ExpressionBindingEntry[];
+} {
   const bindings = new Map<string, ts.Expression>();
+  const bindingEntries: import("./collection/shared/types.js").ExpressionBindingEntry[] = [];
 
   for (const statement of parsedSourceFile.statements) {
     if (!ts.isVariableStatement(statement) || !isConstDeclarationList(statement.declarationList)) {
@@ -106,10 +120,18 @@ function collectTopLevelExpressionBindings(
       }
 
       bindings.set(declaration.name.text, declaration.initializer);
+      bindingEntries.push({
+        localName: declaration.name.text,
+        declaration: declaration.name,
+        expression: declaration.initializer,
+      });
     }
   }
 
-  return bindings;
+  return {
+    bindings,
+    bindingEntries,
+  };
 }
 
 function isConstDeclarationList(declarationList: ts.VariableDeclarationList): boolean {

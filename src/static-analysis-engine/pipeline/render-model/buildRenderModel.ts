@@ -11,7 +11,7 @@ import {
   getExportedExpressionBindingsForFile,
   getImportedBindingsForFile,
   getImportedComponentBindingsForFile,
-  getImportedExpressionBindingsForFile,
+  getImportedExpressionBindingsBySymbolIdForFile,
   getNamespaceImportsForFile,
 } from "../symbol-resolution/index.js";
 import type { UnsupportedClassReferenceDiagnostic } from "./class-reference-diagnostics/index.js";
@@ -103,26 +103,28 @@ export function buildRenderModel(input: RenderModelBuildInput): RenderModel {
     ),
   });
   const renderSubtrees = buildRenderSubtrees({
+    symbolResolution: input.symbolResolution,
     componentDefinitionsByFilePath: renderDefinitions.componentDefinitionsByFilePath,
     topLevelHelperDefinitionsByFilePath: renderDefinitions.topLevelHelperDefinitionsByFilePath,
-    topLevelExpressionBindingsByFilePath: renderDefinitions.topLevelExpressionBindingsByFilePath,
+    topLevelExpressionBindingsBySymbolIdByFilePath:
+      renderDefinitions.topLevelExpressionBindingsBySymbolIdByFilePath,
     componentsByFilePath: componentAvailability.componentsByFilePath,
-    importedExpressionBindingsByFilePath: new Map(
+    importedExpressionBindingsBySymbolIdByFilePath: new Map(
       filePaths.map((filePath) => [
         filePath,
-        getImportedExpressionBindingsForFile({
+        getImportedExpressionBindingsBySymbolIdForFile({
           symbolResolution: input.symbolResolution,
           filePath,
         }),
       ]),
     ),
     importedHelperDefinitionsByFilePath: renderBindings.importedHelperDefinitionsByFilePath,
-    importedNamespaceExpressionBindingsByFilePath:
-      renderBindings.importedNamespaceExpressionBindingsByFilePath,
-    importedNamespaceHelperDefinitionsByFilePath:
-      renderBindings.importedNamespaceHelperDefinitionsByFilePath,
-    importedNamespaceComponentDefinitionsByFilePath:
-      componentAvailability.importedNamespaceComponentDefinitionsByFilePath,
+    importedNamespaceExpressionBindingsBySymbolIdByFilePath:
+      renderBindings.importedNamespaceExpressionBindingsBySymbolIdByFilePath,
+    importedNamespaceHelperDefinitionsBySymbolIdByFilePath:
+      renderBindings.importedNamespaceHelperDefinitionsBySymbolIdByFilePath,
+    importedNamespaceComponentDefinitionsBySymbolIdByFilePath:
+      componentAvailability.importedNamespaceComponentDefinitionsBySymbolIdByFilePath,
     includeTraces,
   });
   const renderGraph = buildRenderGraph({
@@ -143,21 +145,22 @@ export function buildRenderModel(input: RenderModelBuildInput): RenderModel {
 }
 
 function buildRenderSubtrees(input: {
+  symbolResolution: ProjectBindingResolution;
   componentDefinitionsByFilePath: Map<string, SameFileComponentDefinition[]>;
   topLevelHelperDefinitionsByFilePath: Map<string, Map<string, LocalHelperDefinition>>;
-  topLevelExpressionBindingsByFilePath: Map<string, Map<string, ts.Expression>>;
+  topLevelExpressionBindingsBySymbolIdByFilePath: Map<string, Map<string, ts.Expression>>;
   componentsByFilePath: Map<string, Map<string, SameFileComponentDefinition>>;
-  importedExpressionBindingsByFilePath: Map<string, Map<string, ts.Expression>>;
+  importedExpressionBindingsBySymbolIdByFilePath: Map<string, Map<string, ts.Expression>>;
   importedHelperDefinitionsByFilePath: Map<string, Map<string, LocalHelperDefinition>>;
-  importedNamespaceExpressionBindingsByFilePath: Map<
+  importedNamespaceExpressionBindingsBySymbolIdByFilePath: Map<
     string,
     Map<string, Map<string, ts.Expression>>
   >;
-  importedNamespaceHelperDefinitionsByFilePath: Map<
+  importedNamespaceHelperDefinitionsBySymbolIdByFilePath: Map<
     string,
     Map<string, Map<string, LocalHelperDefinition>>
   >;
-  importedNamespaceComponentDefinitionsByFilePath: Map<
+  importedNamespaceComponentDefinitionsBySymbolIdByFilePath: Map<
     string,
     Map<string, Map<string, SameFileComponentDefinition>>
   >;
@@ -170,24 +173,27 @@ function buildRenderSubtrees(input: {
         parsedSourceFile:
           componentDefinitions[0]?.parsedSourceFile ??
           ts.createSourceFile(filePath, "", ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX),
+        symbolResolution: input.symbolResolution,
         componentDefinitions,
         componentsByFilePath: input.componentsByFilePath,
-        importedExpressionBindings:
-          input.importedExpressionBindingsByFilePath.get(filePath) ?? new Map(),
+        importedExpressionBindingsBySymbolId:
+          input.importedExpressionBindingsBySymbolIdByFilePath.get(filePath) ?? new Map(),
         importedHelperDefinitions:
           input.importedHelperDefinitionsByFilePath.get(filePath) ?? new Map(),
         topLevelHelperDefinitions:
           input.topLevelHelperDefinitionsByFilePath.get(filePath) ?? new Map(),
-        topLevelExpressionBindings:
-          input.topLevelExpressionBindingsByFilePath.get(filePath) ?? new Map(),
+        topLevelExpressionBindingsBySymbolId:
+          input.topLevelExpressionBindingsBySymbolIdByFilePath.get(filePath) ?? new Map(),
         topLevelHelperDefinitionsByFilePath: input.topLevelHelperDefinitionsByFilePath,
-        topLevelExpressionBindingsByFilePath: input.topLevelExpressionBindingsByFilePath,
-        importedNamespaceExpressionBindings:
-          input.importedNamespaceExpressionBindingsByFilePath.get(filePath) ?? new Map(),
-        importedNamespaceHelperDefinitions:
-          input.importedNamespaceHelperDefinitionsByFilePath.get(filePath) ?? new Map(),
-        importedNamespaceComponentDefinitions:
-          input.importedNamespaceComponentDefinitionsByFilePath.get(filePath) ?? new Map(),
+        topLevelExpressionBindingsBySymbolIdByFilePath:
+          input.topLevelExpressionBindingsBySymbolIdByFilePath,
+        importedNamespaceExpressionBindingsBySymbolId:
+          input.importedNamespaceExpressionBindingsBySymbolIdByFilePath.get(filePath) ?? new Map(),
+        importedNamespaceHelperDefinitionsBySymbolId:
+          input.importedNamespaceHelperDefinitionsBySymbolIdByFilePath.get(filePath) ?? new Map(),
+        importedNamespaceComponentDefinitionsBySymbolId:
+          input.importedNamespaceComponentDefinitionsBySymbolIdByFilePath.get(filePath) ??
+          new Map(),
         includeTraces: input.includeTraces,
       }),
   );

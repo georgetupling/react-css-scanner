@@ -10,11 +10,11 @@ import type { LocalHelperDefinition } from "./collection/shared/types.js";
 
 export type ProjectRenderBindings = {
   importedHelperDefinitionsByFilePath: Map<string, Map<string, LocalHelperDefinition>>;
-  importedNamespaceExpressionBindingsByFilePath: Map<
+  importedNamespaceExpressionBindingsBySymbolIdByFilePath: Map<
     string,
     Map<string, Map<string, ts.Expression>>
   >;
-  importedNamespaceHelperDefinitionsByFilePath: Map<
+  importedNamespaceHelperDefinitionsBySymbolIdByFilePath: Map<
     string,
     Map<string, Map<string, LocalHelperDefinition>>
   >;
@@ -38,10 +38,10 @@ export function buildProjectRenderBindings(input: {
         }),
       ]),
     ),
-    importedNamespaceExpressionBindingsByFilePath: new Map(
+    importedNamespaceExpressionBindingsBySymbolIdByFilePath: new Map(
       input.filePaths.map((filePath) => [
         filePath,
-        buildResolvedNamespaceBindingsForFile({
+        buildResolvedNamespaceBindingsBySymbolIdForFile({
           resolvedNamespaceImports: input.resolvedNamespaceImportsByFilePath.get(filePath) ?? [],
           getResolvedValue: (resolvedExport) =>
             input.exportedExpressionBindingsByFilePath
@@ -50,10 +50,10 @@ export function buildProjectRenderBindings(input: {
         }),
       ]),
     ),
-    importedNamespaceHelperDefinitionsByFilePath: new Map(
+    importedNamespaceHelperDefinitionsBySymbolIdByFilePath: new Map(
       input.filePaths.map((filePath) => [
         filePath,
-        buildResolvedNamespaceBindingsForFile({
+        buildResolvedNamespaceBindingsBySymbolIdForFile({
           resolvedNamespaceImports: input.resolvedNamespaceImportsByFilePath.get(filePath) ?? [],
           getResolvedValue: (resolvedExport) =>
             input.exportedHelperDefinitionsByFilePath
@@ -79,12 +79,16 @@ function buildImportedHelperDefinitionsForFile(input: {
   });
 }
 
-function buildResolvedNamespaceBindingsForFile<T>(input: {
+function buildResolvedNamespaceBindingsBySymbolIdForFile<T>(input: {
   resolvedNamespaceImports: ResolvedNamespaceImport[];
   getResolvedValue: (input: { targetFilePath: string; targetExportName: string }) => T | undefined;
 }): Map<string, Map<string, T>> {
   const namespaceBindings = new Map<string, Map<string, T>>();
   for (const namespaceImport of input.resolvedNamespaceImports) {
+    if (!namespaceImport.localSymbolId) {
+      continue;
+    }
+
     const resolvedBindings = new Map<string, T>();
     for (const [exportName, memberResult] of namespaceImport.members.entries()) {
       const resolvedValue = getResolvedNamespaceMemberValue({
@@ -96,7 +100,7 @@ function buildResolvedNamespaceBindingsForFile<T>(input: {
       }
     }
 
-    namespaceBindings.set(namespaceImport.localName, resolvedBindings);
+    namespaceBindings.set(namespaceImport.localSymbolId, resolvedBindings);
   }
 
   return namespaceBindings;

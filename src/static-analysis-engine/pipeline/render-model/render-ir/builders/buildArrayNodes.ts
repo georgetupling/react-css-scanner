@@ -18,6 +18,10 @@ import {
   collectLocalBodyBindings,
   isConstDeclarationList,
 } from "../collection/shared/collectLocalBodyBindings.js";
+import {
+  indexExpressionBindingsBySymbolId,
+  resolveDeclaredValueSymbol,
+} from "../collection/shared/indexExpressionBindingsBySymbolId.js";
 
 const MAX_EXACT_ARRAY_RESOLUTION_DEPTH = 100;
 
@@ -28,7 +32,9 @@ type ExactArrayResolutionState = {
 
 type ArrayCallbackSummary = {
   bodyExpression: ts.Expression;
+  localExpressionBindingEntries: import("../collection/shared/types.js").ExpressionBindingEntry[];
   localExpressionBindings: Map<string, ts.Expression>;
+  localExpressionBindingsBySymbolId: Map<string, ts.Expression>;
   localStringSetBindings: Map<string, string[]>;
 };
 
@@ -108,7 +114,7 @@ export function tryBuildMappedArrayRenderNode(input: {
     return undefined;
   }
 
-  const callbackSummary = summarizeArrayCallback(callback.body);
+  const callbackSummary = summarizeArrayCallback(callback.body, input.context);
   if (!callbackSummary) {
     return undefined;
   }
@@ -280,7 +286,7 @@ function resolveExactArrayElements(
         return undefined;
       }
 
-      const callbackSummary = summarizeArrayCallback(callback.body);
+      const callbackSummary = summarizeArrayCallback(callback.body, context);
       if (!callbackSummary) {
         return undefined;
       }
@@ -378,7 +384,7 @@ function resolveExactFoundArrayElement(
     return undefined;
   }
 
-  const callbackSummary = summarizeArrayCallback(callback.body);
+  const callbackSummary = summarizeArrayCallback(callback.body, context);
   if (!callbackSummary) {
     return undefined;
   }
@@ -413,16 +419,23 @@ function hasSupportedArrayCallbackParameters(
   );
 }
 
-function summarizeArrayCallback(body: ts.ConciseBody): ArrayCallbackSummary | undefined {
+function summarizeArrayCallback(
+  body: ts.ConciseBody,
+  context: BuildContext,
+): ArrayCallbackSummary | undefined {
   if (!ts.isBlock(body)) {
     return {
       bodyExpression: body,
+      localExpressionBindingEntries: [],
       localExpressionBindings: new Map(),
+      localExpressionBindingsBySymbolId: new Map(),
       localStringSetBindings: new Map(),
     };
   }
 
   const localExpressionBindings = new Map<string, ts.Expression>();
+  const localExpressionBindingEntries: import("../collection/shared/types.js").ExpressionBindingEntry[] =
+    [];
   const localStringSetBindings = new Map<string, string[]>();
 
   for (const statement of body.statements) {
@@ -432,6 +445,8 @@ function summarizeArrayCallback(body: ts.ConciseBody): ArrayCallbackSummary | un
         localExpressionBindings,
         localStringSetBindings,
         new Map(),
+        new Map(),
+        localExpressionBindingEntries,
       );
       continue;
     }
@@ -439,7 +454,14 @@ function summarizeArrayCallback(body: ts.ConciseBody): ArrayCallbackSummary | un
     if (ts.isReturnStatement(statement) && statement.expression) {
       return {
         bodyExpression: statement.expression,
+        localExpressionBindingEntries,
         localExpressionBindings,
+        localExpressionBindingsBySymbolId: indexExpressionBindingsBySymbolId({
+          bindingEntries: localExpressionBindingEntries,
+          filePath: body.getSourceFile().fileName,
+          parsedSourceFile: body.getSourceFile(),
+          symbolResolution: context.symbolResolution,
+        }),
         localStringSetBindings,
       };
     }
@@ -456,14 +478,34 @@ function buildArrayCallbackContext(input: {
   index?: number;
 }): BuildContext {
   const callbackBindings = new Map<string, ts.Expression>();
+  const callbackBindingsBySymbolId = new Map<string, ts.Expression>();
   const [itemParameter, indexParameter] = input.callback.parameters;
 
   if (itemParameter && ts.isIdentifier(itemParameter.name) && input.elementExpression) {
     callbackBindings.set(itemParameter.name.text, input.elementExpression);
+    const itemSymbol = resolveDeclaredValueSymbol({
+      declaration: itemParameter.name,
+      filePath: input.context.filePath,
+      parsedSourceFile: input.context.parsedSourceFile,
+      symbolResolution: input.context.symbolResolution,
+    });
+    if (itemSymbol) {
+      callbackBindingsBySymbolId.set(itemSymbol.id, input.elementExpression);
+    }
   }
 
   if (indexParameter && ts.isIdentifier(indexParameter.name) && input.index !== undefined) {
-    callbackBindings.set(indexParameter.name.text, ts.factory.createNumericLiteral(input.index));
+    const indexExpression = ts.factory.createNumericLiteral(input.index);
+    callbackBindings.set(indexParameter.name.text, indexExpression);
+    const indexSymbol = resolveDeclaredValueSymbol({
+      declaration: indexParameter.name,
+      filePath: input.context.filePath,
+      parsedSourceFile: input.context.parsedSourceFile,
+      symbolResolution: input.context.symbolResolution,
+    });
+    if (indexSymbol) {
+      callbackBindingsBySymbolId.set(indexSymbol.id, indexExpression);
+    }
   }
 
   return {
@@ -471,6 +513,13 @@ function buildArrayCallbackContext(input: {
     expressionBindings: mergeExpressionBindings(
       mergeExpressionBindings(input.context.expressionBindings, callbackBindings),
       input.callbackSummary.localExpressionBindings,
+    ),
+    expressionBindingsBySymbolId: mergeExpressionBindings(
+      mergeExpressionBindings(
+        input.context.expressionBindingsBySymbolId,
+        callbackBindingsBySymbolId,
+      ),
+      input.callbackSummary.localExpressionBindingsBySymbolId,
     ),
     stringSetBindings: mergeStringSetBindings(
       input.context.stringSetBindings,

@@ -1,7 +1,13 @@
 import ts from "typescript";
 
-import type { SourceAnchor } from "../../../../../types/core.js";
+import type { EngineSymbolId, SourceAnchor } from "../../../../../types/core.js";
 import type { UnsupportedParameterBindingReason } from "../../shared/expansionSemantics.js";
+
+export type ExpressionBindingEntry = {
+  localName: string;
+  declaration: ts.Identifier;
+  expression: ts.Expression;
+};
 
 export type SameFileComponentDefinition = {
   componentName: string;
@@ -10,7 +16,9 @@ export type SameFileComponentDefinition = {
   parsedSourceFile: ts.SourceFile;
   sourceAnchor: SourceAnchor;
   rootExpression: ts.Expression;
+  localExpressionBindingEntries: ExpressionBindingEntry[];
   localExpressionBindings: Map<string, ts.Expression>;
+  localExpressionBindingsBySymbolId: Map<EngineSymbolId, ts.Expression>;
   localStringSetBindings: Map<string, string[]>;
   localHelperDefinitions: Map<string, LocalHelperDefinition>;
   parameterBinding:
@@ -18,16 +26,12 @@ export type SameFileComponentDefinition = {
     | {
         kind: "props-identifier";
         identifierName: string;
+        declaration: ts.Identifier;
         finiteStringValuesByProperty?: Map<string, string[]>;
       }
     | {
         kind: "destructured-props";
-        properties: Array<{
-          propertyName: string;
-          identifierName: string;
-          initializer?: ts.Expression;
-          finiteStringValues?: string[];
-        }>;
+        properties: DestructuredPropBinding[];
       }
     | { kind: "unsupported"; reason: UnsupportedParameterBindingReason };
 };
@@ -40,13 +44,16 @@ export type LocalHelperDefinition = {
   parameterBindings: HelperParameterBinding[];
   restParameterName?: string;
   returnExpression: ts.Expression;
+  localExpressionBindingEntries: ExpressionBindingEntry[];
   localExpressionBindings: Map<string, ts.Expression>;
+  localExpressionBindingsBySymbolId: Map<EngineSymbolId, ts.Expression>;
   localStringSetBindings: Map<string, string[]>;
 };
 
 export type DestructuredPropBinding = {
   propertyName: string;
   identifierName: string;
+  declaration?: ts.Identifier;
   initializer?: ts.Expression;
   finiteStringValues?: string[];
 };
@@ -55,6 +62,7 @@ export type HelperParameterBinding =
   | {
       kind: "identifier";
       identifierName: string;
+      declaration: ts.Identifier;
       finiteStringValuesByProperty?: Map<string, string[]>;
     }
   | {

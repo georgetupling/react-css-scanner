@@ -1,5 +1,6 @@
 import ts from "typescript";
 import { buildComponentReferenceNode } from "./builders/buildComponentReferenceNode.js";
+import { resolveReferenceAt } from "../../symbol-resolution/index.js";
 import {
   buildElementNode,
   buildChildren,
@@ -21,6 +22,7 @@ import {
   toSourceAnchor,
   withStaticallySkippedBranch,
 } from "./shared/renderIrUtils.js";
+import { resolveDeclaredValueSymbol } from "./collection/shared/indexExpressionBindingsBySymbolId.js";
 import {
   getHelperCallResolutionFailureReason,
   mergeExpressionBindings,
@@ -48,12 +50,13 @@ type RenderExpressionResolutionState = {
 export function buildSameFileRenderSubtrees(input: {
   filePath: string;
   parsedSourceFile: ts.SourceFile;
+  symbolResolution: import("../../symbol-resolution/index.js").ProjectBindingResolution;
   componentDefinitions?: import("./collection/shared/types.js").SameFileComponentDefinition[];
   componentsByFilePath?: Map<
     string,
     Map<string, import("./collection/shared/types.js").SameFileComponentDefinition>
   >;
-  importedExpressionBindings?: Map<string, ts.Expression>;
+  importedExpressionBindingsBySymbolId?: Map<string, ts.Expression>;
   importedHelperDefinitions?: Map<
     string,
     import("./collection/shared/types.js").LocalHelperDefinition
@@ -62,18 +65,18 @@ export function buildSameFileRenderSubtrees(input: {
     string,
     import("./collection/shared/types.js").LocalHelperDefinition
   >;
-  topLevelExpressionBindings?: Map<string, ts.Expression>;
+  topLevelExpressionBindingsBySymbolId?: Map<string, ts.Expression>;
   topLevelHelperDefinitionsByFilePath?: Map<
     string,
     Map<string, import("./collection/shared/types.js").LocalHelperDefinition>
   >;
-  topLevelExpressionBindingsByFilePath?: Map<string, Map<string, ts.Expression>>;
-  importedNamespaceExpressionBindings?: Map<string, Map<string, ts.Expression>>;
-  importedNamespaceHelperDefinitions?: Map<
+  topLevelExpressionBindingsBySymbolIdByFilePath?: Map<string, Map<string, ts.Expression>>;
+  importedNamespaceExpressionBindingsBySymbolId?: Map<string, Map<string, ts.Expression>>;
+  importedNamespaceHelperDefinitionsBySymbolId?: Map<
     string,
     Map<string, import("./collection/shared/types.js").LocalHelperDefinition>
   >;
-  importedNamespaceComponentDefinitions?: Map<
+  importedNamespaceComponentDefinitionsBySymbolId?: Map<
     string,
     Map<string, import("./collection/shared/types.js").SameFileComponentDefinition>
   >;
@@ -92,13 +95,15 @@ export function buildSameFileRenderSubtrees(input: {
       filePath: definition.filePath,
       parsedSourceFile: definition.parsedSourceFile,
       currentComponentFilePath: definition.filePath,
+      symbolResolution: input.symbolResolution,
       componentsByFilePath,
       currentDepth: 0,
       expansionStack: [definition.componentName],
-      expressionBindings: new Map([
-        ...(input.importedExpressionBindings?.entries() ?? []),
-        ...(input.topLevelExpressionBindings?.entries() ?? []),
-        ...definition.localExpressionBindings.entries(),
+      expressionBindings: new Map([...definition.localExpressionBindings.entries()]),
+      expressionBindingsBySymbolId: new Map([
+        ...(input.importedExpressionBindingsBySymbolId?.entries() ?? []),
+        ...(input.topLevelExpressionBindingsBySymbolId?.entries() ?? []),
+        ...definition.localExpressionBindingsBySymbolId.entries(),
       ]),
       stringSetBindings: buildDefinitionStringSetBindings(definition),
       helperDefinitions: new Map([
@@ -113,26 +118,27 @@ export function buildSameFileRenderSubtrees(input: {
             ? [[definition.filePath, input.topLevelHelperDefinitions]]
             : [],
         ),
-      topLevelExpressionBindingsByFilePath:
-        input.topLevelExpressionBindingsByFilePath ??
+      topLevelExpressionBindingsBySymbolIdByFilePath:
+        input.topLevelExpressionBindingsBySymbolIdByFilePath ??
         new Map(
-          input.topLevelExpressionBindings
-            ? [[definition.filePath, input.topLevelExpressionBindings]]
+          input.topLevelExpressionBindingsBySymbolId
+            ? [[definition.filePath, input.topLevelExpressionBindingsBySymbolId]]
             : [],
         ),
-      namespaceExpressionBindings: new Map(
-        input.importedNamespaceExpressionBindings?.entries() ?? [],
+      namespaceExpressionBindingsBySymbolId: new Map(
+        input.importedNamespaceExpressionBindingsBySymbolId?.entries() ?? [],
       ),
-      namespaceHelperDefinitions: new Map(
-        input.importedNamespaceHelperDefinitions?.entries() ?? [],
+      namespaceHelperDefinitionsBySymbolId: new Map(
+        input.importedNamespaceHelperDefinitionsBySymbolId?.entries() ?? [],
       ),
-      namespaceComponentDefinitions: new Map(
-        input.importedNamespaceComponentDefinitions?.entries() ?? [],
+      namespaceComponentDefinitionsBySymbolId: new Map(
+        input.importedNamespaceComponentDefinitionsBySymbolId?.entries() ?? [],
       ),
       helperExpansionStack: [],
       propsObjectProperties: new Map(),
       propsObjectSubtreeProperties: new Map(),
       subtreeBindings: new Map(),
+      subtreeBindingsBySymbolId: new Map(),
       includeTraces,
     }),
     exported: definition.exported,
@@ -447,7 +453,10 @@ function resolveInsertedSubtreeNodes(
   state.activeExpressions.add(expressionKey);
   try {
     if (ts.isIdentifier(expression)) {
-      const subtreeBinding = context.subtreeBindings.get(expression.text);
+      const resolvedSymbol = resolveReferenceAtIdentifier(expression, context);
+      const subtreeBinding = resolvedSymbol
+        ? context.subtreeBindingsBySymbolId.get(resolvedSymbol.id)
+        : context.subtreeBindings.get(expression.text);
       if (subtreeBinding) {
         return subtreeBinding;
       }
@@ -464,9 +473,8 @@ function resolveInsertedSubtreeNodes(
 
     if (
       ts.isPropertyAccessExpression(expression) &&
-      context.propsObjectBindingName &&
       ts.isIdentifier(expression.expression) &&
-      expression.expression.text === context.propsObjectBindingName
+      isPropsObjectReference(expression.expression, context)
     ) {
       return context.propsObjectSubtreeProperties.get(expression.name.text);
     }
@@ -711,14 +719,35 @@ function buildChildrenMapCallbackContext(input: {
 }): BuildContext {
   const [childParameter, indexParameter] = input.callback.parameters;
   const subtreeBindings = new Map(input.context.subtreeBindings);
+  const subtreeBindingsBySymbolId = new Map(input.context.subtreeBindingsBySymbolId);
   const expressionBindings = new Map<string, ts.Expression>();
+  const expressionBindingsBySymbolId = new Map<string, ts.Expression>();
 
   if (childParameter && ts.isIdentifier(childParameter.name)) {
     subtreeBindings.set(childParameter.name.text, [input.childNode]);
+    const childSymbol = resolveDeclaredValueSymbol({
+      declaration: childParameter.name,
+      filePath: input.context.filePath,
+      parsedSourceFile: input.context.parsedSourceFile,
+      symbolResolution: input.context.symbolResolution,
+    });
+    if (childSymbol) {
+      subtreeBindingsBySymbolId.set(childSymbol.id, [input.childNode]);
+    }
   }
 
   if (indexParameter && ts.isIdentifier(indexParameter.name)) {
-    expressionBindings.set(indexParameter.name.text, ts.factory.createNumericLiteral(input.index));
+    const indexExpression = ts.factory.createNumericLiteral(input.index);
+    expressionBindings.set(indexParameter.name.text, indexExpression);
+    const indexSymbol = resolveDeclaredValueSymbol({
+      declaration: indexParameter.name,
+      filePath: input.context.filePath,
+      parsedSourceFile: input.context.parsedSourceFile,
+      symbolResolution: input.context.symbolResolution,
+    });
+    if (indexSymbol) {
+      expressionBindingsBySymbolId.set(indexSymbol.id, indexExpression);
+    }
   }
 
   return {
@@ -727,7 +756,48 @@ function buildChildrenMapCallbackContext(input: {
       input.context.expressionBindings,
       expressionBindings,
     ),
+    expressionBindingsBySymbolId: mergeExpressionBindings(
+      input.context.expressionBindingsBySymbolId,
+      expressionBindingsBySymbolId,
+    ),
     subtreeBindings,
+    subtreeBindingsBySymbolId,
+  };
+}
+
+function isPropsObjectReference(identifier: ts.Identifier, context: BuildContext): boolean {
+  const resolvedSymbol = resolveReferenceAtIdentifier(identifier, context);
+  if (resolvedSymbol && context.propsObjectBindingSymbolId) {
+    return resolvedSymbol.id === context.propsObjectBindingSymbolId;
+  }
+
+  return Boolean(
+    context.propsObjectBindingName && identifier.text === context.propsObjectBindingName,
+  );
+}
+
+function resolveReferenceAtIdentifier(identifier: ts.Identifier, context: BuildContext) {
+  const location = getNodeLocation(identifier, context.parsedSourceFile);
+  return resolveReferenceAt({
+    symbolResolution: context.symbolResolution,
+    filePath: context.filePath,
+    line: location.line,
+    column: location.column,
+    symbolSpace: "value",
+  });
+}
+
+function getNodeLocation(
+  node: ts.Node,
+  sourceFile: ts.SourceFile,
+): {
+  line: number;
+  column: number;
+} {
+  const position = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+  return {
+    line: position.line + 1,
+    column: position.character + 1,
   };
 }
 

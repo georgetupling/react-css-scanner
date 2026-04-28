@@ -18,11 +18,57 @@ export type SymbolKind =
 
 export type SymbolSpace = "value" | "type";
 
+export type ScopeKind = "module" | "function" | "block" | "parameter" | "catch";
+
+export type ScopeId = string;
+
+export type SourceScope = {
+  id: ScopeId;
+  filePath: string;
+  kind: ScopeKind;
+  parentScopeId?: ScopeId;
+  range: SourceAnchor;
+  declaredSymbolIds: EngineSymbolId[];
+  childScopeIds: ScopeId[];
+};
+
+export type SymbolReference = {
+  filePath: string;
+  localName: string;
+  location: SourceAnchor;
+  symbolSpace: SymbolSpace;
+  scopeId?: ScopeId;
+  resolvedSymbolId?: EngineSymbolId;
+  reason?: SymbolResolutionReason;
+};
+
+export type LocalAliasResolution =
+  | {
+      kind: "resolved-alias";
+      sourceFilePath: string;
+      sourceSymbolId: EngineSymbolId;
+      targetSymbolId: EngineSymbolId;
+      aliasKind: "identifier" | "object-destructuring";
+      location: SourceAnchor;
+      memberName?: string;
+    }
+  | {
+      kind: "unresolved-alias";
+      sourceFilePath: string;
+      sourceSymbolId?: EngineSymbolId;
+      aliasKind: "identifier" | "object-destructuring";
+      location: SourceAnchor;
+      memberName?: string;
+      reason: SymbolResolutionReason;
+    };
+
 export type EngineSymbol = {
   id: EngineSymbolId;
   moduleId: EngineModuleId;
   kind: SymbolKind;
+  symbolSpace: SymbolSpace;
   localName: string;
+  scopeId: ScopeId;
   exportedNames: string[];
   declaration: SourceAnchor;
   resolution:
@@ -55,7 +101,11 @@ export type SymbolResolutionReason =
   | "rest-css-module-destructuring"
   | "reassignable-css-module-alias"
   | "self-referential-css-module-alias"
-  | "unresolved-imported-binding";
+  | "unresolved-imported-binding"
+  | "unsupported-local-alias"
+  | "nested-local-destructuring"
+  | "rest-local-destructuring"
+  | "self-referential-local-alias";
 
 export type ResolvedProjectExport = {
   targetModuleId: EngineModuleId;
@@ -96,6 +146,7 @@ export type ResolvedNamespaceMemberResult =
 
 export type ResolvedNamespaceImport = {
   localName: string;
+  localSymbolId?: EngineSymbolId;
   members: Map<string, ResolvedNamespaceMemberResult>;
   traces: AnalysisTrace[];
 };
@@ -178,4 +229,5 @@ export type ResolvedCssModuleMemberAccessResult =
 
 export type ProjectBindingResolution = {
   symbols: Map<EngineSymbolId, EngineSymbol>;
+  scopes: Map<ScopeId, SourceScope>;
 };

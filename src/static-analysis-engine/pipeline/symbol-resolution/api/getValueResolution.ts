@@ -1,5 +1,6 @@
 import ts from "typescript";
 
+import type { EngineSymbolId } from "../../../types/core.js";
 import type {
   ProjectBindingResolution,
   ResolvedImportedBinding,
@@ -10,7 +11,7 @@ import { getSymbolResolutionInternals } from "../internals.js";
 export function getSymbolResolutionFilePaths(input: {
   symbolResolution: ProjectBindingResolution;
 }): string[] {
-  return [...getSymbolResolutionInternals(input.symbolResolution).symbolsByFilePath.keys()];
+  return [...getSymbolResolutionInternals(input.symbolResolution).allSymbolsByFilePath.keys()];
 }
 
 export function getImportedBindingsForFile(input: {
@@ -57,13 +58,13 @@ export function getExportedExpressionBindingsForFile(input: {
   );
 }
 
-export function getImportedExpressionBindingsForFile(input: {
+export function getImportedExpressionBindingsBySymbolIdForFile(input: {
   symbolResolution: ProjectBindingResolution;
   filePath: string;
-}): Map<string, ts.Expression> {
+}): Map<EngineSymbolId, ts.Expression> {
   return new Map(
-    getSymbolResolutionInternals(input.symbolResolution).importedExpressionBindingsByFilePath.get(
-      input.filePath,
-    ) ?? new Map(),
+    getSymbolResolutionInternals(
+      input.symbolResolution,
+    ).importedExpressionBindingsBySymbolIdByFilePath.get(input.filePath) ?? new Map(),
   );
 }

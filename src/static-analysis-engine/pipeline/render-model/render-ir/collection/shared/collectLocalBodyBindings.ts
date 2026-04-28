@@ -1,6 +1,6 @@
 import ts from "typescript";
 
-import type { LocalHelperDefinition } from "./types.js";
+import type { ExpressionBindingEntry, LocalHelperDefinition } from "./types.js";
 import { summarizeFunctionExpressionHelperDefinition } from "../summarization/summarizeLocalHelperDefinition.js";
 
 export function collectLocalBodyBindings(
@@ -9,6 +9,7 @@ export function collectLocalBodyBindings(
   stringSetBindings: Map<string, string[]>,
   localHelperDefinitions: Map<string, LocalHelperDefinition>,
   finiteStringValuesByObjectName: Map<string, Map<string, string[]>> = new Map(),
+  bindingEntries: ExpressionBindingEntry[] = [],
 ): void {
   for (const declaration of declarationList.declarations) {
     if (!declaration.initializer) {
@@ -22,6 +23,7 @@ export function collectLocalBodyBindings(
         bindings,
         stringSetBindings,
         finiteStringValuesByObjectName,
+        bindingEntries,
       );
       continue;
     }
@@ -42,6 +44,11 @@ export function collectLocalBodyBindings(
     }
 
     bindings.set(declaration.name.text, declaration.initializer);
+    bindingEntries.push({
+      localName: declaration.name.text,
+      declaration: declaration.name,
+      expression: declaration.initializer,
+    });
   }
 }
 
@@ -55,6 +62,7 @@ function collectDestructuredBindings(
   bindings: Map<string, ts.Expression>,
   stringSetBindings: Map<string, string[]>,
   finiteStringValuesByObjectName: Map<string, Map<string, string[]>>,
+  bindingEntries: ExpressionBindingEntry[],
 ): void {
   if (!ts.isIdentifier(initializer)) {
     return;
@@ -78,10 +86,13 @@ function collectDestructuredBindings(
 
     const propertyName = propertyNameNode?.text ?? element.name.text;
     if (!element.initializer) {
-      bindings.set(
-        element.name.text,
-        createPropertyAccessExpression(initializer, propertyName, element.name),
-      );
+      const expression = createPropertyAccessExpression(initializer, propertyName, element.name);
+      bindings.set(element.name.text, expression);
+      bindingEntries.push({
+        localName: element.name.text,
+        declaration: element.name,
+        expression,
+      });
     }
 
     const values = finiteStringValuesByProperty?.get(propertyName);

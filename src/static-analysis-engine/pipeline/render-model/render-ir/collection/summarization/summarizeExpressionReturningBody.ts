@@ -15,6 +15,7 @@ export function summarizeExpressionReturningBody(
 ):
   | {
       returnExpression: ts.Expression;
+      localExpressionBindingEntries: import("../shared/types.js").ExpressionBindingEntry[];
       localExpressionBindings: Map<string, ts.Expression>;
       localStringSetBindings: Map<string, string[]>;
     }
@@ -22,12 +23,14 @@ export function summarizeExpressionReturningBody(
   if (!ts.isBlock(body)) {
     return {
       returnExpression: body,
+      localExpressionBindingEntries: [],
       localExpressionBindings: new Map(),
       localStringSetBindings: new Map(),
     };
   }
 
   const localExpressionBindings = new Map<string, ts.Expression>();
+  const localExpressionBindingEntries: import("../shared/types.js").ExpressionBindingEntry[] = [];
   const localStringSetBindings = new Map<string, string[]>();
 
   for (let index = 0; index < body.statements.length; index += 1) {
@@ -40,6 +43,7 @@ export function summarizeExpressionReturningBody(
         localStringSetBindings,
         new Map(),
         finiteStringValuesByObjectName,
+        localExpressionBindingEntries,
       );
       continue;
     }
@@ -52,6 +56,7 @@ export function summarizeExpressionReturningBody(
       if (ifReturnExpression) {
         return {
           returnExpression: ifReturnExpression,
+          localExpressionBindingEntries,
           localExpressionBindings,
           localStringSetBindings,
         };
@@ -66,6 +71,7 @@ export function summarizeExpressionReturningBody(
         if (switchReturnExpression) {
           return {
             returnExpression: switchReturnExpression,
+            localExpressionBindingEntries,
             localExpressionBindings,
             localStringSetBindings,
           };
@@ -77,6 +83,7 @@ export function summarizeExpressionReturningBody(
 
     return {
       returnExpression: statement.expression,
+      localExpressionBindingEntries,
       localExpressionBindings,
       localStringSetBindings,
     };

@@ -31,7 +31,9 @@ export function resolveTypeBinding(input: {
   }
 
   const localTypeSymbol = findTypeSymbolByLocalName({
-    symbolsByFilePath: internals.symbolsByFilePath,
+    symbolsByFilePath: internals.allSymbolsByFilePath,
+    scopesByFilePath: internals.scopesByFilePath,
+    requireModuleScope: true,
     filePath: input.filePath,
     localName: input.localName,
   });

@@ -87,6 +87,7 @@ export function summarizeLocalHelperDefinition(input: {
       parameterBindings.push({
         kind: "identifier",
         identifierName: parameter.name.text,
+        declaration: parameter.name,
         ...(finiteStringValuesByProperty.size > 0 ? { finiteStringValuesByProperty } : {}),
       });
       continue;
@@ -124,7 +125,9 @@ export function summarizeLocalHelperDefinition(input: {
     parameterBindings,
     restParameterName,
     returnExpression: bodySummary.returnExpression,
+    localExpressionBindingEntries: bodySummary.localExpressionBindingEntries,
     localExpressionBindings: bodySummary.localExpressionBindings,
+    localExpressionBindingsBySymbolId: new Map(),
     localStringSetBindings: bodySummary.localStringSetBindings,
   };
 }
@@ -161,6 +164,7 @@ function collectDestructuredHelperProperties(
     properties.push({
       propertyName,
       identifierName: element.name.text,
+      declaration: element.name,
       ...(element.initializer ? { initializer: element.initializer } : {}),
       ...(finiteStringValuesByProperty.has(propertyName)
         ? { finiteStringValues: finiteStringValuesByProperty.get(propertyName) }

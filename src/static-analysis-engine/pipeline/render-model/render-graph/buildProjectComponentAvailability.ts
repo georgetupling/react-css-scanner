@@ -9,7 +9,7 @@ import type { SameFileComponentDefinition } from "../render-ir/index.js";
 export type ProjectComponentAvailability = {
   componentsByFilePath: Map<string, Map<string, SameFileComponentDefinition>>;
   importedComponentBindingTracesByFilePath: Map<string, Map<string, AnalysisTrace[]>>;
-  importedNamespaceComponentDefinitionsByFilePath: Map<
+  importedNamespaceComponentDefinitionsBySymbolIdByFilePath: Map<
     string,
     Map<string, Map<string, SameFileComponentDefinition>>
   >;
@@ -45,10 +45,10 @@ export function buildProjectComponentAvailability(input: {
         ),
       ]),
     ),
-    importedNamespaceComponentDefinitionsByFilePath: new Map(
+    importedNamespaceComponentDefinitionsBySymbolIdByFilePath: new Map(
       input.filePaths.map((filePath) => [
         filePath,
-        buildResolvedNamespaceBindingsForFile({
+        buildResolvedNamespaceBindingsBySymbolIdForFile({
           resolvedNamespaceImports: input.resolvedNamespaceImportsByFilePath.get(filePath) ?? [],
           getResolvedValue: (resolvedExport) =>
             input.exportedComponentsByFilePath
@@ -83,12 +83,16 @@ function buildAvailableComponentsForFile(input: {
   return availableComponents;
 }
 
-function buildResolvedNamespaceBindingsForFile<T>(input: {
+function buildResolvedNamespaceBindingsBySymbolIdForFile<T>(input: {
   resolvedNamespaceImports: ResolvedNamespaceImport[];
   getResolvedValue: (input: { targetFilePath: string; targetExportName: string }) => T | undefined;
 }): Map<string, Map<string, T>> {
   const namespaceBindings = new Map<string, Map<string, T>>();
   for (const namespaceImport of input.resolvedNamespaceImports) {
+    if (!namespaceImport.localSymbolId) {
+      continue;
+    }
+
     const resolvedBindings = new Map<string, T>();
     for (const [exportName, memberResult] of namespaceImport.members.entries()) {
       const resolvedValue = getResolvedNamespaceMemberValue({
@@ -100,7 +104,7 @@ function buildResolvedNamespaceBindingsForFile<T>(input: {
       }
     }
 
-    namespaceBindings.set(namespaceImport.localName, resolvedBindings);
+    namespaceBindings.set(namespaceImport.localSymbolId, resolvedBindings);
   }
 
   return namespaceBindings;

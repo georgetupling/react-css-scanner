@@ -1,11 +1,20 @@
-export { collectTopLevelSymbols, createSymbolId } from "./collection/collectTopLevelSymbols.js";
+export { collectSourceSymbols } from "./collection/collectSourceSymbols.js";
+export { createScopeId, createSymbolId } from "./collection/shared.js";
 export { buildProjectBindingResolution } from "./assembly/buildProjectBindingResolution.js";
-export { getSymbol } from "./api/getSymbol.js";
+export {
+  getLocalAliasAt,
+  getLocalAliasResolutionsForFile,
+  resolveAliasedSymbol,
+  resolveLocalAliasAt,
+} from "./api/getLocalAliasResolution.js";
+export { getScopeAt } from "./api/getScopeAt.js";
+export { getSymbol, getSymbolAt } from "./api/getSymbol.js";
+export { getSymbolReferenceAt, resolveReferenceAt } from "./api/getReferenceResolution.js";
 export {
   getExportedExpressionBindingsForFile,
   getImportedBindingsForFile,
   getImportedComponentBindingsForFile,
-  getImportedExpressionBindingsForFile,
+  getImportedExpressionBindingsBySymbolIdForFile,
   getNamespaceImportsForFile,
   getSymbolResolutionFilePaths,
 } from "./api/getValueResolution.js";
@@ -25,7 +34,10 @@ export {
 export type { ResolvedTypeDeclaration } from "./api/getTypeResolution.js";
 export type {
   EngineSymbol,
+  LocalAliasResolution,
   ProjectBindingResolution,
+  ScopeId,
+  ScopeKind,
   ResolvedCssModuleBindingDiagnostic,
   ResolvedCssModuleImport,
   ResolvedCssModuleMemberAccessResult,
@@ -37,6 +49,8 @@ export type {
   ResolvedNamespaceImport,
   ResolvedProjectExport,
   ResolvedTypeBinding,
+  SourceScope,
+  SymbolReference,
   SymbolSpace,
   SymbolResolutionReason,
   SymbolKind,

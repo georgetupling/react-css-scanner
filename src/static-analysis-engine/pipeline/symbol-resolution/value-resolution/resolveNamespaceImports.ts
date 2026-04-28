@@ -42,8 +42,14 @@ export function resolveNamespaceImportsForFile(input: {
 
     for (const importedBinding of importFact.importedBindings) {
       if (importedBinding.importedName === "*") {
+        const localSymbolId = findLocalNamespaceImportSymbolId({
+          symbolsByFilePath: input.symbolsByFilePath,
+          filePath: input.filePath,
+          localName: importedBinding.localName,
+        });
         namespaceImports.push({
           localName: importedBinding.localName,
+          localSymbolId,
           members: resolveNamespaceBundle({
             filePath: importedFilePath,
             moduleFacts: input.moduleFacts,
@@ -83,6 +89,11 @@ export function resolveNamespaceImportsForFile(input: {
 
       namespaceImports.push({
         localName: importedBinding.localName,
+        localSymbolId: findLocalNamespaceImportSymbolId({
+          symbolsByFilePath: input.symbolsByFilePath,
+          filePath: input.filePath,
+          localName: importedBinding.localName,
+        }),
         members: resolvedNamespaceImport,
         traces: includeTraces
           ? [
@@ -102,6 +113,29 @@ export function resolveNamespaceImportsForFile(input: {
   }
 
   return namespaceImports;
+}
+
+function findLocalNamespaceImportSymbolId(input: {
+  symbolsByFilePath?: Map<string, Map<EngineSymbolId, EngineSymbol>>;
+  filePath: string;
+  localName: string;
+}): EngineSymbolId | undefined {
+  const fileSymbols = input.symbolsByFilePath?.get(input.filePath);
+  if (!fileSymbols) {
+    return undefined;
+  }
+
+  for (const symbol of fileSymbols.values()) {
+    if (
+      symbol.symbolSpace === "value" &&
+      symbol.localName === input.localName &&
+      symbol.resolution.kind === "imported"
+    ) {
+      return symbol.id;
+    }
+  }
+
+  return undefined;
 }
 
 function resolveNamedNamespaceImport(input: {

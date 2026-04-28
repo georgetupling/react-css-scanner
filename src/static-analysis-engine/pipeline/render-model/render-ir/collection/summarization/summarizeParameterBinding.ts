@@ -31,6 +31,7 @@ export function summarizeParameterBinding(
     return {
       kind: "props-identifier",
       identifierName: parameter.name.text,
+      declaration: parameter.name,
       ...(finiteStringValuesByProperty.size > 0 ? { finiteStringValuesByProperty } : {}),
     };
   }
@@ -74,6 +75,7 @@ export function summarizeParameterBinding(
       properties.push({
         propertyName,
         identifierName: element.name.text,
+        declaration: element.name,
         ...(element.initializer ? { initializer: element.initializer } : {}),
         ...(finiteStringValuesByProperty.has(propertyName)
           ? { finiteStringValues: finiteStringValuesByProperty.get(propertyName) }
