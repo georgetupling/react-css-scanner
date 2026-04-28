@@ -4,10 +4,15 @@ import {
   getExportedNamesByLocalName,
   getResolvedModuleFacts,
   getTopLevelBindingFacts,
-} from "../module-facts/index.js";
-import type { ModuleFacts, ResolvedTopLevelBindingFact } from "../module-facts/types.js";
-import type { EngineModuleId, EngineSymbolId, SourceAnchor } from "../../types/core.js";
-import type { EngineSymbol, SymbolKind } from "./types.js";
+} from "../../module-facts/index.js";
+import type { ModuleFacts, ResolvedTopLevelBindingFact } from "../../module-facts/types.js";
+import type { EngineModuleId, EngineSymbolId, SourceAnchor } from "../../../types/core.js";
+import type { EngineSymbol, SymbolKind } from "../types.js";
+import {
+  collectSourceDeclarationIndex,
+  type SourceDeclarationIndex,
+  type SourceValueDeclaration,
+} from "./collectSourceDeclarations.js";
 
 export function collectTopLevelSymbols(input: {
   filePath: string;
@@ -68,33 +73,35 @@ export function collectTopLevelSymbols(input: {
     symbols.set(symbol.id, symbol);
   }
 
-  if (declarationIndex) {
-    for (const [localName, declaration] of declarationIndex.typeAliases.entries()) {
-      const symbol = createSymbol({
-        moduleId: input.moduleId,
-        localName,
-        kind: "type-alias",
-        declaration: toSourceAnchor(declaration.name, input.parsedSourceFile, input.filePath),
-        exportedNames: exportedNamesByLocalName.get(localName) ?? [],
-        resolution: { kind: "local" },
-      });
-      symbols.set(symbol.id, symbol);
-    }
+  for (const [localName, declaration] of declarationIndex.typeAliases.entries()) {
+    const symbol = createSymbol({
+      moduleId: input.moduleId,
+      localName,
+      kind: "type-alias",
+      declaration: toSourceAnchor(declaration.name, input.parsedSourceFile, input.filePath),
+      exportedNames: exportedNamesByLocalName.get(localName) ?? [],
+      resolution: { kind: "local" },
+    });
+    symbols.set(symbol.id, symbol);
+  }
 
-    for (const [localName, declaration] of declarationIndex.interfaces.entries()) {
-      const symbol = createSymbol({
-        moduleId: input.moduleId,
-        localName,
-        kind: "interface",
-        declaration: toSourceAnchor(declaration.name, input.parsedSourceFile, input.filePath),
-        exportedNames: exportedNamesByLocalName.get(localName) ?? [],
-        resolution: { kind: "local" },
-      });
-      symbols.set(symbol.id, symbol);
-    }
+  for (const [localName, declaration] of declarationIndex.interfaces.entries()) {
+    const symbol = createSymbol({
+      moduleId: input.moduleId,
+      localName,
+      kind: "interface",
+      declaration: toSourceAnchor(declaration.name, input.parsedSourceFile, input.filePath),
+      exportedNames: exportedNamesByLocalName.get(localName) ?? [],
+      resolution: { kind: "local" },
+    });
+    symbols.set(symbol.id, symbol);
   }
 
   return symbols;
+}
+
+export function createSymbolId(moduleId: EngineModuleId, localName: string): EngineSymbolId {
+  return `symbol:${moduleId}:${localName}`;
 }
 
 function toDeclarationAnchor(input: {
@@ -112,7 +119,7 @@ function toDeclarationAnchor(input: {
     return findImportAnchor(input.parsedSourceFile, input.filePath, input.localName);
   }
 
-  const declaration = input.declarationIndex?.valueDeclarations.get(input.localName);
+  const declaration = input.declarationIndex.valueDeclarations.get(input.localName);
   if (!declaration) {
     return undefined;
   }
@@ -249,116 +256,6 @@ function isClassComponentLike(declaration: SourceValueDeclaration | undefined): 
   return false;
 }
 
-type SourceValueDeclaration =
-  | {
-      kind: "const" | "let" | "var";
-      name: string;
-      node: ts.VariableDeclaration;
-      initializer?: ts.Expression;
-    }
-  | {
-      kind: "function";
-      name: string;
-      node: ts.FunctionDeclaration;
-    }
-  | {
-      kind: "class";
-      name: string;
-      node: ts.ClassDeclaration;
-    }
-  | {
-      kind: "enum" | "const-enum";
-      name: string;
-      node: ts.EnumDeclaration;
-    }
-  | {
-      kind: "namespace";
-      name: string;
-      node: ts.ModuleDeclaration;
-    };
-
-type SourceDeclarationIndex = {
-  typeAliases: Map<string, ts.TypeAliasDeclaration>;
-  interfaces: Map<string, ts.InterfaceDeclaration>;
-  valueDeclarations: Map<string, SourceValueDeclaration>;
-};
-
-function collectSourceDeclarationIndex(sourceFile: ts.SourceFile): SourceDeclarationIndex {
-  const declarations: SourceDeclarationIndex = {
-    typeAliases: new Map(),
-    interfaces: new Map(),
-    valueDeclarations: new Map(),
-  };
-
-  for (const statement of sourceFile.statements) {
-    if (ts.isTypeAliasDeclaration(statement)) {
-      declarations.typeAliases.set(statement.name.text, statement);
-      continue;
-    }
-
-    if (ts.isInterfaceDeclaration(statement)) {
-      declarations.interfaces.set(statement.name.text, statement);
-      continue;
-    }
-
-    if (ts.isFunctionDeclaration(statement) && statement.name) {
-      declarations.valueDeclarations.set(statement.name.text, {
-        kind: "function",
-        name: statement.name.text,
-        node: statement,
-      });
-      continue;
-    }
-
-    if (ts.isClassDeclaration(statement) && statement.name) {
-      declarations.valueDeclarations.set(statement.name.text, {
-        kind: "class",
-        name: statement.name.text,
-        node: statement,
-      });
-      continue;
-    }
-
-    if (ts.isEnumDeclaration(statement)) {
-      declarations.valueDeclarations.set(statement.name.text, {
-        kind: hasConstModifier(statement) ? "const-enum" : "enum",
-        name: statement.name.text,
-        node: statement,
-      });
-      continue;
-    }
-
-    if (ts.isModuleDeclaration(statement) && ts.isIdentifier(statement.name)) {
-      declarations.valueDeclarations.set(statement.name.text, {
-        kind: "namespace",
-        name: statement.name.text,
-        node: statement,
-      });
-      continue;
-    }
-
-    if (!ts.isVariableStatement(statement)) {
-      continue;
-    }
-
-    const declarationKind = getVariableStatementKind(statement);
-    for (const declaration of statement.declarationList.declarations) {
-      if (!ts.isIdentifier(declaration.name)) {
-        continue;
-      }
-
-      declarations.valueDeclarations.set(declaration.name.text, {
-        kind: declarationKind,
-        name: declaration.name.text,
-        node: declaration,
-        initializer: declaration.initializer,
-      });
-    }
-  }
-
-  return declarations;
-}
-
 function collectLegacyTopLevelSymbols(
   input: {
     filePath: string;
@@ -482,34 +379,12 @@ function createSymbol(input: Omit<EngineSymbol, "id">): EngineSymbol {
   };
 }
 
-export function createSymbolId(moduleId: EngineModuleId, localName: string): EngineSymbolId {
-  return `symbol:${moduleId}:${localName}`;
-}
-
 function hasExportModifier(statement: ts.Statement): boolean {
   return (
     ts.canHaveModifiers(statement) &&
     (ts
       .getModifiers(statement)
       ?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword) ??
-      false)
-  );
-}
-
-function getVariableStatementKind(statement: ts.VariableStatement): "const" | "let" | "var" {
-  if ((statement.declarationList.flags & ts.NodeFlags.Const) !== 0) {
-    return "const";
-  }
-  if ((statement.declarationList.flags & ts.NodeFlags.Let) !== 0) {
-    return "let";
-  }
-  return "var";
-}
-
-function hasConstModifier(statement: ts.Statement): boolean {
-  return (
-    ts.canHaveModifiers(statement) &&
-    (ts.getModifiers(statement)?.some((modifier) => modifier.kind === ts.SyntaxKind.ConstKeyword) ??
       false)
   );
 }
