@@ -10,14 +10,23 @@ import {
   type SourceExpressionSyntaxFact,
 } from "../expression-syntax/index.js";
 import {
+  collectComponentBindingFacts,
+  collectTopLevelHelperBindingFacts,
+  isLikelyReactComponentName,
+  mergeReactBindingFacts,
+} from "./bindingFacts.js";
+import {
   dedupeClassExpressionSites,
   tryCreateCssModuleClassExpressionSite,
   tryCreateJsxClassExpressionSite,
 } from "./classExpressionSites.js";
 import {
   compareClassExpressionSites,
+  compareComponentPropBindings,
   compareComponents,
   compareElementTemplates,
+  compareHelperDefinitions,
+  compareLocalValueBindings,
   compareRenderSites,
 } from "./sortReactSyntaxFacts.js";
 import type { SourceModuleSyntaxFacts } from "../module-syntax/index.js";
@@ -42,6 +51,39 @@ export function collectSourceReactSyntax(input: {
   const elementTemplates: ReactElementTemplateFact[] = [];
   const classExpressionSites: ReactClassExpressionSiteFact[] = [];
   const expressionSyntax: SourceExpressionSyntaxFact[] = [];
+  const componentByKey = new Map(
+    components.map((component) => [component.componentKey, component]),
+  );
+  const bindingFacts = mergeReactBindingFacts([
+    collectTopLevelHelperBindingFacts({
+      filePath: input.filePath,
+      sourceFile: input.sourceFile,
+      componentKeyByFunction,
+    }),
+    ...[...componentKeyByFunction.entries()].flatMap(([functionLikeNode, componentKey]) => {
+      if (
+        !ts.isFunctionDeclaration(functionLikeNode) &&
+        !ts.isArrowFunction(functionLikeNode) &&
+        !ts.isFunctionExpression(functionLikeNode)
+      ) {
+        return [];
+      }
+
+      const component = componentByKey.get(componentKey);
+      if (!component || !isLikelyReactComponentName(component.componentName)) {
+        return [];
+      }
+
+      return [
+        collectComponentBindingFacts({
+          componentKey,
+          filePath: input.filePath,
+          sourceFile: input.sourceFile,
+          functionLikeNode,
+        }),
+      ];
+    }),
+  ]);
   const renderStack: ReactRenderSiteFact[] = [];
   const componentStack: string[] = [];
 
@@ -137,6 +179,12 @@ export function collectSourceReactSyntax(input: {
     classExpressionSites: dedupeClassExpressionSites(classExpressionSites).sort(
       compareClassExpressionSites,
     ),
-    expressionSyntax: dedupeExpressionSyntaxFacts(expressionSyntax),
+    componentPropBindings: bindingFacts.componentPropBindings.sort(compareComponentPropBindings),
+    localValueBindings: bindingFacts.localValueBindings.sort(compareLocalValueBindings),
+    helperDefinitions: bindingFacts.helperDefinitions.sort(compareHelperDefinitions),
+    expressionSyntax: dedupeExpressionSyntaxFacts([
+      ...expressionSyntax,
+      ...bindingFacts.expressionSyntax,
+    ]),
   };
 }

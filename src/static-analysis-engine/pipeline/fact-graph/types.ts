@@ -4,6 +4,11 @@ import type { CssAtRuleContextFact, CssStyleRuleFact } from "../../types/css.js"
 import type { ExtractedSelectorQuery } from "../selector-analysis/index.js";
 import type { LanguageFrontendsResult } from "../language-frontends/index.js";
 import type { SourceExpressionSyntaxFact } from "../language-frontends/source/expression-syntax/index.js";
+import type {
+  ReactComponentPropBindingFact,
+  ReactHelperDefinitionFact,
+  ReactLocalValueBindingFact,
+} from "../language-frontends/source/react-syntax/index.js";
 import type { ProjectSnapshot } from "../workspace-discovery/index.js";
 
 export type FactGraphInput = {
@@ -46,6 +51,9 @@ export type FactNodeKind =
   | "element-template"
   | "class-expression-site"
   | "expression-syntax"
+  | "component-prop-binding"
+  | "local-value-binding"
+  | "helper-definition"
   | "stylesheet"
   | "rule-definition"
   | "selector"
@@ -69,6 +77,9 @@ export type FactGraphNodes = {
   elementTemplates: ElementTemplateNode[];
   classExpressionSites: ClassExpressionSiteNode[];
   expressionSyntax: ExpressionSyntaxNode[];
+  componentPropBindings: ComponentPropBindingNode[];
+  localValueBindings: LocalValueBindingNode[];
+  helperDefinitions: HelperDefinitionNode[];
   stylesheets: StyleSheetNode[];
   ruleDefinitions: RuleDefinitionNode[];
   selectors: SelectorNode[];
@@ -203,6 +214,28 @@ export type ExpressionSyntaxNode = FactNodeBase &
     kind: "expression-syntax";
   };
 
+export type ComponentPropBindingNode = FactNodeBase &
+  ReactComponentPropBindingFact & {
+    kind: "component-prop-binding";
+    componentNodeId: FactNodeId;
+  };
+
+export type LocalValueBindingNode = FactNodeBase &
+  ReactLocalValueBindingFact & {
+    kind: "local-value-binding";
+    ownerNodeId: FactNodeId;
+    expressionNodeId?: FactNodeId;
+    objectExpressionNodeId?: FactNodeId;
+    initializerExpressionNodeId?: FactNodeId;
+  };
+
+export type HelperDefinitionNode = FactNodeBase &
+  ReactHelperDefinitionFact & {
+    kind: "helper-definition";
+    ownerNodeId: FactNodeId;
+    returnExpressionNodeId?: FactNodeId;
+  };
+
 export type StyleSheetNode = FactNodeBase & {
   kind: "stylesheet";
   filePath?: string;
@@ -272,6 +305,9 @@ export type FactNode =
   | ElementTemplateNode
   | ClassExpressionSiteNode
   | ExpressionSyntaxNode
+  | ComponentPropBindingNode
+  | LocalValueBindingNode
+  | HelperDefinitionNode
   | StyleSheetNode
   | RuleDefinitionNode
   | SelectorNode
@@ -301,7 +337,13 @@ export type ContainsEdgeContainmentKind =
   | "module-component"
   | "component-render-site"
   | "render-site-element-template"
-  | "render-site-child-site";
+  | "render-site-child-site"
+  | "component-prop-binding"
+  | "component-local-value-binding"
+  | "component-helper-definition"
+  | "helper-local-value-binding"
+  | "helper-nested-helper-definition"
+  | "module-helper-definition";
 
 export type ContainsEdge = FactEdgeBase & {
   kind: "contains";
@@ -348,6 +390,12 @@ export type FactGraphIndexes = {
   classExpressionSiteNodeIdsByComponentNodeId: Map<FactNodeId, FactNodeId[]>;
   expressionSyntaxNodeIdByExpressionId: Map<string, FactNodeId>;
   expressionSyntaxNodeIdsByFilePath: Map<string, FactNodeId[]>;
+  componentPropBindingNodeIdByBindingKey: Map<string, FactNodeId>;
+  componentPropBindingNodeIdByComponentNodeId: Map<FactNodeId, FactNodeId>;
+  localValueBindingNodeIdByBindingKey: Map<string, FactNodeId>;
+  localValueBindingNodeIdsByOwnerNodeId: Map<FactNodeId, FactNodeId[]>;
+  helperDefinitionNodeIdByHelperKey: Map<string, FactNodeId>;
+  helperDefinitionNodeIdsByOwnerNodeId: Map<FactNodeId, FactNodeId[]>;
   ownerCandidateNodeIdsByOwnerKind: Map<string, FactNodeId[]>;
   ruleDefinitionNodeIdsByStylesheetNodeId: Map<FactNodeId, FactNodeId[]>;
   selectorNodeIdsByStylesheetNodeId: Map<FactNodeId, FactNodeId[]>;

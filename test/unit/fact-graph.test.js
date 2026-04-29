@@ -624,6 +624,140 @@ test("fact graph normalizes React component references and helper return sites",
   }
 });
 
+test("fact graph normalizes React prop, local binding, and helper definition facts", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/Button.tsx",
+      [
+        "function joinClasses(...classes) {",
+        '  return classes.filter(Boolean).join(" ");',
+        "}",
+        'export function Button({ className, tone = "primary" }) {',
+        '  const local = "button";',
+        "  function localJoin(extra) {",
+        "    const base = local;",
+        "    return joinClasses(base, extra);",
+        "  }",
+        "  const classes = localJoin(className);",
+        "  return <button className={classes} />;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .build();
+
+  try {
+    const snapshot = await buildProjectSnapshot({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/Button.tsx"],
+      },
+      runStage: async (_stage, _message, run) => run(),
+    });
+    const frontends = buildLanguageFrontends({ snapshot });
+    const result = buildFactGraph({ snapshot, frontends });
+    const buttonComponent = result.graph.nodes.components.find(
+      (node) => node.componentName === "Button",
+    );
+    assert.ok(buttonComponent);
+
+    const propBindingNodeId = result.graph.indexes.componentPropBindingNodeIdByComponentNodeId.get(
+      buttonComponent.id,
+    );
+    const propBindingNode = result.graph.indexes.nodesById.get(propBindingNodeId);
+    assert.equal(propBindingNode.kind, "component-prop-binding");
+    assert.equal(propBindingNode.bindingKind, "destructured-props");
+    assert.deepEqual(
+      propBindingNode.properties.map((property) => ({
+        propertyName: property.propertyName,
+        localName: property.localName,
+      })),
+      [
+        {
+          propertyName: "className",
+          localName: "className",
+        },
+        {
+          propertyName: "tone",
+          localName: "tone",
+        },
+      ],
+    );
+
+    const helperSummary = result.graph.nodes.helperDefinitions
+      .map((node) => ({
+        helperName: node.helperName,
+        ownerKind: node.ownerKind,
+        ownerNodeKind: result.graph.indexes.nodesById.get(node.ownerNodeId).kind,
+        returnNodeKind: result.graph.indexes.nodesById.get(node.returnExpressionNodeId)?.kind,
+      }))
+      .sort((left, right) => left.helperName.localeCompare(right.helperName));
+    assert.deepEqual(helperSummary, [
+      {
+        helperName: "joinClasses",
+        ownerKind: "source-file",
+        ownerNodeKind: "module",
+        returnNodeKind: "expression-syntax",
+      },
+      {
+        helperName: "localJoin",
+        ownerKind: "component",
+        ownerNodeKind: "component",
+        returnNodeKind: "expression-syntax",
+      },
+    ]);
+
+    const localBindings = result.graph.nodes.localValueBindings
+      .map((node) => ({
+        localName: node.localName,
+        ownerKind: node.ownerKind,
+        ownerNodeKind: result.graph.indexes.nodesById.get(node.ownerNodeId).kind,
+        expressionNodeKind: result.graph.indexes.nodesById.get(node.expressionNodeId)?.kind,
+      }))
+      .sort((left, right) => left.localName.localeCompare(right.localName));
+    assert.deepEqual(localBindings, [
+      {
+        localName: "base",
+        ownerKind: "helper",
+        ownerNodeKind: "helper-definition",
+        expressionNodeKind: "expression-syntax",
+      },
+      {
+        localName: "classes",
+        ownerKind: "component",
+        ownerNodeKind: "component",
+        expressionNodeKind: "expression-syntax",
+      },
+      {
+        localName: "local",
+        ownerKind: "component",
+        ownerNodeKind: "component",
+        expressionNodeKind: "expression-syntax",
+      },
+    ]);
+    assert.equal(
+      result.graph.indexes.helperDefinitionNodeIdsByOwnerNodeId.get(buttonComponent.id).length,
+      1,
+    );
+    assert.equal(
+      result.graph.indexes.localValueBindingNodeIdsByOwnerNodeId.get(buttonComponent.id).length,
+      2,
+    );
+    assert.equal(
+      result.graph.edges.contains.some(
+        (edge) =>
+          edge.from === buttonComponent.id &&
+          edge.to === propBindingNode.id &&
+          edge.containmentKind === "component-prop-binding",
+      ),
+      true,
+    );
+    assert.deepEqual(result.graph.diagnostics, []);
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("fact graph seeds reusable owner candidates without emitting findings", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(

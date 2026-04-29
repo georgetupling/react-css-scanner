@@ -69,6 +69,18 @@ export function classExpressionSiteNodeId(siteKey: string): FactNodeId {
   return `class-expression-site:${normalizeIdPart(siteKey)}`;
 }
 
+export function componentPropBindingNodeId(bindingKey: string): FactNodeId {
+  return `component-prop-binding:${normalizeIdPart(bindingKey)}`;
+}
+
+export function localValueBindingNodeId(bindingKey: string): FactNodeId {
+  return `local-value-binding:${normalizeIdPart(bindingKey)}`;
+}
+
+export function helperDefinitionNodeId(helperKey: string): FactNodeId {
+  return `helper-definition:${normalizeIdPart(helperKey)}`;
+}
+
 export function rendersEdgeId(from: FactNodeId, to: FactNodeId): FactEdgeId {
   return `renders:${from}->${to}`;
 }

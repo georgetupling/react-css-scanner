@@ -1,9 +1,13 @@
 import type {
   ClassExpressionSiteNode,
   ComponentNode,
+  ComponentPropBindingNode,
   ContainsEdge,
   ElementTemplateNode,
   FactGraphInput,
+  FactNodeId,
+  HelperDefinitionNode,
+  LocalValueBindingNode,
   ReferencesClassExpressionEdge,
   RendersEdge,
   RenderSiteNode,
@@ -11,8 +15,11 @@ import type {
 import {
   classExpressionSiteNodeId,
   componentNodeId,
+  componentPropBindingNodeId,
   containsEdgeId,
   elementTemplateNodeId,
+  helperDefinitionNodeId,
+  localValueBindingNodeId,
   moduleNodeId,
   referencesClassExpressionEdgeId,
   rendersEdgeId,
@@ -22,11 +29,22 @@ import { factGraphProvenance, frontendFileProvenance } from "../provenance.js";
 import { sortEdges, sortNodes } from "../utils/sortGraphElements.js";
 
 export type BuiltReactSyntaxFacts = {
-  allNodes: Array<ComponentNode | RenderSiteNode | ElementTemplateNode | ClassExpressionSiteNode>;
+  allNodes: Array<
+    | ComponentNode
+    | RenderSiteNode
+    | ElementTemplateNode
+    | ClassExpressionSiteNode
+    | ComponentPropBindingNode
+    | LocalValueBindingNode
+    | HelperDefinitionNode
+  >;
   components: ComponentNode[];
   renderSites: RenderSiteNode[];
   elementTemplates: ElementTemplateNode[];
   classExpressionSites: ClassExpressionSiteNode[];
+  componentPropBindings: ComponentPropBindingNode[];
+  localValueBindings: LocalValueBindingNode[];
+  helperDefinitions: HelperDefinitionNode[];
   allEdges: Array<ContainsEdge | RendersEdge | ReferencesClassExpressionEdge>;
   contains: ContainsEdge[];
   renders: RendersEdge[];
@@ -38,6 +56,9 @@ export function buildReactSyntaxFacts(input: FactGraphInput): BuiltReactSyntaxFa
   const renderSites: RenderSiteNode[] = [];
   const elementTemplates: ElementTemplateNode[] = [];
   const classExpressionSites: ClassExpressionSiteNode[] = [];
+  const componentPropBindings: ComponentPropBindingNode[] = [];
+  const localValueBindings: LocalValueBindingNode[] = [];
+  const helperDefinitions: HelperDefinitionNode[] = [];
   const contains: ContainsEdge[] = [];
   const renders: RendersEdge[] = [];
   const referencesClassExpression: ReferencesClassExpressionEdge[] = [];
@@ -63,6 +84,78 @@ export function buildReactSyntaxFacts(input: FactGraphInput): BuiltReactSyntaxFa
         }),
       });
       contains.push(buildContainsEdge(moduleId, nodeId, "module-component"));
+    }
+
+    for (const propBinding of file.reactSyntax.componentPropBindings) {
+      const nodeId = componentPropBindingNodeId(propBinding.bindingKey);
+      const componentId = componentNodeId(propBinding.componentKey);
+      componentPropBindings.push({
+        ...propBinding,
+        id: nodeId,
+        kind: "component-prop-binding",
+        componentNodeId: componentId,
+        confidence: "high",
+        provenance: frontendFileProvenance({
+          filePath: propBinding.filePath,
+          summary: "Extracted React component prop-binding frontend fact",
+        }),
+      });
+      contains.push(buildContainsEdge(componentId, nodeId, "component-prop-binding"));
+    }
+
+    for (const helper of file.reactSyntax.helperDefinitions) {
+      const nodeId = helperDefinitionNodeId(helper.helperKey);
+      const ownerNodeId = helperOwnerNodeId(helper);
+      helperDefinitions.push({
+        ...helper,
+        id: nodeId,
+        kind: "helper-definition",
+        ownerNodeId,
+        ...(helper.returnExpressionId ? { returnExpressionNodeId: helper.returnExpressionId } : {}),
+        confidence: "high",
+        provenance: frontendFileProvenance({
+          filePath: helper.filePath,
+          summary: "Extracted React helper-definition frontend fact",
+        }),
+      });
+      contains.push(
+        buildContainsEdge(ownerNodeId, nodeId, helperContainmentKind(helper.ownerKind)),
+      );
+    }
+
+    for (const localBinding of file.reactSyntax.localValueBindings) {
+      const nodeId = localValueBindingNodeId(localBinding.bindingKey);
+      const ownerNodeId =
+        localBinding.ownerKind === "component"
+          ? componentNodeId(localBinding.ownerKey)
+          : helperDefinitionNodeId(localBinding.ownerKey);
+      localValueBindings.push({
+        ...localBinding,
+        id: nodeId,
+        kind: "local-value-binding",
+        ownerNodeId,
+        ...(localBinding.expressionId ? { expressionNodeId: localBinding.expressionId } : {}),
+        ...(localBinding.objectExpressionId
+          ? { objectExpressionNodeId: localBinding.objectExpressionId }
+          : {}),
+        ...(localBinding.initializerExpressionId
+          ? { initializerExpressionNodeId: localBinding.initializerExpressionId }
+          : {}),
+        confidence: "high",
+        provenance: frontendFileProvenance({
+          filePath: localBinding.filePath,
+          summary: "Extracted React local value-binding frontend fact",
+        }),
+      });
+      contains.push(
+        buildContainsEdge(
+          ownerNodeId,
+          nodeId,
+          localBinding.ownerKind === "component"
+            ? "component-local-value-binding"
+            : "helper-local-value-binding",
+        ),
+      );
     }
 
     for (const renderSite of file.reactSyntax.renderSites) {
@@ -229,16 +322,52 @@ export function buildReactSyntaxFacts(input: FactGraphInput): BuiltReactSyntaxFa
       ...renderSites,
       ...elementTemplates,
       ...classExpressionSites,
+      ...componentPropBindings,
+      ...localValueBindings,
+      ...helperDefinitions,
     ]),
     components: sortNodes(components),
     renderSites: sortNodes(renderSites),
     elementTemplates: sortNodes(elementTemplates),
     classExpressionSites: sortNodes(classExpressionSites),
+    componentPropBindings: sortNodes(componentPropBindings),
+    localValueBindings: sortNodes(localValueBindings),
+    helperDefinitions: sortNodes(helperDefinitions),
     allEdges: sortEdges([...contains, ...renders, ...referencesClassExpression]),
     contains: sortEdges(contains),
     renders: sortEdges(renders),
     referencesClassExpression: sortEdges(referencesClassExpression),
   };
+}
+
+function helperOwnerNodeId(helper: {
+  ownerKind: HelperDefinitionNode["ownerKind"];
+  ownerKey: string;
+  filePath: string;
+}): FactNodeId {
+  if (helper.ownerKind === "source-file") {
+    return moduleNodeId(helper.filePath);
+  }
+
+  if (helper.ownerKind === "component") {
+    return componentNodeId(helper.ownerKey);
+  }
+
+  return helperDefinitionNodeId(helper.ownerKey);
+}
+
+function helperContainmentKind(
+  ownerKind: HelperDefinitionNode["ownerKind"],
+): ContainsEdge["containmentKind"] {
+  if (ownerKind === "source-file") {
+    return "module-helper-definition";
+  }
+
+  if (ownerKind === "component") {
+    return "component-helper-definition";
+  }
+
+  return "helper-nested-helper-definition";
 }
 
 function buildContainsEdge(

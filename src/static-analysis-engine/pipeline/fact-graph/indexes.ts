@@ -20,6 +20,12 @@ export function buildFactGraphIndexes(input: { nodes: FactNode[]; edges: FactEdg
   const classExpressionSiteNodeIdsByComponentNodeId = new Map<string, string[]>();
   const expressionSyntaxNodeIdByExpressionId = new Map<string, string>();
   const expressionSyntaxNodeIdsByFilePath = new Map<string, string[]>();
+  const componentPropBindingNodeIdByBindingKey = new Map<string, string>();
+  const componentPropBindingNodeIdByComponentNodeId = new Map<string, string>();
+  const localValueBindingNodeIdByBindingKey = new Map<string, string>();
+  const localValueBindingNodeIdsByOwnerNodeId = new Map<string, string[]>();
+  const helperDefinitionNodeIdByHelperKey = new Map<string, string>();
+  const helperDefinitionNodeIdsByOwnerNodeId = new Map<string, string[]>();
   const ownerCandidateNodeIdsByOwnerKind = new Map<string, string[]>();
   const ruleDefinitionNodeIdsByStylesheetNodeId = new Map<string, string[]>();
   const selectorNodeIdsByStylesheetNodeId = new Map<string, string[]>();
@@ -65,6 +71,15 @@ export function buildFactGraphIndexes(input: { nodes: FactNode[]; edges: FactEdg
     } else if (node.kind === "expression-syntax") {
       expressionSyntaxNodeIdByExpressionId.set(node.expressionId, node.id);
       pushMapValue(expressionSyntaxNodeIdsByFilePath, node.filePath, node.id);
+    } else if (node.kind === "component-prop-binding") {
+      componentPropBindingNodeIdByBindingKey.set(node.bindingKey, node.id);
+      componentPropBindingNodeIdByComponentNodeId.set(node.componentNodeId, node.id);
+    } else if (node.kind === "local-value-binding") {
+      localValueBindingNodeIdByBindingKey.set(node.bindingKey, node.id);
+      pushMapValue(localValueBindingNodeIdsByOwnerNodeId, node.ownerNodeId, node.id);
+    } else if (node.kind === "helper-definition") {
+      helperDefinitionNodeIdByHelperKey.set(node.helperKey, node.id);
+      pushMapValue(helperDefinitionNodeIdsByOwnerNodeId, node.ownerNodeId, node.id);
     } else if (node.kind === "owner-candidate") {
       pushMapValue(ownerCandidateNodeIdsByOwnerKind, node.ownerCandidateKind, node.id);
     } else if (node.kind === "stylesheet" && node.filePath) {
@@ -126,6 +141,12 @@ export function buildFactGraphIndexes(input: { nodes: FactNode[]; edges: FactEdg
       ),
       expressionSyntaxNodeIdByExpressionId,
       expressionSyntaxNodeIdsByFilePath: sortMapValues(expressionSyntaxNodeIdsByFilePath),
+      componentPropBindingNodeIdByBindingKey,
+      componentPropBindingNodeIdByComponentNodeId,
+      localValueBindingNodeIdByBindingKey,
+      localValueBindingNodeIdsByOwnerNodeId: sortMapValues(localValueBindingNodeIdsByOwnerNodeId),
+      helperDefinitionNodeIdByHelperKey,
+      helperDefinitionNodeIdsByOwnerNodeId: sortMapValues(helperDefinitionNodeIdsByOwnerNodeId),
       ownerCandidateNodeIdsByOwnerKind: sortMapValues(ownerCandidateNodeIdsByOwnerKind),
       ruleDefinitionNodeIdsByStylesheetNodeId: sortMapValues(
         ruleDefinitionNodeIdsByStylesheetNodeId,

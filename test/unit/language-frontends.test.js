@@ -539,6 +539,115 @@ test("language frontends attach normalized expression syntax to class expression
   );
 });
 
+test("language frontends expose normalized component prop, local binding, and helper facts", () => {
+  const file = buildSingleSourceFrontendFile(
+    "src/Button.tsx",
+    [
+      "function joinClasses(...classes) {",
+      '  return classes.filter(Boolean).join(" ");',
+      "}",
+      'export function Button({ className, tone = "primary" }) {',
+      '  const local = "button";',
+      "  function localJoin(extra) {",
+      "    const base = local;",
+      "    return joinClasses(base, extra);",
+      "  }",
+      "  const classes = localJoin(className);",
+      "  return <button className={classes} />;",
+      "}",
+      "",
+    ].join("\n"),
+  );
+  const expressions = new Map(
+    file.expressionSyntax.map((expression) => [expression.expressionId, expression]),
+  );
+
+  assert.equal(file.reactSyntax.componentPropBindings.length, 1);
+  const propBinding = file.reactSyntax.componentPropBindings[0];
+  assert.equal(propBinding.bindingKind, "destructured-props");
+  assert.deepEqual(
+    propBinding.properties.map((property) => ({
+      propertyName: property.propertyName,
+      localName: property.localName,
+      initializerRawText: property.initializerExpressionId
+        ? expressions.get(property.initializerExpressionId).rawText
+        : undefined,
+    })),
+    [
+      {
+        propertyName: "className",
+        localName: "className",
+        initializerRawText: undefined,
+      },
+      {
+        propertyName: "tone",
+        localName: "tone",
+        initializerRawText: '"primary"',
+      },
+    ],
+  );
+
+  assert.deepEqual(
+    file.reactSyntax.helperDefinitions.map((helper) => ({
+      helperName: helper.helperName,
+      ownerKind: helper.ownerKind,
+      definitionKind: helper.definitionKind,
+      restParameterName: helper.restParameterName,
+      parameterKinds: helper.parameters.map((parameter) => parameter.parameterKind),
+      returnRawText: expressions.get(helper.returnExpressionId).rawText,
+    })),
+    [
+      {
+        helperName: "joinClasses",
+        ownerKind: "source-file",
+        definitionKind: "function-declaration",
+        restParameterName: "classes",
+        parameterKinds: ["rest"],
+        returnRawText: 'classes.filter(Boolean).join(" ")',
+      },
+      {
+        helperName: "localJoin",
+        ownerKind: "component",
+        definitionKind: "function-declaration",
+        restParameterName: undefined,
+        parameterKinds: ["identifier"],
+        returnRawText: "joinClasses(base, extra)",
+      },
+    ],
+  );
+
+  assert.deepEqual(
+    file.reactSyntax.localValueBindings
+      .map((binding) => ({
+        localName: binding.localName,
+        ownerKind: binding.ownerKind,
+        bindingKind: binding.bindingKind,
+        expressionRawText: expressions.get(binding.expressionId).rawText,
+      }))
+      .sort((left, right) => left.localName.localeCompare(right.localName)),
+    [
+      {
+        localName: "base",
+        ownerKind: "helper",
+        bindingKind: "const-identifier",
+        expressionRawText: "local",
+      },
+      {
+        localName: "classes",
+        ownerKind: "component",
+        bindingKind: "const-identifier",
+        expressionRawText: "localJoin(className)",
+      },
+      {
+        localName: "local",
+        ownerKind: "component",
+        bindingKind: "const-identifier",
+        expressionRawText: '"button"',
+      },
+    ],
+  );
+});
+
 test("language frontends expose CSS Module syntax collectors", () => {
   const file = buildSingleSourceFrontendFile(
     "src/Button.tsx",

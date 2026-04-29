@@ -1,7 +1,10 @@
 import type {
   ReactClassExpressionSiteFact,
   ReactComponentDeclarationFact,
+  ReactComponentPropBindingFact,
   ReactElementTemplateFact,
+  ReactHelperDefinitionFact,
+  ReactLocalValueBindingFact,
   ReactRenderSiteFact,
 } from "./types.js";
 
@@ -28,4 +31,25 @@ export function compareClassExpressionSites(
   right: ReactClassExpressionSiteFact,
 ): number {
   return left.siteKey.localeCompare(right.siteKey);
+}
+
+export function compareComponentPropBindings(
+  left: ReactComponentPropBindingFact,
+  right: ReactComponentPropBindingFact,
+): number {
+  return left.bindingKey.localeCompare(right.bindingKey);
+}
+
+export function compareLocalValueBindings(
+  left: ReactLocalValueBindingFact,
+  right: ReactLocalValueBindingFact,
+): number {
+  return left.bindingKey.localeCompare(right.bindingKey);
+}
+
+export function compareHelperDefinitions(
+  left: ReactHelperDefinitionFact,
+  right: ReactHelperDefinitionFact,
+): number {
+  return left.helperKey.localeCompare(right.helperKey);
 }
