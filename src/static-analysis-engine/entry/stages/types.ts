@@ -4,7 +4,6 @@ import type { ExperimentalCssFileAnalysis } from "../../pipeline/css-analysis/in
 import type { UnsupportedClassReferenceDiagnostic } from "../../pipeline/render-model/class-reference-diagnostics/index.js";
 import type { ExternalCssSummary } from "../../pipeline/external-css/index.js";
 import type { ReachabilitySummary } from "../../pipeline/reachability/index.js";
-import type { RuntimeDomClassReference } from "../../pipeline/runtime-dom/index.js";
 import type { ProjectAnalysis } from "../../pipeline/project-analysis/index.js";
 import type { ModuleFacts } from "../../pipeline/module-facts/index.js";
 import type { LanguageFrontendsResult } from "../../pipeline/language-frontends/index.js";
@@ -49,10 +48,6 @@ export type RenderModelStageResult = {
   renderSubtrees: RenderSubtree[];
   renderGraph: RenderGraph;
   unsupportedClassReferences: UnsupportedClassReferenceDiagnostic[];
-};
-
-export type RuntimeDomStageResult = {
-  runtimeDomClassReferences: RuntimeDomClassReference[];
 };
 
 export type ProjectAnalysisStageResult = {

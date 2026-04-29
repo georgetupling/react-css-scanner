@@ -134,7 +134,6 @@ export function buildRenderModel(input: RenderModelBuildInput): RenderModel {
     includeTraces,
   });
   const unsupportedClassReferences = collectUnsupportedClassReferences({
-    parsedFiles: input.parsedFiles,
     reactRenderSyntax: input.reactRenderSyntax,
     renderSubtrees,
     includeTraces,

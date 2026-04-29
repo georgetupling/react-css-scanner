@@ -160,8 +160,9 @@ export function collectSourceReactSyntax(input: {
         node,
         filePath: input.filePath,
         sourceFile: input.sourceFile,
-        renderSite,
-        template,
+        ...(renderSite ? { renderSite } : {}),
+        ...(template ? { template } : {}),
+        ...(currentComponentKey ? { emittingComponentKey: currentComponentKey } : {}),
       });
       if (classSite) {
         classExpressionSites.push(classSite);
@@ -285,8 +286,9 @@ function tryCreateJsxClassExpressionSite(input: {
   node: ts.Node;
   filePath: string;
   sourceFile: ts.SourceFile;
-  renderSite: ReactRenderSiteFact;
+  renderSite?: ReactRenderSiteFact;
   template?: ReactElementTemplateFact;
+  emittingComponentKey?: string;
 }): ReactClassExpressionSiteFact | undefined {
   if (!ts.isJsxElement(input.node) && !ts.isJsxSelfClosingElement(input.node)) {
     return undefined;
@@ -304,22 +306,52 @@ function tryCreateJsxClassExpressionSite(input: {
   }
 
   const tagName = getJsxTagName(input.node) ?? "";
-  const location = toSourceAnchor(classNameAttribute.initializer, input.sourceFile, input.filePath);
+  const expression = unwrapJsxAttributeInitializer(classNameAttribute.initializer);
+  const anchorNode = expression ?? classNameAttribute.initializer;
+  const location = toSourceAnchor(anchorNode, input.sourceFile, input.filePath);
+  const emittingComponentKey = input.renderSite?.emittingComponentKey ?? input.emittingComponentKey;
+  const placementComponentKey = input.renderSite?.placementComponentKey ?? emittingComponentKey;
   return {
-    siteKey: createSiteKey("class-expression", location, input.renderSite.siteKey),
+    siteKey: createSiteKey(
+      "class-expression",
+      location,
+      input.renderSite?.siteKey ?? "standalone-jsx-class",
+    ),
     kind: isIntrinsicTagName(tagName) ? "jsx-class" : "component-prop-class",
     filePath: input.filePath,
     location,
-    rawExpressionText: classNameAttribute.initializer.getText(input.sourceFile),
-    ...(input.renderSite.emittingComponentKey
-      ? { emittingComponentKey: input.renderSite.emittingComponentKey }
-      : {}),
-    ...(input.renderSite.placementComponentKey
-      ? { placementComponentKey: input.renderSite.placementComponentKey }
-      : {}),
-    renderSiteKey: input.renderSite.siteKey,
+    rawExpressionText: anchorNode.getText(input.sourceFile),
+    ...(emittingComponentKey ? { emittingComponentKey } : {}),
+    ...(placementComponentKey ? { placementComponentKey } : {}),
+    ...(input.renderSite ? { renderSiteKey: input.renderSite.siteKey } : {}),
     ...(input.template ? { elementTemplateKey: input.template.templateKey } : {}),
   };
+}
+
+function unwrapJsxAttributeInitializer(
+  initializer: ts.JsxAttribute["initializer"],
+): ts.Expression | undefined {
+  if (!initializer) {
+    return undefined;
+  }
+
+  if (ts.isStringLiteral(initializer) || ts.isNoSubstitutionTemplateLiteral(initializer)) {
+    return initializer;
+  }
+
+  if (ts.isJsxExpression(initializer)) {
+    return initializer.expression ?? undefined;
+  }
+
+  if (
+    ts.isJsxElement(initializer) ||
+    ts.isJsxSelfClosingElement(initializer) ||
+    ts.isJsxFragment(initializer)
+  ) {
+    return initializer;
+  }
+
+  return undefined;
 }
 
 function tryCreateCssModuleClassExpressionSite(input: {

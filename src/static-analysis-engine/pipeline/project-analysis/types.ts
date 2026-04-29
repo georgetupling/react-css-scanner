@@ -83,8 +83,6 @@ export type SourceFileAnalysis = SourceFileRecord & {
 
 export type StylesheetOrigin = "project-css" | "css-module" | "external-import" | "unknown";
 
-// TODO(workspace-discovery): adapter bridge for ProjectSnapshot stylesheet inventory.
-// Remove this once project-analysis consumes ProjectSnapshot or a shared stylesheet fact directly.
 export type ProjectAnalysisStylesheetInput = {
   filePath?: string;
   cssKind: "global-css" | "css-module";
