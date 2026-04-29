@@ -17,7 +17,6 @@ export {
   resolveModuleFactSourceSpecifier,
   resolveSourceSpecifier,
 } from "./pipeline/module-facts/index.js";
-export { parseSourceFile } from "./pipeline/parse/index.js";
 export {
   buildProjectBindingResolution,
   collectSourceSymbols,
