@@ -5,6 +5,7 @@ import type { ExtractedSelectorQuery } from "../selector-analysis/index.js";
 import type { ProjectSnapshot } from "../workspace-discovery/index.js";
 import { collectSourceModuleSyntax } from "./source/module-syntax/index.js";
 import { parseSourceFile } from "./source/parseSourceFile.js";
+import { collectSourceReactSyntax } from "./source/react-syntax/index.js";
 import { extractRuntimeDomClassSites } from "./source/runtime-dom-syntax/extractRuntimeDomSites.js";
 import type {
   CssFrontendFacts,
@@ -53,6 +54,11 @@ export function buildSourceFrontendFactsFromSourceFiles(
         filePath,
         sourceFile: parsedFile.parsedSourceFile,
       });
+      const reactSyntax = collectSourceReactSyntax({
+        filePath,
+        sourceFile: parsedFile.parsedSourceFile,
+        moduleSyntax,
+      });
 
       return {
         filePath: sourceFile.filePath,
@@ -60,6 +66,7 @@ export function buildSourceFrontendFactsFromSourceFiles(
         languageKind: getSourceLanguageKind(sourceFile.filePath),
         sourceText: sourceFile.sourceText,
         moduleSyntax,
+        reactSyntax,
         runtimeDomClassSites: extractRuntimeDomClassSites({
           filePath,
           sourceFile: parsedFile.parsedSourceFile,
@@ -88,6 +95,11 @@ export function buildSourceFrontendFactsFromParsedFiles(
         filePath,
         sourceFile: parsedFile.parsedSourceFile,
       });
+      const reactSyntax = collectSourceReactSyntax({
+        filePath,
+        sourceFile: parsedFile.parsedSourceFile,
+        moduleSyntax,
+      });
 
       return {
         filePath: parsedFile.filePath,
@@ -95,6 +107,7 @@ export function buildSourceFrontendFactsFromParsedFiles(
         languageKind: getSourceLanguageKind(parsedFile.filePath),
         sourceText: parsedFile.parsedSourceFile.getFullText(),
         moduleSyntax,
+        reactSyntax,
         runtimeDomClassSites: extractRuntimeDomClassSites({
           filePath,
           sourceFile: parsedFile.parsedSourceFile,

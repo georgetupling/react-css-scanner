@@ -7,6 +7,7 @@ import {
   buildOriginatesFromFileEdges,
   buildImportEdges,
   buildStylesheetNodes,
+  buildReactSyntaxFacts,
 } from "./builders/index.js";
 import { sortEdges, sortNodes } from "./utils/sortGraphElements.js";
 import type { FactGraphInput, FactGraphResult } from "./types.js";
@@ -16,6 +17,7 @@ export function buildFactGraph(input: FactGraphInput): FactGraphResult {
   const moduleNodes = buildModuleNodes(input);
   const stylesheetNodes = buildStylesheetNodes(input);
   const cssNodes = buildCssNodes(input);
+  const reactSyntaxFacts = buildReactSyntaxFacts(input);
   const importEdges = buildImportEdges({
     frontends: input.frontends,
     snapshotEdges: input.snapshot.edges,
@@ -26,6 +28,7 @@ export function buildFactGraph(input: FactGraphInput): FactGraphResult {
   const nodes = sortNodes([
     ...fileNodes,
     ...moduleNodes,
+    ...reactSyntaxFacts.allNodes,
     ...stylesheetNodes,
     ...cssNodes.all,
     ...importEdges.externalResources,
@@ -40,7 +43,12 @@ export function buildFactGraph(input: FactGraphInput): FactGraphResult {
     selectors: cssNodes.selectors,
     selectorBranches: cssNodes.selectorBranches,
   });
-  const edges = sortEdges([...originatesFromFileEdges, ...cssEdges.all, ...importEdges.imports]);
+  const edges = sortEdges([
+    ...originatesFromFileEdges,
+    ...cssEdges.all,
+    ...reactSyntaxFacts.allEdges,
+    ...importEdges.imports,
+  ]);
 
   const { indexes, diagnostics } = buildFactGraphIndexes({ nodes, edges });
 
@@ -58,10 +66,10 @@ export function buildFactGraph(input: FactGraphInput): FactGraphResult {
       nodes: {
         all: nodes,
         modules: moduleNodes,
-        components: [],
-        renderSites: [],
-        elementTemplates: [],
-        classExpressionSites: [],
+        components: reactSyntaxFacts.components,
+        renderSites: reactSyntaxFacts.renderSites,
+        elementTemplates: reactSyntaxFacts.elementTemplates,
+        classExpressionSites: reactSyntaxFacts.classExpressionSites,
         stylesheets: stylesheetNodes,
         ruleDefinitions: cssNodes.ruleDefinitions,
         selectors: cssNodes.selectors,
@@ -73,9 +81,9 @@ export function buildFactGraph(input: FactGraphInput): FactGraphResult {
       edges: {
         all: edges,
         imports: importEdges.imports,
-        renders: [],
-        contains: cssEdges.contains,
-        referencesClassExpression: [],
+        renders: reactSyntaxFacts.renders,
+        contains: sortEdges([...cssEdges.contains, ...reactSyntaxFacts.contains]),
+        referencesClassExpression: reactSyntaxFacts.referencesClassExpression,
         definesSelector: cssEdges.definesSelector,
         originatesFromFile: originatesFromFileEdges,
         belongsToOwnerCandidate: [],

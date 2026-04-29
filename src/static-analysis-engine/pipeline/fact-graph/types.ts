@@ -139,18 +139,52 @@ export type ModuleNode = FactNodeBase & {
 
 export type ComponentNode = FactNodeBase & {
   kind: "component";
+  componentKey: string;
+  componentName: string;
+  filePath: string;
+  exported: boolean;
+  declarationKind: "function" | "variable" | "class";
+  location: SourceAnchor;
 };
 
 export type RenderSiteNode = FactNodeBase & {
   kind: "render-site";
+  renderSiteKey: string;
+  renderSiteKind: "component-root" | "jsx-element" | "jsx-fragment" | "conditional";
+  filePath: string;
+  location: SourceAnchor;
+  emittingComponentNodeId?: FactNodeId;
+  placementComponentNodeId?: FactNodeId;
+  parentRenderSiteNodeId?: FactNodeId;
 };
 
 export type ElementTemplateNode = FactNodeBase & {
   kind: "element-template";
+  templateKey: string;
+  templateKind: "intrinsic" | "component-candidate" | "fragment";
+  name: string;
+  filePath: string;
+  location: SourceAnchor;
+  renderSiteNodeId: FactNodeId;
+  emittingComponentNodeId?: FactNodeId;
+  placementComponentNodeId?: FactNodeId;
 };
 
 export type ClassExpressionSiteNode = FactNodeBase & {
   kind: "class-expression-site";
+  classExpressionSiteKey: string;
+  classExpressionSiteKind:
+    | "jsx-class"
+    | "component-prop-class"
+    | "css-module-member"
+    | "runtime-dom-class";
+  filePath: string;
+  location: SourceAnchor;
+  rawExpressionText: string;
+  emittingComponentNodeId?: FactNodeId;
+  placementComponentNodeId?: FactNodeId;
+  renderSiteNodeId?: FactNodeId;
+  elementTemplateNodeId?: FactNodeId;
 };
 
 export type StyleSheetNode = FactNodeBase & {

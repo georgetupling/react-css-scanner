@@ -4,6 +4,7 @@ import type { ProjectSnapshot } from "../workspace-discovery/index.js";
 import type { ParsedProjectFile } from "../../entry/stages/types.js";
 import type { SourceAnchor } from "../../types/core.js";
 import type { SourceModuleSyntaxFacts } from "./source/module-syntax/index.js";
+import type { SourceReactSyntaxFacts } from "./source/react-syntax/index.js";
 
 export type LanguageFrontendsInput = {
   snapshot: ProjectSnapshot;
@@ -26,6 +27,7 @@ export type SourceFrontendFile = {
   languageKind: SourceLanguageKind;
   sourceText: string;
   moduleSyntax: SourceModuleSyntaxFacts;
+  reactSyntax: SourceReactSyntaxFacts;
   runtimeDomClassSites: RuntimeDomClassSite[];
   legacy: {
     parsedFile: ParsedProjectFile;

@@ -166,11 +166,15 @@ test("fact graph builds file, module, stylesheet, and origin facts without chang
       ],
     );
     assert.deepEqual(
-      result.graph.edges.contains.map((edge) => ({
-        from: edge.from,
-        to: edge.to,
-        containmentKind: edge.containmentKind,
-      })),
+      result.graph.edges.contains
+        .filter((edge) =>
+          ["stylesheet-rule", "rule-selector", "selector-branch"].includes(edge.containmentKind),
+        )
+        .map((edge) => ({
+          from: edge.from,
+          to: edge.to,
+          containmentKind: edge.containmentKind,
+        })),
       [
         {
           from: "rule:stylesheet:src/app.css:0",
@@ -193,6 +197,36 @@ test("fact graph builds file, module, stylesheet, and origin facts without chang
           containmentKind: "stylesheet-rule",
         },
       ],
+    );
+    assert.deepEqual(
+      result.graph.nodes.components.map((node) => ({
+        componentName: node.componentName,
+        filePath: node.filePath,
+        exported: node.exported,
+      })),
+      [
+        {
+          componentName: "App",
+          filePath: "src/App.tsx",
+          exported: true,
+        },
+      ],
+    );
+    assert.equal(
+      result.graph.nodes.renderSites.some((node) => node.renderSiteKind === "jsx-element"),
+      true,
+    );
+    assert.equal(
+      result.graph.nodes.elementTemplates.some(
+        (node) => node.templateKind === "intrinsic" && node.name === "main",
+      ),
+      true,
+    );
+    assert.equal(
+      result.graph.nodes.classExpressionSites.some(
+        (node) => node.classExpressionSiteKind === "jsx-class",
+      ),
+      true,
     );
     assert.deepEqual(
       result.graph.edges.definesSelector.map((edge) => ({
@@ -269,7 +303,7 @@ test("fact graph builds file, module, stylesheet, and origin facts without chang
 
 test("fact graph reports duplicate graph ids", async () => {
   const project = await new TestProjectBuilder()
-    .withSourceFile("src/App.tsx", "export function App() { return null; }\n")
+    .withSourceFile("src/App.tsx", "export const value = 1;\n")
     .build();
 
   try {

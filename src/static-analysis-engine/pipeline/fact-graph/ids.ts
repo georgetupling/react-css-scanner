@@ -53,6 +53,30 @@ export function externalResourceNodeId(specifier: string, resourceKind: string):
   return `external:${resourceKind}:${normalizeIdPart(specifier)}`;
 }
 
+export function componentNodeId(componentKey: string): FactNodeId {
+  return `component:${normalizeIdPart(componentKey)}`;
+}
+
+export function renderSiteNodeId(siteKey: string): FactNodeId {
+  return `render-site:${normalizeIdPart(siteKey)}`;
+}
+
+export function elementTemplateNodeId(templateKey: string): FactNodeId {
+  return `element-template:${normalizeIdPart(templateKey)}`;
+}
+
+export function classExpressionSiteNodeId(siteKey: string): FactNodeId {
+  return `class-expression-site:${normalizeIdPart(siteKey)}`;
+}
+
+export function rendersEdgeId(from: FactNodeId, to: FactNodeId): FactEdgeId {
+  return `renders:${from}->${to}`;
+}
+
+export function referencesClassExpressionEdgeId(from: FactNodeId, to: FactNodeId): FactEdgeId {
+  return `references-class-expression:${from}->${to}`;
+}
+
 export function normalizeIdPart(value: string): string {
   return value.replace(/\\/g, "/");
 }
