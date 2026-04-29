@@ -275,7 +275,8 @@ test("buildProjectSnapshot inventories files, boundaries, and resource edges", a
       "index.html",
       '<link rel="stylesheet" href="/public/global.css">\n<script src="/src/App.tsx"></script>\n',
     )
-    .withCssFile("public/global.css", ".global { color: red; }\n")
+    .withCssFile("public/global.css", '@import "./reset.css";\n.global { color: red; }\n')
+    .withCssFile("public/reset.css", ".reset { box-sizing: border-box; }\n")
     .withNodeModuleFile("pkg/styles.css", ".pkg { color: blue; }\n")
     .build();
 
@@ -283,7 +284,7 @@ test("buildProjectSnapshot inventories files, boundaries, and resource edges", a
     const snapshot = await buildProjectSnapshot({
       scanInput: {
         rootDir: project.rootDir,
-        cssFilePaths: ["src/App.module.css"],
+        cssFilePaths: ["src/App.module.css", "public/reset.css"],
       },
       runStage: async (_stage, _message, run) => run(),
     });
@@ -308,6 +309,11 @@ test("buildProjectSnapshot inventories files, boundaries, and resource edges", a
           filePath: "public/global.css",
           cssKind: "global-css",
           origin: "html-linked",
+        },
+        {
+          filePath: "public/reset.css",
+          cssKind: "global-css",
+          origin: "project",
         },
         {
           filePath: "src/App.module.css",
@@ -340,6 +346,15 @@ test("buildProjectSnapshot inventories files, boundaries, and resource edges", a
           edge.importerKind === "source" &&
           edge.importerFilePath === "src/App.tsx" &&
           edge.resolvedFilePath === "node_modules/pkg/styles.css",
+      ),
+    );
+    assert.ok(
+      snapshot.edges.some(
+        (edge) =>
+          edge.kind === "stylesheet-import" &&
+          edge.importerFilePath === "public/global.css" &&
+          edge.specifier === "./reset.css" &&
+          edge.resolvedFilePath === "public/reset.css",
       ),
     );
   } finally {

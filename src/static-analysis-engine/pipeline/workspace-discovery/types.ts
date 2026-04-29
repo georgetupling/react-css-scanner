@@ -66,6 +66,12 @@ export type PackageCssImportFact = {
   resolvedFilePath: string;
 };
 
+export type StylesheetImportFact = {
+  importerFilePath: string;
+  specifier: string;
+  resolvedFilePath: string;
+};
+
 // TODO(workspace-discovery): compatibility aliases for existing external-css/direct engine inputs.
 // Prefer the *Fact names inside workspace-discovery and remove these once downstream APIs are renamed.
 export type HtmlStylesheetLinkInput = HtmlStylesheetLinkFact;
@@ -102,7 +108,11 @@ export type ProjectBoundary =
       appRootPath: string;
     };
 
-export type ProjectResourceEdge = HtmlStylesheetEdge | HtmlScriptEdge | PackageCssImportEdge;
+export type ProjectResourceEdge =
+  | HtmlStylesheetEdge
+  | HtmlScriptEdge
+  | PackageCssImportEdge
+  | StylesheetImportEdge;
 
 export type HtmlStylesheetEdge = Omit<HtmlStylesheetLinkFact, "filePath"> & {
   kind: "html-stylesheet";
@@ -116,6 +126,10 @@ export type HtmlScriptEdge = Omit<HtmlScriptSourceFact, "filePath"> & {
 
 export type PackageCssImportEdge = PackageCssImportFact & {
   kind: "package-css-import";
+};
+
+export type StylesheetImportEdge = StylesheetImportFact & {
+  kind: "stylesheet-import";
 };
 
 export type ProjectExternalCssSurface = {

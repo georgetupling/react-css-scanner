@@ -2,6 +2,7 @@ import type {
   HtmlScriptSourceFact,
   HtmlStylesheetLinkFact,
   PackageCssImportFact,
+  StylesheetImportFact,
 } from "../types.js";
 import type { ProjectResourceEdge } from "../types.js";
 import { compareProjectResourceEdges } from "../utils/sorting.js";
@@ -10,6 +11,7 @@ export function collectProjectResourceEdges(input: {
   htmlStylesheetLinks: HtmlStylesheetLinkFact[];
   htmlScriptSources: HtmlScriptSourceFact[];
   packageCssImports: PackageCssImportFact[];
+  stylesheetImports: StylesheetImportFact[];
 }): ProjectResourceEdge[] {
   const edges: ProjectResourceEdge[] = [
     ...input.htmlStylesheetLinks.map((stylesheetLink) => ({
@@ -31,6 +33,12 @@ export function collectProjectResourceEdges(input: {
     ...input.packageCssImports.map((importRecord) => ({
       kind: "package-css-import" as const,
       importerKind: importRecord.importerKind,
+      importerFilePath: importRecord.importerFilePath,
+      specifier: importRecord.specifier,
+      resolvedFilePath: importRecord.resolvedFilePath,
+    })),
+    ...input.stylesheetImports.map((importRecord) => ({
+      kind: "stylesheet-import" as const,
       importerFilePath: importRecord.importerFilePath,
       specifier: importRecord.specifier,
       resolvedFilePath: importRecord.resolvedFilePath,

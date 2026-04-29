@@ -3,9 +3,14 @@ import type { RenderGraph } from "../render-model/render-graph/types.js";
 import type { RenderSubtree } from "../render-model/render-ir/index.js";
 import type { ExternalCssSummary } from "../external-css/types.js";
 import type { SelectorSourceInput } from "../selector-analysis/types.js";
+import type { ProjectResourceEdge } from "../workspace-discovery/types.js";
 import type { ReachabilitySummary } from "./types.js";
 import { normalizeProjectPath } from "./pathUtils.js";
-import { compareProjectWideEntrySources, createPackageCssImportKey } from "./sortAndKeys.js";
+import {
+  compareProjectWideEntrySources,
+  compareStylesheetImportRecords,
+  createPackageCssImportKey,
+} from "./sortAndKeys.js";
 import { collectAnalyzedSourceFilePaths } from "./sourceFiles.js";
 import {
   collectDirectCssImportersByStylesheetPath,
@@ -21,6 +26,7 @@ export function buildReachabilitySummary(input: {
   renderGraph: RenderGraph;
   renderSubtrees: RenderSubtree[];
   cssSources: SelectorSourceInput[];
+  resourceEdges?: ProjectResourceEdge[];
   externalCssSummary: ExternalCssSummary;
   includeTraces?: boolean;
 }): ReachabilitySummary {
@@ -88,12 +94,28 @@ export function buildReachabilitySummary(input: {
   return {
     stylesheets: applyStylesheetImportReachability({
       stylesheets,
-      localCssImports: collectLocalStylesheetImportRecords({
-        cssSources: input.cssSources,
-        knownCssFilePaths,
-      }),
+      localCssImports:
+        input.resourceEdges !== undefined
+          ? collectLocalStylesheetImportRecordsFromResourceEdges(input.resourceEdges)
+          : collectLocalStylesheetImportRecords({
+              cssSources: input.cssSources,
+              knownCssFilePaths,
+            }),
       packageCssImports: input.externalCssSummary.packageCssImports,
       includeTraces,
     }),
   };
+}
+
+function collectLocalStylesheetImportRecordsFromResourceEdges(
+  resourceEdges: ProjectResourceEdge[],
+): ReturnType<typeof collectLocalStylesheetImportRecords> {
+  return resourceEdges
+    .filter((edge) => edge.kind === "stylesheet-import")
+    .map((edge) => ({
+      importerFilePath: normalizeProjectPath(edge.importerFilePath) ?? edge.importerFilePath,
+      specifier: edge.specifier,
+      resolvedFilePath: normalizeProjectPath(edge.resolvedFilePath) ?? edge.resolvedFilePath,
+    }))
+    .sort(compareStylesheetImportRecords);
 }

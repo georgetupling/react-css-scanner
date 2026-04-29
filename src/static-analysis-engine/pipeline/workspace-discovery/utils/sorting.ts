@@ -28,5 +28,8 @@ function serializeProjectResourceEdge(edge: ProjectResourceEdge): string {
   if (edge.kind === "html-script") {
     return `${edge.kind}:${edge.fromHtmlFilePath}:${edge.src}:${edge.resolvedFilePath ?? ""}:${edge.appRootPath ?? ""}`;
   }
+  if (edge.kind === "stylesheet-import") {
+    return `${edge.kind}:${edge.importerFilePath}:${edge.specifier}:${edge.resolvedFilePath}`;
+  }
   return `${edge.kind}:${edge.importerKind}:${edge.importerFilePath}:${edge.specifier}:${edge.resolvedFilePath}`;
 }

@@ -134,6 +134,7 @@ export function analyzeProjectSourceTexts(input: {
         renderGraph: renderModelStage.renderGraph,
         renderSubtrees: renderModelStage.renderSubtrees,
         selectorCssSources: input.selectorCssSources ?? [],
+        resourceEdges: input.resourceEdges,
         externalCssSummary: externalCssStage.externalCssSummary,
         includeTraces,
       }),
