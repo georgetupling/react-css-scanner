@@ -1,6 +1,8 @@
 import type { AnalysisConfidence, AnalysisSeverity, AnalysisTrace } from "../../types/analysis.js";
 import type { SourceAnchor } from "../../types/core.js";
+import type { CssAtRuleContextFact, CssStyleRuleFact } from "../../types/css.js";
 import type { LanguageFrontendsResult } from "../language-frontends/index.js";
+import type { ExtractedSelectorQuery } from "../selector-analysis/index.js";
 import type { ProjectSnapshot } from "../workspace-discovery/index.js";
 
 export type FactGraphInput = {
@@ -157,14 +159,46 @@ export type StyleSheetNode = FactNodeBase & {
 
 export type RuleDefinitionNode = FactNodeBase & {
   kind: "rule-definition";
+  stylesheetNodeId: FactNodeId;
+  filePath?: string;
+  selectorText: string;
+  declarationProperties: string[];
+  declarationSignature: string;
+  line: number;
+  atRuleContext: CssAtRuleContextFact[];
+  location?: SourceAnchor;
+  sourceRule: CssStyleRuleFact;
 };
 
 export type SelectorNode = FactNodeBase & {
   kind: "selector";
+  stylesheetNodeId?: FactNodeId;
+  ruleDefinitionNodeId?: FactNodeId;
+  selectorText: string;
+  selectorListText: string;
+  sourceKind: "css-rule" | "direct-query";
+  location?: SourceAnchor;
 };
 
 export type SelectorBranchNode = FactNodeBase & {
   kind: "selector-branch";
+  selectorNodeId: FactNodeId;
+  stylesheetNodeId?: FactNodeId;
+  ruleDefinitionNodeId?: FactNodeId;
+  selectorText: string;
+  selectorListText: string;
+  branchIndex: number;
+  branchCount: number;
+  ruleKey: string;
+  requiredClassNames: string[];
+  subjectClassNames: string[];
+  contextClassNames: string[];
+  negativeClassNames: string[];
+  matchKind: "standalone" | "compound" | "contextual" | "complex";
+  hasUnknownSemantics: boolean;
+  atRuleContext: Array<{ kind: "media"; queryText: string }>;
+  location?: SourceAnchor;
+  sourceQuery: ExtractedSelectorQuery;
 };
 
 export type OwnerCandidateNode = FactNodeBase & {
@@ -193,8 +227,18 @@ export type RendersEdge = FactEdgeBase & {
   kind: "renders";
 };
 
+export type ContainsEdgeContainmentKind =
+  | "stylesheet-rule"
+  | "rule-selector"
+  | "selector-branch"
+  | "module-component"
+  | "component-render-site"
+  | "render-site-element-template"
+  | "render-site-child-site";
+
 export type ContainsEdge = FactEdgeBase & {
   kind: "contains";
+  containmentKind: ContainsEdgeContainmentKind;
 };
 
 export type ReferencesClassExpressionEdge = FactEdgeBase & {
@@ -228,6 +272,10 @@ export type FactGraphIndexes = {
   fileNodeIdByPath: Map<string, FactNodeId>;
   moduleNodeIdByFilePath: Map<string, FactNodeId>;
   stylesheetNodeIdByFilePath: Map<string, FactNodeId>;
+  ruleDefinitionNodeIdsByStylesheetNodeId: Map<FactNodeId, FactNodeId[]>;
+  selectorNodeIdsByStylesheetNodeId: Map<FactNodeId, FactNodeId[]>;
+  selectorBranchNodeIdsByStylesheetNodeId: Map<FactNodeId, FactNodeId[]>;
+  selectorBranchNodeIdsByRequiredClassName: Map<string, FactNodeId[]>;
 };
 
 export type FactGraphDiagnostic = {

@@ -1,4 +1,5 @@
 import type { ReachabilitySummary } from "../../pipeline/reachability/index.js";
+import { graphToSelectorEntries, type FactGraphResult } from "../../pipeline/fact-graph/index.js";
 import type { CssFrontendFacts } from "../../pipeline/language-frontends/index.js";
 import type { RenderSubtree } from "../../pipeline/render-model/render-ir/index.js";
 import {
@@ -11,6 +12,7 @@ import type { SelectorAnalysisStageResult } from "./types.js";
 
 export function runSelectorAnalysisStage(input: {
   selectorQueries: string[];
+  factGraph?: FactGraphResult;
   css?: CssFrontendFacts;
   selectorCssSources?: SelectorSourceInput[];
   renderSubtrees: RenderSubtree[];
@@ -20,7 +22,9 @@ export function runSelectorAnalysisStage(input: {
   const parsedSelectorQueries = buildParsedSelectorQueries(
     buildSelectorQueries({
       selectorQueries: input.selectorQueries,
-      selectorEntries: input.css?.files.flatMap((file) => file.selectorEntries),
+      selectorEntries: input.factGraph
+        ? graphToSelectorEntries(input.factGraph.graph)
+        : input.css?.files.flatMap((file) => file.selectorEntries),
       selectorCssSources: input.selectorCssSources,
     }),
     {

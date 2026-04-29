@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { graphToCssRuleFileInputs } from "../../dist/static-analysis-engine/pipeline/fact-graph/adapters/cssAnalysisInputs.js";
+import { graphToSelectorEntries } from "../../dist/static-analysis-engine/pipeline/fact-graph/adapters/selectorAnalysisInputs.js";
 import { buildFactGraph } from "../../dist/static-analysis-engine/pipeline/fact-graph/buildFactGraph.js";
 import { buildLanguageFrontends } from "../../dist/static-analysis-engine/pipeline/language-frontends/buildLanguageFrontends.js";
 import { buildProjectSnapshot } from "../../dist/static-analysis-engine/pipeline/workspace-discovery/buildProjectSnapshot.js";
@@ -12,7 +14,7 @@ test("fact graph builds file, module, stylesheet, and origin facts without chang
       "src/App.tsx",
       'import "./app.css";\nexport function App() { return <main className="app" />; }\n',
     )
-    .withCssFile("src/app.css", ".app { display: block; }\n")
+    .withCssFile("src/app.css", ".app, .shell .app { display: block; }\n")
     .withFile("public/index.html", '<script type="module" src="../src/App.tsx"></script>\n')
     .build();
 
@@ -84,6 +86,66 @@ test("fact graph builds file, module, stylesheet, and origin facts without chang
       ],
     );
     assert.deepEqual(
+      result.graph.nodes.ruleDefinitions.map((node) => ({
+        id: node.id,
+        stylesheetNodeId: node.stylesheetNodeId,
+        selectorText: node.selectorText,
+        declarationProperties: node.declarationProperties,
+      })),
+      [
+        {
+          id: "rule:stylesheet:src/app.css:0",
+          stylesheetNodeId: "stylesheet:src/app.css",
+          selectorText: ".app, .shell .app",
+          declarationProperties: ["display"],
+        },
+      ],
+    );
+    assert.deepEqual(
+      result.graph.nodes.selectors.map((node) => ({
+        id: node.id,
+        stylesheetNodeId: node.stylesheetNodeId,
+        ruleDefinitionNodeId: node.ruleDefinitionNodeId,
+        selectorText: node.selectorText,
+      })),
+      [
+        {
+          id: "selector:stylesheet:src/app.css:0",
+          stylesheetNodeId: "stylesheet:src/app.css",
+          ruleDefinitionNodeId: "rule:stylesheet:src/app.css:0",
+          selectorText: ".app, .shell .app",
+        },
+      ],
+    );
+    assert.deepEqual(
+      result.graph.nodes.selectorBranches.map((node) => ({
+        id: node.id,
+        selectorText: node.selectorText,
+        branchIndex: node.branchIndex,
+        branchCount: node.branchCount,
+        requiredClassNames: node.requiredClassNames,
+        contextClassNames: node.contextClassNames,
+      })),
+      [
+        {
+          id: "selector-branch:stylesheet:src/app.css:0:0",
+          selectorText: ".app",
+          branchIndex: 0,
+          branchCount: 2,
+          requiredClassNames: ["app"],
+          contextClassNames: [],
+        },
+        {
+          id: "selector-branch:stylesheet:src/app.css:0:1",
+          selectorText: ".shell .app",
+          branchIndex: 1,
+          branchCount: 2,
+          requiredClassNames: ["app"],
+          contextClassNames: ["shell"],
+        },
+      ],
+    );
+    assert.deepEqual(
       result.graph.edges.originatesFromFile.map((edge) => ({
         id: edge.id,
         from: edge.from,
@@ -102,6 +164,59 @@ test("fact graph builds file, module, stylesheet, and origin facts without chang
         },
       ],
     );
+    assert.deepEqual(
+      result.graph.edges.contains.map((edge) => ({
+        from: edge.from,
+        to: edge.to,
+        containmentKind: edge.containmentKind,
+      })),
+      [
+        {
+          from: "rule:stylesheet:src/app.css:0",
+          to: "selector:stylesheet:src/app.css:0",
+          containmentKind: "rule-selector",
+        },
+        {
+          from: "selector:stylesheet:src/app.css:0",
+          to: "selector-branch:stylesheet:src/app.css:0:0",
+          containmentKind: "selector-branch",
+        },
+        {
+          from: "selector:stylesheet:src/app.css:0",
+          to: "selector-branch:stylesheet:src/app.css:0:1",
+          containmentKind: "selector-branch",
+        },
+        {
+          from: "stylesheet:src/app.css",
+          to: "rule:stylesheet:src/app.css:0",
+          containmentKind: "stylesheet-rule",
+        },
+      ],
+    );
+    assert.deepEqual(
+      result.graph.edges.definesSelector.map((edge) => ({
+        from: edge.from,
+        to: edge.to,
+      })),
+      [
+        {
+          from: "rule:stylesheet:src/app.css:0",
+          to: "selector-branch:stylesheet:src/app.css:0:0",
+        },
+        {
+          from: "rule:stylesheet:src/app.css:0",
+          to: "selector-branch:stylesheet:src/app.css:0:1",
+        },
+        {
+          from: "rule:stylesheet:src/app.css:0",
+          to: "selector:stylesheet:src/app.css:0",
+        },
+        {
+          from: "stylesheet:src/app.css",
+          to: "selector:stylesheet:src/app.css:0",
+        },
+      ],
+    );
     assert.equal(
       result.graph.indexes.moduleNodeIdByFilePath.get("src/App.tsx"),
       "module:src/App.tsx",
@@ -109,6 +224,41 @@ test("fact graph builds file, module, stylesheet, and origin facts without chang
     assert.equal(
       result.graph.indexes.stylesheetNodeIdByFilePath.get("src/app.css"),
       "stylesheet:src/app.css",
+    );
+    assert.deepEqual(result.graph.indexes.selectorBranchNodeIdsByRequiredClassName.get("app"), [
+      "selector-branch:stylesheet:src/app.css:0:0",
+      "selector-branch:stylesheet:src/app.css:0:1",
+    ]);
+    assert.deepEqual(
+      graphToCssRuleFileInputs(result.graph).map((file) => ({
+        filePath: file.filePath,
+        selectors: file.rules.map((rule) => rule.selector),
+      })),
+      [
+        {
+          filePath: "src/app.css",
+          selectors: [".app, .shell .app"],
+        },
+      ],
+    );
+    assert.deepEqual(
+      graphToSelectorEntries(result.graph).map((entry) => ({
+        selectorText: entry.selectorText,
+        branchIndex: entry.source.branchIndex,
+        ruleKey: entry.source.ruleKey,
+      })),
+      [
+        {
+          selectorText: ".app",
+          branchIndex: 0,
+          ruleKey: "src/app.css:0:.app, .shell .app",
+        },
+        {
+          selectorText: ".shell .app",
+          branchIndex: 1,
+          ruleKey: "src/app.css:0:.app, .shell .app",
+        },
+      ],
     );
     assert.deepEqual(result.graph.diagnostics, []);
   } finally {

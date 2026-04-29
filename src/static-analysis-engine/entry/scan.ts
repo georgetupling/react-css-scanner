@@ -158,6 +158,7 @@ export function analyzeProjectSourceTexts(input: {
   );
   const cssAnalysisStage = runAnalysisStage(progress, "css-analysis", "Analyzing CSS", () =>
     runCssAnalysisStage({
+      factGraph: input.factGraph,
       css: input.css,
       selectorCssSources: input.selectorCssSources ?? [],
     }),
@@ -195,6 +196,7 @@ export function analyzeProjectSourceTexts(input: {
     () =>
       runSelectorAnalysisStage({
         selectorQueries: input.selectorQueries ?? [],
+        factGraph: input.factGraph,
         css: input.css,
         selectorCssSources: input.selectorCssSources ?? [],
         renderSubtrees: renderModelStage.renderSubtrees,

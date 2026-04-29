@@ -115,8 +115,13 @@ export type {
   FactNodeId,
   FactProvenance,
   FileResourceNode,
+  ContainsEdge,
+  DefinesSelectorEdge,
   ModuleNode,
   OriginatesFromFileEdge,
+  RuleDefinitionNode,
+  SelectorBranchNode,
+  SelectorNode,
   StyleSheetNode,
 } from "./pipeline/fact-graph/index.js";
 export type {

@@ -11,6 +11,10 @@ export function buildFactGraphIndexes(input: { nodes: FactNode[]; edges: FactEdg
   const fileNodeIdByPath = new Map<string, string>();
   const moduleNodeIdByFilePath = new Map<string, string>();
   const stylesheetNodeIdByFilePath = new Map<string, string>();
+  const ruleDefinitionNodeIdsByStylesheetNodeId = new Map<string, string[]>();
+  const selectorNodeIdsByStylesheetNodeId = new Map<string, string[]>();
+  const selectorBranchNodeIdsByStylesheetNodeId = new Map<string, string[]>();
+  const selectorBranchNodeIdsByRequiredClassName = new Map<string, string[]>();
 
   for (const node of input.nodes) {
     if (nodesById.has(node.id)) {
@@ -31,6 +35,18 @@ export function buildFactGraphIndexes(input: { nodes: FactNode[]; edges: FactEdg
       moduleNodeIdByFilePath.set(node.filePath, node.id);
     } else if (node.kind === "stylesheet" && node.filePath) {
       stylesheetNodeIdByFilePath.set(node.filePath, node.id);
+    } else if (node.kind === "rule-definition") {
+      pushMapValue(ruleDefinitionNodeIdsByStylesheetNodeId, node.stylesheetNodeId, node.id);
+    } else if (node.kind === "selector" && node.stylesheetNodeId) {
+      pushMapValue(selectorNodeIdsByStylesheetNodeId, node.stylesheetNodeId, node.id);
+    } else if (node.kind === "selector-branch") {
+      if (node.stylesheetNodeId) {
+        pushMapValue(selectorBranchNodeIdsByStylesheetNodeId, node.stylesheetNodeId, node.id);
+      }
+
+      for (const className of node.requiredClassNames) {
+        pushMapValue(selectorBranchNodeIdsByRequiredClassName, className, node.id);
+      }
     }
   }
 
@@ -65,7 +81,32 @@ export function buildFactGraphIndexes(input: { nodes: FactNode[]; edges: FactEdg
       fileNodeIdByPath,
       moduleNodeIdByFilePath,
       stylesheetNodeIdByFilePath,
+      ruleDefinitionNodeIdsByStylesheetNodeId: sortMapValues(
+        ruleDefinitionNodeIdsByStylesheetNodeId,
+      ),
+      selectorNodeIdsByStylesheetNodeId: sortMapValues(selectorNodeIdsByStylesheetNodeId),
+      selectorBranchNodeIdsByStylesheetNodeId: sortMapValues(
+        selectorBranchNodeIdsByStylesheetNodeId,
+      ),
+      selectorBranchNodeIdsByRequiredClassName: sortMapValues(
+        selectorBranchNodeIdsByRequiredClassName,
+      ),
     },
     diagnostics,
   };
+}
+
+function pushMapValue(map: Map<string, string[]>, key: string, value: string): void {
+  const values = map.get(key) ?? [];
+  values.push(value);
+  map.set(key, values);
+}
+
+function sortMapValues(map: Map<string, string[]>): Map<string, string[]> {
+  return new Map(
+    [...map.entries()].map(([key, values]) => [
+      key,
+      [...values].sort((left, right) => left.localeCompare(right)),
+    ]),
+  );
 }
