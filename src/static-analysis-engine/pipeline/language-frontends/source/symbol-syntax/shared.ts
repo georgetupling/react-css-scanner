@@ -1,7 +1,7 @@
 import ts from "typescript";
 
-import type { EngineModuleId, EngineSymbolId, SourceAnchor } from "../../../types/core.js";
-import type { ScopeId, ScopeKind, SymbolSpace } from "../types.js";
+import type { EngineModuleId, EngineSymbolId, SourceAnchor } from "../../../../types/core.js";
+import type { ScopeId, ScopeKind, SymbolSpace } from "../../../symbol-resolution/types.js";
 
 export function createSymbolId(
   moduleId: EngineModuleId,

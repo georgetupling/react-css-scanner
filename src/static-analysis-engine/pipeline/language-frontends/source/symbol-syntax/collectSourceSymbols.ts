@@ -1,14 +1,20 @@
 import ts from "typescript";
 
-import type { EngineModuleId, EngineSymbolId } from "../../../types/core.js";
-import { collectComponentLikeDefinitions } from "../../../libraries/react-components/index.js";
+import type { EngineModuleId, EngineSymbolId } from "../../../../types/core.js";
+import { collectComponentLikeDefinitions } from "../../../../libraries/react-components/index.js";
 import {
   getExportedNamesByLocalName,
   getResolvedModuleFacts,
   getTopLevelBindingFacts,
-} from "../../module-facts/index.js";
-import type { ModuleFacts, ResolvedTopLevelBindingFact } from "../../module-facts/types.js";
-import type { EngineSymbol, ScopeId, ScopeKind, SourceScope, SymbolKind } from "../types.js";
+} from "../../../module-facts/index.js";
+import type { ModuleFacts, ResolvedTopLevelBindingFact } from "../../../module-facts/types.js";
+import type {
+  EngineSymbol,
+  ScopeId,
+  ScopeKind,
+  SourceScope,
+  SymbolKind,
+} from "../../../symbol-resolution/types.js";
 import {
   collectSourceDeclarationIndex,
   type SourceValueDeclaration,

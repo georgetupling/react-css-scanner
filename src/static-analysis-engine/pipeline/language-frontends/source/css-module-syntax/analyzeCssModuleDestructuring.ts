@@ -5,8 +5,12 @@ import type {
   ResolvedCssModuleMemberBinding,
   ResolvedCssModuleMemberReference,
   ResolvedCssModuleNamespaceBinding,
-} from "../types.js";
-import { createCssModuleDiagnostic, createCssModuleTrace, toSourceAnchor } from "./shared.js";
+} from "../../../symbol-resolution/types.js";
+import {
+  createCssModuleDiagnostic,
+  createCssModuleTrace,
+  toSourceAnchor,
+} from "../../../symbol-resolution/css-module-resolution/shared.js";
 
 export function getCssModuleDestructuring(input: {
   node: ts.Node;

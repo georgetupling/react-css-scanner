@@ -3,13 +3,13 @@ import ts from "typescript";
 import type {
   ResolvedCssModuleBindingDiagnostic,
   ResolvedCssModuleNamespaceBinding,
-} from "../types.js";
+} from "../../../symbol-resolution/types.js";
 import {
   createCssModuleDiagnostic,
   createCssModuleTrace,
   isConstVariableDeclaration,
   toSourceAnchor,
-} from "./shared.js";
+} from "../../../symbol-resolution/css-module-resolution/shared.js";
 
 export function buildCssModuleAliases(input: {
   parsedSourceFile: ts.SourceFile;

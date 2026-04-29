@@ -123,6 +123,7 @@ export function analyzeProjectSourceTexts(input: {
     "Resolving symbols",
     () =>
       runSymbolResolutionStage({
+        source: sourceFrontendFacts,
         parsedFiles: parseStage.parsedFiles,
         moduleFacts: moduleFactsStage.moduleFacts,
         includeTraces,

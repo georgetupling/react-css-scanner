@@ -1,6 +1,6 @@
 import ts from "typescript";
 
-import { collectSourceDeclarationIndex } from "../collection/collectSourceDeclarations.js";
+import { collectSourceDeclarationIndex } from "../../language-frontends/source/symbol-syntax/collectSourceDeclarations.js";
 import { getSymbolResolutionInternals } from "../internals.js";
 import type { ProjectBindingResolution, ResolvedTypeBinding } from "../types.js";
 import { findTypeSymbolByLocalName } from "./shared.js";

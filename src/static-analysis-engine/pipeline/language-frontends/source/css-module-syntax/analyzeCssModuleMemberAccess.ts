@@ -4,8 +4,12 @@ import type {
   ResolvedCssModuleBindingDiagnostic,
   ResolvedCssModuleMemberReference,
   ResolvedCssModuleNamespaceBinding,
-} from "../types.js";
-import { createCssModuleDiagnostic, createCssModuleTrace, toSourceAnchor } from "./shared.js";
+} from "../../../symbol-resolution/types.js";
+import {
+  createCssModuleDiagnostic,
+  createCssModuleTrace,
+  toSourceAnchor,
+} from "../../../symbol-resolution/css-module-resolution/shared.js";
 
 export type CssModuleMemberAccess =
   | { kind: "reference"; reference: ResolvedCssModuleMemberReference }

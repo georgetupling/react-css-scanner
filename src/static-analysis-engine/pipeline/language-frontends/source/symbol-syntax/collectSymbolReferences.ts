@@ -1,7 +1,13 @@
 import ts from "typescript";
 
-import type { EngineSymbolId } from "../../../types/core.js";
-import type { EngineSymbol, ScopeId, SourceScope, SymbolReference, SymbolSpace } from "../types.js";
+import type { EngineSymbolId } from "../../../../types/core.js";
+import type {
+  EngineSymbol,
+  ScopeId,
+  SourceScope,
+  SymbolReference,
+  SymbolSpace,
+} from "../../../symbol-resolution/types.js";
 import { toSourceAnchor } from "./shared.js";
 
 export function collectSymbolReferences(input: {

@@ -1,15 +1,16 @@
 import ts from "typescript";
 
 import type { ParsedProjectFile } from "../../../entry/stages/types.js";
+import type { SourceFrontendFacts } from "../../language-frontends/index.js";
 import { getAllResolvedModuleFacts, type ModuleFacts } from "../../module-facts/index.js";
 import { createModuleFactsModuleId } from "../../module-facts/normalize/moduleIds.js";
 import type { EngineSymbolId } from "../../../types/core.js";
 import { attachSymbolResolutionInternals } from "../internals.js";
 import { collectModuleScopeSymbolsForFile } from "../api/shared.js";
-import { collectExportedExpressionBindings } from "../collectExportedExpressionBindings.js";
-import { collectLocalAliasResolutions } from "../collection/collectLocalAliasResolutions.js";
-import { collectSymbolReferences } from "../collection/collectSymbolReferences.js";
-import { collectSourceSymbols } from "../collection/collectSourceSymbols.js";
+import { collectExportedExpressionBindings } from "../../language-frontends/source/symbol-syntax/collectExportedExpressionBindings.js";
+import { collectLocalAliasResolutions } from "../../language-frontends/source/symbol-syntax/collectLocalAliasResolutions.js";
+import { collectSymbolReferences } from "../../language-frontends/source/symbol-syntax/collectSymbolReferences.js";
+import { collectSourceSymbols } from "../../language-frontends/source/symbol-syntax/collectSourceSymbols.js";
 import type {
   EngineSymbol,
   ProjectBindingResolution,
@@ -29,12 +30,15 @@ import {
 import { collectResolvedCssModuleBindings } from "../css-module-resolution/resolveCssModuleBindings.js";
 
 export function buildProjectBindingResolution(input: {
-  parsedFiles: ParsedProjectFile[];
+  source?: SourceFrontendFacts;
+  parsedFiles?: ParsedProjectFile[];
   moduleFacts: ModuleFacts;
   includeTraces?: boolean;
   knownCssModuleFilePaths?: ReadonlySet<string>;
 }): ProjectBindingResolution {
   const includeTraces = input.includeTraces ?? true;
+  const parsedFiles =
+    input.source?.files.map((file) => file.legacy.parsedFile) ?? input.parsedFiles ?? [];
   const resolvedImportedBindingsByFilePath = new Map<string, ResolvedImportedBinding[]>();
   const resolvedImportedComponentBindingsByFilePath = new Map<string, ResolvedImportedBinding[]>();
   const resolvedTypeBindingsByFilePath = new Map<
@@ -49,13 +53,13 @@ export function buildProjectBindingResolution(input: {
     resolvedCssModuleMemberReferencesByFilePath,
     resolvedCssModuleBindingDiagnosticsByFilePath,
   } = collectResolvedCssModuleBindings({
-    parsedFiles: input.parsedFiles,
+    parsedFiles,
     moduleFacts: input.moduleFacts,
     knownCssModuleFilePaths: input.knownCssModuleFilePaths,
     includeTraces,
   });
   const collectedProjectSymbols = collectProjectSymbols({
-    parsedFiles: input.parsedFiles,
+    parsedFiles,
     moduleFacts: input.moduleFacts,
   });
   const allSymbolsByFilePath = cloneSymbolsByFilePath(collectedProjectSymbols.allSymbolsByFilePath);
@@ -73,7 +77,7 @@ export function buildProjectBindingResolution(input: {
     ),
   );
   const referencesByFilePath = new Map(
-    input.parsedFiles.map((parsedFile) => [
+    parsedFiles.map((parsedFile) => [
       parsedFile.filePath,
       collectSymbolReferences({
         filePath: parsedFile.filePath,
@@ -84,7 +88,7 @@ export function buildProjectBindingResolution(input: {
     ]),
   );
   const localAliasesByFilePath = new Map(
-    input.parsedFiles.map((parsedFile) => [
+    parsedFiles.map((parsedFile) => [
       parsedFile.filePath,
       collectLocalAliasResolutions({
         filePath: parsedFile.filePath,
@@ -102,7 +106,7 @@ export function buildProjectBindingResolution(input: {
     includeTraces,
   });
   const exportedExpressionBindingsByFilePath = new Map<string, Map<string, ts.Expression>>(
-    input.parsedFiles.map((parsedFile) => [
+    parsedFiles.map((parsedFile) => [
       parsedFile.filePath,
       collectExportedExpressionBindings(parsedFile.parsedSourceFile),
     ]),

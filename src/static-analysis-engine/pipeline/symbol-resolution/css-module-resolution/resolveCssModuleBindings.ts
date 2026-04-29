@@ -9,9 +9,9 @@ import type {
   ResolvedCssModuleMemberReference,
   ResolvedCssModuleNamespaceBinding,
 } from "../types.js";
-import { buildCssModuleAliases } from "./analyzeCssModuleAliases.js";
-import { getCssModuleDestructuring } from "./analyzeCssModuleDestructuring.js";
-import { getCssModuleMemberAccess } from "./analyzeCssModuleMemberAccess.js";
+import { buildCssModuleAliases } from "../../language-frontends/source/css-module-syntax/analyzeCssModuleAliases.js";
+import { getCssModuleDestructuring } from "../../language-frontends/source/css-module-syntax/analyzeCssModuleDestructuring.js";
+import { getCssModuleMemberAccess } from "../../language-frontends/source/css-module-syntax/analyzeCssModuleMemberAccess.js";
 import { collectResolvedCssModuleImportsByFilePath } from "./collectResolvedCssModuleImports.js";
 import {
   createCssModuleMemberBindingKey,

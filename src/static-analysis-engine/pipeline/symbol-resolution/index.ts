@@ -1,5 +1,8 @@
-export { collectSourceSymbols } from "./collection/collectSourceSymbols.js";
-export { createScopeId, createSymbolId } from "./collection/shared.js";
+export { collectSourceSymbols } from "../language-frontends/source/symbol-syntax/collectSourceSymbols.js";
+export {
+  createScopeId,
+  createSymbolId,
+} from "../language-frontends/source/symbol-syntax/shared.js";
 export { buildProjectBindingResolution } from "./assembly/buildProjectBindingResolution.js";
 export {
   getLocalAliasAt,
