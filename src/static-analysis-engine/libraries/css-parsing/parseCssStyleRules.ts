@@ -68,7 +68,7 @@ function parseRuleList(
         );
       }
     } else {
-      const selectorBranches = extractParsedSelectorEntriesFromSelectorPrelude({
+      const selectorEntries = extractParsedSelectorEntriesFromSelectorPrelude({
         selectorPrelude: rawPrelude,
         preludeStartIndex: prelude.startOffset,
         sourceText: content,
@@ -79,10 +79,13 @@ function parseRuleList(
             kind: "media" as const,
             queryText: entry.params,
           })),
-      }).map((entry) => projectToCssSelectorBranchFact(entry.parsedBranch));
+      });
       styleRules.push({
         selector: rawPrelude,
-        selectorBranches,
+        selectorEntries,
+        selectorBranches: selectorEntries.map((entry) =>
+          projectToCssSelectorBranchFact(entry.parsedBranch),
+        ),
         declarations: extractDeclarations(blockBody),
         line: getLineNumberAtOffset(content, prelude.startOffset),
         atRuleContext: [...atRuleContext],

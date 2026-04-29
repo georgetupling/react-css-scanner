@@ -3,6 +3,12 @@ import type { CssAtRuleContextFact, CssStyleRuleFact } from "../../types/css.js"
 import type { SelectorSourceInput } from "../selector-analysis/types.js";
 import type { ExperimentalCssFileAnalysis } from "./types.js";
 
+export function analyzeCssRuleFiles(
+  cssFiles: Array<{ filePath?: string; rules: CssStyleRuleFact[] }>,
+): ExperimentalCssFileAnalysis[] {
+  return cssFiles.map((cssFile) => buildCssFileAnalysis(cssFile.filePath, cssFile.rules));
+}
+
 export function analyzeCssSources(
   cssSources: SelectorSourceInput[],
 ): ExperimentalCssFileAnalysis[] {
@@ -12,14 +18,21 @@ export function analyzeCssSources(
       filePath: cssSource.filePath,
     });
 
-    return {
-      filePath: cssSource.filePath,
-      styleRules,
-      classDefinitions: extractClassDefinitions(styleRules),
-      classContexts: extractClassContexts(styleRules),
-      atRuleContexts: styleRules.map((styleRule) => styleRule.atRuleContext),
-    };
+    return buildCssFileAnalysis(cssSource.filePath, styleRules);
   });
+}
+
+function buildCssFileAnalysis(
+  filePath: string | undefined,
+  styleRules: CssStyleRuleFact[],
+): ExperimentalCssFileAnalysis {
+  return {
+    filePath,
+    styleRules,
+    classDefinitions: extractClassDefinitions(styleRules),
+    classContexts: extractClassContexts(styleRules),
+    atRuleContexts: styleRules.map((styleRule) => styleRule.atRuleContext),
+  };
 }
 
 function extractClassDefinitions(

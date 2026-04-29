@@ -4,8 +4,11 @@ import {
   type ModuleFacts,
 } from "../module-facts/index.js";
 import type { ExternalCssSummary } from "../external-css/types.js";
-import type { SelectorSourceInput } from "../selector-analysis/types.js";
-import type { StylesheetReachabilityContextRecord, StylesheetReachabilityRecord } from "./types.js";
+import type {
+  ReachabilityStylesheetInput,
+  StylesheetReachabilityContextRecord,
+  StylesheetReachabilityRecord,
+} from "./types.js";
 import type { StylesheetImportRecord } from "./internalTypes.js";
 import { normalizeProjectPath, resolveCssImportPath } from "./pathUtils.js";
 import {
@@ -90,18 +93,18 @@ export function collectDirectCssImportersByStylesheetPath(input: {
 }
 
 export function collectLocalStylesheetImportRecords(input: {
-  cssSources: SelectorSourceInput[];
+  stylesheets: ReachabilityStylesheetInput[];
   knownCssFilePaths: Set<string>;
 }): StylesheetImportRecord[] {
   const imports: StylesheetImportRecord[] = [];
 
-  for (const cssSource of input.cssSources) {
-    const importerFilePath = normalizeProjectPath(cssSource.filePath);
+  for (const stylesheet of input.stylesheets) {
+    const importerFilePath = normalizeProjectPath(stylesheet.filePath);
     if (!importerFilePath) {
       continue;
     }
 
-    for (const specifier of extractCssImportSpecifiers(cssSource.cssText)) {
+    for (const specifier of extractCssImportSpecifiers(stylesheet.cssText ?? "")) {
       const resolvedFilePath = resolveCssImportPath({
         fromFilePath: importerFilePath,
         specifier,

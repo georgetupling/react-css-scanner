@@ -1,12 +1,13 @@
 import { buildModuleFacts } from "../../pipeline/module-facts/index.js";
+import type { SourceFrontendFacts } from "../../pipeline/language-frontends/index.js";
 import type {
   ProjectBoundary,
   ProjectResourceEdge,
 } from "../../pipeline/workspace-discovery/index.js";
-import type { ModuleFactsStageResult, ParsedProjectFile } from "./types.js";
+import type { ModuleFactsStageResult } from "./types.js";
 
 export function runModuleFactsStage(input: {
-  parsedFiles: ParsedProjectFile[];
+  source: SourceFrontendFacts;
   stylesheetFilePaths?: Iterable<string>;
   projectRoot?: string;
   boundaries?: ProjectBoundary[];
@@ -14,7 +15,7 @@ export function runModuleFactsStage(input: {
 }): ModuleFactsStageResult {
   return {
     moduleFacts: buildModuleFacts({
-      parsedFiles: input.parsedFiles,
+      source: input.source,
       stylesheetFilePaths: input.stylesheetFilePaths,
       projectRoot: input.projectRoot,
       boundaries: input.boundaries,

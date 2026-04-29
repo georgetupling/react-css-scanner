@@ -1,5 +1,5 @@
 import type { ResolvedScannerConfig } from "../../../config/index.js";
-import type { ExperimentalCssFileAnalysis } from "../css-analysis/index.js";
+import type { CssStyleRuleFact } from "../../types/css.js";
 import type { ExternalCssAnalysisInput } from "../external-css/index.js";
 import type { ProjectAnalysisStylesheetInput } from "../project-analysis/index.js";
 import type { SelectorSourceInput, ExtractedSelectorQuery } from "../selector-analysis/index.js";
@@ -9,6 +9,7 @@ import type {
   ProjectSnapshot,
 } from "../workspace-discovery/index.js";
 import type { ParsedProjectFile } from "../../entry/stages/types.js";
+import type { SourceModuleSyntaxFacts } from "./source/moduleSyntax.js";
 
 export type LanguageFrontendsInput = {
   snapshot: ProjectSnapshot;
@@ -31,6 +32,7 @@ export type SourceFrontendFile = {
   absolutePath: string;
   languageKind: SourceLanguageKind;
   sourceText: string;
+  moduleSyntax: SourceModuleSyntaxFacts;
   legacy: {
     parsedFile: ParsedProjectFile;
   };
@@ -49,8 +51,8 @@ export type CssFrontendFile = {
   cssText: string;
   cssKind: "global-css" | "css-module";
   origin: "project" | "html-linked" | "package" | "remote";
-  analysis: ExperimentalCssFileAnalysis;
-  selectorQueries: ExtractedSelectorQuery[];
+  rules: CssStyleRuleFact[];
+  selectorEntries: ExtractedSelectorQuery[];
 };
 
 export type LanguageFrontendsCompatibility = {

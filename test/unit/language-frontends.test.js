@@ -62,6 +62,41 @@ test("language frontends consume ProjectSnapshot and expose compatibility projec
       ["src/components/Button.tsx", "src/Zed.jsx"],
     );
     assert.deepEqual(
+      frontends.source.files.map((file) => ({
+        filePath: file.filePath,
+        imports: file.moduleSyntax.imports.map((importRecord) => ({
+          specifier: importRecord.specifier,
+          importKind: importRecord.importKind,
+        })),
+        exports: file.moduleSyntax.exports.map((exportRecord) => exportRecord.exportedName),
+        values: [...file.moduleSyntax.declarations.valueDeclarations.keys()],
+      })),
+      [
+        {
+          filePath: "src/components/Button.tsx",
+          imports: [
+            {
+              specifier: "./Button.module.css",
+              importKind: "css",
+            },
+          ],
+          exports: ["Button"],
+          values: ["Button"],
+        },
+        {
+          filePath: "src/Zed.jsx",
+          imports: [
+            {
+              specifier: "./zed.css",
+              importKind: "css",
+            },
+          ],
+          exports: ["Zed"],
+          values: ["Zed"],
+        },
+      ],
+    );
+    assert.deepEqual(
       frontends.compatibility.selectorCssSources.map((file) => file.filePath),
       ["src/components/Button.module.css", "src/zed.css"],
     );
@@ -114,9 +149,9 @@ test("language frontends parse CSS into deterministic frontend facts", async () 
         filePath: file.filePath,
         cssKind: file.cssKind,
         origin: file.origin,
-        ruleCount: file.analysis.styleRules.length,
-        selectorQueryCount: file.selectorQueries.length,
-        classDefinitions: file.analysis.classDefinitions.map((definition) => definition.className),
+        ruleCount: file.rules.length,
+        selectorEntryCount: file.selectorEntries.length,
+        ruleSelectors: file.rules.map((rule) => rule.selector),
       })),
       [
         {
@@ -124,16 +159,16 @@ test("language frontends parse CSS into deterministic frontend facts", async () 
           cssKind: "css-module",
           origin: "project",
           ruleCount: 1,
-          selectorQueryCount: 1,
-          classDefinitions: ["root"],
+          selectorEntryCount: 1,
+          ruleSelectors: [".root"],
         },
         {
           filePath: "src/b.css",
           cssKind: "global-css",
           origin: "project",
           ruleCount: 1,
-          selectorQueryCount: 2,
-          classDefinitions: ["active", "beta", "item"],
+          selectorEntryCount: 2,
+          ruleSelectors: [".beta .item, .beta.active"],
         },
       ],
     );

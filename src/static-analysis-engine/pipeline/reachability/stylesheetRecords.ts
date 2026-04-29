@@ -1,7 +1,10 @@
 import type { RenderGraph } from "../render-model/render-graph/types.js";
 import type { RenderSubtree } from "../render-model/render-ir/index.js";
-import type { SelectorSourceInput } from "../selector-analysis/types.js";
-import type { StylesheetReachabilityContextRecord, StylesheetReachabilityRecord } from "./types.js";
+import type {
+  ReachabilityStylesheetInput,
+  StylesheetReachabilityContextRecord,
+  StylesheetReachabilityRecord,
+} from "./types.js";
 import type {
   BatchedComponentAvailability,
   ProjectWideEntrySource,
@@ -13,7 +16,7 @@ import { addContextRecord, withStylesheetRecordTraces } from "./recordUtils.js";
 import { buildContextRecords } from "./contextRecords.js";
 
 export function buildStylesheetReachabilityRecord(input: {
-  cssSource: SelectorSourceInput;
+  stylesheet: ReachabilityStylesheetInput;
   renderGraph: RenderGraph;
   renderSubtrees: RenderSubtree[];
   knownCssFilePaths: Set<string>;
@@ -26,10 +29,10 @@ export function buildStylesheetReachabilityRecord(input: {
   componentAvailability: BatchedComponentAvailability;
   includeTraces: boolean;
 }): StylesheetReachabilityRecord {
-  const cssFilePath = normalizeProjectPath(input.cssSource.filePath);
+  const cssFilePath = normalizeProjectPath(input.stylesheet.filePath);
   if (!cssFilePath) {
     return withStylesheetRecordTraces({
-      cssFilePath: input.cssSource.filePath,
+      cssFilePath: input.stylesheet.filePath,
       availability: "unknown",
       contexts: [],
       reasons: [
@@ -141,7 +144,7 @@ export function buildStylesheetReachabilityRecord(input: {
   const contextRecords = [...contextRecordsByKey.values()].sort(compareContextRecords);
   if (contextRecords.length === 0) {
     return withStylesheetRecordTraces({
-      cssFilePath: input.cssSource.filePath,
+      cssFilePath: input.stylesheet.filePath,
       availability: "unavailable",
       contexts: [],
       reasons: [
@@ -175,7 +178,7 @@ export function buildStylesheetReachabilityRecord(input: {
   );
 
   return withStylesheetRecordTraces({
-    cssFilePath: input.cssSource.filePath,
+    cssFilePath: input.stylesheet.filePath,
     availability: contextRecords.some((context) => context.availability === "definite")
       ? "definite"
       : contextRecords.some((context) => context.availability === "possible")

@@ -1,4 +1,5 @@
 import type { ReachabilitySummary } from "../../pipeline/reachability/index.js";
+import type { CssFrontendFacts } from "../../pipeline/language-frontends/index.js";
 import type { RenderSubtree } from "../../pipeline/render-model/render-ir/index.js";
 import {
   analyzeSelectorQueries,
@@ -10,14 +11,22 @@ import type { SelectorAnalysisStageResult } from "./types.js";
 
 export function runSelectorAnalysisStage(input: {
   selectorQueries: string[];
-  selectorCssSources: SelectorSourceInput[];
+  css?: CssFrontendFacts;
+  selectorCssSources?: SelectorSourceInput[];
   renderSubtrees: RenderSubtree[];
   reachabilitySummary: ReachabilitySummary;
   includeTraces?: boolean;
 }): SelectorAnalysisStageResult {
-  const parsedSelectorQueries = buildParsedSelectorQueries(buildSelectorQueries(input), {
-    includeTraces: input.includeTraces,
-  });
+  const parsedSelectorQueries = buildParsedSelectorQueries(
+    buildSelectorQueries({
+      selectorQueries: input.selectorQueries,
+      selectorEntries: input.css?.files.flatMap((file) => file.selectorEntries),
+      selectorCssSources: input.selectorCssSources,
+    }),
+    {
+      includeTraces: input.includeTraces,
+    },
+  );
 
   return {
     selectorQueryResults: analyzeSelectorQueries({

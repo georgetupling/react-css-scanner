@@ -1,7 +1,10 @@
-import { analyzeCssSources } from "../css-analysis/index.js";
+import { extractCssStyleRules } from "../../libraries/css-parsing/index.js";
+import type { ParsedCssSelectorEntry } from "../../libraries/selector-parsing/index.js";
+import type { ParsedProjectFile } from "../../entry/stages/types.js";
 import { parseSourceFile } from "../parse/index.js";
-import { extractSelectorQueriesFromCssText } from "../selector-analysis/index.js";
+import type { ExtractedSelectorQuery } from "../selector-analysis/index.js";
 import type { ProjectSnapshot } from "../workspace-discovery/index.js";
+import { collectSourceModuleSyntax } from "./source/moduleSyntax.js";
 import type {
   CssFrontendFacts,
   CssFrontendFile,
@@ -62,6 +65,10 @@ function buildSourceFrontendFacts(snapshot: ProjectSnapshot): SourceFrontendFact
         absolutePath: sourceFile.absolutePath,
         languageKind: getSourceLanguageKind(sourceFile.filePath),
         sourceText: sourceFile.sourceText,
+        moduleSyntax: collectSourceModuleSyntax({
+          filePath: normalizeFilePath(sourceFile.filePath),
+          sourceFile: parsedFile.parsedSourceFile,
+        }),
         legacy: {
           parsedFile,
         },
@@ -74,14 +81,39 @@ function buildSourceFrontendFacts(snapshot: ProjectSnapshot): SourceFrontendFact
   };
 }
 
+export function buildSourceFrontendFactsFromParsedFiles(
+  parsedFiles: ParsedProjectFile[],
+): SourceFrontendFacts {
+  const files: SourceFrontendFile[] = [...parsedFiles]
+    .sort((left, right) => left.filePath.localeCompare(right.filePath))
+    .map((parsedFile) => ({
+      filePath: parsedFile.filePath,
+      absolutePath: parsedFile.filePath,
+      languageKind: getSourceLanguageKind(parsedFile.filePath),
+      sourceText: parsedFile.parsedSourceFile.getFullText(),
+      moduleSyntax: collectSourceModuleSyntax({
+        filePath: normalizeFilePath(parsedFile.filePath),
+        sourceFile: parsedFile.parsedSourceFile,
+      }),
+      legacy: {
+        parsedFile,
+      },
+    }));
+
+  return {
+    files,
+    filesByPath: new Map(files.map((file) => [file.filePath, file])),
+  };
+}
+
 function buildCssFrontendFacts(snapshot: ProjectSnapshot): CssFrontendFacts {
   const files: CssFrontendFile[] = [...snapshot.files.stylesheets]
     .sort((left, right) => left.filePath.localeCompare(right.filePath))
     .map((stylesheet) => {
-      const selectorSource = {
-        filePath: stylesheet.filePath,
+      const rules = extractCssStyleRules({
         cssText: stylesheet.cssText,
-      };
+        filePath: stylesheet.filePath,
+      });
 
       return {
         filePath: stylesheet.filePath,
@@ -89,20 +121,35 @@ function buildCssFrontendFacts(snapshot: ProjectSnapshot): CssFrontendFacts {
         cssText: stylesheet.cssText,
         cssKind: stylesheet.cssKind,
         origin: stylesheet.origin,
-        analysis: analyzeCssSources([selectorSource])[0] ?? {
-          filePath: stylesheet.filePath,
-          styleRules: [],
-          classDefinitions: [],
-          classContexts: [],
-          atRuleContexts: [],
-        },
-        selectorQueries: extractSelectorQueriesFromCssText(selectorSource),
+        rules,
+        selectorEntries: rules.flatMap((rule) =>
+          rule.selectorEntries.map(projectSelectorEntryToQuery),
+        ),
       };
     });
 
   return {
     files,
     filesByPath: new Map(files.map((file) => [file.filePath, file])),
+  };
+}
+
+function projectSelectorEntryToQuery(entry: ParsedCssSelectorEntry): ExtractedSelectorQuery {
+  return {
+    selectorText: entry.selectorText,
+    source: {
+      kind: "css-source",
+      selectorAnchor: entry.selectorAnchor,
+      selectorListText: entry.selectorListText,
+      branchIndex: entry.branchIndex,
+      branchCount: entry.branchCount,
+      ruleKey: entry.ruleKey,
+      ...(entry.atRuleContext
+        ? {
+            atRuleContext: entry.atRuleContext,
+          }
+        : {}),
+    },
   };
 }
 
@@ -120,4 +167,8 @@ function getSourceLanguageKind(filePath: string): SourceLanguageKind {
   }
 
   return "js";
+}
+
+function normalizeFilePath(filePath: string): string {
+  return filePath.replace(/\\/g, "/");
 }

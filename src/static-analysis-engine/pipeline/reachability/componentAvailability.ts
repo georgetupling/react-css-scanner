@@ -1,4 +1,4 @@
-import type { SelectorSourceInput } from "../selector-analysis/types.js";
+import type { ReachabilityStylesheetInput } from "./types.js";
 import type {
   ComponentAvailabilityRecord,
   BatchedComponentAvailability,
@@ -8,15 +8,15 @@ import { normalizeProjectPath } from "./pathUtils.js";
 import { createComponentKey } from "./sortAndKeys.js";
 
 export function computeBatchedComponentAvailability(input: {
-  cssSources: SelectorSourceInput[];
+  stylesheets: ReachabilityStylesheetInput[];
   directCssImportersByStylesheetPath: Map<string, string[]>;
   reachabilityGraphContext: ReachabilityGraphContext;
   includeTraces: boolean;
 }): BatchedComponentAvailability {
   const stylesheetPaths = [
     ...new Set(
-      input.cssSources
-        .map((cssSource) => normalizeProjectPath(cssSource.filePath))
+      input.stylesheets
+        .map((stylesheet) => normalizeProjectPath(stylesheet.filePath))
         .filter((filePath): filePath is string => Boolean(filePath)),
     ),
   ].sort((left, right) => left.localeCompare(right));

@@ -1,3 +1,5 @@
+import type { ParsedCssSelectorEntry } from "../libraries/selector-parsing/index.js";
+
 export type CssSelectorMatchKind = "standalone" | "compound" | "contextual" | "complex";
 
 export type CssSelectorBranchFact = {
@@ -24,6 +26,7 @@ export type CssDeclarationFact = {
 
 export type CssStyleRuleFact = {
   selector: string;
+  selectorEntries: ParsedCssSelectorEntry[];
   selectorBranches: CssSelectorBranchFact[];
   declarations: CssDeclarationFact[];
   line: number;

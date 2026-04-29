@@ -1,6 +1,9 @@
 export { analyzeProjectSourceTexts, analyzeSourceText } from "./entry/scan.js";
 export { analyzeCssSources } from "./pipeline/css-analysis/index.js";
-export { buildLanguageFrontends } from "./pipeline/language-frontends/index.js";
+export {
+  buildLanguageFrontends,
+  buildSourceFrontendFactsFromParsedFiles,
+} from "./pipeline/language-frontends/index.js";
 export { buildModuleFacts } from "./pipeline/module-facts/buildModuleFacts.js";
 export {
   collectAvailableExportedNames,
@@ -97,6 +100,7 @@ export type {
   SourceFrontendFacts,
   SourceFrontendFile,
   SourceLanguageKind,
+  SourceModuleSyntaxFacts,
 } from "./pipeline/language-frontends/index.js";
 export type {
   ActiveExternalCssProvider,

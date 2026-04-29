@@ -2,6 +2,11 @@ import type { AnalysisTrace } from "../../types/analysis.js";
 
 export type ReachabilityAvailability = "definite" | "possible" | "unknown" | "unavailable";
 
+export type ReachabilityStylesheetInput = {
+  filePath?: string;
+  cssText?: string;
+};
+
 export type ReachabilityDerivation =
   | {
       kind: "source-file-direct-import";

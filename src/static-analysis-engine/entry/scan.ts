@@ -1,5 +1,10 @@
 import type { SelectorSourceInput } from "../pipeline/selector-analysis/index.js";
 import type { ExternalCssAnalysisInput } from "../pipeline/external-css/index.js";
+import {
+  buildSourceFrontendFactsFromParsedFiles,
+  type CssFrontendFacts,
+  type SourceFrontendFacts,
+} from "../pipeline/language-frontends/index.js";
 import type {
   CssModuleLocalsConvention,
   ProjectAnalysisStylesheetInput,
@@ -26,6 +31,8 @@ export function analyzeSourceText(input: {
   sourceText: string;
   selectorQueries?: string[];
   selectorCssSources?: SelectorSourceInput[];
+  source?: SourceFrontendFacts;
+  css?: CssFrontendFacts;
   stylesheets?: ProjectAnalysisStylesheetInput[];
   boundaries?: ProjectBoundary[];
   resourceEdges?: ProjectResourceEdge[];
@@ -45,6 +52,8 @@ export function analyzeSourceText(input: {
     ],
     selectorQueries: input.selectorQueries,
     selectorCssSources: input.selectorCssSources,
+    source: input.source,
+    css: input.css,
     stylesheets: input.stylesheets,
     boundaries: input.boundaries,
     resourceEdges: input.resourceEdges,
@@ -63,6 +72,8 @@ export function analyzeProjectSourceTexts(input: {
   projectRoot?: string;
   selectorQueries?: string[];
   selectorCssSources?: SelectorSourceInput[];
+  source?: SourceFrontendFacts;
+  css?: CssFrontendFacts;
   stylesheets?: ProjectAnalysisStylesheetInput[];
   boundaries?: ProjectBoundary[];
   resourceEdges?: ProjectResourceEdge[];
@@ -74,6 +85,11 @@ export function analyzeProjectSourceTexts(input: {
   includeTraces?: boolean;
 }): StaticAnalysisEngineResult {
   const includeTraces = input.includeTraces ?? true;
+  const cssFrontendStylesheets = input.css?.files.map((file) => ({
+    filePath: file.filePath,
+    cssKind: file.cssKind,
+    origin: file.origin,
+  }));
   const boundaries =
     input.boundaries ??
     collectWorkspacePackageBoundaries(
@@ -88,11 +104,13 @@ export function analyzeProjectSourceTexts(input: {
   const parseStage = runAnalysisStage(progress, "parse", "Parsing source files", () =>
     runParseStage(input.sourceFiles),
   );
+  const sourceFrontendFacts =
+    input.source ?? buildSourceFrontendFactsFromParsedFiles(parseStage.parsedFiles);
   const moduleFactsStage = runAnalysisStage(progress, "module-facts", "Building module facts", () =>
     runModuleFactsStage({
-      parsedFiles: parseStage.parsedFiles,
-      stylesheetFilePaths: (input.selectorCssSources ?? [])
-        .map((cssSource) => cssSource.filePath)
+      source: sourceFrontendFacts,
+      stylesheetFilePaths: (input.css?.files ?? input.selectorCssSources ?? [])
+        .map((stylesheet) => stylesheet.filePath)
         .filter((filePath): filePath is string => Boolean(filePath)),
       projectRoot: input.projectRoot,
       boundaries,
@@ -130,6 +148,7 @@ export function analyzeProjectSourceTexts(input: {
   );
   const cssAnalysisStage = runAnalysisStage(progress, "css-analysis", "Analyzing CSS", () =>
     runCssAnalysisStage({
+      css: input.css,
       selectorCssSources: input.selectorCssSources ?? [],
     }),
   );
@@ -152,6 +171,7 @@ export function analyzeProjectSourceTexts(input: {
         moduleFacts: moduleFactsStage.moduleFacts,
         renderGraph: renderModelStage.renderGraph,
         renderSubtrees: renderModelStage.renderSubtrees,
+        css: input.css,
         selectorCssSources: input.selectorCssSources ?? [],
         resourceEdges: input.resourceEdges,
         externalCssSummary: externalCssStage.externalCssSummary,
@@ -165,6 +185,7 @@ export function analyzeProjectSourceTexts(input: {
     () =>
       runSelectorAnalysisStage({
         selectorQueries: input.selectorQueries ?? [],
+        css: input.css,
         selectorCssSources: input.selectorCssSources ?? [],
         renderSubtrees: renderModelStage.renderSubtrees,
         reachabilitySummary: reachabilityStage.reachabilitySummary,
@@ -179,7 +200,7 @@ export function analyzeProjectSourceTexts(input: {
       runProjectAnalysisStage({
         moduleFacts: moduleFactsStage.moduleFacts,
         cssFiles: cssAnalysisStage.cssFiles,
-        stylesheets: input.stylesheets,
+        stylesheets: input.stylesheets ?? cssFrontendStylesheets,
         symbolResolution: symbolResolutionStage,
         cssModuleLocalsConvention: input.cssModules?.localsConvention,
         externalCssSummary: externalCssStage.externalCssSummary,

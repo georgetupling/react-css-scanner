@@ -35,6 +35,8 @@ export async function scanProject(input: ScanProjectInput = {}): Promise<ScanPro
   const engineResult = analyzeProjectSourceTexts({
     sourceFiles: engineInput.sourceFiles,
     projectRoot: engineInput.projectRoot,
+    source: languageFrontends.source,
+    css: languageFrontends.css,
     selectorCssSources: engineInput.selectorCssSources,
     stylesheets: engineInput.projectAnalysisStylesheets,
     boundaries: engineInput.boundaries,
