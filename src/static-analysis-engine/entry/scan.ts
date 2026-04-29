@@ -4,7 +4,11 @@ import type {
   CssModuleLocalsConvention,
   ProjectAnalysisStylesheetInput,
 } from "../pipeline/project-analysis/index.js";
-import type { ProjectResourceEdge } from "../pipeline/workspace-discovery/index.js";
+import { collectWorkspacePackageBoundaries } from "../pipeline/workspace-discovery/boundaries/collectWorkspacePackageBoundaries.js";
+import type {
+  ProjectBoundary,
+  ProjectResourceEdge,
+} from "../pipeline/workspace-discovery/index.js";
 import type { AnalysisProgressCallback, StaticAnalysisEngineResult } from "../types/runtime.js";
 import { runCssAnalysisStage } from "./stages/cssAnalysisStage.js";
 import { runExternalCssStage } from "./stages/externalCssStage.js";
@@ -23,6 +27,7 @@ export function analyzeSourceText(input: {
   selectorQueries?: string[];
   selectorCssSources?: SelectorSourceInput[];
   stylesheets?: ProjectAnalysisStylesheetInput[];
+  boundaries?: ProjectBoundary[];
   resourceEdges?: ProjectResourceEdge[];
   externalCss?: ExternalCssAnalysisInput;
   cssModules?: {
@@ -41,6 +46,7 @@ export function analyzeSourceText(input: {
     selectorQueries: input.selectorQueries,
     selectorCssSources: input.selectorCssSources,
     stylesheets: input.stylesheets,
+    boundaries: input.boundaries,
     resourceEdges: input.resourceEdges,
     externalCss: input.externalCss,
     cssModules: input.cssModules,
@@ -58,6 +64,7 @@ export function analyzeProjectSourceTexts(input: {
   selectorQueries?: string[];
   selectorCssSources?: SelectorSourceInput[];
   stylesheets?: ProjectAnalysisStylesheetInput[];
+  boundaries?: ProjectBoundary[];
   resourceEdges?: ProjectResourceEdge[];
   externalCss?: ExternalCssAnalysisInput;
   cssModules?: {
@@ -67,6 +74,16 @@ export function analyzeProjectSourceTexts(input: {
   includeTraces?: boolean;
 }): StaticAnalysisEngineResult {
   const includeTraces = input.includeTraces ?? true;
+  const boundaries =
+    input.boundaries ??
+    collectWorkspacePackageBoundaries(
+      input.sourceFiles.map((sourceFile) => ({
+        kind: "source" as const,
+        filePath: sourceFile.filePath,
+        absolutePath: sourceFile.filePath,
+        sourceText: sourceFile.sourceText,
+      })),
+    );
   const progress = createAnalysisProgressReporter(input.onProgress);
   const parseStage = runAnalysisStage(progress, "parse", "Parsing source files", () =>
     runParseStage(input.sourceFiles),
@@ -78,6 +95,7 @@ export function analyzeProjectSourceTexts(input: {
         .map((cssSource) => cssSource.filePath)
         .filter((filePath): filePath is string => Boolean(filePath)),
       projectRoot: input.projectRoot,
+      boundaries,
       resourceEdges: input.resourceEdges,
     }),
   );

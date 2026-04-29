@@ -112,6 +112,13 @@ export type ProjectBoundary =
       source: "config";
     }
   | {
+      kind: "workspace-package";
+      packageName: string;
+      entryFilePath: string;
+      confidence: "heuristic";
+      reason: "discovered-workspace-entrypoint";
+    }
+  | {
       kind: "html-app-entry";
       htmlFilePath: string;
       entrySourceFilePath: string;

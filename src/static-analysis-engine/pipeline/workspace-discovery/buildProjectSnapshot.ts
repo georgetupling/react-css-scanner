@@ -119,6 +119,7 @@ export async function buildProjectSnapshot(input: {
       rootDir: discovered.rootDir,
       config,
       htmlScriptSources,
+      sourceFiles,
     }),
     edges: collectProjectResourceEdges({
       htmlStylesheetLinks,

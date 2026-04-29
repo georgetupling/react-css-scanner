@@ -1,14 +1,14 @@
 import type ts from "typescript";
 
 import type { ParsedProjectFile } from "../../entry/stages/types.js";
-import type { ProjectResourceEdge } from "../workspace-discovery/index.js";
+import type { ProjectBoundary, ProjectResourceEdge } from "../workspace-discovery/index.js";
+import { collectWorkspacePackageBoundaries } from "../workspace-discovery/boundaries/collectWorkspacePackageBoundaries.js";
 import { collectDeclarations } from "./collect/collectDeclarations.js";
 import { applyExportEvidenceToDeclarations, collectExports } from "./collect/collectExports.js";
 import { collectImports } from "./collect/collectImports.js";
 import { buildResolvedModuleFacts } from "./normalize/buildResolvedModuleFacts.js";
 import { createModuleFactsCaches } from "./resolve/cache.js";
 import { buildTypescriptResolution } from "./resolve/typescriptResolution.js";
-import { collectWorkspacePackageEntryPoints } from "./resolve/workspaceEntryPoints.js";
 import { normalizeFilePath } from "./shared/pathUtils.js";
 import { collectSourceImportEdgesByImportKey } from "./sourceImportEdges.js";
 import type {
@@ -17,6 +17,7 @@ import type {
   ModuleFactsDeclarationIndex,
   ModuleFactsExportRecord,
   ModuleFactsImportRecord,
+  WorkspacePackageEntryPoint,
 } from "./types.js";
 
 export function buildModuleFacts(input: {
@@ -24,6 +25,7 @@ export function buildModuleFacts(input: {
   stylesheetFilePaths?: Iterable<string>;
   projectRoot?: string;
   compilerOptions?: ts.CompilerOptions;
+  boundaries?: ProjectBoundary[];
   resourceEdges?: ProjectResourceEdge[];
 }): ModuleFacts {
   const moduleFactsStore = buildModuleFactsStore(input);
@@ -37,6 +39,7 @@ function buildModuleFactsStore(input: {
   stylesheetFilePaths?: Iterable<string>;
   projectRoot?: string;
   compilerOptions?: ts.CompilerOptions;
+  boundaries?: ProjectBoundary[];
   resourceEdges?: ProjectResourceEdge[];
 }): ModuleFactsStore {
   const sortedParsedFiles = [...input.parsedFiles].sort((left, right) =>
@@ -59,6 +62,16 @@ function buildModuleFactsStore(input: {
     exportsByFilePath.set(filePath, exports);
     declarationsByFilePath.set(filePath, declarations);
   }
+  const boundaries =
+    input.boundaries ??
+    collectWorkspacePackageBoundaries(
+      sortedParsedFiles.map((parsedFile) => ({
+        kind: "source" as const,
+        filePath: parsedFile.filePath,
+        absolutePath: parsedFile.filePath,
+        sourceText: parsedFile.parsedSourceFile.getFullText(),
+      })),
+    );
 
   const moduleFacts: ModuleFactsStore = {
     parsedSourceFilesByFilePath,
@@ -69,7 +82,8 @@ function buildModuleFactsStore(input: {
       [...(input.stylesheetFilePaths ?? [])].map((filePath) => normalizeFilePath(filePath)),
     ),
     resolvedModuleFactsByFilePath: new Map(),
-    workspacePackageEntryPointsByPackageName: collectWorkspacePackageEntryPoints(sortedParsedFiles),
+    workspacePackageEntryPointsByPackageName:
+      collectWorkspacePackageEntryPointsFromBoundaries(boundaries),
     sourceImportEdgesByImportKey: collectSourceImportEdgesByImportKey(input.resourceEdges ?? []),
     typescriptResolution: buildTypescriptResolution({
       projectRoot: input.projectRoot,
@@ -84,4 +98,33 @@ function buildModuleFactsStore(input: {
   });
 
   return moduleFacts;
+}
+
+function collectWorkspacePackageEntryPointsFromBoundaries(
+  boundaries: ProjectBoundary[],
+): Map<string, WorkspacePackageEntryPoint[]> {
+  const entryPointsByPackageName = new Map<string, WorkspacePackageEntryPoint[]>();
+
+  for (const boundary of boundaries) {
+    if (boundary.kind !== "workspace-package") {
+      continue;
+    }
+
+    const entryPoints = entryPointsByPackageName.get(boundary.packageName) ?? [];
+    entryPoints.push({
+      packageName: boundary.packageName,
+      filePath: normalizeFilePath(boundary.entryFilePath),
+      confidence: boundary.confidence,
+      reason: boundary.reason,
+    });
+    entryPointsByPackageName.set(boundary.packageName, entryPoints);
+  }
+
+  for (const entryPoints of entryPointsByPackageName.values()) {
+    entryPoints.sort((left, right) => left.filePath.localeCompare(right.filePath));
+  }
+
+  return new Map(
+    [...entryPointsByPackageName.entries()].sort(([left], [right]) => left.localeCompare(right)),
+  );
 }

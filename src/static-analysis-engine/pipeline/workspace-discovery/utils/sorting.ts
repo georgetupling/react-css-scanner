@@ -18,6 +18,9 @@ function serializeProjectBoundary(boundary: ProjectBoundary): string {
   if (boundary.kind === "source-root") {
     return `${boundary.kind}:${boundary.filePath}`;
   }
+  if (boundary.kind === "workspace-package") {
+    return `${boundary.kind}:${boundary.packageName}:${boundary.entryFilePath}`;
+  }
   return `${boundary.kind}:${boundary.htmlFilePath}:${boundary.entrySourceFilePath}:${boundary.appRootPath}`;
 }
 
