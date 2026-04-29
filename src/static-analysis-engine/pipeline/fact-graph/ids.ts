@@ -40,6 +40,19 @@ export function definesSelectorEdgeId(from: FactNodeId, to: FactNodeId): FactEdg
   return `defines-selector:${from}->${to}`;
 }
 
+export function importsEdgeId(
+  from: FactNodeId,
+  to: FactNodeId,
+  specifier: string,
+  importKind: string,
+): FactEdgeId {
+  return `imports:${from}->${to}:${specifier}:${importKind}`;
+}
+
+export function externalResourceNodeId(specifier: string, resourceKind: string): FactNodeId {
+  return `external:${resourceKind}:${normalizeIdPart(specifier)}`;
+}
+
 export function normalizeIdPart(value: string): string {
   return value.replace(/\\/g, "/");
 }

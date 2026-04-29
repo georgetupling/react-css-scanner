@@ -1,8 +1,8 @@
 import type { AnalysisConfidence, AnalysisSeverity, AnalysisTrace } from "../../types/analysis.js";
 import type { SourceAnchor } from "../../types/core.js";
 import type { CssAtRuleContextFact, CssStyleRuleFact } from "../../types/css.js";
-import type { LanguageFrontendsResult } from "../language-frontends/index.js";
 import type { ExtractedSelectorQuery } from "../selector-analysis/index.js";
+import type { LanguageFrontendsResult } from "../language-frontends/index.js";
 import type { ProjectSnapshot } from "../workspace-discovery/index.js";
 
 export type FactGraphInput = {
@@ -74,6 +74,10 @@ export type FactGraphNodes = {
   files: FileResourceNode[];
   externalResources: ExternalResourceNode[];
 };
+
+export type FactImportKind = "source" | "css" | "external-css" | "type-only" | "unknown";
+export type FactImportResolutionStatus = "resolved" | "unresolved" | "external" | "unsupported";
+export type FactCssSemantics = "global" | "module";
 
 export type FactGraphEdges = {
   all: FactEdge[];
@@ -221,6 +225,14 @@ export type FactNode =
 
 export type ImportsEdge = FactEdgeBase & {
   kind: "imports";
+  importerKind: "source" | "stylesheet";
+  importerFilePath: string;
+  importKind: FactImportKind;
+  specifier: string;
+  resolutionStatus: FactImportResolutionStatus;
+  cssSemantics?: FactCssSemantics;
+  resolvedFilePath?: string;
+  resolvedTargetNodeId?: string;
 };
 
 export type RendersEdge = FactEdgeBase & {

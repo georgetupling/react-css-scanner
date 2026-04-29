@@ -1,6 +1,6 @@
 import type { SelectorSourceInput } from "../pipeline/selector-analysis/index.js";
 import type { ExternalCssAnalysisInput } from "../pipeline/external-css/index.js";
-import type { FactGraphResult } from "../pipeline/fact-graph/index.js";
+import { graphToProjectResourceEdges, type FactGraphResult } from "../pipeline/fact-graph/index.js";
 import {
   buildSourceFrontendFactsFromSourceFiles,
   type CssFrontendFacts,
@@ -15,6 +15,7 @@ import type {
   ProjectBoundary,
   ProjectResourceEdge,
 } from "../pipeline/workspace-discovery/index.js";
+import { compareProjectResourceEdges } from "../pipeline/workspace-discovery/utils/sorting.js";
 import type { AnalysisProgressCallback, StaticAnalysisEngineResult } from "../types/runtime.js";
 import { runCssAnalysisStage } from "./stages/cssAnalysisStage.js";
 import { runExternalCssStage } from "./stages/externalCssStage.js";
@@ -88,8 +89,12 @@ export function analyzeProjectSourceTexts(input: {
   includeTraces?: boolean;
 }): StaticAnalysisEngineResult {
   const includeTraces = input.includeTraces ?? true;
-  // Phase 1 threads the graph through the entrypoint before downstream consumers switch to it.
-  void input.factGraph;
+  const mergedResourceEdges = getMergedResourceEdges({
+    inputResourceEdges: input.resourceEdges,
+    factResourceEdges: input.factGraph
+      ? graphToProjectResourceEdges(input.factGraph.graph)
+      : undefined,
+  });
   const cssFrontendStylesheets = input.css?.files.map((file) => ({
     filePath: file.filePath,
     cssKind: file.cssKind,
@@ -124,7 +129,7 @@ export function analyzeProjectSourceTexts(input: {
         .filter((filePath): filePath is string => Boolean(filePath)),
       projectRoot: input.projectRoot,
       boundaries,
-      resourceEdges: input.resourceEdges,
+      resourceEdges: mergedResourceEdges,
     }),
   );
   const symbolResolutionStage = runAnalysisStage(
@@ -184,7 +189,7 @@ export function analyzeProjectSourceTexts(input: {
         renderSubtrees: renderModelStage.renderSubtrees,
         css: input.css,
         selectorCssSources: input.selectorCssSources ?? [],
-        resourceEdges: input.resourceEdges,
+        resourceEdges: mergedResourceEdges,
         externalCssSummary: externalCssStage.externalCssSummary,
         includeTraces,
       }),
@@ -258,4 +263,71 @@ function runAnalysisStage<T>(
   const result = run();
   progress(stage, "completed", message, performance.now() - startedAt);
   return result;
+}
+
+function getMergedResourceEdges(input: {
+  inputResourceEdges?: ProjectResourceEdge[];
+  factResourceEdges?: ProjectResourceEdge[];
+}): ProjectResourceEdge[] | undefined {
+  if (input.inputResourceEdges === undefined && input.factResourceEdges === undefined) {
+    return undefined;
+  }
+
+  const allEdges = [...(input.inputResourceEdges ?? []), ...(input.factResourceEdges ?? [])];
+  const dedupedByKey = new Map<string, ProjectResourceEdge>();
+
+  for (const edge of allEdges.sort(compareProjectResourceEdges)) {
+    const key = getResourceEdgeMergeKey(edge);
+    const existing = dedupedByKey.get(key);
+    if (existing === undefined || shouldReplaceResourceEdge(existing, edge)) {
+      dedupedByKey.set(key, edge);
+    }
+  }
+
+  return [...dedupedByKey.values()].sort(compareProjectResourceEdges);
+}
+
+function getResourceEdgeMergeKey(edge: ProjectResourceEdge): string {
+  if (edge.kind === "source-import") {
+    return `source-import\0${edge.importerFilePath}\0${edge.specifier}\0${edge.importKind}`;
+  }
+  if (edge.kind === "stylesheet-import") {
+    return `stylesheet-import\0${edge.importerFilePath}\0${edge.specifier}\0${edge.resolvedFilePath}`;
+  }
+  if (edge.kind === "package-css-import") {
+    return `package-css-import\0${edge.importerKind}\0${edge.importerFilePath}\0${edge.specifier}\0${edge.resolvedFilePath}`;
+  }
+  if (edge.kind === "html-stylesheet") {
+    return `html-stylesheet\0${edge.fromHtmlFilePath}\0${edge.href}\0${edge.resolvedFilePath ?? ""}`;
+  }
+
+  return `html-script\0${edge.fromHtmlFilePath}\0${edge.src}\0${edge.resolvedFilePath ?? ""}\0${edge.appRootPath ?? ""}`;
+}
+
+function shouldReplaceResourceEdge(
+  existing: ProjectResourceEdge,
+  candidate: ProjectResourceEdge,
+): boolean {
+  if (existing.kind !== "source-import" || candidate.kind !== "source-import") {
+    return false;
+  }
+
+  const existingRank = getSourceImportResolutionRank(existing.resolutionStatus);
+  const candidateRank = getSourceImportResolutionRank(candidate.resolutionStatus);
+  return candidateRank > existingRank;
+}
+
+type SourceImportResolutionStatus = "resolved" | "unresolved" | "external" | "unsupported";
+
+function getSourceImportResolutionRank(status: SourceImportResolutionStatus): number {
+  if (status === "resolved") {
+    return 3;
+  }
+  if (status === "external") {
+    return 2;
+  }
+  if (status === "unresolved") {
+    return 1;
+  }
+  return 0;
 }

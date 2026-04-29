@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { graphToCssRuleFileInputs } from "../../dist/static-analysis-engine/pipeline/fact-graph/adapters/cssAnalysisInputs.js";
+import { graphToProjectResourceEdges } from "../../dist/static-analysis-engine/pipeline/fact-graph/adapters/graphToProjectResourceEdges.js";
 import { graphToSelectorEntries } from "../../dist/static-analysis-engine/pipeline/fact-graph/adapters/selectorAnalysisInputs.js";
 import { buildFactGraph } from "../../dist/static-analysis-engine/pipeline/fact-graph/buildFactGraph.js";
 import { buildLanguageFrontends } from "../../dist/static-analysis-engine/pipeline/language-frontends/buildLanguageFrontends.js";
@@ -309,6 +310,159 @@ test("fact graph reports duplicate graph ids", async () => {
           code: "duplicate-graph-id",
           message:
             "Duplicate fact graph edge id: originates-from-file:module:src/App.tsx->file:src/App.tsx",
+        },
+      ],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("fact graph normalizes source and stylesheet imports into import edges", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./theme.css";\nimport "pkg/theme.css";\nimport "https://example.com/remote.css";\n',
+    )
+    .withCssFile("src/theme.css", '@import "./tokens.css";\n.token {\n  color: red;\n}\n')
+    .withCssFile("src/tokens.css", ".token {\n  color: green;\n}\n")
+    .build();
+
+  try {
+    const snapshot = await buildProjectSnapshot({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+        cssFilePaths: ["src/theme.css", "src/tokens.css"],
+      },
+      runStage: async (_stage, _message, run) => run(),
+    });
+    const frontends = buildLanguageFrontends({ snapshot });
+    const result = buildFactGraph({ snapshot, frontends });
+
+    const importEdges = result.graph.edges.imports.map((edge) => ({
+      id: edge.id,
+      from: edge.from,
+      to: edge.to,
+      importerKind: edge.importerKind,
+      importKind: edge.importKind,
+      specifier: edge.specifier,
+      resolutionStatus: edge.resolutionStatus,
+      ...(edge.resolvedFilePath ? { resolvedFilePath: edge.resolvedFilePath } : {}),
+      ...(edge.resolvedTargetNodeId ? { resolvedTargetNodeId: edge.resolvedTargetNodeId } : {}),
+    }));
+    assert.deepEqual(importEdges, [
+      {
+        id: "imports:module:src/App.tsx->external:package:pkg/theme.css:pkg/theme.css:css",
+        from: "module:src/App.tsx",
+        to: "external:package:pkg/theme.css",
+        importerKind: "source",
+        importKind: "css",
+        specifier: "pkg/theme.css",
+        resolutionStatus: "external",
+      },
+      {
+        id: "imports:module:src/App.tsx->external:remote:https://example.com/remote.css:https://example.com/remote.css:css",
+        from: "module:src/App.tsx",
+        to: "external:remote:https://example.com/remote.css",
+        importerKind: "source",
+        importKind: "css",
+        specifier: "https://example.com/remote.css",
+        resolutionStatus: "external",
+      },
+      {
+        id: "imports:module:src/App.tsx->stylesheet:src/theme.css:./theme.css:css",
+        from: "module:src/App.tsx",
+        to: "stylesheet:src/theme.css",
+        importerKind: "source",
+        importKind: "css",
+        specifier: "./theme.css",
+        resolutionStatus: "resolved",
+        resolvedFilePath: "src/theme.css",
+        resolvedTargetNodeId: "stylesheet:src/theme.css",
+      },
+      {
+        id: "imports:stylesheet:src/theme.css->stylesheet:src/tokens.css:./tokens.css:css",
+        from: "stylesheet:src/theme.css",
+        to: "stylesheet:src/tokens.css",
+        importerKind: "stylesheet",
+        importKind: "css",
+        specifier: "./tokens.css",
+        resolutionStatus: "resolved",
+        resolvedFilePath: "src/tokens.css",
+        resolvedTargetNodeId: "stylesheet:src/tokens.css",
+      },
+    ]);
+
+    assert.deepEqual(
+      result.graph.nodes.externalResources.map((node) => ({
+        id: node.id,
+        specifier: node.specifier,
+        resourceKind: node.resourceKind,
+      })),
+      [
+        {
+          id: "external:package:pkg/theme.css",
+          specifier: "pkg/theme.css",
+          resourceKind: "package",
+        },
+        {
+          id: "external:remote:https://example.com/remote.css",
+          specifier: "https://example.com/remote.css",
+          resourceKind: "remote",
+        },
+      ],
+    );
+
+    assert.deepEqual(
+      graphToProjectResourceEdges(result.graph).map((edge) => ({
+        kind: edge.kind,
+        importerKind: edge.kind === "source-import" ? edge.importerKind : undefined,
+        importerFilePath: edge.importerFilePath,
+        specifier: edge.specifier,
+        resolutionStatus: edge.kind === "source-import" ? edge.resolutionStatus : undefined,
+        importKind: edge.kind === "source-import" ? edge.importKind : undefined,
+        resolvedFilePath:
+          edge.kind === "source-import" || edge.kind === "stylesheet-import"
+            ? edge.resolvedFilePath
+            : undefined,
+      })),
+      [
+        {
+          kind: "source-import",
+          importerKind: undefined,
+          importerFilePath: "src/App.tsx",
+          specifier: "./theme.css",
+          importKind: "css",
+          resolutionStatus: "resolved",
+          resolvedFilePath: "src/theme.css",
+        },
+        {
+          kind: "source-import",
+          importerKind: undefined,
+          importerFilePath: "src/App.tsx",
+          specifier: "https://example.com/remote.css",
+          importKind: "css",
+          resolutionStatus: "external",
+          resolvedFilePath: undefined,
+        },
+        {
+          kind: "source-import",
+          importerKind: undefined,
+          importerFilePath: "src/App.tsx",
+          specifier: "pkg/theme.css",
+          importKind: "css",
+          resolutionStatus: "external",
+          resolvedFilePath: undefined,
+        },
+        {
+          kind: "stylesheet-import",
+          importerKind: undefined,
+          importerFilePath: "src/theme.css",
+          specifier: "./tokens.css",
+          importKind: undefined,
+          resolutionStatus: undefined,
+          resolvedFilePath: "src/tokens.css",
         },
       ],
     );

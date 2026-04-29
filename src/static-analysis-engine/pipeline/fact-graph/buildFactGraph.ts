@@ -5,6 +5,7 @@ import {
   buildFileNodes,
   buildModuleNodes,
   buildOriginatesFromFileEdges,
+  buildImportEdges,
   buildStylesheetNodes,
 } from "./builders/index.js";
 import { sortEdges, sortNodes } from "./utils/sortGraphElements.js";
@@ -15,8 +16,20 @@ export function buildFactGraph(input: FactGraphInput): FactGraphResult {
   const moduleNodes = buildModuleNodes(input);
   const stylesheetNodes = buildStylesheetNodes(input);
   const cssNodes = buildCssNodes(input);
+  const importEdges = buildImportEdges({
+    frontends: input.frontends,
+    snapshotEdges: input.snapshot.edges,
+    moduleNodes,
+    stylesheetNodes,
+  });
 
-  const nodes = sortNodes([...fileNodes, ...moduleNodes, ...stylesheetNodes, ...cssNodes.all]);
+  const nodes = sortNodes([
+    ...fileNodes,
+    ...moduleNodes,
+    ...stylesheetNodes,
+    ...cssNodes.all,
+    ...importEdges.externalResources,
+  ]);
   const originatesFromFileEdges = buildOriginatesFromFileEdges({
     fileNodes,
     moduleNodes,
@@ -27,7 +40,7 @@ export function buildFactGraph(input: FactGraphInput): FactGraphResult {
     selectors: cssNodes.selectors,
     selectorBranches: cssNodes.selectorBranches,
   });
-  const edges = sortEdges([...originatesFromFileEdges, ...cssEdges.all]);
+  const edges = sortEdges([...originatesFromFileEdges, ...cssEdges.all, ...importEdges.imports]);
 
   const { indexes, diagnostics } = buildFactGraphIndexes({ nodes, edges });
 
@@ -55,11 +68,11 @@ export function buildFactGraph(input: FactGraphInput): FactGraphResult {
         selectorBranches: cssNodes.selectorBranches,
         ownerCandidates: [],
         files: fileNodes,
-        externalResources: [],
+        externalResources: importEdges.externalResources,
       },
       edges: {
         all: edges,
-        imports: [],
+        imports: importEdges.imports,
         renders: [],
         contains: cssEdges.contains,
         referencesClassExpression: [],

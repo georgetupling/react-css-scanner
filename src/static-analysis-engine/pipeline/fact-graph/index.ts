@@ -1,5 +1,6 @@
 export { buildFactGraph } from "./buildFactGraph.js";
 export { graphToCssRuleFileInputs } from "./adapters/cssAnalysisInputs.js";
+export { graphToProjectResourceEdges } from "./adapters/graphToProjectResourceEdges.js";
 export { graphToSelectorEntries } from "./adapters/selectorAnalysisInputs.js";
 export type {
   FactEdge,
