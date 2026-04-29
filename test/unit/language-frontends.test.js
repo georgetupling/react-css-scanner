@@ -200,3 +200,62 @@ test("language frontends parse CSS into deterministic frontend facts", async () 
     await project.cleanup();
   }
 });
+
+test("language frontends extract runtime DOM class sites from module-backed adapters", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/editor.ts",
+      [
+        'import { EditorView as ProseMirrorView } from "prosemirror-view";',
+        "",
+        "new ProseMirrorView(undefined, {",
+        "  attributes: {",
+        '    class: "ProseMirror editor-shell",',
+        "  },",
+        "});",
+        "",
+      ].join("\n"),
+    )
+    .build();
+
+  try {
+    const snapshot = await buildProjectSnapshot({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/editor.ts"],
+      },
+      runStage: async (_stage, _message, run) => run(),
+    });
+
+    const frontends = buildLanguageFrontends({ snapshot });
+
+    assert.deepEqual(
+      frontends.source.files.flatMap((file) =>
+        file.runtimeDomClassSites.map((site) => ({
+          kind: site.kind,
+          filePath: site.filePath,
+          rawExpressionText: site.rawExpressionText,
+          classText: site.classText,
+          runtimeLibraryHint: site.runtimeLibraryHint,
+          adapterName: site.trace.adapterName,
+        })),
+      ),
+      [
+        {
+          kind: "prosemirror-editor-view-attributes",
+          filePath: "src/editor.ts",
+          rawExpressionText: '"ProseMirror editor-shell"',
+          classText: "ProseMirror editor-shell",
+          runtimeLibraryHint: {
+            packageName: "prosemirror-view",
+            importedName: "EditorView",
+            localName: "ProseMirrorView",
+          },
+          adapterName: "prosemirror-editor-view",
+        },
+      ],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});

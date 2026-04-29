@@ -143,7 +143,7 @@ export function analyzeProjectSourceTexts(input: {
     "Analyzing runtime DOM class usage",
     () =>
       runRuntimeDomStage({
-        parsedFiles: parseStage.parsedFiles,
+        source: sourceFrontendFacts,
         includeTraces,
       }),
   );

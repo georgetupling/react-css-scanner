@@ -1,13 +1,14 @@
 import { analyzeRuntimeDomClasses } from "../../pipeline/runtime-dom/index.js";
-import type { RuntimeDomStageResult, ParsedProjectFile } from "./types.js";
+import type { SourceFrontendFacts } from "../../pipeline/language-frontends/index.js";
+import type { RuntimeDomStageResult } from "./types.js";
 
 export function runRuntimeDomStage(input: {
-  parsedFiles: ParsedProjectFile[];
+  source: SourceFrontendFacts;
   includeTraces?: boolean;
 }): RuntimeDomStageResult {
   return {
     runtimeDomClassReferences: analyzeRuntimeDomClasses({
-      parsedFiles: input.parsedFiles,
+      source: input.source,
       includeTraces: input.includeTraces,
     }),
   };

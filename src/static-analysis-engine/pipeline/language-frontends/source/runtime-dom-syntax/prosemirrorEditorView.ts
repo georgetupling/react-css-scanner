@@ -1,42 +1,44 @@
 import ts from "typescript";
 
-import type {
-  RuntimeDomAdapter,
-  RuntimeDomAdapterContext,
-  RuntimeDomClassReference,
-  RuntimeDomLibraryHint,
-} from "../types.js";
+import type { ModuleFactsImportRecord } from "../../../module-facts/types.js";
+import type { RuntimeDomClassSite, RuntimeDomLibraryHint } from "../../types.js";
 import {
-  buildRuntimeDomClassReference,
+  buildRuntimeDomClassSite,
   findObjectPropertyValue,
   isStaticStringExpression,
+  type RuntimeDomFrontendAdapterContext,
 } from "./shared.js";
 
 const ADAPTER_NAME = "prosemirror-editor-view";
 const PROSEMIRROR_VIEW_PACKAGE = "prosemirror-view";
 
-export const prosemirrorEditorViewAdapter: RuntimeDomAdapter = {
-  adapterName: ADAPTER_NAME,
-  collectReferences(node, context) {
-    if (!ts.isNewExpression(node)) {
-      return [];
-    }
+export function collectProseMirrorEditorViewRuntimeDomSites(input: {
+  node: ts.Node;
+  context: RuntimeDomFrontendAdapterContext;
+  imports: ModuleFactsImportRecord[];
+}): RuntimeDomClassSite[] {
+  if (!ts.isNewExpression(input.node)) {
+    return [];
+  }
 
-    const runtimeLibraryHint = getProseMirrorEditorViewImportHint(node.expression, context);
-    if (!isEditorViewConstructor(node.expression)) {
-      return [];
-    }
+  const importBindings = collectProseMirrorViewBindings(input.imports);
+  const runtimeLibraryHint = getProseMirrorEditorViewImportHint(
+    input.node.expression,
+    importBindings,
+  );
+  if (!isEditorViewConstructor(input.node.expression, importBindings)) {
+    return [];
+  }
 
-    return collectEditorViewAttributeClassReferences(node, context, runtimeLibraryHint);
-  },
-};
+  return collectEditorViewAttributeClassSites(input.node, input.context, runtimeLibraryHint);
+}
 
-function collectEditorViewAttributeClassReferences(
+function collectEditorViewAttributeClassSites(
   expression: ts.NewExpression,
-  context: RuntimeDomAdapterContext,
+  context: RuntimeDomFrontendAdapterContext,
   runtimeLibraryHint: RuntimeDomLibraryHint | undefined,
-): RuntimeDomClassReference[] {
-  const references: RuntimeDomClassReference[] = [];
+): RuntimeDomClassSite[] {
+  const sites: RuntimeDomClassSite[] = [];
   for (const argument of expression.arguments ?? []) {
     if (!ts.isObjectLiteralExpression(argument)) {
       continue;
@@ -53,8 +55,8 @@ function collectEditorViewAttributeClassReferences(
         continue;
       }
 
-      references.push(
-        buildRuntimeDomClassReference({
+      sites.push(
+        buildRuntimeDomClassSite({
           kind: "prosemirror-editor-view-attributes",
           expression: classExpression,
           context,
@@ -67,23 +69,29 @@ function collectEditorViewAttributeClassReferences(
     }
   }
 
-  return references;
+  return sites;
 }
 
-function isEditorViewConstructor(expression: ts.Expression): boolean {
+function isEditorViewConstructor(
+  expression: ts.Expression,
+  importBindings: ProseMirrorViewBindings,
+): boolean {
   if (ts.isIdentifier(expression)) {
-    return expression.text === "EditorView";
+    return expression.text === "EditorView" || importBindings.namedImports.has(expression.text);
   }
 
-  return ts.isPropertyAccessExpression(expression) && expression.name.text === "EditorView";
+  return (
+    ts.isPropertyAccessExpression(expression) &&
+    expression.name.text === "EditorView" &&
+    ts.isIdentifier(expression.expression) &&
+    importBindings.namespaceImports.has(expression.expression.text)
+  );
 }
 
 function getProseMirrorEditorViewImportHint(
   expression: ts.Expression,
-  context: RuntimeDomAdapterContext,
+  importBindings: ProseMirrorViewBindings,
 ): RuntimeDomLibraryHint | undefined {
-  const importBindings = collectProseMirrorViewBindings(context.parsedSourceFile);
-
   if (ts.isIdentifier(expression)) {
     const importedName = importBindings.namedImports.get(expression.text);
     return importedName
@@ -111,38 +119,31 @@ function getProseMirrorEditorViewImportHint(
   return undefined;
 }
 
-function collectProseMirrorViewBindings(sourceFile: ts.SourceFile): {
+type ProseMirrorViewBindings = {
   namedImports: Map<string, string>;
   namespaceImports: Set<string>;
-} {
+};
+
+function collectProseMirrorViewBindings(
+  imports: ModuleFactsImportRecord[],
+): ProseMirrorViewBindings {
   const namedImports = new Map<string, string>();
   const namespaceImports = new Set<string>();
 
-  for (const statement of sourceFile.statements) {
-    if (
-      !ts.isImportDeclaration(statement) ||
-      !ts.isStringLiteral(statement.moduleSpecifier) ||
-      statement.moduleSpecifier.text !== PROSEMIRROR_VIEW_PACKAGE
-    ) {
+  for (const importRecord of imports) {
+    if (importRecord.specifier !== PROSEMIRROR_VIEW_PACKAGE) {
       continue;
     }
 
-    const namedBindings = statement.importClause?.namedBindings;
-    if (!namedBindings) {
-      continue;
-    }
-
-    if (ts.isNamedImports(namedBindings)) {
-      for (const element of namedBindings.elements) {
-        const importedName = element.propertyName?.text ?? element.name.text;
-        if (importedName === "EditorView") {
-          namedImports.set(element.name.text, importedName);
-        }
+    for (const importName of importRecord.importNames) {
+      if (importName.kind === "named" && importName.importedName === "EditorView") {
+        namedImports.set(importName.localName, importName.importedName);
       }
-      continue;
-    }
 
-    namespaceImports.add(namedBindings.name.text);
+      if (importName.kind === "namespace") {
+        namespaceImports.add(importName.localName);
+      }
+    }
   }
 
   return { namedImports, namespaceImports };

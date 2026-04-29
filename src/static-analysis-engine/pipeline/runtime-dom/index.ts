@@ -1,2 +1,6 @@
 export { analyzeRuntimeDomClasses } from "./analyzeRuntimeDomClasses.js";
-export type { RuntimeDomClassReference, RuntimeDomClassReferenceKind } from "./types.js";
+export type {
+  RuntimeDomClassReference,
+  RuntimeDomClassReferenceKind,
+  RuntimeDomLibraryHint,
+} from "./types.js";

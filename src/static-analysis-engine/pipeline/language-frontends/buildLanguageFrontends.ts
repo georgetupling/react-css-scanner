@@ -5,6 +5,7 @@ import { parseSourceFile } from "../parse/index.js";
 import type { ExtractedSelectorQuery } from "../selector-analysis/index.js";
 import type { ProjectSnapshot } from "../workspace-discovery/index.js";
 import { collectSourceModuleSyntax } from "./source/moduleSyntax.js";
+import { extractRuntimeDomClassSites } from "./source/runtime-dom-syntax/extractRuntimeDomSites.js";
 import type {
   CssFrontendFacts,
   CssFrontendFile,
@@ -35,15 +36,22 @@ function buildSourceFrontendFacts(snapshot: ProjectSnapshot): SourceFrontendFact
         filePath: sourceFile.filePath,
         parsedSourceFile: parseSourceFile(sourceFile),
       };
+      const filePath = normalizeFilePath(sourceFile.filePath);
+      const moduleSyntax = collectSourceModuleSyntax({
+        filePath,
+        sourceFile: parsedFile.parsedSourceFile,
+      });
 
       return {
         filePath: sourceFile.filePath,
         absolutePath: sourceFile.absolutePath,
         languageKind: getSourceLanguageKind(sourceFile.filePath),
         sourceText: sourceFile.sourceText,
-        moduleSyntax: collectSourceModuleSyntax({
-          filePath: normalizeFilePath(sourceFile.filePath),
+        moduleSyntax,
+        runtimeDomClassSites: extractRuntimeDomClassSites({
+          filePath,
           sourceFile: parsedFile.parsedSourceFile,
+          moduleSyntax,
         }),
         legacy: {
           parsedFile,
@@ -62,19 +70,29 @@ export function buildSourceFrontendFactsFromParsedFiles(
 ): SourceFrontendFacts {
   const files: SourceFrontendFile[] = [...parsedFiles]
     .sort((left, right) => left.filePath.localeCompare(right.filePath))
-    .map((parsedFile) => ({
-      filePath: parsedFile.filePath,
-      absolutePath: parsedFile.filePath,
-      languageKind: getSourceLanguageKind(parsedFile.filePath),
-      sourceText: parsedFile.parsedSourceFile.getFullText(),
-      moduleSyntax: collectSourceModuleSyntax({
-        filePath: normalizeFilePath(parsedFile.filePath),
+    .map((parsedFile) => {
+      const filePath = normalizeFilePath(parsedFile.filePath);
+      const moduleSyntax = collectSourceModuleSyntax({
+        filePath,
         sourceFile: parsedFile.parsedSourceFile,
-      }),
-      legacy: {
-        parsedFile,
-      },
-    }));
+      });
+
+      return {
+        filePath: parsedFile.filePath,
+        absolutePath: parsedFile.filePath,
+        languageKind: getSourceLanguageKind(parsedFile.filePath),
+        sourceText: parsedFile.parsedSourceFile.getFullText(),
+        moduleSyntax,
+        runtimeDomClassSites: extractRuntimeDomClassSites({
+          filePath,
+          sourceFile: parsedFile.parsedSourceFile,
+          moduleSyntax,
+        }),
+        legacy: {
+          parsedFile,
+        },
+      };
+    });
 
   return {
     files,

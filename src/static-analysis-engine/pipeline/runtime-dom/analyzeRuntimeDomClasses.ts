@@ -1,42 +1,81 @@
-import ts from "typescript";
-
-import { prosemirrorEditorViewAdapter } from "./adapters/index.js";
-import type {
-  RuntimeDomAdapter,
-  RuntimeDomAdapterContext,
-  RuntimeDomClassReference,
-} from "./types.js";
-
-const RUNTIME_DOM_ADAPTERS: RuntimeDomAdapter[] = [prosemirrorEditorViewAdapter];
+import {
+  buildClassExpressionTraces,
+  toAbstractClassSet,
+} from "../render-model/abstract-values/classExpressions.js";
+import type { AbstractValue } from "../render-model/abstract-values/types.js";
+import type { RuntimeDomClassSite, SourceFrontendFacts } from "../language-frontends/types.js";
+import type { RuntimeDomClassReference, RuntimeDomReferenceTrace } from "./types.js";
 
 export function analyzeRuntimeDomClasses(input: {
-  parsedFiles: Array<{
-    filePath: string;
-    parsedSourceFile: ts.SourceFile;
-  }>;
+  source: SourceFrontendFacts;
   includeTraces?: boolean;
 }): RuntimeDomClassReference[] {
-  return input.parsedFiles.flatMap((parsedFile) =>
-    collectRuntimeDomClassReferences({
-      ...parsedFile,
-      includeTraces: input.includeTraces ?? true,
-    }),
+  const includeTraces = input.includeTraces ?? true;
+
+  return input.source.files.flatMap((file) =>
+    file.runtimeDomClassSites.map((site) =>
+      runtimeDomClassSiteToReference({
+        site,
+        includeTraces,
+      }),
+    ),
   );
 }
 
-function collectRuntimeDomClassReferences(
-  context: RuntimeDomAdapterContext,
-): RuntimeDomClassReference[] {
-  const references: RuntimeDomClassReference[] = [];
+function runtimeDomClassSiteToReference(input: {
+  site: RuntimeDomClassSite;
+  includeTraces: boolean;
+}): RuntimeDomClassReference {
+  const value: AbstractValue = {
+    kind: "string-exact",
+    value: input.site.classText,
+  };
 
-  function visit(node: ts.Node): void {
-    for (const adapter of RUNTIME_DOM_ADAPTERS) {
-      references.push(...adapter.collectReferences(node, context));
-    }
+  return {
+    kind: input.site.kind,
+    filePath: input.site.filePath,
+    location: input.site.location,
+    rawExpressionText: input.site.rawExpressionText,
+    runtimeLibraryHint: input.site.runtimeLibraryHint,
+    classExpression: {
+      sourceAnchor: input.site.location,
+      sourceText: input.site.rawExpressionText,
+      value,
+      classes: toAbstractClassSet(value, input.site.location),
+      traces: [
+        ...buildRuntimeDomClassSiteTraces({
+          site: input.site,
+          includeTraces: input.includeTraces,
+        }),
+        ...buildClassExpressionTraces({
+          sourceAnchor: input.site.location,
+          sourceText: input.site.rawExpressionText,
+          value,
+          includeTraces: input.includeTraces,
+        }),
+      ],
+    },
+  };
+}
 
-    ts.forEachChild(node, visit);
+function buildRuntimeDomClassSiteTraces(input: {
+  site: RuntimeDomClassSite;
+  includeTraces: boolean;
+}): RuntimeDomReferenceTrace[] {
+  if (!input.includeTraces) {
+    return [];
   }
 
-  visit(context.parsedSourceFile);
-  return references;
+  return [
+    {
+      traceId: `runtime-dom:class-reference:${input.site.location.filePath}:${input.site.location.startLine}:${input.site.location.startColumn}`,
+      category: "value-evaluation",
+      summary: input.site.trace.summary,
+      anchor: input.site.location,
+      children: [],
+      metadata: {
+        adapter: input.site.trace.adapterName,
+      },
+    },
+  ];
 }

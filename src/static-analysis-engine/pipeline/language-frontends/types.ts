@@ -9,6 +9,7 @@ import type {
   ProjectSnapshot,
 } from "../workspace-discovery/index.js";
 import type { ParsedProjectFile } from "../../entry/stages/types.js";
+import type { SourceAnchor } from "../../types/core.js";
 import type { SourceModuleSyntaxFacts } from "./source/moduleSyntax.js";
 
 export type LanguageFrontendsInput = {
@@ -32,12 +33,34 @@ export type SourceFrontendFile = {
   languageKind: SourceLanguageKind;
   sourceText: string;
   moduleSyntax: SourceModuleSyntaxFacts;
+  runtimeDomClassSites: RuntimeDomClassSite[];
   legacy: {
     parsedFile: ParsedProjectFile;
   };
 };
 
 export type SourceLanguageKind = "js" | "jsx" | "ts" | "tsx";
+
+export type RuntimeDomClassSiteKind = "prosemirror-editor-view-attributes";
+
+export type RuntimeDomClassSite = {
+  kind: RuntimeDomClassSiteKind;
+  filePath: string;
+  location: SourceAnchor;
+  rawExpressionText: string;
+  classText: string;
+  runtimeLibraryHint?: RuntimeDomLibraryHint;
+  trace: {
+    adapterName: string;
+    summary: string;
+  };
+};
+
+export type RuntimeDomLibraryHint = {
+  packageName: string;
+  importedName: string;
+  localName: string;
+};
 
 export type CssFrontendFacts = {
   files: CssFrontendFile[];
