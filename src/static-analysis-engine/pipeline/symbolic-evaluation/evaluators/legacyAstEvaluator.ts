@@ -129,7 +129,7 @@ export function buildCanonicalClassExpressionFromValue(input: {
     classExpressionSiteNodeId: input.input.classExpressionSite.id,
     classExpressionSiteKind: input.input.classExpressionSite.classExpressionSiteKind,
     expressionNodeId: input.input.classExpressionSite.expressionNodeId,
-    sourceExpressionKind: input.input.expressionSyntax.expressionKind,
+    sourceExpressionKind: input.input.expressionSyntax?.expressionKind,
     filePath: input.input.classExpressionSite.filePath,
     location: input.input.classExpressionSite.location,
     rawExpressionText: input.input.classExpressionSite.rawExpressionText,

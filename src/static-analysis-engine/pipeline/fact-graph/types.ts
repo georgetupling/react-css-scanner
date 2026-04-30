@@ -9,6 +9,7 @@ import type {
   ReactHelperDefinitionFact,
   ReactLocalValueBindingFact,
 } from "../language-frontends/source/react-syntax/index.js";
+import type { RuntimeDomLibraryHint } from "../language-frontends/types.js";
 import type { ProjectSnapshot } from "../workspace-discovery/index.js";
 
 export type FactGraphInput = {
@@ -203,6 +204,8 @@ export type ClassExpressionSiteNode = FactNodeBase & {
   expressionId: string;
   expressionNodeId: FactNodeId;
   rawExpressionText: string;
+  runtimeDomClassText?: string;
+  runtimeDomLibraryHint?: RuntimeDomLibraryHint;
   emittingComponentNodeId?: FactNodeId;
   placementComponentNodeId?: FactNodeId;
   renderSiteNodeId?: FactNodeId;

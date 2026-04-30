@@ -23,11 +23,11 @@ function createFallbackClassExpression(
   const expressionId = canonicalClassExpressionId(input.classExpressionSite.id);
   const trace = createSymbolicEvaluationTrace({
     traceId: `symbolic-evaluation:fallback:${expressionId}`,
-    summary: `Deferred symbolic evaluation for ${input.expressionSyntax.expressionKind} expression`,
-    anchor: input.expressionSyntax.location,
+    summary: `Deferred symbolic evaluation for ${input.expressionSyntax?.expressionKind ?? "unknown"} expression`,
+    anchor: input.expressionSyntax?.location ?? input.classExpressionSite.location,
     metadata: {
       evaluator: fallbackClassExpressionEvaluator.name,
-      expressionKind: input.expressionSyntax.expressionKind,
+      expressionKind: input.expressionSyntax?.expressionKind ?? "unknown",
     },
   });
   const traces = traceList({
@@ -40,7 +40,7 @@ function createFallbackClassExpression(
     classExpressionSiteNodeId: input.classExpressionSite.id,
     classExpressionSiteKind: input.classExpressionSite.classExpressionSiteKind,
     expressionNodeId: input.classExpressionSite.expressionNodeId,
-    sourceExpressionKind: input.expressionSyntax.expressionKind,
+    sourceExpressionKind: input.expressionSyntax?.expressionKind,
     filePath: input.classExpressionSite.filePath,
     location: input.classExpressionSite.location,
     rawExpressionText: input.classExpressionSite.rawExpressionText,
@@ -63,8 +63,8 @@ function createFallbackClassExpression(
         }),
         kind: "unsupported-syntax",
         code: "unsupported-expression-kind",
-        message: `No symbolic evaluator is wired for ${input.expressionSyntax.expressionKind} expressions yet`,
-        sourceAnchor: input.expressionSyntax.location,
+        message: `No symbolic evaluator is wired for ${input.expressionSyntax?.expressionKind ?? "unknown"} expressions yet`,
+        sourceAnchor: input.expressionSyntax?.location ?? input.classExpressionSite.location,
         recoverability: "none",
         confidence: "low",
       },

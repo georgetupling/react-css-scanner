@@ -3,6 +3,7 @@ import type { FactGraph } from "../../pipeline/fact-graph/index.js";
 import type {
   ParsedProjectFile,
   RenderModelStageResult,
+  SymbolResolutionStageResult,
   SymbolicEvaluationStageResult,
 } from "./types.js";
 
@@ -10,6 +11,7 @@ export function runSymbolicEvaluationStage(input: {
   graph: FactGraph;
   parsedFiles?: ParsedProjectFile[];
   renderModel?: Pick<RenderModelStageResult, "legacyClassExpressionSummaries">;
+  symbolResolution?: SymbolResolutionStageResult;
   includeTraces?: boolean;
 }): SymbolicEvaluationStageResult {
   return evaluateSymbolicExpressions({
@@ -27,6 +29,7 @@ export function runSymbolicEvaluationStage(input: {
                     input.renderModel.legacyClassExpressionSummaries,
                 }
               : {}),
+            ...(input.symbolResolution ? { symbolResolution: input.symbolResolution } : {}),
           },
         }
       : {}),

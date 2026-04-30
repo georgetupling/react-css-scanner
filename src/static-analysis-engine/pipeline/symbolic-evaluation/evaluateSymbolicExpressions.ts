@@ -32,6 +32,9 @@ export function evaluateSymbolicExpressions(
     createDefaultSymbolicEvaluatorRegistry({
       ...(legacyExpressionStore ? { legacyExpressionStore } : {}),
       ...(legacyRenderModelSummaryStore ? { legacyRenderModelSummaryStore } : {}),
+      ...(input.legacy?.symbolResolution
+        ? { symbolResolution: input.legacy.symbolResolution }
+        : {}),
     });
   const classExpressions: CanonicalClassExpression[] = [];
   const conditions: ConditionFact[] = [];
@@ -43,7 +46,7 @@ export function evaluateSymbolicExpressions(
   for (const site of classExpressionSites) {
     const expressionSyntax = resolveExpressionSyntaxNode(input, site);
 
-    if (!expressionSyntax) {
+    if (!expressionSyntax && !canEvaluateWithoutExpressionSyntax(site)) {
       diagnostics.push(missingExpressionSyntaxDiagnostic(site));
       continue;
     }
@@ -53,8 +56,12 @@ export function evaluateSymbolicExpressions(
       classExpressionSite: site,
       expressionSyntax,
       options: input.options ?? {},
+      ...(expressionSyntax ? { expressionSyntax } : {}),
       ...(legacyExpressionStore ? { legacyExpressionStore } : {}),
       ...(legacyRenderModelSummaryStore ? { legacyRenderModelSummaryStore } : {}),
+      ...(input.legacy?.symbolResolution
+        ? { symbolResolution: input.legacy.symbolResolution }
+        : {}),
     });
 
     if (result.expression) {
@@ -97,6 +104,10 @@ export function evaluateSymbolicExpressions(
       indexes: indexResult.indexes,
     },
   };
+}
+
+function canEvaluateWithoutExpressionSyntax(site: ClassExpressionSiteNode): boolean {
+  return site.classExpressionSiteKind === "runtime-dom-class" && Boolean(site.runtimeDomClassText);
 }
 
 function resolveExpressionSyntaxNode(

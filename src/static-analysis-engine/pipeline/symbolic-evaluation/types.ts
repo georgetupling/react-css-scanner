@@ -14,6 +14,7 @@ import type {
   FactGraph,
   FactNodeId,
 } from "../fact-graph/index.js";
+import type { ProjectBindingResolution } from "../symbol-resolution/index.js";
 
 export type EvaluatedExpressionId = string;
 export type ConditionId = string;
@@ -32,6 +33,7 @@ export type SymbolicEvaluationInput = {
   legacy?: {
     parsedFiles?: LegacyParsedProjectFile[];
     renderModelClassExpressionSummaries?: LegacyRenderModelClassExpressionSummaryRecord[];
+    symbolResolution?: ProjectBindingResolution;
   };
   evaluatorRegistry?: SymbolicEvaluatorRegistry;
 };
@@ -239,10 +241,11 @@ export type SymbolicEvaluationDiagnostic = {
 export type SymbolicExpressionEvaluatorInput = {
   graph: FactGraph;
   classExpressionSite: ClassExpressionSiteNode;
-  expressionSyntax: ExpressionSyntaxNode;
+  expressionSyntax?: ExpressionSyntaxNode;
   options: SymbolicEvaluationOptions;
   legacyExpressionStore?: LegacyAstExpressionStore;
   legacyRenderModelSummaryStore?: LegacyRenderModelClassExpressionSummaryStore;
+  symbolResolution?: ProjectBindingResolution;
 };
 
 export type SymbolicExpressionEvaluatorResult = {

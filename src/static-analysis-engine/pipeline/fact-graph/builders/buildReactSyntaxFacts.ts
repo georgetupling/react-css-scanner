@@ -12,6 +12,8 @@ import type {
   RendersEdge,
   RenderSiteNode,
 } from "../types.js";
+import type { RuntimeDomLibraryHint } from "../../language-frontends/types.js";
+import type { ReactClassExpressionSiteFact } from "../../language-frontends/source/react-syntax/index.js";
 import {
   classExpressionSiteNodeId,
   componentNodeId,
@@ -49,6 +51,11 @@ export type BuiltReactSyntaxFacts = {
   contains: ContainsEdge[];
   renders: RendersEdge[];
   referencesClassExpression: ReferencesClassExpressionEdge[];
+};
+
+type GraphClassExpressionSiteInput = ReactClassExpressionSiteFact & {
+  runtimeDomClassText?: string;
+  runtimeDomLibraryHint?: RuntimeDomLibraryHint;
 };
 
 export function buildReactSyntaxFacts(input: FactGraphInput): BuiltReactSyntaxFacts {
@@ -247,7 +254,7 @@ export function buildReactSyntaxFacts(input: FactGraphInput): BuiltReactSyntaxFa
       }
     }
 
-    for (const classSite of [
+    const graphClassSites: GraphClassExpressionSiteInput[] = [
       ...file.reactSyntax.classExpressionSites,
       ...file.runtimeDomClassSites.map((site) => ({
         siteKey: [
@@ -264,12 +271,16 @@ export function buildReactSyntaxFacts(input: FactGraphInput): BuiltReactSyntaxFa
         location: site.location,
         expressionId: site.expressionId,
         rawExpressionText: site.rawExpressionText,
+        runtimeDomClassText: site.classText,
+        runtimeDomLibraryHint: site.runtimeLibraryHint,
         emittingComponentKey: undefined,
         placementComponentKey: undefined,
         renderSiteKey: undefined,
         elementTemplateKey: undefined,
       })),
-    ]) {
+    ];
+
+    for (const classSite of graphClassSites) {
       const nodeId = classExpressionSiteNodeId(classSite.siteKey);
       classExpressionSites.push({
         id: nodeId,
@@ -281,6 +292,12 @@ export function buildReactSyntaxFacts(input: FactGraphInput): BuiltReactSyntaxFa
         expressionId: classSite.expressionId,
         expressionNodeId: classSite.expressionId,
         rawExpressionText: classSite.rawExpressionText,
+        ...(classSite.runtimeDomClassText
+          ? { runtimeDomClassText: classSite.runtimeDomClassText }
+          : {}),
+        ...(classSite.runtimeDomLibraryHint
+          ? { runtimeDomLibraryHint: classSite.runtimeDomLibraryHint }
+          : {}),
         ...(classSite.emittingComponentKey
           ? { emittingComponentNodeId: componentNodeId(classSite.emittingComponentKey) }
           : {}),

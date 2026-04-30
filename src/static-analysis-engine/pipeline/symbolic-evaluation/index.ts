@@ -9,6 +9,7 @@ export {
   uniqueSorted,
 } from "./class-values/index.js";
 export { toClassExpressionSummary } from "./adapters/classExpressionSummary.js";
+export { toRuntimeDomClassReferences } from "./adapters/runtimeDomClassReferences.js";
 export {
   canonicalClassExpressionId,
   classEmissionVariantId,
@@ -22,7 +23,9 @@ export { buildEvaluatedExpressionIndexes } from "./indexes.js";
 export {
   createDefaultSymbolicEvaluatorRegistry,
   createSymbolicEvaluatorRegistry,
+  cssModuleClassExpressionEvaluator,
   fallbackClassExpressionEvaluator,
+  runtimeDomClassExpressionEvaluator,
 } from "./registry.js";
 export { createSymbolicEvaluationTrace, traceList } from "./traces.js";
 export {

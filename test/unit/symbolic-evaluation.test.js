@@ -452,6 +452,111 @@ test("symbolic evaluation promotes definitely truthy object map entries", async 
   });
 });
 
+test("symbolic evaluation preserves runtime DOM exact class text", async () => {
+  const { snapshot, frontends, factGraph } = await buildEngineFlowFixture([
+    'import { EditorView as ProseMirrorView } from "prosemirror-view";',
+    "const mount = document.createElement('div');",
+    "const state = {};",
+    "new ProseMirrorView(undefined, {",
+    "  state,",
+    "  attributes: {",
+    '    class: "ProseMirror editor-shell",',
+    "  },",
+    "});",
+    "",
+  ]);
+  const result = analyzeProjectSourceTexts({
+    sourceFiles: frontends.source.files.map((file) => ({
+      filePath: file.filePath,
+      sourceText: file.sourceText,
+    })),
+    source: frontends.source,
+    css: frontends.css,
+    boundaries: snapshot.boundaries,
+    resourceEdges: snapshot.edges,
+    factGraph,
+    includeTraces: false,
+  });
+  const runtimeExpression = result.symbolicEvaluation.evaluatedExpressions.classExpressions.find(
+    (expression) => expression.classExpressionSiteKind === "runtime-dom-class",
+  );
+
+  assert.ok(runtimeExpression);
+  assert.deepEqual(
+    runtimeExpression.tokens.map((token) => token.token),
+    ["ProseMirror", "editor-shell"],
+  );
+});
+
+test("symbolic evaluation records CSS Module member access as a contribution", async () => {
+  const { result } = await evaluateRenderAwareFixture(
+    [
+      'import styles from "./App.module.css";',
+      "export function App() { return <div className={styles.root} />; }",
+      "",
+    ],
+    {},
+    {
+      "src/App.module.css": ".root { color: red; }\n",
+    },
+  );
+  const expression = getOnlyCssModuleExpression(result);
+
+  assert.deepEqual(expression.tokens, [
+    {
+      id: `${expression.id}:token:0:root`,
+      token: "root",
+      tokenKind: "css-module-export",
+      presence: "always",
+      conditionId: `${expression.id}:condition:always`,
+      sourceAnchor: expression.cssModuleContributions[0].sourceAnchor,
+      confidence: "high",
+      contributionId: expression.cssModuleContributions[0].id,
+    },
+  ]);
+  assert.equal(expression.cssModuleContributions[0].exportName, "root");
+  assert.equal(expression.cssModuleContributions[0].accessKind, "property");
+});
+
+test("symbolic evaluation preserves computed CSS Module member diagnostics", async () => {
+  const { result } = await evaluateRenderAwareFixture(
+    [
+      'import styles from "./App.module.css";',
+      'const name = "root";',
+      "export function App() { return <div className={styles[name]} />; }",
+      "",
+    ],
+    {},
+    {
+      "src/App.module.css": ".root { color: red; }\n",
+    },
+  );
+  const expression = getOnlyCssModuleExpression(result);
+
+  assert.deepEqual(expression.cssModuleContributions, []);
+  assert.equal(expression.unsupported[0].kind, "unsupported-css-module-access");
+  assert.equal(expression.unsupported[0].code, "computed-css-module-member");
+});
+
+test("symbolic evaluation records CSS Module destructured bindings as contributions", async () => {
+  const { result } = await evaluateRenderAwareFixture(
+    [
+      'import styles from "./App.module.css";',
+      "const { root } = styles;",
+      "export function App() { return <div className={root} />; }",
+      "",
+    ],
+    {},
+    {
+      "src/App.module.css": ".root { color: red; }\n",
+    },
+  );
+  const expression = getOnlyCssModuleExpression(result);
+
+  assert.equal(expression.cssModuleContributions[0].exportName, "root");
+  assert.equal(expression.cssModuleContributions[0].accessKind, "destructured-binding");
+});
+
 test("analyzeProjectSourceTexts produces internal symbolic evaluation facts when graph input exists", async () => {
   const { snapshot, frontends, factGraph } = await buildEngineFlowFixture([
     'const localClass = "internal-symbolic";',
@@ -642,7 +747,7 @@ async function buildFixtureAnalysis(
   }
 }
 
-async function evaluateRenderAwareFixture(sourceText, extraSourceFiles = {}) {
+async function evaluateRenderAwareFixture(sourceText, extraSourceFiles = {}, extraCssFiles = {}) {
   const projectBuilder = new TestProjectBuilder().withSourceFile(
     "src/App.tsx",
     sourceText.join("\n"),
@@ -650,17 +755,21 @@ async function evaluateRenderAwareFixture(sourceText, extraSourceFiles = {}) {
   for (const [filePath, text] of Object.entries(extraSourceFiles)) {
     projectBuilder.withSourceFile(filePath, text);
   }
+  for (const [filePath, text] of Object.entries(extraCssFiles)) {
+    projectBuilder.withCssFile(filePath, text);
+  }
   const project = await projectBuilder
     .withCssFile("src/app.css", ".placeholder { display: block; }\n")
     .build();
 
   try {
     const sourceFilePaths = ["src/App.tsx", ...Object.keys(extraSourceFiles)];
+    const cssFilePaths = ["src/app.css", ...Object.keys(extraCssFiles)];
     const snapshot = await buildProjectSnapshot({
       scanInput: {
         rootDir: project.rootDir,
         sourceFilePaths,
-        cssFilePaths: ["src/app.css"],
+        cssFilePaths,
       },
       runStage: async (_stage, _message, run) => run(),
     });
@@ -669,7 +778,7 @@ async function evaluateRenderAwareFixture(sourceText, extraSourceFiles = {}) {
     const parsedFiles = frontends.source.files.map((file) => file.legacy.parsedFile);
     const moduleFacts = buildModuleFacts({
       source: frontends.source,
-      stylesheetFilePaths: ["src/app.css"],
+      stylesheetFilePaths: cssFilePaths,
     });
     const symbolResolution = buildProjectBindingResolution({
       source: frontends.source,
@@ -690,6 +799,7 @@ async function evaluateRenderAwareFixture(sourceText, extraSourceFiles = {}) {
         legacy: {
           parsedFiles,
           renderModelClassExpressionSummaries: renderModel.legacyClassExpressionSummaries,
+          symbolResolution,
         },
       }),
       renderModel,
@@ -834,6 +944,16 @@ function toComparableCanonicalTokens(expression) {
 function getOnlyExpression(result) {
   assert.equal(result.evaluatedExpressions.classExpressions.length, 1);
   return result.evaluatedExpressions.classExpressions[0];
+}
+
+function getOnlyCssModuleExpression(result) {
+  const expressions = result.evaluatedExpressions.classExpressions.filter(
+    (expression) =>
+      expression.cssModuleContributions.length > 0 ||
+      expression.unsupported.some((reason) => reason.kind === "unsupported-css-module-access"),
+  );
+  assert.ok(expressions.length > 0);
+  return expressions[0];
 }
 
 function assertRenderAwareTokens(result, definiteTokens, possibleTokens = []) {
