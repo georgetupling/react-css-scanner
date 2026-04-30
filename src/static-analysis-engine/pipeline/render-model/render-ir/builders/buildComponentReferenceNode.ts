@@ -197,6 +197,7 @@ export function buildComponentReferenceNode(
         topLevelExpressionBindingsBySymbolIdByFilePath:
           context.topLevelExpressionBindingsBySymbolIdByFilePath,
         helperExpansionStack: [],
+        classExpressionSummariesByAnchor: context.classExpressionSummariesByAnchor,
         propsObjectBindingName: expansionBinding.propsObjectBindingName,
         propsObjectBindingSymbolId: expansionBinding.propsObjectBindingSymbolId,
         propsObjectProperties: expansionBinding.propsObjectProperties,

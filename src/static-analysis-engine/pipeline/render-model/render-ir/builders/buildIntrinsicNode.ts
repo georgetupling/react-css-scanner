@@ -1,7 +1,7 @@
 import ts from "typescript";
 
 import type { ClassExpressionSummary } from "../../abstract-values/types.js";
-import { summarizeClassNameExpressionInLegacyRenderModel } from "../../../symbolic-evaluation/adapters/legacyRenderModelAdapter.js";
+import { summarizeClassNameExpressionForRenderModel } from "../../../symbolic-evaluation/adapters/renderModelClassExpressions.js";
 import type { BuildContext } from "../shared/internalTypes.js";
 import { toSourceAnchor } from "../shared/renderIrUtils.js";
 import { isIntrinsicTagName, resolveIntrinsicTagName } from "../resolution/resolveExactValues.js";
@@ -90,7 +90,7 @@ export function summarizeClassNameExpressionForRender(
   expression: ts.Expression,
   context: BuildContext,
 ): ClassExpressionSummary {
-  return summarizeClassNameExpressionInLegacyRenderModel({ expression, context });
+  return summarizeClassNameExpressionForRenderModel({ expression, context });
 }
 
 function unwrapJsxAttributeInitializer(

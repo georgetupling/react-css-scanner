@@ -6,10 +6,14 @@ import type { FactGraphReactRenderSyntaxInputs } from "../../fact-graph/index.js
 export function collectUnsupportedClassReferences(input: {
   reactRenderSyntax?: FactGraphReactRenderSyntaxInputs;
   renderSubtrees: RenderSubtree[];
+  classExpressionSummaries?: Array<{ location: SourceAnchor }>;
   includeTraces?: boolean;
 }): UnsupportedClassReferenceDiagnostic[] {
   const includeTraces = input.includeTraces ?? true;
-  const modeledClassReferenceKeys = collectModeledClassReferenceKeys(input.renderSubtrees);
+  const modeledClassReferenceKeys = collectModeledClassReferenceKeys({
+    renderSubtrees: input.renderSubtrees,
+    classExpressionSummaries: input.classExpressionSummaries ?? [],
+  });
   const diagnostics = input.reactRenderSyntax
     ? collectGraphClassExpressionDiagnostics({
         reactRenderSyntax: input.reactRenderSyntax,
@@ -82,10 +86,17 @@ function createUnsupportedClassReferenceDiagnostic(input: {
   };
 }
 
-function collectModeledClassReferenceKeys(renderSubtrees: RenderSubtree[]): Set<string> {
+function collectModeledClassReferenceKeys(input: {
+  renderSubtrees: RenderSubtree[];
+  classExpressionSummaries: Array<{ location: SourceAnchor }>;
+}): Set<string> {
   const keys = new Set<string>();
 
-  for (const renderSubtree of renderSubtrees) {
+  for (const summary of input.classExpressionSummaries) {
+    keys.add(createAnchorKey(summary.location));
+  }
+
+  for (const renderSubtree of input.renderSubtrees) {
     visitRenderNode(renderSubtree.root, (node) => {
       if ((node.kind === "element" || node.kind === "component-reference") && node.className) {
         keys.add(createAnchorKey(node.className.sourceAnchor));

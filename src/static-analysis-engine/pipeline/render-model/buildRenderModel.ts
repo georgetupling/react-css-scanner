@@ -142,6 +142,7 @@ export function buildRenderModel(input: RenderModelBuildInput): RenderModel {
   const unsupportedClassReferences = collectUnsupportedClassReferences({
     reactRenderSyntax: input.reactRenderSyntax,
     renderSubtrees,
+    classExpressionSummaries: legacyClassExpressionSummaries,
     includeTraces,
   });
 

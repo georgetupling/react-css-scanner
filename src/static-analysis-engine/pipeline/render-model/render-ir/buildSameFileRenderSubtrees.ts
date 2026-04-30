@@ -33,11 +33,7 @@ import {
 } from "./resolution/resolveBindings.js";
 import { resolveExactBooleanExpression } from "./resolution/resolveExactValues.js";
 import { isRenderableExpression } from "./collection/shared/renderableExpressionGuards.js";
-import {
-  buildClassExpressionTraces,
-  mergeClassNameValues,
-  toAbstractClassSet,
-} from "../abstract-values/classExpressions.js";
+import { mergeClassExpressionSummariesForRenderModel } from "../../symbolic-evaluation/adapters/renderModelClassExpressions.js";
 import type { RenderNode, RenderSubtree } from "./types.js";
 
 const MAX_RENDER_EXPRESSION_RESOLUTION_DEPTH = 100;
@@ -86,6 +82,7 @@ export function buildSameFileRenderSubtrees(input: {
     rawExpressionText: string;
     summary: ClassExpressionSummary;
   }) => void;
+  classExpressionSummariesByAnchor?: Map<string, ClassExpressionSummary>;
 }): RenderSubtree[] {
   const includeTraces = input.includeTraces ?? true;
   const componentDefinitions = input.componentDefinitions ?? collectSameFileComponents(input);
@@ -142,6 +139,7 @@ export function buildSameFileRenderSubtrees(input: {
       ),
       helperExpansionStack: [],
       classExpressionSummarySink: input.classExpressionSummarySink,
+      classExpressionSummariesByAnchor: input.classExpressionSummariesByAnchor,
       propsObjectProperties: new Map(),
       propsObjectSubtreeProperties: new Map(),
       subtreeBindings: new Map(),
@@ -969,28 +967,12 @@ function summarizeCloneElementClassName(
     return overrideClassName;
   }
 
-  const value = mergeClassNameValues(
-    [originalClassName.value, overrideClassName.value],
-    "cloneElement className merge",
-  );
-  const classNameSourceAnchors = mergeClassNameSourceAnchors([
-    originalClassName.classNameSourceAnchors,
-    overrideClassName.classNameSourceAnchors,
-  ]);
-
-  return {
-    sourceAnchor: overrideClassName.sourceAnchor,
-    value,
-    classes: toAbstractClassSet(value, overrideClassName.sourceAnchor),
-    classNameSourceAnchors,
-    sourceText: overrideClassName.sourceText,
-    traces: buildClassExpressionTraces({
-      sourceAnchor: overrideClassName.sourceAnchor,
-      sourceText: overrideClassName.sourceText,
-      value,
-      includeTraces: context.includeTraces,
-    }),
-  };
+  return mergeClassExpressionSummariesForRenderModel({
+    original: originalClassName,
+    override: overrideClassName,
+    reason: "cloneElement className merge",
+    includeTraces: context.includeTraces,
+  });
 }
 
 function containsChildPropsClassNameReference(
@@ -1050,23 +1032,6 @@ function isStaticClassNameAccess(expression: ts.Expression | undefined): boolean
     (ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) &&
     expression.text === "className"
   );
-}
-
-function mergeClassNameSourceAnchors(
-  entries: Array<Record<string, SourceAnchor> | undefined>,
-): Record<string, SourceAnchor> | undefined {
-  const merged: Record<string, SourceAnchor> = {};
-  for (const entry of entries) {
-    if (!entry) {
-      continue;
-    }
-
-    for (const [className, sourceAnchor] of Object.entries(entry)) {
-      merged[className] ??= sourceAnchor;
-    }
-  }
-
-  return Object.keys(merged).length > 0 ? merged : undefined;
 }
 
 function isChildrenOnlyCallExpression(expression: ts.CallExpression): boolean {

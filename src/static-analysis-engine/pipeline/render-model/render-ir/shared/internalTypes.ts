@@ -41,6 +41,7 @@ export type BuildContext = {
     rawExpressionText: string;
     summary: ClassExpressionSummary;
   }) => void;
+  classExpressionSummariesByAnchor?: Map<string, ClassExpressionSummary>;
   propsObjectBindingName?: string;
   propsObjectBindingSymbolId?: string;
   propsObjectProperties: Map<string, ExpressionBinding>;
