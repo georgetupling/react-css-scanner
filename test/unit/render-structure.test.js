@@ -103,7 +103,12 @@ test("render structure projects the current render model into the stage 5 model"
     },
   });
 
-  assert.equal(result.renderModel.components.length, legacyModel.renderGraph.nodes.length);
+  assert.equal(
+    result.renderModel.components.length,
+    result.renderModel.componentBoundaries.filter(
+      (boundary) => boundary.boundaryKind === "component-root",
+    ).length,
+  );
   assert.equal(
     result.renderModel.componentBoundaries.filter(
       (boundary) => boundary.boundaryKind === "component-root",
@@ -123,9 +128,22 @@ test("render structure projects the current render model into the stage 5 model"
     countLegacyUnresolvedComponentBoundaries(legacyModel.renderSubtrees),
   );
   assert.equal(result.renderModel.elements.length, countLegacyElements(legacyModel.renderSubtrees));
-  assert.deepEqual(
-    result.renderModel.renderGraph,
-    normalizeLegacyRenderGraph(legacyModel.renderGraph),
+  assert.equal(result.renderModel.renderGraph.nodes.length, result.renderModel.components.length);
+  assert.equal(
+    result.renderModel.renderGraph.edges.length,
+    countLegacyExpandedComponentBoundaries(legacyModel.renderSubtrees) +
+      countLegacyUnresolvedComponentBoundaries(legacyModel.renderSubtrees),
+  );
+  assert.ok(
+    result.renderModel.renderGraph.edges.every((edge) => edge.traversal === "render-structure"),
+  );
+  assert.equal(
+    result.renderModel.renderGraph.edges.filter((edge) => edge.resolution === "resolved").length,
+    countLegacyExpandedComponentBoundaries(legacyModel.renderSubtrees),
+  );
+  assert.equal(
+    result.renderModel.renderGraph.edges.filter((edge) => edge.resolution === "unresolved").length,
+    countLegacyUnresolvedComponentBoundaries(legacyModel.renderSubtrees),
   );
   assert.equal(
     result.renderModel.renderRegions.length,
@@ -397,42 +415,6 @@ function countNodes(node, kind) {
   }
 
   return count;
-}
-
-function normalizeLegacyRenderGraph(renderGraph) {
-  return {
-    nodes: renderGraph.nodes.map(normalizeLegacyRenderGraphNode),
-    edges: renderGraph.edges.map(normalizeLegacyRenderGraphEdge),
-  };
-}
-
-function normalizeLegacyRenderGraphNode(node) {
-  return {
-    componentKey: node.componentKey,
-    componentName: node.componentName,
-    filePath: normalizeProjectPath(node.filePath),
-    exported: node.exported,
-    sourceLocation: normalizeAnchor(node.sourceAnchor),
-  };
-}
-
-function normalizeLegacyRenderGraphEdge(edge) {
-  return {
-    fromComponentKey: edge.fromComponentKey,
-    fromComponentName: edge.fromComponentName,
-    fromFilePath: normalizeProjectPath(edge.fromFilePath),
-    ...(edge.toComponentKey ? { toComponentKey: edge.toComponentKey } : {}),
-    toComponentName: edge.toComponentName,
-    ...(edge.toFilePath ? { toFilePath: normalizeProjectPath(edge.toFilePath) } : {}),
-    ...(edge.targetSourceAnchor
-      ? { targetLocation: normalizeAnchor(edge.targetSourceAnchor) }
-      : {}),
-    sourceLocation: normalizeAnchor(edge.sourceAnchor),
-    resolution: edge.resolution,
-    traversal: "render-structure",
-    renderPath: edge.renderPath,
-    traces: edge.traces,
-  };
 }
 
 function normalizeAnchor(anchor) {

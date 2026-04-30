@@ -1,6 +1,5 @@
 import { graphToReactRenderSyntaxInputs } from "../../fact-graph/index.js";
-import { buildRenderModel } from "../../render-model/index.js";
-import { collectRenderRegionsFromSubtrees } from "../../render-model/render-ir/index.js";
+import { buildLegacyRenderArtifacts } from "../../render-model/buildLegacyRenderArtifacts.js";
 import {
   emissionSiteId,
   placementConditionId,
@@ -10,12 +9,10 @@ import {
   renderPathId,
   renderRegionId,
 } from "../ids.js";
-import type { RenderGraphEdge, RenderGraphNode } from "../../render-model/render-graph/index.js";
 import type {
   RenderComponentReferenceNode,
   RenderElementNode,
   RenderNode,
-  RenderRegion as LegacyRenderRegion,
   RenderSubtree,
 } from "../../render-model/render-ir/index.js";
 import type {
@@ -94,7 +91,7 @@ export function projectLegacyRenderModel(input: RenderStructureInput): {
     return emptyProjection();
   }
 
-  const legacyModel = buildRenderModel({
+  const legacyModel = buildLegacyRenderArtifacts({
     parsedFiles: input.legacy.parsedFiles,
     reactRenderSyntax: graphToReactRenderSyntaxInputs(input.graph),
     symbolResolution: input.legacy.symbolResolution,
@@ -127,31 +124,33 @@ export function projectLegacyRenderModel(input: RenderStructureInput): {
     });
   }
 
-  const components = projectComponents({
+  const sortedBoundaries = sortById(accumulator.componentBoundaries);
+  const sortedElements = sortById(accumulator.elements);
+  const sortedPlacementConditions = sortById(accumulator.placementConditions);
+  const components = projectComponentsFromBoundaries({
     graph: input.graph,
-    renderGraphNodes: legacyModel.renderGraph.nodes,
-    rootBoundaryIdByComponentKey: accumulator.rootBoundaryIdByComponentKey,
+    boundaries: sortedBoundaries,
   });
-  const renderGraph = projectRenderGraph(legacyModel.renderGraph);
-  const regionProjection = projectRenderRegions({
-    graph: input.graph,
-    legacyRegions: collectRenderRegionsFromSubtrees(legacyModel.renderSubtrees),
-    rootBoundaryIdByComponentKey: accumulator.rootBoundaryIdByComponentKey,
-    rootBoundaryIdBySubtreeKey: accumulator.rootBoundaryIdBySubtreeKey,
-    placementConditionById: accumulator.placementConditionById,
+  const renderGraph = projectRenderGraphFromBoundaries({
+    components,
+    boundaries: sortedBoundaries,
   });
-  accumulator.renderPaths.push(...regionProjection.renderPaths);
-  for (const region of regionProjection.renderRegions) {
+  const renderRegions = projectRenderRegionsFromBoundariesAndPaths({
+    boundaries: sortedBoundaries,
+    elements: sortedElements,
+    placementConditions: sortedPlacementConditions,
+  });
+  for (const region of renderRegions) {
     addRenderRegion(accumulator, region);
   }
 
   return {
     components,
-    componentBoundaries: sortById(accumulator.componentBoundaries),
-    elements: sortById(accumulator.elements),
+    componentBoundaries: sortedBoundaries,
+    elements: sortedElements,
     emissionSites: sortById(accumulator.emissionSites),
     renderPaths: sortById(accumulator.renderPaths),
-    placementConditions: sortById(accumulator.placementConditions),
+    placementConditions: sortedPlacementConditions,
     renderRegions: sortById(accumulator.renderRegions),
     renderGraph,
     diagnostics: [],
@@ -945,166 +944,157 @@ function sortLookupValues(map: Map<string, CanonicalClassExpression[]>): void {
   }
 }
 
-function projectComponents(input: {
+function projectComponentsFromBoundaries(input: {
   graph: RenderStructureInput["graph"];
-  renderGraphNodes: RenderGraphNode[];
-  rootBoundaryIdByComponentKey: Map<string, string>;
+  boundaries: RenderedComponentBoundary[];
 }): RenderedComponent[] {
-  return input.renderGraphNodes
-    .map((node) => {
-      const componentNodeId = input.graph.indexes.componentNodeIdByComponentKey.get(
-        node.componentKey,
-      );
-      return {
-        id: renderedComponentId(node.componentKey),
-        ...(componentNodeId ? { componentNodeId } : {}),
-        componentKey: node.componentKey,
-        componentName: node.componentName,
-        filePath: normalizeProjectPath(node.filePath),
-        exported: node.exported,
-        declarationLocation: normalizeAnchor(node.sourceAnchor),
-        rootBoundaryIds: uniqueSorted(
-          [input.rootBoundaryIdByComponentKey.get(node.componentKey)].filter((id): id is string =>
-            Boolean(id),
-          ),
-        ),
-        provenance: [
-          {
-            stage: "render-structure" as const,
-            filePath: normalizeProjectPath(node.filePath),
-            anchor: normalizeAnchor(node.sourceAnchor),
-            upstreamId: componentNodeId,
-            summary: "Projected component from legacy render graph node",
-          },
-        ],
-        traces: [],
-      };
-    })
-    .sort((left, right) => left.id.localeCompare(right.id));
+  const componentNodesById = new Map(input.graph.nodes.components.map((node) => [node.id, node]));
+  const componentsByKey = new Map<string, RenderedComponent>();
+  for (const boundary of input.boundaries) {
+    if (boundary.boundaryKind !== "component-root" || !boundary.componentKey) {
+      continue;
+    }
+    const existing = componentsByKey.get(boundary.componentKey);
+    const componentNode =
+      (boundary.componentNodeId ? componentNodesById.get(boundary.componentNodeId) : undefined) ??
+      undefined;
+    const declarationLocation = normalizeAnchor(
+      boundary.declarationLocation ?? componentNode?.location ?? createUnknownAnchor(),
+    );
+    const filePath = normalizeProjectPath(
+      boundary.filePath ?? componentNode?.filePath ?? declarationLocation.filePath,
+    );
+    componentsByKey.set(boundary.componentKey, {
+      id: renderedComponentId(boundary.componentKey),
+      ...(boundary.componentNodeId ? { componentNodeId: boundary.componentNodeId } : {}),
+      componentKey: boundary.componentKey,
+      componentName:
+        boundary.componentName ?? componentNode?.componentName ?? boundary.componentKey,
+      filePath,
+      exported: componentNode?.exported ?? true,
+      declarationLocation,
+      rootBoundaryIds: uniqueSorted([...(existing?.rootBoundaryIds ?? []), boundary.id]),
+      provenance: [
+        {
+          stage: "render-structure" as const,
+          filePath,
+          anchor: declarationLocation,
+          upstreamId: boundary.componentNodeId,
+          summary: "Derived component from component-root boundary",
+        },
+      ],
+      traces: [],
+    });
+  }
+  return [...componentsByKey.values()].sort((left, right) => left.id.localeCompare(right.id));
 }
 
-function projectRenderGraph(input: {
-  nodes: RenderGraphNode[];
-  edges: RenderGraphEdge[];
+function projectRenderGraphFromBoundaries(input: {
+  components: RenderedComponent[];
+  boundaries: RenderedComponentBoundary[];
 }): RenderGraphProjection {
+  const componentByKey = new Map(
+    input.components.map((component) => [component.componentKey, component] as const),
+  );
+  const nodes = input.components
+    .map((component) => ({
+      ...(component.componentNodeId ? { componentNodeId: component.componentNodeId } : {}),
+      componentKey: component.componentKey,
+      componentName: component.componentName,
+      filePath: component.filePath,
+      exported: component.exported,
+      sourceLocation: component.declarationLocation,
+    }))
+    .sort(compareRenderGraphNodes);
+  const boundariesById = new Map(input.boundaries.map((boundary) => [boundary.id, boundary]));
+  const edges: RenderGraphProjectionEdge[] = [];
+  for (const boundary of input.boundaries) {
+    if (
+      boundary.boundaryKind !== "expanded-component-reference" &&
+      boundary.boundaryKind !== "unresolved-component-reference"
+    ) {
+      continue;
+    }
+    const parentBoundary = boundary.parentBoundaryId
+      ? boundariesById.get(boundary.parentBoundaryId)
+      : undefined;
+    if (!parentBoundary?.componentKey) {
+      continue;
+    }
+    const parentComponent = componentByKey.get(parentBoundary.componentKey);
+    if (!parentComponent) {
+      continue;
+    }
+    const childComponent = boundary.componentKey
+      ? componentByKey.get(boundary.componentKey)
+      : undefined;
+    const sourceLocation = normalizeAnchor(
+      boundary.referenceLocation ??
+        parentBoundary.referenceLocation ??
+        parentBoundary.declarationLocation ??
+        createUnknownAnchor(),
+    );
+    edges.push({
+      ...(parentComponent.componentNodeId
+        ? { fromComponentNodeId: parentComponent.componentNodeId }
+        : {}),
+      fromComponentKey: parentComponent.componentKey,
+      fromComponentName: parentComponent.componentName,
+      fromFilePath: parentComponent.filePath,
+      ...(childComponent?.componentNodeId
+        ? { toComponentNodeId: childComponent.componentNodeId }
+        : {}),
+      ...(childComponent ? { toComponentKey: childComponent.componentKey } : {}),
+      toComponentName: childComponent?.componentName ?? boundary.componentName ?? "unknown",
+      ...(childComponent ? { toFilePath: childComponent.filePath } : {}),
+      ...(childComponent ? { targetLocation: childComponent.declarationLocation } : {}),
+      sourceLocation,
+      resolution:
+        boundary.boundaryKind === "expanded-component-reference" ? "resolved" : "unresolved",
+      traversal: "render-structure",
+      renderPath:
+        boundary.boundaryKind === "expanded-component-reference"
+          ? "definite"
+          : boundary.expansion.status === "unresolved"
+            ? "unknown"
+            : "possible",
+      traces: boundary.traces,
+    });
+  }
   return {
-    nodes: input.nodes.map(projectRenderGraphNode).sort(compareRenderGraphNodes),
-    edges: input.edges.map(projectRenderGraphEdge).sort(compareRenderGraphEdges),
+    nodes,
+    edges: edges.sort(compareRenderGraphEdges),
   };
 }
 
-function projectRenderGraphNode(node: RenderGraphNode): RenderGraphProjectionNode {
-  return {
-    componentKey: node.componentKey,
-    componentName: node.componentName,
-    filePath: normalizeProjectPath(node.filePath),
-    exported: node.exported,
-    sourceLocation: normalizeAnchor(node.sourceAnchor),
-  };
-}
-
-function projectRenderGraphEdge(edge: RenderGraphEdge): RenderGraphProjectionEdge {
-  return {
-    fromComponentKey: edge.fromComponentKey,
-    fromComponentName: edge.fromComponentName,
-    fromFilePath: normalizeProjectPath(edge.fromFilePath),
-    ...(edge.toComponentKey ? { toComponentKey: edge.toComponentKey } : {}),
-    toComponentName: edge.toComponentName,
-    ...(edge.toFilePath ? { toFilePath: normalizeProjectPath(edge.toFilePath) } : {}),
-    ...(edge.targetSourceAnchor
-      ? { targetLocation: normalizeAnchor(edge.targetSourceAnchor) }
-      : {}),
-    sourceLocation: normalizeAnchor(edge.sourceAnchor),
-    resolution: edge.resolution,
-    traversal: "render-structure",
-    renderPath: edge.renderPath,
-    traces: edge.traces,
-  };
-}
-
-function projectRenderRegions(input: {
-  graph: RenderStructureInput["graph"];
-  legacyRegions: LegacyRenderRegion[];
-  rootBoundaryIdByComponentKey: Map<string, string>;
-  rootBoundaryIdBySubtreeKey: Map<string, string>;
-  placementConditionById: Map<string, PlacementCondition>;
-}): {
-  renderRegions: RenderRegion[];
-  renderPaths: RenderPath[];
-} {
-  const renderPaths: RenderPath[] = [];
-  const renderRegions = input.legacyRegions
-    .map((region, index) => {
-      const boundaryId =
-        (region.componentKey
-          ? input.rootBoundaryIdByComponentKey.get(region.componentKey)
-          : undefined) ??
-        input.rootBoundaryIdBySubtreeKey.get(createLegacyRegionSubtreeKey(region)) ??
-        renderedComponentBoundaryId({
-          boundaryKind: "component-root",
-          key: `${region.componentName ?? "unknown"}:${index}`,
-        });
-      const componentNodeId = region.componentKey
-        ? input.graph.indexes.componentNodeIdByComponentKey.get(region.componentKey)
-        : undefined;
-      const id = renderRegionId({
-        regionKind: projectRegionKind(region.kind),
-        key: `${region.componentKey ?? region.componentName ?? "unknown"}:${serializeLegacyRegionPath(region.path)}:${anchorKey(region.sourceAnchor)}`,
-        index,
-      });
-      const placementConditionIds =
-        region.kind === "conditional-branch"
-          ? findMatchingPlacementConditionIds({
-              placementConditionById: input.placementConditionById,
-              kind: "conditional-branch",
-              sourceLocation: normalizeAnchor(region.sourceAnchor),
-              branch: region.path.find((segment) => segment.kind === "conditional-branch")?.branch,
-            })
-          : region.kind === "repeated-template"
-            ? findMatchingPlacementConditionIds({
-                placementConditionById: input.placementConditionById,
-                kind: "repeated-region",
-                sourceLocation: normalizeAnchor(region.sourceAnchor),
-              })
-            : [];
-      const path = createRenderPath({
-        id: renderPathId({
-          terminalKind: region.kind === "subtree-root" ? "component-boundary" : "unknown-region",
-          terminalId: id,
-        }),
-        rootComponentNodeId: componentNodeId,
-        terminalKind: region.kind === "subtree-root" ? "component-boundary" : "unknown-region",
-        terminalId: id,
-        segments: [
-          {
-            kind: "component-root",
-            ...(componentNodeId ? { componentNodeId } : {}),
-            location: normalizeAnchor(region.sourceAnchor),
-          },
-        ],
-        placementConditionIds,
-        certainty: region.kind === "subtree-root" ? "definite" : "possible",
-      });
-      renderPaths.push(path);
-
-      return {
-        id,
-        regionKind: projectRegionKind(region.kind),
-        boundaryId,
-        ...(componentNodeId ? { componentNodeId } : {}),
-        renderPathId: path.id,
-        sourceLocation: normalizeAnchor(region.sourceAnchor),
-        placementConditionIds,
-        childElementIds: [],
-        childBoundaryIds: [],
-      };
-    })
-    .sort((left, right) => left.id.localeCompare(right.id));
-
-  return {
-    renderRegions,
-    renderPaths: sortById(renderPaths),
-  };
+function projectRenderRegionsFromBoundariesAndPaths(input: {
+  boundaries: RenderedComponentBoundary[];
+  elements: RenderedElement[];
+  placementConditions: PlacementCondition[];
+}): RenderRegion[] {
+  const regions: RenderRegion[] = [];
+  for (const boundary of input.boundaries) {
+    if (boundary.boundaryKind !== "component-root") {
+      continue;
+    }
+    regions.push({
+      id: renderRegionId({
+        regionKind: "component-root",
+        key: boundary.id,
+      }),
+      regionKind: "component-root",
+      boundaryId: boundary.id,
+      ...(boundary.componentNodeId ? { componentNodeId: boundary.componentNodeId } : {}),
+      renderPathId: boundary.renderPathId,
+      sourceLocation: normalizeAnchor(
+        boundary.declarationLocation ?? boundary.referenceLocation ?? createUnknownAnchor(),
+      ),
+      placementConditionIds: boundary.placementConditionIds,
+      childElementIds: uniqueSorted(boundary.rootElementIds),
+      childBoundaryIds: uniqueSorted(boundary.childBoundaryIds),
+    });
+  }
+  return sortById(regions);
 }
 
 function addBoundary(
@@ -1199,14 +1189,6 @@ function createRenderPath(
   };
 }
 
-function projectRegionKind(kind: LegacyRenderRegion["kind"]): RenderRegion["regionKind"] {
-  if (kind === "subtree-root") {
-    return "component-root";
-  }
-
-  return kind;
-}
-
 function downgradeCertainty(certainty: RenderCertainty): RenderCertainty {
   return certainty === "unknown" ? "unknown" : "possible";
 }
@@ -1252,30 +1234,6 @@ function createSubtreeKey(subtree: RenderSubtree, index: number): string {
   return `${subtree.componentKey ?? subtree.componentName ?? "anonymous"}:${anchorKey(subtree.sourceAnchor)}:${index}`;
 }
 
-function createLegacyRegionSubtreeKey(region: LegacyRenderRegion): string {
-  return `${region.componentKey ?? region.componentName ?? "anonymous"}:${anchorKey(region.sourceAnchor)}:0`;
-}
-
-function serializeLegacyRegionPath(path: LegacyRenderRegion["path"]): string {
-  return path
-    .map((segment) => {
-      if (segment.kind === "root") {
-        return "root";
-      }
-
-      if (segment.kind === "fragment-child") {
-        return `fragment-child:${segment.childIndex}`;
-      }
-
-      if (segment.kind === "conditional-branch") {
-        return `conditional-branch:${segment.branch}`;
-      }
-
-      return "repeated-template";
-    })
-    .join("/");
-}
-
 function serializeRenderPathSegments(pathSegments: RenderPathSegment[]): string {
   return pathSegments
     .map((segment) => {
@@ -1308,31 +1266,6 @@ function serializeRenderPathSegments(pathSegments: RenderPathSegment[]): string 
     .join("/");
 }
 
-function findMatchingPlacementConditionIds(input: {
-  placementConditionById: Map<string, PlacementCondition>;
-  kind: PlacementCondition["kind"];
-  sourceLocation: SourceAnchor;
-  branch?: "when-true" | "when-false";
-}): string[] {
-  const matches = [...input.placementConditionById.values()].filter((placementCondition) => {
-    if (placementCondition.kind !== input.kind) {
-      return false;
-    }
-
-    if (input.branch && placementCondition.branch !== input.branch) {
-      return false;
-    }
-
-    if (!placementCondition.sourceLocation) {
-      return false;
-    }
-
-    return anchorKey(placementCondition.sourceLocation) === anchorKey(input.sourceLocation);
-  });
-
-  return uniqueSorted(matches.map((placementCondition) => placementCondition.id));
-}
-
 function anchorKey(anchor: SourceAnchor): string {
   return [
     normalizeProjectPath(anchor.filePath),
@@ -1352,6 +1285,14 @@ function normalizeAnchor(anchor: SourceAnchor): SourceAnchor {
 
 function normalizeProjectPath(filePath: string): string {
   return filePath.replace(/\\/g, "/");
+}
+
+function createUnknownAnchor(): SourceAnchor {
+  return {
+    filePath: "<unknown>",
+    startLine: 1,
+    startColumn: 1,
+  };
 }
 
 function uniqueSorted(values: string[]): string[] {
