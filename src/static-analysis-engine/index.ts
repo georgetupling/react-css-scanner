@@ -12,6 +12,7 @@ export {
   graphToStylesheetFilePaths,
 } from "./pipeline/fact-graph/index.js";
 export { evaluateSymbolicExpressions } from "./pipeline/symbolic-evaluation/index.js";
+export { buildRenderStructure } from "./pipeline/render-structure/index.js";
 export { buildModuleFacts } from "./pipeline/module-facts/buildModuleFacts.js";
 export {
   collectAvailableExportedNames,
@@ -150,6 +151,36 @@ export type {
   UnsupportedReason,
   UnsupportedReasonCode,
 } from "./pipeline/symbolic-evaluation/index.js";
+export type {
+  EmissionSite,
+  EmissionSiteId,
+  EmissionTokenProvenance,
+  PlacementCondition,
+  PlacementConditionId,
+  RenderCertainty,
+  RenderComponentId,
+  RenderedComponent,
+  RenderedComponentBoundary,
+  RenderedComponentBoundaryId,
+  RenderedElement,
+  RenderedElementId,
+  RenderGraphProjection,
+  RenderGraphProjectionEdge,
+  RenderGraphProjectionNode,
+  RenderModel,
+  RenderModelIndexes,
+  RenderModelMeta,
+  RenderPath,
+  RenderPathId,
+  RenderPathSegment,
+  RenderRegion as RenderStructureRegion,
+  RenderRegionId,
+  RenderStructureDiagnostic,
+  RenderStructureInput,
+  RenderStructureOptions,
+  RenderStructureProvenance,
+  RenderStructureResult,
+} from "./pipeline/render-structure/index.js";
 export type {
   ActiveExternalCssProvider,
   ExternalCssAnalysisInput,

@@ -1,0 +1,46 @@
+export { buildRenderStructure } from "./buildRenderStructure.js";
+export {
+  duplicateRenderModelIdDiagnostic,
+  renderStructureProvenance,
+  sortRenderStructureDiagnostics,
+} from "./diagnostics.js";
+export {
+  emissionSiteId,
+  placementConditionId,
+  renderedComponentBoundaryId,
+  renderedComponentId,
+  renderedElementId,
+  renderPathId,
+  renderRegionId,
+} from "./ids.js";
+export { buildRenderModelIndexes } from "./indexes.js";
+export type {
+  EmissionSite,
+  EmissionSiteId,
+  EmissionTokenProvenance,
+  PlacementCondition,
+  PlacementConditionId,
+  RenderCertainty,
+  RenderComponentId,
+  RenderedComponent,
+  RenderedComponentBoundary,
+  RenderedComponentBoundaryId,
+  RenderedElement,
+  RenderedElementId,
+  RenderGraphProjection,
+  RenderGraphProjectionEdge,
+  RenderGraphProjectionNode,
+  RenderModel,
+  RenderModelIndexes,
+  RenderModelMeta,
+  RenderPath,
+  RenderPathId,
+  RenderPathSegment,
+  RenderRegion,
+  RenderRegionId,
+  RenderStructureDiagnostic,
+  RenderStructureInput,
+  RenderStructureOptions,
+  RenderStructureProvenance,
+  RenderStructureResult,
+} from "./types.js";
