@@ -1,4 +1,4 @@
-import type { ClassExpressionSummary } from "../render-model/abstract-values/types.js";
+import type { ClassExpressionSummary } from "../symbolic-evaluation/class-values/types.js";
 import type { UnsupportedClassReferenceDiagnostic } from "../render-model/class-reference-diagnostics/types.js";
 import type { ExternalCssSummary } from "../external-css/types.js";
 import type { ModuleFacts, ModuleFactsImportKind } from "../module-facts/types.js";

@@ -1,4 +1,4 @@
-export { buildClassExpressionTraces, summarizeClassNameExpression } from "./classExpressions.js";
+export { buildClassExpressionTraces } from "./classExpressionTraces.js";
 export {
   combineStrings,
   mergeClassNameValues,

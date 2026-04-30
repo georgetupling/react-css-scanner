@@ -167,7 +167,6 @@ export function analyzeProjectSourceTexts(input: {
         () =>
           runSymbolicEvaluationStage({
             graph: factGraphStage.graph,
-            renderModel: renderModelStage,
             symbolResolution: symbolResolutionStage,
             includeTraces,
           }),

@@ -1,10 +1,6 @@
 import type { AnalysisConfidence, AnalysisSeverity, AnalysisTrace } from "../../types/analysis.js";
 import type { SourceAnchor } from "../../types/core.js";
 import type {
-  LegacyRenderModelClassExpressionSummaryRecord,
-  LegacyRenderModelClassExpressionSummaryStore,
-} from "./adapters/legacyRenderModelAdapter.js";
-import type {
   ClassExpressionSiteNode,
   ExpressionSyntaxNode,
   FactGraph,
@@ -27,7 +23,6 @@ export type SymbolicEvaluationInput = {
   graph: FactGraph;
   options?: SymbolicEvaluationOptions;
   legacy?: {
-    renderModelClassExpressionSummaries?: LegacyRenderModelClassExpressionSummaryRecord[];
     symbolResolution?: ProjectBindingResolution;
   };
   evaluatorRegistry?: SymbolicEvaluatorRegistry;
@@ -224,8 +219,7 @@ export type SymbolicEvaluationDiagnostic = {
     | "unresolved-class-expression-site"
     | "unsupported-expression"
     | "evaluation-budget-exceeded"
-    | "evaluation-cycle-detected"
-    | "legacy-expression-text-mismatch";
+    | "evaluation-cycle-detected";
   message: string;
   filePath?: string;
   location?: SourceAnchor;
@@ -238,7 +232,6 @@ export type SymbolicExpressionEvaluatorInput = {
   classExpressionSite: ClassExpressionSiteNode;
   expressionSyntax?: ExpressionSyntaxNode;
   options: SymbolicEvaluationOptions;
-  legacyRenderModelSummaryStore?: LegacyRenderModelClassExpressionSummaryStore;
   symbolResolution?: ProjectBindingResolution;
 };
 

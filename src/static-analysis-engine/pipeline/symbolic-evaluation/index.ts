@@ -3,7 +3,6 @@ export {
   buildClassExpressionTraces,
   combineStrings,
   mergeClassNameValues,
-  summarizeClassNameExpression,
   toAbstractClassSet,
   tokenizeClassNames,
   uniqueSorted,
@@ -12,6 +11,7 @@ export { toClassExpressionSummary } from "./adapters/classExpressionSummary.js";
 export {
   createClassExpressionSummaryAnchorKey,
   mergeClassExpressionSummariesForRenderModel,
+  type RenderModelClassExpressionSummaryRecord,
   summarizeClassNameExpressionForRenderModel,
 } from "./adapters/renderModelClassExpressions.js";
 export {
@@ -34,13 +34,6 @@ export {
 } from "./registry.js";
 export { createSymbolicEvaluationTrace, traceList } from "./traces.js";
 export {
-  createLegacyRenderModelClassExpressionSummaryStore,
-  summarizeClassNameExpressionInLegacyRenderModel,
-  type LegacyRenderModelClassExpressionSummaryRecord,
-  type LegacyRenderModelClassExpressionSummaryStore,
-} from "./adapters/legacyRenderModelAdapter.js";
-export {
-  classExpressionTextMismatchDiagnostic,
   duplicateEvaluatedExpressionIdDiagnostic,
   missingExpressionSyntaxDiagnostic,
   sortSymbolicEvaluationDiagnostics,

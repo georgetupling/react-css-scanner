@@ -1,4 +1,4 @@
-import type { ClassExpressionSummary } from "../../render-model/abstract-values/types.js";
+import type { ClassExpressionSummary } from "../../symbolic-evaluation/class-values/types.js";
 import { toClassExpressionSummary } from "../../symbolic-evaluation/adapters/classExpressionSummary.js";
 import type {
   RenderNode,

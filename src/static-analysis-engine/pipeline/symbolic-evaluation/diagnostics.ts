@@ -77,29 +77,6 @@ export function duplicateEvaluatedExpressionIdDiagnostic(input: {
   };
 }
 
-export function classExpressionTextMismatchDiagnostic(input: {
-  site: ClassExpressionSiteNode;
-  graphRawExpressionText: string;
-  adapterRawExpressionText: string;
-  adapterName: string;
-}): SymbolicEvaluationDiagnostic {
-  return {
-    stage: "symbolic-evaluation",
-    severity: "warning",
-    code: "legacy-expression-text-mismatch",
-    message: `Class expression site ${input.site.id} raw text differs between graph and ${input.adapterName}`,
-    filePath: input.site.filePath,
-    location: input.site.location,
-    classExpressionSiteNodeId: input.site.id,
-    provenance: symbolicEvaluationProvenance({
-      summary: `Detected raw expression text mismatch between graph and ${input.adapterName}`,
-      filePath: input.site.filePath,
-      anchor: input.site.location,
-      upstreamId: input.site.id,
-    }),
-  };
-}
-
 export function sortSymbolicEvaluationDiagnostics(
   diagnostics: SymbolicEvaluationDiagnostic[],
 ): SymbolicEvaluationDiagnostic[] {

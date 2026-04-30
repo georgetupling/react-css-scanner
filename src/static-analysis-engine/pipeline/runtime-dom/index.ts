@@ -1,5 +1,1 @@
-export type {
-  RuntimeDomClassReference,
-  RuntimeDomClassReferenceKind,
-  RuntimeDomLibraryHint,
-} from "./types.js";
+export type { RuntimeDomLibraryHint } from "./types.js";

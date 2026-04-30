@@ -14,7 +14,7 @@ import {
 } from "./builders/buildArrayNodes.js";
 import { collectSameFileComponents } from "./collection/discovery/collectSameFileComponents.js";
 import type { BuildContext } from "./shared/internalTypes.js";
-import type { ClassExpressionSummary } from "../abstract-values/types.js";
+import type { ClassExpressionSummary } from "../../symbolic-evaluation/class-values/types.js";
 import type { SourceAnchor } from "../../../types/core.js";
 import {
   applyPlacementAnchor,

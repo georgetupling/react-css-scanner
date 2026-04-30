@@ -6,7 +6,7 @@ import {
 } from "../ids.js";
 import { canonicalClassExpressionId } from "../ids.js";
 import { symbolicEvaluationProvenance } from "../diagnostics.js";
-import { buildClassExpressionTraces } from "../class-values/classExpressions.js";
+import { buildClassExpressionTraces } from "../class-values/classExpressionTraces.js";
 import { toAbstractClassSet, tokenizeClassNames } from "../class-values/classValueOperations.js";
 import type { AbstractValue } from "../class-values/types.js";
 import type {

@@ -1,10 +1,7 @@
 export { buildRenderModel } from "./buildRenderModel.js";
 export type { RenderModel, RenderModelBuildInput } from "./buildRenderModel.js";
-export {
-  summarizeClassNameExpression,
-  toAbstractClassSet,
-  toClassExpressionSummary,
-} from "./abstract-values/index.js";
+export { toAbstractClassSet } from "../symbolic-evaluation/class-values/index.js";
+export { toClassExpressionSummary } from "../symbolic-evaluation/adapters/classExpressionSummary.js";
 export { collectUnsupportedClassReferences } from "./class-reference-diagnostics/index.js";
 export {
   buildSameFileRenderSubtrees,
@@ -16,7 +13,7 @@ export type {
   AbstractValue,
   ClassDerivationStep,
   ClassExpressionSummary,
-} from "./abstract-values/index.js";
+} from "../symbolic-evaluation/class-values/index.js";
 export type {
   UnsupportedClassReferenceDiagnostic,
   UnsupportedClassReferenceReason,

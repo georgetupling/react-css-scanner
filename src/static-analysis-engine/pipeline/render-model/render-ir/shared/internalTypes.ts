@@ -1,7 +1,7 @@
 import ts from "typescript";
 
 import type { SourceAnchor } from "../../../../types/core.js";
-import type { ClassExpressionSummary } from "../../abstract-values/types.js";
+import type { ClassExpressionSummary } from "../../../symbolic-evaluation/class-values/types.js";
 import type { ProjectBindingResolution } from "../../../symbol-resolution/index.js";
 import type {
   LocalHelperDefinition,

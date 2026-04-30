@@ -1,4 +1,4 @@
-import type { ClassExpressionSummary } from "../render-model/abstract-values/types.js";
+import type { ClassExpressionSummary } from "../symbolic-evaluation/class-values/types.js";
 
 export type PresenceEvaluation = "definite" | "possible" | "unsupported" | "no-match";
 

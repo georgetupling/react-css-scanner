@@ -52,11 +52,7 @@ export {
   resolveTypeDeclaration,
   resolveTypeBinding,
 } from "./pipeline/symbol-resolution/index.js";
-export {
-  summarizeClassNameExpression,
-  toAbstractClassSet,
-  toClassExpressionSummary,
-} from "./pipeline/render-model/index.js";
+export { toAbstractClassSet, toClassExpressionSummary } from "./pipeline/render-model/index.js";
 export { buildExternalCssSummary } from "./pipeline/external-css/index.js";
 export { collectUnsupportedClassReferences } from "./pipeline/render-model/index.js";
 export {
@@ -165,10 +161,6 @@ export type {
   HtmlStylesheetLinkInput,
 } from "./pipeline/workspace-discovery/index.js";
 export type {
-  RuntimeDomClassReference,
-  RuntimeDomClassReferenceKind,
-} from "./pipeline/runtime-dom/index.js";
-export type {
   RenderGraph,
   RenderGraphEdge,
   RenderGraphNode,
@@ -215,7 +207,7 @@ export type {
   AbstractValue,
   ClassDerivationStep,
   ClassExpressionSummary,
-} from "./pipeline/render-model/abstract-values/index.js";
+} from "./pipeline/symbolic-evaluation/index.js";
 export type {
   RenderComponentReferenceExpansion,
   RenderComponentReferenceNode,

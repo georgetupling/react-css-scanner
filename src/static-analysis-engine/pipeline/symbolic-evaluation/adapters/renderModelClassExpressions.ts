@@ -3,9 +3,15 @@ import ts from "typescript";
 import type { SourceAnchor } from "../../../types/core.js";
 import type { BuildContext } from "../../render-model/render-ir/shared/internalTypes.js";
 import type { ClassExpressionSummary } from "../class-values/types.js";
-import { buildClassExpressionTraces } from "../class-values/classExpressions.js";
+import { buildClassExpressionTraces } from "../class-values/classExpressionTraces.js";
 import { mergeClassNameValues, toAbstractClassSet } from "../class-values/classValueOperations.js";
 import { summarizeClassNameExpressionInLegacyRenderModel } from "./legacyRenderModelAdapter.js";
+
+export type RenderModelClassExpressionSummaryRecord = {
+  location: SourceAnchor;
+  rawExpressionText: string;
+  summary: ClassExpressionSummary;
+};
 
 export function summarizeClassNameExpressionForRenderModel(input: {
   expression: ts.Expression;

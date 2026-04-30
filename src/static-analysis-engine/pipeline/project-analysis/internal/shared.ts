@@ -1,4 +1,4 @@
-import type { ClassExpressionSummary } from "../../render-model/abstract-values/types.js";
+import type { ClassExpressionSummary } from "../../symbolic-evaluation/class-values/types.js";
 import { getAllResolvedModuleFacts } from "../../module-facts/index.js";
 import type { ReachabilityAvailability } from "../../reachability/types.js";
 import type { SelectorQueryResult } from "../../selector-analysis/types.js";

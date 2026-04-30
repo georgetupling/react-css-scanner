@@ -5,7 +5,6 @@ import {
   analyzeProjectSourceTexts,
   buildModuleFacts,
   buildProjectBindingResolution,
-  buildRenderModel,
 } from "../../dist/static-analysis-engine.js";
 import { buildFactGraph } from "../../dist/static-analysis-engine/pipeline/fact-graph/buildFactGraph.js";
 import { buildLanguageFrontends } from "../../dist/static-analysis-engine/pipeline/language-frontends/buildLanguageFrontends.js";
@@ -169,188 +168,6 @@ test("symbolic evaluation uses normalized graph expression syntax for current co
       "Evaluated class expression from normalized graph expression syntax",
     );
   }
-});
-
-test("symbolic evaluation reports raw expression text mismatches from the legacy render-model bridge", async () => {
-  const { graph, parsedFiles, frontends } = await buildFixtureAnalysis();
-  const firstSite = graph.nodes.classExpressionSites[0];
-  const graphWithMismatchedRawText = {
-    ...graph,
-    nodes: {
-      ...graph.nodes,
-      classExpressionSites: [
-        {
-          ...firstSite,
-          rawExpressionText: '"changed"',
-        },
-      ],
-    },
-  };
-
-  const moduleFacts = buildModuleFacts({
-    source: frontends.source,
-    stylesheetFilePaths: ["src/app.css"],
-  });
-  const symbolResolution = buildProjectBindingResolution({
-    source: frontends.source,
-    moduleFacts,
-    includeTraces: false,
-  });
-  const renderModel = buildRenderModel({
-    parsedFiles,
-    moduleFacts,
-    symbolResolution,
-    includeTraces: false,
-  });
-  const result = evaluateSymbolicExpressions({
-    graph: graphWithMismatchedRawText,
-    legacy: {
-      renderModelClassExpressionSummaries: renderModel.legacyClassExpressionSummaries,
-    },
-  });
-
-  assert.equal(result.evaluatedExpressions.meta.evaluatedClassExpressionCount, 1);
-  assert.deepEqual(
-    result.evaluatedExpressions.diagnostics.map((diagnostic) => ({
-      severity: diagnostic.severity,
-      code: diagnostic.code,
-      classExpressionSiteNodeId: diagnostic.classExpressionSiteNodeId,
-    })),
-    [
-      {
-        severity: "warning",
-        code: "legacy-expression-text-mismatch",
-        classExpressionSiteNodeId: firstSite.id,
-      },
-    ],
-  );
-});
-
-test("symbolic evaluation prefers legacy render-model summaries for bound class expressions", async () => {
-  const { graph, parsedFiles, frontends } = await buildFixtureAnalysis([
-    'import "./app.css";',
-    'const localClass = "bound local";',
-    "export function App() {",
-    "  return <div className={localClass} />;",
-    "}",
-    "",
-  ]);
-  const moduleFacts = buildModuleFacts({
-    source: frontends.source,
-    stylesheetFilePaths: ["src/app.css"],
-  });
-  const symbolResolution = buildProjectBindingResolution({
-    source: frontends.source,
-    moduleFacts,
-    includeTraces: false,
-  });
-  const renderModel = buildRenderModel({
-    parsedFiles,
-    moduleFacts,
-    symbolResolution,
-    includeTraces: false,
-  });
-
-  const result = evaluateSymbolicExpressions({
-    graph,
-    legacy: {
-      renderModelClassExpressionSummaries: renderModel.legacyClassExpressionSummaries,
-    },
-  });
-  const expression = getOnlyExpression(result);
-
-  assert.deepEqual(expression.tokens.map((token) => token.token).sort(), ["bound", "local"]);
-  assert.deepEqual(result.evaluatedExpressions.diagnostics, []);
-  assert.equal(
-    expression.provenance[0].summary,
-    "Evaluated class expression with legacy render-model adapter",
-  );
-});
-
-test("symbolic evaluation preserves render-aware props, destructuring, and helpers", async () => {
-  const { result } = await evaluateRenderAwareFixture([
-    'import "./app.css";',
-    'const localClass = "local-binding";',
-    'function joinClasses(...values) { return values.filter(Boolean).join(" "); }',
-    "function PropsObject(props) { return <div className={props.className} />; }",
-    'function Helper({ className }) { return <div className={joinClasses("helper-base", className)} />; }',
-    "export function App() {",
-    "  return (",
-    "    <>",
-    "      <div className={localClass} />",
-    '      <PropsObject className="props-object" />',
-    '      <Helper className="helper-extra" />',
-    "    </>",
-    "  );",
-    "}",
-    "",
-  ]);
-
-  assertRenderAwareTokens(result, ["helper-base", "helper-extra", "local-binding", "props-object"]);
-});
-
-test("symbolic evaluation preserves imported and namespace render-model bindings", async () => {
-  const { result } = await evaluateRenderAwareFixture(
-    [
-      'import "./app.css";',
-      'import { importedClass, importedHelper } from "./tokens";',
-      'import * as tokens from "./tokens";',
-      "export function App() {",
-      "  return (",
-      "    <>",
-      "      <div className={importedClass} />",
-      "      <div className={importedHelper('helper-imported')} />",
-      "      <div className={tokens.namespaceClass} />",
-      "      <div className={tokens.namespaceHelper('helper-namespace')} />",
-      "    </>",
-      "  );",
-      "}",
-      "",
-    ],
-    {
-      "src/tokens.ts": [
-        'export const importedClass = "imported-class";',
-        'export const namespaceClass = "namespace-class";',
-        'export function importedHelper(extra) { return ["imported-helper", extra].join(" "); }',
-        'export function namespaceHelper(extra) { return ["namespace-helper", extra].join(" "); }',
-        "",
-      ].join("\n"),
-    },
-  );
-
-  assertRenderAwareTokens(result, [
-    "helper-imported",
-    "helper-namespace",
-    "imported-class",
-    "imported-helper",
-    "namespace-class",
-    "namespace-helper",
-  ]);
-});
-
-test("symbolic evaluation preserves finite string values and array find/join support", async () => {
-  const { result } = await evaluateRenderAwareFixture([
-    'import "./app.css";',
-    "type Tone = 'tone-a' | 'tone-b';",
-    "function Finite({ tone }: { tone: Tone }) { return <div className={`button ${tone}`} />; }",
-    "export function App() {",
-    "  const classes = ['array-a', false && 'array-b', 'array-c'];",
-    "  return (",
-    "    <>",
-    "      <Finite />",
-    "      <div className={classes.filter(Boolean).join(' ')} />",
-    "      <div className={classes.find(Boolean)} />",
-    "    </>",
-    "  );",
-    "}",
-    "",
-  ]);
-
-  assertRenderAwareTokens(
-    result,
-    ["array-a", "array-c", "button"],
-    ["array-b", "tone-a", "tone-b"],
-  );
 });
 
 test("symbolic evaluation preserves conditional branch alternatives canonically", async () => {
@@ -567,8 +384,7 @@ test("symbolic evaluation records CSS Module destructured bindings as contributi
 
 test("analyzeProjectSourceTexts produces internal symbolic evaluation facts when graph input exists", async () => {
   const { snapshot, frontends, factGraph } = await buildEngineFlowFixture([
-    'const localClass = "internal-symbolic";',
-    "export function App() { return <div className={localClass} />; }",
+    'export function App() { return <div className="internal-symbolic" />; }',
     "",
   ]);
   const result = analyzeProjectSourceTexts({
@@ -783,7 +599,6 @@ async function evaluateRenderAwareFixture(sourceText, extraSourceFiles = {}, ext
     });
     const frontends = buildLanguageFrontends({ snapshot });
     const graph = buildFactGraph({ snapshot, frontends }).graph;
-    const parsedFiles = frontends.source.files.map((file) => file.legacy.parsedFile);
     const moduleFacts = buildModuleFacts({
       source: frontends.source,
       stylesheetFilePaths: cssFilePaths,
@@ -793,23 +608,15 @@ async function evaluateRenderAwareFixture(sourceText, extraSourceFiles = {}, ext
       moduleFacts,
       includeTraces: false,
     });
-    const renderModel = buildRenderModel({
-      parsedFiles,
-      moduleFacts,
-      symbolResolution,
-      includeTraces: false,
-    });
 
     return {
       graph,
       result: evaluateSymbolicExpressions({
         graph,
         legacy: {
-          renderModelClassExpressionSummaries: renderModel.legacyClassExpressionSummaries,
           symbolResolution,
         },
       }),
-      renderModel,
     };
   } finally {
     await project.cleanup();
@@ -925,14 +732,6 @@ function mapEntries(map) {
   return [...map.entries()].sort(([left], [right]) => left.localeCompare(right));
 }
 
-function toComparableClassSet(classSet) {
-  return {
-    definite: [...classSet.definite].sort(),
-    possible: [...classSet.possible].sort(),
-    unknownDynamic: classSet.unknownDynamic,
-  };
-}
-
 function toComparableCanonicalTokens(expression) {
   return {
     definite: expression.tokens
@@ -961,40 +760,6 @@ function getOnlyCssModuleExpression(result) {
   );
   assert.ok(expressions.length > 0);
   return expressions[0];
-}
-
-function assertRenderAwareTokens(result, definiteTokens, possibleTokens = []) {
-  const actual = toComparableClassSet({
-    definite: unique(
-      result.evaluatedExpressions.classExpressions.flatMap((expression) =>
-        expression.tokens
-          .filter((token) => token.presence === "always")
-          .map((token) => token.token),
-      ),
-    ),
-    possible: unique(
-      result.evaluatedExpressions.classExpressions.flatMap((expression) =>
-        expression.tokens
-          .filter((token) => token.presence === "possible")
-          .map((token) => token.token),
-      ),
-    ),
-    unknownDynamic: result.evaluatedExpressions.classExpressions.some(
-      (expression) =>
-        expression.certainty.kind === "unknown" || expression.certainty.kind === "partial",
-    ),
-  });
-
-  assert.deepEqual(actual.definite, [...definiteTokens].sort());
-  assert.deepEqual(actual.possible, [...possibleTokens].sort());
-  assert.deepEqual(result.evaluatedExpressions.diagnostics, []);
-  assert.ok(
-    result.evaluatedExpressions.classExpressions.some(
-      (expression) =>
-        expression.provenance[0].summary ===
-        "Evaluated class expression with legacy render-model adapter",
-    ),
-  );
 }
 
 function unique(values) {

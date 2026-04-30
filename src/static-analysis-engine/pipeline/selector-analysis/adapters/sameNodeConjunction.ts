@@ -1,5 +1,5 @@
 import type { RenderNode } from "../../render-model/render-ir/types.js";
-import type { ClassExpressionSummary } from "../../render-model/abstract-values/types.js";
+import type { ClassExpressionSummary } from "../../symbolic-evaluation/class-values/types.js";
 import type {
   ParsedSelectorQuery,
   SelectorAnalysisTarget,

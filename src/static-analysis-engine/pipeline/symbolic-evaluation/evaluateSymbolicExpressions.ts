@@ -3,7 +3,6 @@ import {
   sortSymbolicEvaluationDiagnostics,
   unresolvedClassExpressionSiteDiagnostic,
 } from "./diagnostics.js";
-import { createLegacyRenderModelClassExpressionSummaryStore } from "./adapters/legacyRenderModelAdapter.js";
 import { buildEvaluatedExpressionIndexes } from "./indexes.js";
 import { createDefaultSymbolicEvaluatorRegistry } from "./registry.js";
 import type { ClassExpressionSiteNode, ExpressionSyntaxNode } from "../fact-graph/index.js";
@@ -18,15 +17,9 @@ import type {
 export function evaluateSymbolicExpressions(
   input: SymbolicEvaluationInput,
 ): SymbolicEvaluationResult {
-  const legacyRenderModelSummaryStore = input.legacy?.renderModelClassExpressionSummaries
-    ? createLegacyRenderModelClassExpressionSummaryStore({
-        summaries: input.legacy.renderModelClassExpressionSummaries,
-      })
-    : undefined;
   const evaluatorRegistry =
     input.evaluatorRegistry ??
     createDefaultSymbolicEvaluatorRegistry({
-      ...(legacyRenderModelSummaryStore ? { legacyRenderModelSummaryStore } : {}),
       ...(input.legacy?.symbolResolution
         ? { symbolResolution: input.legacy.symbolResolution }
         : {}),
@@ -52,7 +45,6 @@ export function evaluateSymbolicExpressions(
       expressionSyntax,
       options: input.options ?? {},
       ...(expressionSyntax ? { expressionSyntax } : {}),
-      ...(legacyRenderModelSummaryStore ? { legacyRenderModelSummaryStore } : {}),
       ...(input.legacy?.symbolResolution
         ? { symbolResolution: input.legacy.symbolResolution }
         : {}),

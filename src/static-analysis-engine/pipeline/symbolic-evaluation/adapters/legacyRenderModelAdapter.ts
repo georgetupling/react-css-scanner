@@ -1,12 +1,9 @@
 import ts from "typescript";
 
 import type { SourceAnchor } from "../../../types/core.js";
-import {
-  buildClassExpressionTraces,
-  mergeClassNameValues,
-  summarizeClassNameExpression,
-  toAbstractClassSet,
-} from "../class-values/index.js";
+import { mergeClassNameValues, toAbstractClassSet } from "../class-values/index.js";
+import { buildClassExpressionTraces } from "../class-values/classExpressionTraces.js";
+import { summarizeClassNameExpression } from "../class-values/classExpressions.js";
 import type { ClassExpressionSummary } from "../class-values/index.js";
 import type { BuildContext } from "../../render-model/render-ir/shared/internalTypes.js";
 import {
@@ -20,7 +17,6 @@ import {
   resolveHelperCallContext,
 } from "../../render-model/render-ir/resolution/resolveBindings.js";
 import { resolveExactTruthyExpression } from "../../render-model/render-ir/resolution/resolveExactValues.js";
-import type { ClassExpressionSiteNode } from "../../fact-graph/index.js";
 
 const MAX_CLASS_NAME_RESOLUTION_DEPTH = 100;
 const MAX_EXACT_CLASS_ARRAY_RESOLUTION_DEPTH = 100;
@@ -35,40 +31,6 @@ type ExactClassArrayResolutionState = {
   activeExpressions: Set<string>;
   depth: number;
 };
-
-export type LegacyRenderModelClassExpressionSummaryRecord = {
-  location: SourceAnchor;
-  rawExpressionText: string;
-  summary: ClassExpressionSummary;
-};
-
-export type LegacyRenderModelClassExpressionSummaryStore = {
-  getSummaryForSite(
-    site: ClassExpressionSiteNode,
-  ): LegacyRenderModelClassExpressionSummaryRecord | undefined;
-};
-
-export function createLegacyRenderModelClassExpressionSummaryStore(input: {
-  summaries: LegacyRenderModelClassExpressionSummaryRecord[];
-}): LegacyRenderModelClassExpressionSummaryStore {
-  const summaryByFilePathAndAnchor = new Map<
-    string,
-    LegacyRenderModelClassExpressionSummaryRecord
-  >();
-
-  for (const summary of input.summaries) {
-    const key = createExpressionAnchorKey(summary.location);
-    if (!summaryByFilePathAndAnchor.has(key)) {
-      summaryByFilePathAndAnchor.set(key, summary);
-    }
-  }
-
-  return {
-    getSummaryForSite(site) {
-      return summaryByFilePathAndAnchor.get(createExpressionAnchorKey(site.location));
-    },
-  };
-}
 
 export function summarizeClassNameExpressionInLegacyRenderModel(input: {
   expression: ts.Expression;
@@ -105,16 +67,6 @@ export function summarizeClassNameExpressionInLegacyRenderModel(input: {
   });
 
   return summary;
-}
-
-function createExpressionAnchorKey(anchor: SourceAnchor): string {
-  return [
-    anchor.filePath,
-    anchor.startLine,
-    anchor.startColumn,
-    anchor.endLine ?? 0,
-    anchor.endColumn ?? 0,
-  ].join("\0");
 }
 
 function summarizeBoundClassNameExpression(
