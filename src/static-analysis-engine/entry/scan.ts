@@ -29,6 +29,7 @@ import { runReachabilityStage } from "./stages/reachabilityStage.js";
 import { runRenderModelStage } from "./stages/renderModelStage.js";
 import { runSelectorAnalysisStage } from "./stages/selectorAnalysisStage.js";
 import { runSymbolResolutionStage } from "./stages/symbolResolutionStage.js";
+import { runSymbolicEvaluationStage } from "./stages/symbolicEvaluationStage.js";
 import { analyzeRuntimeDomClasses } from "../pipeline/runtime-dom/index.js";
 
 export function analyzeSourceText(input: {
@@ -158,6 +159,21 @@ export function analyzeProjectSourceTexts(input: {
       includeTraces,
     }),
   );
+  const factGraphStage = input.factGraph;
+  const symbolicEvaluationStage = factGraphStage
+    ? runAnalysisStage(
+        progress,
+        "symbolic-evaluation",
+        "Evaluating symbolic class expressions",
+        () =>
+          runSymbolicEvaluationStage({
+            graph: factGraphStage.graph,
+            parsedFiles,
+            renderModel: renderModelStage,
+            includeTraces,
+          }),
+      )
+    : undefined;
   const runtimeDomClassReferences = analyzeRuntimeDomClasses({
     source: sourceFrontendFacts,
     includeTraces,
@@ -236,6 +252,7 @@ export function analyzeProjectSourceTexts(input: {
 
   return {
     projectAnalysis: projectAnalysisStage.projectAnalysis,
+    ...(symbolicEvaluationStage ? { symbolicEvaluation: symbolicEvaluationStage } : {}),
   };
 }
 

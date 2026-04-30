@@ -1,7 +1,9 @@
 import type { ProjectAnalysis } from "../pipeline/project-analysis/types.js";
+import type { SymbolicEvaluationResult } from "../pipeline/symbolic-evaluation/index.js";
 
 export type StaticAnalysisEngineResult = {
   projectAnalysis: ProjectAnalysis;
+  symbolicEvaluation?: SymbolicEvaluationResult;
 };
 
 export type AnalysisProgressStatus = "started" | "completed";

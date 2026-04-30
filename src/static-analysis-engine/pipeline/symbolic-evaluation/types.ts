@@ -228,7 +228,7 @@ export type SymbolicEvaluationDiagnostic = {
     | "unsupported-expression"
     | "evaluation-budget-exceeded"
     | "evaluation-cycle-detected"
-    | "legacy-expression-store-mismatch";
+    | "legacy-expression-text-mismatch";
   message: string;
   filePath?: string;
   location?: SourceAnchor;

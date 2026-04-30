@@ -1,4 +1,4 @@
-import { rawExpressionTextMismatchDiagnostic } from "../diagnostics.js";
+import { classExpressionTextMismatchDiagnostic } from "../diagnostics.js";
 import { buildCanonicalClassExpressionFromValue, buildConditions } from "./legacyAstEvaluator.js";
 import type { SourceAnchor } from "../../../types/core.js";
 import type { SymbolicEvaluationDiagnostic, SymbolicExpressionEvaluator } from "../types.js";
@@ -18,10 +18,11 @@ export const legacyRenderModelClassExpressionEvaluator: SymbolicExpressionEvalua
     const diagnostics: SymbolicEvaluationDiagnostic[] = [];
     if (record.rawExpressionText !== input.classExpressionSite.rawExpressionText) {
       diagnostics.push(
-        rawExpressionTextMismatchDiagnostic({
+        classExpressionTextMismatchDiagnostic({
           site: input.classExpressionSite,
           graphRawExpressionText: input.classExpressionSite.rawExpressionText,
-          astRawExpressionText: record.rawExpressionText,
+          adapterRawExpressionText: record.rawExpressionText,
+          adapterName: "legacy render-model adapter",
         }),
       );
     }

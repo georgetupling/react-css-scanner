@@ -38,9 +38,9 @@ export {
   type LegacyRenderModelClassExpressionSummaryStore,
 } from "./adapters/legacyRenderModelAdapter.js";
 export {
+  classExpressionTextMismatchDiagnostic,
   duplicateEvaluatedExpressionIdDiagnostic,
   missingExpressionSyntaxDiagnostic,
-  rawExpressionTextMismatchDiagnostic,
   sortSymbolicEvaluationDiagnostics,
   symbolicEvaluationProvenance,
   unresolvedClassExpressionSiteDiagnostic,

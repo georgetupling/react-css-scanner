@@ -6,7 +6,7 @@ import {
 } from "../ids.js";
 import { canonicalClassExpressionId } from "../ids.js";
 import {
-  rawExpressionTextMismatchDiagnostic,
+  classExpressionTextMismatchDiagnostic,
   symbolicEvaluationProvenance,
 } from "../diagnostics.js";
 import {
@@ -50,10 +50,11 @@ export const legacyAstClassExpressionEvaluator: SymbolicExpressionEvaluator = {
 
     if (match.rawExpressionText !== input.classExpressionSite.rawExpressionText) {
       diagnostics.push(
-        rawExpressionTextMismatchDiagnostic({
+        classExpressionTextMismatchDiagnostic({
           site: input.classExpressionSite,
           graphRawExpressionText: input.classExpressionSite.rawExpressionText,
-          astRawExpressionText: match.rawExpressionText,
+          adapterRawExpressionText: match.rawExpressionText,
+          adapterName: "legacy AST expression store",
         }),
       );
     }
