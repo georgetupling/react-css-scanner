@@ -44,7 +44,8 @@ export function buildProjectAnalysis(input: ProjectAnalysisBuildInput): ProjectA
   const classContexts = buildClassContexts(input, stylesheets, indexes);
   const classReferences = buildClassReferences({
     renderSubtrees,
-    runtimeDomClassReferences: input.runtimeDomClassReferences,
+    symbolicEvaluation: input.symbolicEvaluation,
+    factGraph: input.factGraph,
     indexes,
     includeTraces,
   });

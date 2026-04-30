@@ -9,7 +9,6 @@ export {
   uniqueSorted,
 } from "./class-values/index.js";
 export { toClassExpressionSummary } from "./adapters/classExpressionSummary.js";
-export { toRuntimeDomClassReferences } from "./adapters/runtimeDomClassReferences.js";
 export {
   createClassExpressionSummaryAnchorKey,
   mergeClassExpressionSummariesForRenderModel,

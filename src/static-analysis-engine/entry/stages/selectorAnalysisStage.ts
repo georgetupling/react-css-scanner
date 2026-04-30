@@ -9,6 +9,7 @@ import {
   type SelectorSourceInput,
 } from "../../pipeline/selector-analysis/index.js";
 import type { SelectorAnalysisStageResult } from "./types.js";
+import type { SymbolicEvaluationStageResult } from "./types.js";
 
 export function runSelectorAnalysisStage(input: {
   selectorQueries: string[];
@@ -17,6 +18,7 @@ export function runSelectorAnalysisStage(input: {
   selectorCssSources?: SelectorSourceInput[];
   renderSubtrees: RenderSubtree[];
   reachabilitySummary: ReachabilitySummary;
+  symbolicEvaluation?: SymbolicEvaluationStageResult;
   includeTraces?: boolean;
 }): SelectorAnalysisStageResult {
   const parsedSelectorQueries = buildParsedSelectorQueries(
@@ -37,6 +39,7 @@ export function runSelectorAnalysisStage(input: {
       selectorQueries: parsedSelectorQueries,
       renderSubtrees: input.renderSubtrees,
       reachabilitySummary: input.reachabilitySummary,
+      symbolicEvaluation: input.symbolicEvaluation,
       includeTraces: input.includeTraces,
     }),
   };

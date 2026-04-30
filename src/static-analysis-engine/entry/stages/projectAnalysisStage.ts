@@ -6,7 +6,6 @@ import type { ModuleFacts } from "../../pipeline/module-facts/index.js";
 import type { ReachabilitySummary } from "../../pipeline/reachability/index.js";
 import type { RenderGraph } from "../../pipeline/render-model/render-graph/index.js";
 import type { RenderSubtree } from "../../pipeline/render-model/render-ir/index.js";
-import type { RuntimeDomClassReference } from "../../pipeline/runtime-dom/index.js";
 import type { ProjectBindingResolution } from "../../pipeline/symbol-resolution/index.js";
 import type {
   CssModuleLocalsConvention,
@@ -16,6 +15,7 @@ import type {
   FactGraphStageResult,
   ProjectAnalysisStageResult,
   SelectorAnalysisStageResult,
+  SymbolicEvaluationStageResult,
 } from "./types.js";
 
 export function runProjectAnalysisStage(input: {
@@ -30,7 +30,7 @@ export function runProjectAnalysisStage(input: {
   renderGraph: RenderGraph;
   renderSubtrees: RenderSubtree[];
   unsupportedClassReferences: UnsupportedClassReferenceDiagnostic[];
-  runtimeDomClassReferences: RuntimeDomClassReference[];
+  symbolicEvaluation?: SymbolicEvaluationStageResult;
   selectorQueryResults: SelectorAnalysisStageResult["selectorQueryResults"];
   includeTraces?: boolean;
 }): ProjectAnalysisStageResult {

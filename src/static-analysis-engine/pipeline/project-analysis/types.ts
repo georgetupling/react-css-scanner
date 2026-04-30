@@ -8,9 +8,10 @@ import type {
 } from "../reachability/types.js";
 import type { RenderGraphEdge } from "../render-model/render-graph/types.js";
 import type { RenderSubtree, RenderNode } from "../render-model/render-ir/types.js";
-import type { RuntimeDomClassReference, RuntimeDomLibraryHint } from "../runtime-dom/types.js";
+import type { RuntimeDomLibraryHint } from "../runtime-dom/types.js";
 import type { SelectorConstraint, SelectorQueryResult } from "../selector-analysis/types.js";
 import type { FactGraphResult } from "../fact-graph/types.js";
+import type { SymbolicEvaluationResult } from "../symbolic-evaluation/types.js";
 import type { AnalysisConfidence, AnalysisTrace } from "../../types/analysis.js";
 import type { SourceAnchor } from "../../types/core.js";
 import type {
@@ -510,7 +511,7 @@ export type ProjectAnalysisBuildInput = {
   renderGraph: import("../render-model/render-graph/types.js").RenderGraph;
   renderSubtrees: RenderSubtree[];
   unsupportedClassReferences: UnsupportedClassReferenceDiagnostic[];
-  runtimeDomClassReferences: RuntimeDomClassReference[];
+  symbolicEvaluation?: SymbolicEvaluationResult;
   selectorQueryResults: SelectorQueryResult[];
   includeTraces?: boolean;
 };

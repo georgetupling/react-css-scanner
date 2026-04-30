@@ -9,6 +9,7 @@ import type {
   ReachabilityAvailability,
   StylesheetReachabilityContextRecord,
 } from "../reachability/types.js";
+import type { CanonicalClassExpression } from "../symbolic-evaluation/types.js";
 
 export type SemanticOutcome = "match" | "possible-match" | "no-match-under-bounded-analysis";
 
@@ -162,4 +163,8 @@ export type SelectorAnalysisTarget = {
   renderSubtree: import("../render-model/render-ir/types.js").RenderSubtree;
   reachabilityAvailability: Extract<ReachabilityAvailability, "definite" | "possible">;
   reachabilityContexts: StylesheetReachabilityContextRecord[];
+};
+
+export type SelectorSymbolicClassExpressionIndex = {
+  classExpressionByAnchorKey: Map<string, CanonicalClassExpression>;
 };

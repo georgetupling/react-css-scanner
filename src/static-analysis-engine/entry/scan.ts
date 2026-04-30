@@ -30,8 +30,6 @@ import { runRenderModelStage } from "./stages/renderModelStage.js";
 import { runSelectorAnalysisStage } from "./stages/selectorAnalysisStage.js";
 import { runSymbolResolutionStage } from "./stages/symbolResolutionStage.js";
 import { runSymbolicEvaluationStage } from "./stages/symbolicEvaluationStage.js";
-import { analyzeRuntimeDomClasses } from "../pipeline/runtime-dom/index.js";
-import { toRuntimeDomClassReferences } from "../pipeline/symbolic-evaluation/adapters/runtimeDomClassReferences.js";
 
 export function analyzeSourceText(input: {
   filePath: string;
@@ -175,12 +173,6 @@ export function analyzeProjectSourceTexts(input: {
           }),
       )
     : undefined;
-  const runtimeDomClassReferences = symbolicEvaluationStage
-    ? toRuntimeDomClassReferences(symbolicEvaluationStage)
-    : analyzeRuntimeDomClasses({
-        source: sourceFrontendFacts,
-        includeTraces,
-      });
   const cssAnalysisStage = runAnalysisStage(progress, "css-analysis", "Analyzing CSS", () =>
     runCssAnalysisStage({
       factGraph: input.factGraph,
@@ -227,6 +219,7 @@ export function analyzeProjectSourceTexts(input: {
         selectorCssSources: input.selectorCssSources ?? [],
         renderSubtrees: renderModelStage.renderSubtrees,
         reachabilitySummary: reachabilityStage.reachabilitySummary,
+        symbolicEvaluation: symbolicEvaluationStage,
         includeTraces,
       }),
   );
@@ -247,7 +240,7 @@ export function analyzeProjectSourceTexts(input: {
         renderGraph: renderModelStage.renderGraph,
         renderSubtrees: renderModelStage.renderSubtrees,
         unsupportedClassReferences: renderModelStage.unsupportedClassReferences,
-        runtimeDomClassReferences,
+        symbolicEvaluation: symbolicEvaluationStage,
         selectorQueryResults: selectorAnalysisStage.selectorQueryResults,
         includeTraces,
       }),

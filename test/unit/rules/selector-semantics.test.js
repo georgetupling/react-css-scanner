@@ -185,6 +185,51 @@ test("compound-selector-never-matched does not report matched same-node class co
   }
 });
 
+test("compound-selector-never-matched respects mutually exclusive canonical variants", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        "const active = true;",
+        "export function App() {",
+        '  return <button className={active ? "button primary" : "button danger"}>Save</button>;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile(
+      "src/App.css",
+      [
+        ".button { color: black; }",
+        ".primary { color: green; }",
+        ".danger { color: red; }",
+        ".button.primary.danger { outline: 1px solid red; }",
+        "",
+      ].join("\n"),
+    )
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
+      cssFilePaths: ["src/App.css"],
+    });
+
+    const compoundFindings = result.findings.filter(
+      (finding) =>
+        finding.ruleId === "compound-selector-never-matched" &&
+        finding.data?.selectorText === ".button.primary.danger",
+    );
+    assert.equal(compoundFindings.length, 1);
+    assert.equal(compoundFindings[0].confidence, "high");
+    assert.deepEqual(compoundFindings[0].data?.requiredClassNames, ["button", "primary", "danger"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("unused-compound-selector-branch reports a dead branch in an otherwise useful selector list", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(

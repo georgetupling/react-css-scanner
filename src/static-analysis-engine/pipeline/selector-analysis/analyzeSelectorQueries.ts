@@ -3,11 +3,18 @@ import type {
   RenderRegionPathSegment,
   RenderSubtree,
 } from "../render-model/render-ir/types.js";
+import type { SourceAnchor } from "../../types/core.js";
 import type {
   ReachabilitySummary,
   StylesheetReachabilityContextRecord,
 } from "../reachability/types.js";
-import type { ParsedSelectorQuery, SelectorAnalysisTarget, SelectorQueryResult } from "./types.js";
+import type {
+  ParsedSelectorQuery,
+  SelectorAnalysisTarget,
+  SelectorQueryResult,
+  SelectorSymbolicClassExpressionIndex,
+} from "./types.js";
+import type { SymbolicEvaluationResult } from "../symbolic-evaluation/types.js";
 import { buildSelectorQueryResult } from "./resultUtils.js";
 import { analyzeAncestorDescendantConstraint } from "./adapters/ancestorDescendant.js";
 import { analyzeParentChildConstraint } from "./adapters/parentChild.js";
@@ -39,15 +46,20 @@ export function analyzeSelectorQueries(input: {
   selectorQueries: ParsedSelectorQuery[];
   renderSubtrees: RenderSubtree[];
   reachabilitySummary?: ReachabilitySummary;
+  symbolicEvaluation?: SymbolicEvaluationResult;
   includeTraces?: boolean;
 }): SelectorQueryResult[] {
   const includeTraces = input.includeTraces ?? true;
   const reachabilityTargetCache = new Map<string, SelectorAnalysisTarget[]>();
+  const symbolicClassExpressions = input.symbolicEvaluation
+    ? buildSelectorSymbolicClassExpressionIndex(input.symbolicEvaluation)
+    : undefined;
   return input.selectorQueries.map((selectorQuery) =>
     analyzeSelectorQuery({
       selectorQuery,
       renderSubtrees: input.renderSubtrees,
       reachabilitySummary: input.reachabilitySummary,
+      symbolicClassExpressions,
       reachabilityTargetCache,
       includeTraces,
     }),
@@ -58,6 +70,7 @@ function analyzeSelectorQuery(input: {
   selectorQuery: ParsedSelectorQuery;
   renderSubtrees: RenderSubtree[];
   reachabilitySummary?: ReachabilitySummary;
+  symbolicClassExpressions?: SelectorSymbolicClassExpressionIndex;
   reachabilityTargetCache: Map<string, SelectorAnalysisTarget[]>;
   includeTraces: boolean;
 }): SelectorQueryResult {
@@ -116,6 +129,7 @@ function analyzeSelectorQuery(input: {
       selectorQuery: input.selectorQuery,
       constraint,
       analysisTargets,
+      symbolicClassExpressions: input.symbolicClassExpressions,
       includeTraces: input.includeTraces,
     });
   }
@@ -144,6 +158,19 @@ function analyzeSelectorQuery(input: {
     analysisTargets,
     includeTraces: input.includeTraces,
   });
+}
+
+function buildSelectorSymbolicClassExpressionIndex(
+  result: SymbolicEvaluationResult,
+): SelectorSymbolicClassExpressionIndex {
+  return {
+    classExpressionByAnchorKey: new Map(
+      result.evaluatedExpressions.classExpressions.map((expression) => [
+        createAnchorKey(expression.location),
+        expression,
+      ]),
+    ),
+  };
 }
 
 function resolveQueryReachability(input: {
@@ -574,4 +601,14 @@ function deduplicateAnalysisSubtrees(
 
 function normalizeProjectPath(filePath: string): string {
   return filePath.replace(/\\/g, "/");
+}
+
+function createAnchorKey(anchor: SourceAnchor): string {
+  return [
+    normalizeProjectPath(anchor.filePath),
+    anchor.startLine,
+    anchor.startColumn,
+    anchor.endLine ?? "",
+    anchor.endColumn ?? "",
+  ].join(":");
 }

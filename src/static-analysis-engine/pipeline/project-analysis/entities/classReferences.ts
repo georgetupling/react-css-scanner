@@ -1,9 +1,11 @@
 import type { ClassExpressionSummary } from "../../render-model/abstract-values/types.js";
+import { toClassExpressionSummary } from "../../symbolic-evaluation/adapters/classExpressionSummary.js";
 import type {
   RenderNode,
   RenderComponentReferenceNode,
   RenderElementNode,
 } from "../../render-model/render-ir/types.js";
+import type { CanonicalClassExpression } from "../../symbolic-evaluation/types.js";
 import type { AnalysisTrace } from "../../../types/analysis.js";
 import type { SourceAnchor } from "../../../types/core.js";
 import type {
@@ -36,7 +38,8 @@ import {
 
 export function buildClassReferences(input: {
   renderSubtrees: RenderSubtreeAnalysis[];
-  runtimeDomClassReferences: ProjectAnalysisBuildInput["runtimeDomClassReferences"];
+  symbolicEvaluation: ProjectAnalysisBuildInput["symbolicEvaluation"];
+  factGraph: ProjectAnalysisBuildInput["factGraph"];
   indexes: ProjectAnalysisIndexes;
   includeTraces: boolean;
 }): ClassReferenceAnalysis[] {
@@ -46,76 +49,201 @@ export function buildClassReferences(input: {
     ),
   );
 
-  const references = classExpressions.map((entry, index) => {
-    const { classExpression, emittedElementLocation, placementLocation, renderSubtreeId } = entry;
-    const filePath = normalizeProjectPath(classExpression.sourceAnchor.filePath);
-    const sourceFileId =
-      input.indexes.sourceFileIdByPath.get(filePath) ?? createPathId("source", filePath);
-    const componentId = entry.suppliedByComponentId ?? entry.emittedByComponentId;
-    const id = createAnchorId("class-reference", classExpression.sourceAnchor, index);
-    const reference: ClassReferenceAnalysis = {
-      id,
-      sourceFileId,
-      componentId,
-      suppliedByComponentId: entry.suppliedByComponentId,
-      emittedByComponentId: entry.emittedByComponentId,
-      classNameComponentIds: entry.classNameComponentIds,
-      renderSubtreeId,
-      location: normalizeAnchor(classExpression.sourceAnchor),
-      emittedElementLocation,
-      placementLocation,
-      origin: "render-ir",
-      expressionKind: getReferenceExpressionKind(classExpression),
-      rawExpressionText: classExpression.sourceText,
-      definiteClassNames: [...classExpression.classes.definite],
-      possibleClassNames: [...classExpression.classes.possible],
-      unknownDynamic: classExpression.classes.unknownDynamic,
-      confidence: getReferenceConfidence(classExpression),
-      traces: input.includeTraces ? buildClassReferenceTraces(entry) : [],
-      sourceSummary: classExpression,
-    };
-
-    pushMapValue(input.indexes.referencesBySourceFileId, sourceFileId, id);
-    for (const className of collectReferenceClassNames(reference)) {
-      pushMapValue(input.indexes.referencesByClassName, className, id);
-    }
-
-    return reference;
-  });
-
-  const runtimeReferences = input.runtimeDomClassReferences.map((runtimeReference, index) => {
-    const filePath = normalizeProjectPath(runtimeReference.filePath);
-    const sourceFileId =
-      input.indexes.sourceFileIdByPath.get(filePath) ?? createPathId("source", filePath);
-    const classExpression = runtimeReference.classExpression;
-    const id = createAnchorId("runtime-dom-class-reference", runtimeReference.location, index);
-    const reference: ClassReferenceAnalysis = {
-      id,
-      sourceFileId,
-      location: normalizeAnchor(runtimeReference.location),
-      origin: "runtime-dom",
-      runtimeLibraryHint: runtimeReference.runtimeLibraryHint,
-      expressionKind: getReferenceExpressionKind(classExpression),
-      rawExpressionText: runtimeReference.rawExpressionText,
-      definiteClassNames: [...classExpression.classes.definite],
-      possibleClassNames: [...classExpression.classes.possible],
-      unknownDynamic: classExpression.classes.unknownDynamic,
-      confidence: getReferenceConfidence(classExpression),
-      traces: input.includeTraces ? buildRuntimeDomClassReferenceTraces(runtimeReference) : [],
-      sourceSummary: classExpression,
-    };
-
-    pushMapValue(input.indexes.referencesBySourceFileId, sourceFileId, id);
-    for (const className of collectReferenceClassNames(reference)) {
-      pushMapValue(input.indexes.referencesByClassName, className, id);
-    }
-
-    return reference;
-  });
+  const references = input.symbolicEvaluation
+    ? buildSymbolicClassReferences({
+        classExpressions: input.symbolicEvaluation.evaluatedExpressions.classExpressions,
+        renderEntries: classExpressions,
+        factGraph: input.factGraph,
+        indexes: input.indexes,
+        includeTraces: input.includeTraces,
+      })
+    : classExpressions.map((entry, index) => buildRenderClassReference(input, entry, index));
 
   sortIndexValues(input.indexes.referencesBySourceFileId);
   sortIndexValues(input.indexes.referencesByClassName);
-  return [...references, ...runtimeReferences].sort(compareById);
+  return references.sort(compareById);
+}
+
+function buildRenderClassReference(
+  input: {
+    indexes: ProjectAnalysisIndexes;
+    includeTraces: boolean;
+  },
+  entry: RenderClassExpressionEntry,
+  index: number,
+): ClassReferenceAnalysis {
+  const { classExpression, emittedElementLocation, placementLocation, renderSubtreeId } = entry;
+  const filePath = normalizeProjectPath(classExpression.sourceAnchor.filePath);
+  const sourceFileId =
+    input.indexes.sourceFileIdByPath.get(filePath) ?? createPathId("source", filePath);
+  const componentId = entry.suppliedByComponentId ?? entry.emittedByComponentId;
+  const id = createAnchorId("class-reference", classExpression.sourceAnchor, index);
+  const reference: ClassReferenceAnalysis = {
+    id,
+    sourceFileId,
+    componentId,
+    suppliedByComponentId: entry.suppliedByComponentId,
+    emittedByComponentId: entry.emittedByComponentId,
+    classNameComponentIds: entry.classNameComponentIds,
+    renderSubtreeId,
+    location: normalizeAnchor(classExpression.sourceAnchor),
+    emittedElementLocation,
+    placementLocation,
+    origin: "render-ir",
+    expressionKind: getReferenceExpressionKind(classExpression),
+    rawExpressionText: classExpression.sourceText,
+    definiteClassNames: [...classExpression.classes.definite],
+    possibleClassNames: [...classExpression.classes.possible],
+    unknownDynamic: classExpression.classes.unknownDynamic,
+    confidence: getReferenceConfidence(classExpression),
+    traces: input.includeTraces ? buildClassReferenceTraces(entry) : [],
+    sourceSummary: classExpression,
+  };
+
+  pushMapValue(input.indexes.referencesBySourceFileId, sourceFileId, id);
+  for (const className of collectReferenceClassNames(reference)) {
+    pushMapValue(input.indexes.referencesByClassName, className, id);
+  }
+
+  return reference;
+}
+
+function buildSymbolicClassReferences(input: {
+  classExpressions: CanonicalClassExpression[];
+  renderEntries: RenderClassExpressionEntry[];
+  factGraph: ProjectAnalysisBuildInput["factGraph"];
+  indexes: ProjectAnalysisIndexes;
+  includeTraces: boolean;
+}): ClassReferenceAnalysis[] {
+  const symbolicExpressionByAnchor = new Map(
+    input.classExpressions
+      .filter(
+        (expression) =>
+          expression.classExpressionSiteKind !== "runtime-dom-class" &&
+          shouldProjectCanonicalClassExpression(expression),
+      )
+      .map((expression) => [createAnchorKey(expression.location), expression]),
+  );
+  const references: ClassReferenceAnalysis[] = [];
+
+  for (const renderEntry of input.renderEntries) {
+    const symbolicExpression = symbolicExpressionByAnchor.get(
+      createClassExpressionAnchorKey(renderEntry.classExpression),
+    );
+    if (symbolicExpression) {
+      const symbolicClassExpression = toClassExpressionSummary(symbolicExpression);
+      if (!shouldUseSymbolicClassExpressionForRenderEntry(symbolicClassExpression, renderEntry)) {
+        references.push(buildRenderClassReference(input, renderEntry, references.length));
+        continue;
+      }
+
+      references.push(
+        buildSymbolicClassReference({
+          expression: symbolicExpression,
+          classExpression: symbolicClassExpression,
+          renderEntry,
+          factGraph: input.factGraph,
+          indexes: input.indexes,
+          includeTraces: input.includeTraces,
+          index: references.length,
+        }),
+      );
+      continue;
+    }
+
+    references.push(buildRenderClassReference(input, renderEntry, references.length));
+  }
+
+  for (const expression of input.classExpressions) {
+    if (
+      expression.classExpressionSiteKind !== "runtime-dom-class" ||
+      !shouldProjectCanonicalClassExpression(expression)
+    ) {
+      continue;
+    }
+
+    references.push(
+      buildSymbolicClassReference({
+        expression,
+        classExpression: toClassExpressionSummary(expression),
+        factGraph: input.factGraph,
+        indexes: input.indexes,
+        includeTraces: input.includeTraces,
+        index: references.length,
+      }),
+    );
+  }
+
+  return references;
+}
+
+function buildSymbolicClassReference(input: {
+  expression: CanonicalClassExpression;
+  classExpression: ClassExpressionSummary;
+  renderEntry?: RenderClassExpressionEntry;
+  factGraph: ProjectAnalysisBuildInput["factGraph"];
+  indexes: ProjectAnalysisIndexes;
+  includeTraces: boolean;
+  index: number;
+}): ClassReferenceAnalysis {
+  const site = input.factGraph?.graph.indexes.nodesById.get(
+    input.expression.classExpressionSiteNodeId,
+  );
+  const filePath = normalizeProjectPath(input.expression.filePath);
+  const sourceFileId =
+    input.indexes.sourceFileIdByPath.get(filePath) ?? createPathId("source", filePath);
+  const id = createAnchorId(
+    input.expression.classExpressionSiteKind === "runtime-dom-class"
+      ? "runtime-dom-class-reference"
+      : "class-reference",
+    input.expression.location,
+    input.index,
+  );
+  const reference: ClassReferenceAnalysis = {
+    id,
+    sourceFileId,
+    componentId:
+      input.renderEntry?.suppliedByComponentId ?? input.renderEntry?.emittedByComponentId,
+    suppliedByComponentId: input.renderEntry?.suppliedByComponentId,
+    emittedByComponentId: input.renderEntry?.emittedByComponentId,
+    classNameComponentIds: input.renderEntry?.classNameComponentIds,
+    renderSubtreeId: input.renderEntry?.renderSubtreeId,
+    location: normalizeAnchor(input.expression.location),
+    ...(input.renderEntry?.emittedElementLocation
+      ? { emittedElementLocation: input.renderEntry.emittedElementLocation }
+      : {}),
+    ...(input.renderEntry?.placementLocation
+      ? { placementLocation: input.renderEntry.placementLocation }
+      : {}),
+    origin:
+      input.expression.classExpressionSiteKind === "runtime-dom-class"
+        ? "runtime-dom"
+        : "render-ir",
+    ...(site?.kind === "class-expression-site" && site.runtimeDomLibraryHint
+      ? { runtimeLibraryHint: site.runtimeDomLibraryHint }
+      : {}),
+    expressionKind: getReferenceExpressionKind(input.classExpression),
+    rawExpressionText: input.expression.rawExpressionText,
+    definiteClassNames: [...input.classExpression.classes.definite],
+    possibleClassNames: [...input.classExpression.classes.possible],
+    unknownDynamic: input.classExpression.classes.unknownDynamic,
+    confidence: getReferenceConfidence(input.classExpression),
+    traces: input.includeTraces
+      ? buildCanonicalClassReferenceTraces({
+          expression: input.expression,
+          classExpression: input.classExpression,
+          renderEntry: input.renderEntry,
+        })
+      : [],
+    sourceSummary: input.classExpression,
+  };
+
+  pushMapValue(input.indexes.referencesBySourceFileId, sourceFileId, id);
+  for (const className of collectReferenceClassNames(reference)) {
+    pushMapValue(input.indexes.referencesByClassName, className, id);
+  }
+
+  return reference;
 }
 
 export function buildStaticallySkippedClassReferences(input: {
@@ -555,24 +683,78 @@ export function buildStaticallySkippedClassReferenceTraces(
   ];
 }
 
-export function buildRuntimeDomClassReferenceTraces(
-  reference: ProjectAnalysisBuildInput["runtimeDomClassReferences"][number],
-): AnalysisTrace[] {
+export function buildCanonicalClassReferenceTraces(input: {
+  expression: CanonicalClassExpression;
+  classExpression: ClassExpressionSummary;
+  renderEntry?: RenderClassExpressionEntry;
+}): AnalysisTrace[] {
+  const isRuntimeDom = input.expression.classExpressionSiteKind === "runtime-dom-class";
+  const anchor = normalizeAnchor(
+    input.renderEntry?.emittedElementLocation ?? input.expression.location,
+  );
+
   return [
     {
-      traceId: `runtime-dom:class-reference:${normalizeProjectPath(reference.location.filePath)}:${reference.location.startLine}:${reference.location.startColumn}`,
-      category: "render-expansion",
-      summary: "runtime DOM class reference was collected outside the React render IR",
-      anchor: normalizeAnchor(reference.location),
-      children: [...reference.classExpression.traces],
+      traceId: `${isRuntimeDom ? "runtime-dom" : "symbolic-evaluation"}:class-reference:${normalizeProjectPath(input.expression.location.filePath)}:${input.expression.location.startLine}:${input.expression.location.startColumn}`,
+      category: isRuntimeDom ? "value-evaluation" : "render-expansion",
+      summary: isRuntimeDom
+        ? "runtime DOM class reference was projected from symbolic evaluation"
+        : "class reference was projected from symbolic evaluation",
+      anchor,
+      children: [...input.classExpression.traces],
       metadata: {
-        origin: "runtime-dom",
-        adapter: reference.kind,
-        sourceFilePath: normalizeProjectPath(reference.filePath),
-        runtimeLibraryHint: reference.runtimeLibraryHint,
+        origin: isRuntimeDom ? "runtime-dom" : "render-ir",
+        expressionId: input.expression.id,
+        classExpressionSiteNodeId: input.expression.classExpressionSiteNodeId,
+        renderSubtreeId: input.renderEntry?.renderSubtreeId,
+        componentId:
+          input.renderEntry?.suppliedByComponentId ?? input.renderEntry?.emittedByComponentId,
+        sourceFilePath: normalizeProjectPath(input.expression.filePath),
       },
     },
   ];
+}
+
+function shouldProjectCanonicalClassExpression(expression: CanonicalClassExpression): boolean {
+  if (expression.classExpressionSiteKind === "css-module-member") {
+    return false;
+  }
+
+  return (
+    expression.tokens.some((token) => token.tokenKind !== "css-module-export") ||
+    expression.unsupported.some((reason) => reason.kind !== "unsupported-css-module-access")
+  );
+}
+
+function shouldUseSymbolicClassExpressionForRenderEntry(
+  symbolicClassExpression: ClassExpressionSummary,
+  renderEntry: RenderClassExpressionEntry,
+): boolean {
+  const symbolicClassNames = new Set([
+    ...symbolicClassExpression.classes.definite,
+    ...symbolicClassExpression.classes.possible,
+  ]);
+  const renderClassNames = [
+    ...renderEntry.classExpression.classes.definite,
+    ...renderEntry.classExpression.classes.possible,
+  ];
+
+  return renderClassNames.every((className) => symbolicClassNames.has(className));
+}
+
+function createClassExpressionAnchorKey(classExpression: ClassExpressionSummary): string {
+  return createAnchorKey(classExpression.sourceAnchor);
+}
+
+function createAnchorKey(sourceAnchor: SourceAnchor): string {
+  const anchor = normalizeAnchor(sourceAnchor);
+  return [
+    anchor.filePath,
+    anchor.startLine,
+    anchor.startColumn,
+    anchor.endLine ?? "",
+    anchor.endColumn ?? "",
+  ].join(":");
 }
 
 export function visitRenderNode(
