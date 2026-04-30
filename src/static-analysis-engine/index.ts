@@ -52,7 +52,11 @@ export {
   resolveTypeDeclaration,
   resolveTypeBinding,
 } from "./pipeline/symbol-resolution/index.js";
-export { summarizeClassNameExpression, toAbstractClassSet } from "./pipeline/render-model/index.js";
+export {
+  summarizeClassNameExpression,
+  toAbstractClassSet,
+  toClassExpressionSummary,
+} from "./pipeline/render-model/index.js";
 export { buildExternalCssSummary } from "./pipeline/external-css/index.js";
 export { analyzeRuntimeDomClasses } from "./pipeline/runtime-dom/index.js";
 export { collectUnsupportedClassReferences } from "./pipeline/render-model/index.js";

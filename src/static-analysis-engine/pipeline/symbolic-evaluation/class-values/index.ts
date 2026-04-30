@@ -1,13 +1,11 @@
+export { buildClassExpressionTraces, summarizeClassNameExpression } from "./classExpressions.js";
 export {
-  buildClassExpressionTraces,
   combineStrings,
   mergeClassNameValues,
-  summarizeClassNameExpression,
   toAbstractClassSet,
   tokenizeClassNames,
   uniqueSorted,
-} from "./classExpressions.js";
-export { toClassExpressionSummary } from "../../symbolic-evaluation/adapters/classExpressionSummary.js";
+} from "./classValueOperations.js";
 export type {
   AbstractClassSet,
   AbstractValue,

@@ -1,6 +1,10 @@
 export { buildRenderModel } from "./buildRenderModel.js";
 export type { RenderModel, RenderModelBuildInput } from "./buildRenderModel.js";
-export { summarizeClassNameExpression, toAbstractClassSet } from "./abstract-values/index.js";
+export {
+  summarizeClassNameExpression,
+  toAbstractClassSet,
+  toClassExpressionSummary,
+} from "./abstract-values/index.js";
 export { collectUnsupportedClassReferences } from "./class-reference-diagnostics/index.js";
 export {
   buildSameFileRenderSubtrees,

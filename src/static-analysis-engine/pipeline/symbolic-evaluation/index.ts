@@ -1,5 +1,15 @@
 export { evaluateSymbolicExpressions } from "./evaluateSymbolicExpressions.js";
 export {
+  buildClassExpressionTraces,
+  combineStrings,
+  mergeClassNameValues,
+  summarizeClassNameExpression,
+  toAbstractClassSet,
+  tokenizeClassNames,
+  uniqueSorted,
+} from "./class-values/index.js";
+export { toClassExpressionSummary } from "./adapters/classExpressionSummary.js";
+export {
   canonicalClassExpressionId,
   classEmissionVariantId,
   conditionId,
@@ -22,6 +32,12 @@ export {
   symbolicEvaluationProvenance,
   unresolvedClassExpressionSiteDiagnostic,
 } from "./diagnostics.js";
+export type {
+  AbstractClassSet,
+  AbstractValue,
+  ClassDerivationStep,
+  ClassExpressionSummary,
+} from "./class-values/index.js";
 export type {
   CanonicalClassExpression,
   CanonicalExpressionKind,

@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { buildFactGraph } from "../../dist/static-analysis-engine/pipeline/fact-graph/buildFactGraph.js";
 import { buildLanguageFrontends } from "../../dist/static-analysis-engine/pipeline/language-frontends/buildLanguageFrontends.js";
+import { toClassExpressionSummary } from "../../dist/static-analysis-engine/pipeline/symbolic-evaluation/adapters/classExpressionSummary.js";
 import { evaluateSymbolicExpressions } from "../../dist/static-analysis-engine/pipeline/symbolic-evaluation/evaluateSymbolicExpressions.js";
 import { buildProjectSnapshot } from "../../dist/static-analysis-engine/pipeline/workspace-discovery/buildProjectSnapshot.js";
 import { TestProjectBuilder } from "../support/TestProjectBuilder.js";
@@ -142,6 +143,84 @@ test("symbolic evaluation reports duplicate evaluated expression ids", async () 
   );
 });
 
+test("symbolic evaluation projects canonical expressions to compatibility summaries", () => {
+  const expression = canonicalExpression({
+    tokens: [
+      {
+        id: "expr:token:0:button",
+        token: "button",
+        tokenKind: "global-class",
+        presence: "always",
+        conditionId: "always",
+        sourceAnchor: sourceAnchor(),
+        confidence: "high",
+      },
+      {
+        id: "expr:token:1:active",
+        token: "active",
+        tokenKind: "global-class",
+        presence: "possible",
+        conditionId: "unknown",
+        confidence: "medium",
+      },
+      {
+        id: "expr:token:2:moduleRoot",
+        token: "moduleRoot",
+        tokenKind: "css-module-export",
+        presence: "always",
+        conditionId: "always",
+        confidence: "high",
+      },
+    ],
+  });
+
+  const summary = toClassExpressionSummary(expression);
+
+  assert.deepEqual(summary.value, {
+    kind: "class-set",
+    definite: ["button"],
+    possible: ["active"],
+    unknownDynamic: false,
+    reason: "css-module-class-contribution",
+  });
+  assert.deepEqual(summary.classes.definite, ["button"]);
+  assert.deepEqual(summary.classes.possible, ["active"]);
+  assert.equal(summary.classes.unknownDynamic, false);
+  assert.deepEqual(summary.classNameSourceAnchors, {
+    button: sourceAnchor(),
+  });
+  assert.equal(summary.sourceText, '"button"');
+});
+
+test("symbolic evaluation compatibility summaries preserve unsupported uncertainty", () => {
+  const expression = canonicalExpression({
+    certainty: {
+      kind: "unknown",
+      summary: "no reliable token information",
+    },
+    unsupported: [
+      {
+        id: "expr:unsupported:0:unsupported-expression-kind",
+        kind: "unsupported-syntax",
+        code: "unsupported-expression-kind",
+        message: "Unsupported expression",
+        recoverability: "none",
+        confidence: "low",
+      },
+    ],
+  });
+
+  const summary = toClassExpressionSummary(expression);
+
+  assert.deepEqual(summary.value, {
+    kind: "unknown",
+    reason: "unsupported-expression-kind",
+  });
+  assert.deepEqual(summary.classes.definite, []);
+  assert.deepEqual(summary.classes.possible, []);
+  assert.equal(summary.classes.unknownDynamic, true);
+});
+
 async function buildFixtureGraph() {
   const project = await new TestProjectBuilder()
     .withSourceFile(
@@ -254,4 +333,53 @@ function serializeEvaluatedExpressions(result) {
 
 function mapEntries(map) {
   return [...map.entries()].sort(([left], [right]) => left.localeCompare(right));
+}
+
+function canonicalExpression(overrides = {}) {
+  return {
+    id: "expr",
+    classExpressionSiteNodeId: "class-expression-site:src/App.tsx:1:1",
+    classExpressionSiteKind: "jsx-class",
+    expressionNodeId: "expression:src/App.tsx:1:1",
+    filePath: "src/App.tsx",
+    location: sourceAnchor(),
+    rawExpressionText: '"button"',
+    expressionKind: "class-token-set",
+    certainty: {
+      kind: "exact",
+      summary: "one complete token set",
+    },
+    confidence: "high",
+    tokens: [],
+    emissionVariants: [],
+    externalContributions: [],
+    cssModuleContributions: [
+      {
+        id: "expr:css-module:0:moduleRoot",
+        localName: "styles",
+        originLocalName: "styles",
+        exportName: "moduleRoot",
+        accessKind: "property",
+        conditionId: "always",
+        sourceAnchor: sourceAnchor(),
+        confidence: "high",
+        traces: [],
+      },
+    ],
+    unsupported: [],
+    tokenAnchors: {},
+    provenance: [],
+    traces: [],
+    ...overrides,
+  };
+}
+
+function sourceAnchor() {
+  return {
+    filePath: "src/App.tsx",
+    startLine: 1,
+    startColumn: 1,
+    endLine: 1,
+    endColumn: 9,
+  };
 }
