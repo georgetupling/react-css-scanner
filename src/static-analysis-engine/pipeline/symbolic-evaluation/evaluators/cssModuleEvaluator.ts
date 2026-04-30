@@ -1,5 +1,3 @@
-import ts from "typescript";
-
 import {
   cssModuleContributionId,
   canonicalClassExpressionId,
@@ -22,6 +20,7 @@ import type {
   UnsupportedReason,
   UnsupportedReasonCode,
 } from "../types.js";
+import type { ExpressionSyntaxNode } from "../../fact-graph/index.js";
 import type {
   ResolvedCssModuleBindingDiagnostic,
   ResolvedCssModuleMemberReference,
@@ -30,36 +29,29 @@ import type {
 export const cssModuleClassExpressionEvaluator: SymbolicExpressionEvaluator = {
   name: "css-module-class-expression",
   canEvaluate(input) {
-    if (!input.symbolResolution || !input.legacyExpressionStore) {
-      return false;
-    }
-
-    const match = input.legacyExpressionStore.getExpressionForSite(input.classExpressionSite);
-    if (!match) {
+    if (!input.symbolResolution || !input.expressionSyntax) {
       return false;
     }
 
     return Boolean(
-      resolveCssModuleReferenceFromExpression({
+      resolveCssModuleReferenceFromExpressionSyntax({
         input,
-        expression: match.expression,
+        expression: input.expressionSyntax,
       }) ?? findCssModuleDiagnosticForSite(input),
     );
   },
   evaluate(input) {
-    const match = input.legacyExpressionStore?.getExpressionForSite(input.classExpressionSite);
-    if (!match || !input.symbolResolution) {
+    if (!input.expressionSyntax || !input.symbolResolution) {
       return {};
     }
 
-    const resolvedReference = resolveCssModuleReferenceFromExpression({
+    const resolvedReference = resolveCssModuleReferenceFromExpressionSyntax({
       input,
-      expression: match.expression,
+      expression: input.expressionSyntax,
     });
     if (resolvedReference) {
       const expression = buildCssModuleExpression({
         input,
-        rawExpressionText: match.rawExpressionText,
         reference: resolvedReference,
       });
       return {
@@ -72,7 +64,6 @@ export const cssModuleClassExpressionEvaluator: SymbolicExpressionEvaluator = {
     if (diagnostic) {
       const expression = buildUnsupportedCssModuleExpression({
         input,
-        rawExpressionText: match.rawExpressionText,
         diagnostic,
       });
       return {
@@ -85,43 +76,51 @@ export const cssModuleClassExpressionEvaluator: SymbolicExpressionEvaluator = {
   },
 };
 
-function resolveCssModuleReferenceFromExpression(input: {
+function resolveCssModuleReferenceFromExpressionSyntax(input: {
   input: SymbolicExpressionEvaluatorInput;
-  expression: ts.Expression;
+  expression: ExpressionSyntaxNode;
 }): ResolvedCssModuleMemberReference | undefined {
-  const expression = unwrapExpression(input.expression);
+  const expression = unwrapExpression(input.input, input.expression);
 
-  if (ts.isPropertyAccessExpression(expression) && ts.isIdentifier(expression.expression)) {
+  if (expression.expressionKind === "member-access") {
+    const objectExpression = getExpressionSyntax(input.input, expression.objectExpressionId);
+    if (objectExpression?.expressionKind !== "identifier") {
+      return undefined;
+    }
+
     const result = resolveCssModuleMemberAccess({
       symbolResolution: input.input.symbolResolution!,
       filePath: input.input.classExpressionSite.filePath,
-      localName: expression.expression.text,
-      memberName: expression.name.text,
+      localName: objectExpression.name,
+      memberName: expression.propertyName,
     });
     return result?.kind === "resolved" ? result.reference : undefined;
   }
 
-  if (
-    ts.isElementAccessExpression(expression) &&
-    ts.isIdentifier(expression.expression) &&
-    expression.argumentExpression &&
-    (ts.isStringLiteral(expression.argumentExpression) ||
-      ts.isNoSubstitutionTemplateLiteral(expression.argumentExpression))
-  ) {
+  if (expression.expressionKind === "element-access" && expression.argumentExpressionId) {
+    const objectExpression = getExpressionSyntax(input.input, expression.objectExpressionId);
+    const argumentExpression = getExpressionSyntax(input.input, expression.argumentExpressionId);
+    if (
+      objectExpression?.expressionKind !== "identifier" ||
+      argumentExpression?.expressionKind !== "string-literal"
+    ) {
+      return undefined;
+    }
+
     const result = resolveCssModuleMemberAccess({
       symbolResolution: input.input.symbolResolution!,
       filePath: input.input.classExpressionSite.filePath,
-      localName: expression.expression.text,
-      memberName: expression.argumentExpression.text,
+      localName: objectExpression.name,
+      memberName: argumentExpression.value,
     });
     return result?.kind === "resolved" ? result.reference : undefined;
   }
 
-  if (ts.isIdentifier(expression)) {
+  if (expression.expressionKind === "identifier") {
     const binding = resolveCssModuleMember({
       symbolResolution: input.input.symbolResolution!,
       filePath: input.input.classExpressionSite.filePath,
-      localName: expression.text,
+      localName: expression.name,
     });
     if (!binding) {
       return undefined;
@@ -146,7 +145,6 @@ function resolveCssModuleReferenceFromExpression(input: {
 
 function buildCssModuleExpression(input: {
   input: SymbolicExpressionEvaluatorInput;
-  rawExpressionText: string;
   reference: ResolvedCssModuleMemberReference;
 }): CanonicalClassExpression {
   const expressionId = canonicalClassExpressionId(input.input.classExpressionSite.id);
@@ -232,7 +230,6 @@ function buildCssModuleExpression(input: {
 
 function buildUnsupportedCssModuleExpression(input: {
   input: SymbolicExpressionEvaluatorInput;
-  rawExpressionText: string;
   diagnostic: ResolvedCssModuleBindingDiagnostic;
 }): CanonicalClassExpression {
   const expressionId = canonicalClassExpressionId(input.input.classExpressionSite.id);
@@ -327,16 +324,31 @@ function anchorsOverlap(
   );
 }
 
-function unwrapExpression(expression: ts.Expression): ts.Expression {
-  while (
-    ts.isParenthesizedExpression(expression) ||
-    ts.isAsExpression(expression) ||
-    ts.isSatisfiesExpression(expression) ||
-    ts.isTypeAssertionExpression(expression) ||
-    ts.isNonNullExpression(expression)
-  ) {
-    expression = expression.expression;
+function unwrapExpression(
+  input: SymbolicExpressionEvaluatorInput,
+  expression: ExpressionSyntaxNode,
+): ExpressionSyntaxNode {
+  while (expression.expressionKind === "wrapper") {
+    const inner = getExpressionSyntax(input, expression.innerExpressionId);
+    if (!inner) {
+      return expression;
+    }
+
+    expression = inner;
   }
 
   return expression;
+}
+
+function getExpressionSyntax(
+  input: SymbolicExpressionEvaluatorInput,
+  expressionId: string,
+): ExpressionSyntaxNode | undefined {
+  const nodeId = input.graph.indexes.expressionSyntaxNodeIdByExpressionId.get(expressionId);
+  const indexedNode = nodeId ? input.graph.indexes.nodesById.get(nodeId) : undefined;
+  if (indexedNode?.kind === "expression-syntax") {
+    return indexedNode;
+  }
+
+  return input.graph.nodes.expressionSyntax.find((node) => node.expressionId === expressionId);
 }

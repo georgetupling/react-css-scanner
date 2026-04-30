@@ -3,7 +3,6 @@ import {
   sortSymbolicEvaluationDiagnostics,
   unresolvedClassExpressionSiteDiagnostic,
 } from "./diagnostics.js";
-import { createLegacyAstExpressionStore } from "./adapters/legacyAstExpressionStore.js";
 import { createLegacyRenderModelClassExpressionSummaryStore } from "./adapters/legacyRenderModelAdapter.js";
 import { buildEvaluatedExpressionIndexes } from "./indexes.js";
 import { createDefaultSymbolicEvaluatorRegistry } from "./registry.js";
@@ -19,9 +18,6 @@ import type {
 export function evaluateSymbolicExpressions(
   input: SymbolicEvaluationInput,
 ): SymbolicEvaluationResult {
-  const legacyExpressionStore = input.legacy?.parsedFiles
-    ? createLegacyAstExpressionStore({ parsedFiles: input.legacy.parsedFiles })
-    : undefined;
   const legacyRenderModelSummaryStore = input.legacy?.renderModelClassExpressionSummaries
     ? createLegacyRenderModelClassExpressionSummaryStore({
         summaries: input.legacy.renderModelClassExpressionSummaries,
@@ -30,7 +26,6 @@ export function evaluateSymbolicExpressions(
   const evaluatorRegistry =
     input.evaluatorRegistry ??
     createDefaultSymbolicEvaluatorRegistry({
-      ...(legacyExpressionStore ? { legacyExpressionStore } : {}),
       ...(legacyRenderModelSummaryStore ? { legacyRenderModelSummaryStore } : {}),
       ...(input.legacy?.symbolResolution
         ? { symbolResolution: input.legacy.symbolResolution }
@@ -57,7 +52,6 @@ export function evaluateSymbolicExpressions(
       expressionSyntax,
       options: input.options ?? {},
       ...(expressionSyntax ? { expressionSyntax } : {}),
-      ...(legacyExpressionStore ? { legacyExpressionStore } : {}),
       ...(legacyRenderModelSummaryStore ? { legacyRenderModelSummaryStore } : {}),
       ...(input.legacy?.symbolResolution
         ? { symbolResolution: input.legacy.symbolResolution }

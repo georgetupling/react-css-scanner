@@ -1,9 +1,8 @@
-import type { LegacyAstExpressionStore } from "./adapters/legacyAstExpressionStore.js";
 import type { LegacyRenderModelClassExpressionSummaryStore } from "./adapters/legacyRenderModelAdapter.js";
 import { fallbackClassExpressionEvaluator } from "./evaluators/fallbackEvaluator.js";
 import { cssModuleClassExpressionEvaluator } from "./evaluators/cssModuleEvaluator.js";
-import { legacyAstClassExpressionEvaluator } from "./evaluators/legacyAstEvaluator.js";
 import { legacyRenderModelClassExpressionEvaluator } from "./evaluators/legacyRenderModelEvaluator.js";
+import { normalizedClassExpressionEvaluator } from "./evaluators/normalizedExpressionEvaluator.js";
 import { runtimeDomClassExpressionEvaluator } from "./evaluators/runtimeDomEvaluator.js";
 import type { ProjectBindingResolution } from "../symbol-resolution/index.js";
 import type {
@@ -14,7 +13,6 @@ import type {
 } from "./types.js";
 
 export function createDefaultSymbolicEvaluatorRegistry(input?: {
-  legacyExpressionStore?: LegacyAstExpressionStore;
   legacyRenderModelSummaryStore?: LegacyRenderModelClassExpressionSummaryStore;
   symbolResolution?: ProjectBindingResolution;
 }): SymbolicEvaluatorRegistry {
@@ -23,7 +21,7 @@ export function createDefaultSymbolicEvaluatorRegistry(input?: {
       runtimeDomClassExpressionEvaluator,
       ...(input?.symbolResolution ? [cssModuleClassExpressionEvaluator] : []),
       ...(input?.legacyRenderModelSummaryStore ? [legacyRenderModelClassExpressionEvaluator] : []),
-      ...(input?.legacyExpressionStore ? [legacyAstClassExpressionEvaluator] : []),
+      normalizedClassExpressionEvaluator,
       fallbackClassExpressionEvaluator,
     ],
     input,
@@ -33,7 +31,6 @@ export function createDefaultSymbolicEvaluatorRegistry(input?: {
 export function createSymbolicEvaluatorRegistry(
   evaluators: SymbolicExpressionEvaluator[],
   context?: {
-    legacyExpressionStore?: LegacyAstExpressionStore;
     legacyRenderModelSummaryStore?: LegacyRenderModelClassExpressionSummaryStore;
     symbolResolution?: ProjectBindingResolution;
   },
@@ -42,9 +39,6 @@ export function createSymbolicEvaluatorRegistry(
     evaluate(input: SymbolicExpressionEvaluatorInput): SymbolicExpressionEvaluatorResult {
       const evaluatorInput = {
         ...input,
-        ...(context?.legacyExpressionStore
-          ? { legacyExpressionStore: context.legacyExpressionStore }
-          : {}),
         ...(context?.legacyRenderModelSummaryStore
           ? { legacyRenderModelSummaryStore: context.legacyRenderModelSummaryStore }
           : {}),
@@ -64,7 +58,7 @@ export function createSymbolicEvaluatorRegistry(
 export {
   fallbackClassExpressionEvaluator,
   cssModuleClassExpressionEvaluator,
-  legacyAstClassExpressionEvaluator,
   legacyRenderModelClassExpressionEvaluator,
+  normalizedClassExpressionEvaluator,
   runtimeDomClassExpressionEvaluator,
 };

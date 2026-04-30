@@ -1,10 +1,6 @@
 import type { AnalysisConfidence, AnalysisSeverity, AnalysisTrace } from "../../types/analysis.js";
 import type { SourceAnchor } from "../../types/core.js";
 import type {
-  LegacyAstExpressionStore,
-  LegacyParsedProjectFile,
-} from "./adapters/legacyAstExpressionStore.js";
-import type {
   LegacyRenderModelClassExpressionSummaryRecord,
   LegacyRenderModelClassExpressionSummaryStore,
 } from "./adapters/legacyRenderModelAdapter.js";
@@ -31,7 +27,6 @@ export type SymbolicEvaluationInput = {
   graph: FactGraph;
   options?: SymbolicEvaluationOptions;
   legacy?: {
-    parsedFiles?: LegacyParsedProjectFile[];
     renderModelClassExpressionSummaries?: LegacyRenderModelClassExpressionSummaryRecord[];
     symbolResolution?: ProjectBindingResolution;
   };
@@ -243,7 +238,6 @@ export type SymbolicExpressionEvaluatorInput = {
   classExpressionSite: ClassExpressionSiteNode;
   expressionSyntax?: ExpressionSyntaxNode;
   options: SymbolicEvaluationOptions;
-  legacyExpressionStore?: LegacyAstExpressionStore;
   legacyRenderModelSummaryStore?: LegacyRenderModelClassExpressionSummaryStore;
   symbolResolution?: ProjectBindingResolution;
 };

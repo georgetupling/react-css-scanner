@@ -6,13 +6,10 @@ import {
   buildModuleFacts,
   buildProjectBindingResolution,
   buildRenderModel,
-  summarizeClassNameExpression,
-  toAbstractClassSet,
 } from "../../dist/static-analysis-engine.js";
 import { buildFactGraph } from "../../dist/static-analysis-engine/pipeline/fact-graph/buildFactGraph.js";
 import { buildLanguageFrontends } from "../../dist/static-analysis-engine/pipeline/language-frontends/buildLanguageFrontends.js";
 import { toClassExpressionSummary } from "../../dist/static-analysis-engine/pipeline/symbolic-evaluation/adapters/classExpressionSummary.js";
-import { createLegacyAstExpressionStore } from "../../dist/static-analysis-engine/pipeline/symbolic-evaluation/adapters/legacyAstExpressionStore.js";
 import { evaluateSymbolicExpressions } from "../../dist/static-analysis-engine/pipeline/symbolic-evaluation/evaluateSymbolicExpressions.js";
 import { buildProjectSnapshot } from "../../dist/static-analysis-engine/pipeline/workspace-discovery/buildProjectSnapshot.js";
 import { TestProjectBuilder } from "../support/TestProjectBuilder.js";
@@ -35,7 +32,7 @@ test("symbolic evaluation returns empty facts for an empty graph", () => {
   assert.equal(result.evaluatedExpressions.indexes.classExpressionIdBySiteNodeId.size, 0);
 });
 
-test("symbolic evaluation gives every graph class-expression site a fallback canonical expression", async () => {
+test("symbolic evaluation gives every graph class-expression site a canonical expression", async () => {
   const graph = await buildFixtureGraph();
   const result = evaluateSymbolicExpressions({
     graph,
@@ -61,15 +58,15 @@ test("symbolic evaluation gives every graph class-expression site a fallback can
     assert.ok(expressionId);
     const expression = result.evaluatedExpressions.indexes.classExpressionById.get(expressionId);
     assert.equal(expression.classExpressionSiteNodeId, site.id);
-    assert.equal(expression.expressionKind, "unknown");
-    assert.equal(expression.certainty.kind, "unknown");
-    assert.equal(expression.unsupported[0].code, "unsupported-expression-kind");
+    assert.ok(expression.sourceExpressionKind);
+    assert.notEqual(expression.expressionKind, "unknown");
+    assert.deepEqual(expression.unsupported, []);
     assert.equal(expression.traces.length, 1);
   }
 });
 
 test("symbolic evaluation reports missing expression syntax without dropping other sites", async () => {
-  const { graph, parsedFiles } = await buildFixtureAnalysis();
+  const { graph } = await buildFixtureAnalysis();
   const firstSite = graph.nodes.classExpressionSites[0];
   const graphWithMissingSite = {
     ...graph,
@@ -90,9 +87,6 @@ test("symbolic evaluation reports missing expression syntax without dropping oth
 
   const result = evaluateSymbolicExpressions({
     graph: graphWithMissingSite,
-    legacy: {
-      parsedFiles,
-    },
   });
 
   assert.equal(result.evaluatedExpressions.meta.classExpressionSiteCount, 2);
@@ -113,8 +107,8 @@ test("symbolic evaluation reports missing expression syntax without dropping oth
   );
 });
 
-test("symbolic evaluation uses the legacy AST store for current common class cases", async () => {
-  const { graph, parsedFiles } = await buildFixtureAnalysis([
+test("symbolic evaluation uses normalized graph expression syntax for current common class cases", async () => {
+  const { graph } = await buildFixtureAnalysis([
     'import "./app.css";',
     "const active = true;",
     "function cx(...values) { return values.join(' '); }",
@@ -133,12 +127,8 @@ test("symbolic evaluation uses the legacy AST store for current common class cas
     "}",
     "",
   ]);
-  const legacyStore = createLegacyAstExpressionStore({ parsedFiles });
   const result = evaluateSymbolicExpressions({
     graph,
-    legacy: {
-      parsedFiles,
-    },
   });
 
   assert.equal(
@@ -147,13 +137,25 @@ test("symbolic evaluation uses the legacy AST store for current common class cas
   );
   assert.deepEqual(result.evaluatedExpressions.diagnostics, []);
 
-  for (const site of graph.nodes.classExpressionSites) {
-    const match = legacyStore.getExpressionForSite(site);
-    assert.ok(match, `expected legacy AST match for ${site.id}`);
+  const expectedTokensByRawText = new Map([
+    ['"literal one"', { definite: ["literal", "one"], possible: [], unknownDynamic: false }],
+    ['`template ${"two"}`', { definite: ["template", "two"], possible: [], unknownDynamic: false }],
+    [
+      'active ? "choice-a" : "choice-b"',
+      { definite: [], possible: ["choice-a", "choice-b"], unknownDynamic: false },
+    ],
+    ['active && "logical"', { definite: [], possible: ["logical"], unknownDynamic: false }],
+    [
+      '["array", active && "array-active"].join(" ")',
+      { definite: ["array"], possible: ["array-active"], unknownDynamic: false },
+    ],
+    ['cx("helper", { selected: active })', { definite: [], possible: [], unknownDynamic: true }],
+    ["{ objectClass: active }", { definite: [], possible: ["objectClass"], unknownDynamic: false }],
+  ]);
 
-    const expected = toComparableClassSet(
-      toAbstractClassSet(summarizeClassNameExpression(match.expression), site.location),
-    );
+  for (const site of graph.nodes.classExpressionSites) {
+    const expected = expectedTokensByRawText.get(site.rawExpressionText);
+    assert.ok(expected, `expected normalized graph syntax case for ${site.rawExpressionText}`);
     const expressionId = result.evaluatedExpressions.indexes.classExpressionIdBySiteNodeId.get(
       site.id,
     );
@@ -162,11 +164,15 @@ test("symbolic evaluation uses the legacy AST store for current common class cas
 
     assert.deepEqual(toComparableCanonicalTokens(expression), expected);
     assert.equal(expression.unsupported.length, expected.unknownDynamic ? 1 : 0);
+    assert.equal(
+      expression.provenance[0].summary,
+      "Evaluated class expression from normalized graph expression syntax",
+    );
   }
 });
 
-test("symbolic evaluation reports raw expression text mismatches from the legacy AST store", async () => {
-  const { graph, parsedFiles } = await buildFixtureAnalysis();
+test("symbolic evaluation reports raw expression text mismatches from the legacy render-model bridge", async () => {
+  const { graph, parsedFiles, frontends } = await buildFixtureAnalysis();
   const firstSite = graph.nodes.classExpressionSites[0];
   const graphWithMismatchedRawText = {
     ...graph,
@@ -181,10 +187,25 @@ test("symbolic evaluation reports raw expression text mismatches from the legacy
     },
   };
 
+  const moduleFacts = buildModuleFacts({
+    source: frontends.source,
+    stylesheetFilePaths: ["src/app.css"],
+  });
+  const symbolResolution = buildProjectBindingResolution({
+    source: frontends.source,
+    moduleFacts,
+    includeTraces: false,
+  });
+  const renderModel = buildRenderModel({
+    parsedFiles,
+    moduleFacts,
+    symbolResolution,
+    includeTraces: false,
+  });
   const result = evaluateSymbolicExpressions({
     graph: graphWithMismatchedRawText,
     legacy: {
-      parsedFiles,
+      renderModelClassExpressionSummaries: renderModel.legacyClassExpressionSummaries,
     },
   });
 
@@ -233,7 +254,6 @@ test("symbolic evaluation prefers legacy render-model summaries for bound class 
   const result = evaluateSymbolicExpressions({
     graph,
     legacy: {
-      parsedFiles,
       renderModelClassExpressionSummaries: renderModel.legacyClassExpressionSummaries,
     },
   });
@@ -334,7 +354,7 @@ test("symbolic evaluation preserves finite string values and array find/join sup
 });
 
 test("symbolic evaluation preserves conditional branch alternatives canonically", async () => {
-  const { graph, parsedFiles } = await buildFixtureAnalysis([
+  const { graph } = await buildFixtureAnalysis([
     "const condition = true;",
     "export function App() {",
     '  return <div className={condition ? "a" : "b"} />;',
@@ -344,9 +364,6 @@ test("symbolic evaluation preserves conditional branch alternatives canonically"
 
   const result = evaluateSymbolicExpressions({
     graph,
-    legacy: {
-      parsedFiles,
-    },
   });
   const expression = getOnlyExpression(result);
   const summary = toClassExpressionSummary(expression);
@@ -371,7 +388,7 @@ test("symbolic evaluation preserves conditional branch alternatives canonically"
 });
 
 test("symbolic evaluation preserves non-whitespace join separators as complete emissions", async () => {
-  const { graph, parsedFiles } = await buildFixtureAnalysis([
+  const { graph } = await buildFixtureAnalysis([
     "export function App() {",
     '  return <div className={["a", "b"].join("-")} />;',
     "}",
@@ -380,9 +397,6 @@ test("symbolic evaluation preserves non-whitespace join separators as complete e
 
   const result = evaluateSymbolicExpressions({
     graph,
-    legacy: {
-      parsedFiles,
-    },
   });
   const expression = getOnlyExpression(result);
 
@@ -402,7 +416,7 @@ test("symbolic evaluation preserves non-whitespace join separators as complete e
 });
 
 test("symbolic evaluation keeps nullish fallback possible for unknown left operands", async () => {
-  const { graph, parsedFiles } = await buildFixtureAnalysis([
+  const { graph } = await buildFixtureAnalysis([
     "export function App(props) {",
     '  return <div className={props.className ?? "fallback"} />;',
     "}",
@@ -411,9 +425,6 @@ test("symbolic evaluation keeps nullish fallback possible for unknown left opera
 
   const result = evaluateSymbolicExpressions({
     graph,
-    legacy: {
-      parsedFiles,
-    },
   });
   const expression = getOnlyExpression(result);
   const summary = toClassExpressionSummary(expression);
@@ -429,7 +440,7 @@ test("symbolic evaluation keeps nullish fallback possible for unknown left opera
 });
 
 test("symbolic evaluation promotes definitely truthy object map entries", async () => {
-  const { graph, parsedFiles } = await buildFixtureAnalysis([
+  const { graph } = await buildFixtureAnalysis([
     "const c = Math.random() > 0.5;",
     "export function App() {",
     "  return <div className={{ a: true, b: false, c }} />;",
@@ -439,9 +450,6 @@ test("symbolic evaluation promotes definitely truthy object map entries", async 
 
   const result = evaluateSymbolicExpressions({
     graph,
-    legacy: {
-      parsedFiles,
-    },
   });
   const expression = getOnlyExpression(result);
 
@@ -797,7 +805,6 @@ async function evaluateRenderAwareFixture(sourceText, extraSourceFiles = {}, ext
       result: evaluateSymbolicExpressions({
         graph,
         legacy: {
-          parsedFiles,
           renderModelClassExpressionSummaries: renderModel.legacyClassExpressionSummaries,
           symbolResolution,
         },

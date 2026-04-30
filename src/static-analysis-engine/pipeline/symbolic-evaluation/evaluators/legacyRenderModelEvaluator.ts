@@ -1,5 +1,8 @@
 import { classExpressionTextMismatchDiagnostic } from "../diagnostics.js";
-import { buildCanonicalClassExpressionFromValue, buildConditions } from "./legacyAstEvaluator.js";
+import {
+  buildCanonicalClassExpressionFromValue,
+  buildConditions,
+} from "./canonicalClassExpressionBuilder.js";
 import type { SourceAnchor } from "../../../types/core.js";
 import type { SymbolicEvaluationDiagnostic, SymbolicExpressionEvaluator } from "../types.js";
 

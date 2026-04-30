@@ -30,15 +30,10 @@ export {
   createSymbolicEvaluatorRegistry,
   cssModuleClassExpressionEvaluator,
   fallbackClassExpressionEvaluator,
+  normalizedClassExpressionEvaluator,
   runtimeDomClassExpressionEvaluator,
 } from "./registry.js";
 export { createSymbolicEvaluationTrace, traceList } from "./traces.js";
-export {
-  createLegacyAstExpressionStore,
-  type LegacyAstExpressionMatch,
-  type LegacyAstExpressionStore,
-  type LegacyParsedProjectFile,
-} from "./adapters/legacyAstExpressionStore.js";
 export {
   createLegacyRenderModelClassExpressionSummaryStore,
   summarizeClassNameExpressionInLegacyRenderModel,

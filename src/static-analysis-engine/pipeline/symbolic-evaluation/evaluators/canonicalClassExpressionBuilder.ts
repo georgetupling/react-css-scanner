@@ -5,14 +5,8 @@ import {
   unsupportedReasonId,
 } from "../ids.js";
 import { canonicalClassExpressionId } from "../ids.js";
-import {
-  classExpressionTextMismatchDiagnostic,
-  symbolicEvaluationProvenance,
-} from "../diagnostics.js";
-import {
-  buildClassExpressionTraces,
-  summarizeClassNameExpression,
-} from "../class-values/classExpressions.js";
+import { symbolicEvaluationProvenance } from "../diagnostics.js";
+import { buildClassExpressionTraces } from "../class-values/classExpressions.js";
 import { toAbstractClassSet, tokenizeClassNames } from "../class-values/classValueOperations.js";
 import type { AbstractValue } from "../class-values/types.js";
 import type {
@@ -21,51 +15,11 @@ import type {
   Certainty,
   ClassEmissionVariant,
   ConditionFact,
-  SymbolicEvaluationDiagnostic,
-  SymbolicExpressionEvaluator,
   SymbolicExpressionEvaluatorInput,
   TokenAlternative,
   UnsupportedReason,
   UnsupportedReasonCode,
 } from "../types.js";
-
-export const legacyAstClassExpressionEvaluator: SymbolicExpressionEvaluator = {
-  name: "legacy-ast-class-expression",
-  canEvaluate: (input) =>
-    Boolean(input.legacyExpressionStore?.getExpressionForSite(input.classExpressionSite)),
-  evaluate(input) {
-    const match = input.legacyExpressionStore?.getExpressionForSite(input.classExpressionSite);
-    if (!match) {
-      return {};
-    }
-
-    const value = summarizeClassNameExpression(match.expression);
-    const expression = buildCanonicalClassExpressionFromValue({
-      input,
-      value,
-      rawExpressionText: match.rawExpressionText,
-      provenanceSummary: "Evaluated class expression with legacy AST adapter",
-    });
-    const diagnostics: SymbolicEvaluationDiagnostic[] = [];
-
-    if (match.rawExpressionText !== input.classExpressionSite.rawExpressionText) {
-      diagnostics.push(
-        classExpressionTextMismatchDiagnostic({
-          site: input.classExpressionSite,
-          graphRawExpressionText: input.classExpressionSite.rawExpressionText,
-          adapterRawExpressionText: match.rawExpressionText,
-          adapterName: "legacy AST expression store",
-        }),
-      );
-    }
-
-    return {
-      expression,
-      conditions: buildConditions(expression.id, value),
-      diagnostics,
-    };
-  },
-};
 
 export function buildCanonicalClassExpressionFromValue(input: {
   input: SymbolicExpressionEvaluatorInput;
@@ -184,32 +138,6 @@ export function buildCanonicalClassExpressionFromValue(input: {
   };
 }
 
-function buildTokenAlternative(input: {
-  expressionId: string;
-  token: string;
-  index: number;
-  presence: TokenAlternative["presence"];
-  conditionId: string;
-  confidence: TokenAlternative["confidence"];
-  sourceAnchor: TokenAlternative["sourceAnchor"];
-  exclusiveGroupId?: string;
-}): TokenAlternative {
-  return {
-    id: tokenAlternativeId({
-      expressionId: input.expressionId,
-      token: input.token,
-      index: input.index,
-    }),
-    token: input.token,
-    tokenKind: "global-class",
-    presence: input.presence,
-    conditionId: input.conditionId,
-    ...(input.exclusiveGroupId ? { exclusiveGroupId: input.exclusiveGroupId } : {}),
-    ...(input.sourceAnchor ? { sourceAnchor: input.sourceAnchor } : {}),
-    confidence: input.confidence,
-  };
-}
-
 export function buildConditions(expressionId: string, value?: AbstractValue): ConditionFact[] {
   const conditions: ConditionFact[] = [
     {
@@ -249,6 +177,32 @@ export function buildConditions(expressionId: string, value?: AbstractValue): Co
   }
 
   return conditions;
+}
+
+function buildTokenAlternative(input: {
+  expressionId: string;
+  token: string;
+  index: number;
+  presence: TokenAlternative["presence"];
+  conditionId: string;
+  confidence: TokenAlternative["confidence"];
+  sourceAnchor: TokenAlternative["sourceAnchor"];
+  exclusiveGroupId?: string;
+}): TokenAlternative {
+  return {
+    id: tokenAlternativeId({
+      expressionId: input.expressionId,
+      token: input.token,
+      index: input.index,
+    }),
+    token: input.token,
+    tokenKind: "global-class",
+    presence: input.presence,
+    conditionId: input.conditionId,
+    ...(input.exclusiveGroupId ? { exclusiveGroupId: input.exclusiveGroupId } : {}),
+    ...(input.sourceAnchor ? { sourceAnchor: input.sourceAnchor } : {}),
+    confidence: input.confidence,
+  };
 }
 
 function getExclusiveTokenGroupId(input: {
@@ -444,6 +398,14 @@ function toUnsupportedReasonCode(reason: string): UnsupportedReasonCode {
 
   if (reason.includes("non-whitespace-join-separator")) {
     return "non-whitespace-join-separator";
+  }
+
+  if (reason.includes("class-name-resolution-budget-exceeded")) {
+    return "class-name-resolution-budget-exceeded";
+  }
+
+  if (reason.includes("class-name-resolution-cycle")) {
+    return "class-name-resolution-cycle";
   }
 
   return "unsupported-expression-kind";

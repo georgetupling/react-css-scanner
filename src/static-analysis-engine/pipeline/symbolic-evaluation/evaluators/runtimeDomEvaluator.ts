@@ -1,4 +1,7 @@
-import { buildCanonicalClassExpressionFromValue, buildConditions } from "./legacyAstEvaluator.js";
+import {
+  buildCanonicalClassExpressionFromValue,
+  buildConditions,
+} from "./canonicalClassExpressionBuilder.js";
 import type { SymbolicExpressionEvaluator } from "../types.js";
 
 export const runtimeDomClassExpressionEvaluator: SymbolicExpressionEvaluator = {
