@@ -4,6 +4,7 @@ import {
   unresolvedClassExpressionSiteDiagnostic,
 } from "./diagnostics.js";
 import { createLegacyAstExpressionStore } from "./adapters/legacyAstExpressionStore.js";
+import { createLegacyRenderModelClassExpressionSummaryStore } from "./adapters/legacyRenderModelAdapter.js";
 import { buildEvaluatedExpressionIndexes } from "./indexes.js";
 import { createDefaultSymbolicEvaluatorRegistry } from "./registry.js";
 import type { ClassExpressionSiteNode, ExpressionSyntaxNode } from "../fact-graph/index.js";
@@ -21,10 +22,16 @@ export function evaluateSymbolicExpressions(
   const legacyExpressionStore = input.legacy?.parsedFiles
     ? createLegacyAstExpressionStore({ parsedFiles: input.legacy.parsedFiles })
     : undefined;
+  const legacyRenderModelSummaryStore = input.legacy?.renderModelClassExpressionSummaries
+    ? createLegacyRenderModelClassExpressionSummaryStore({
+        summaries: input.legacy.renderModelClassExpressionSummaries,
+      })
+    : undefined;
   const evaluatorRegistry =
     input.evaluatorRegistry ??
     createDefaultSymbolicEvaluatorRegistry({
       ...(legacyExpressionStore ? { legacyExpressionStore } : {}),
+      ...(legacyRenderModelSummaryStore ? { legacyRenderModelSummaryStore } : {}),
     });
   const classExpressions: CanonicalClassExpression[] = [];
   const conditions: ConditionFact[] = [];
@@ -47,6 +54,7 @@ export function evaluateSymbolicExpressions(
       expressionSyntax,
       options: input.options ?? {},
       ...(legacyExpressionStore ? { legacyExpressionStore } : {}),
+      ...(legacyRenderModelSummaryStore ? { legacyRenderModelSummaryStore } : {}),
     });
 
     if (result.expression) {

@@ -1,5 +1,7 @@
 import ts from "typescript";
 
+import type { SourceAnchor } from "../../../../types/core.js";
+import type { ClassExpressionSummary } from "../../abstract-values/types.js";
 import type { ProjectBindingResolution } from "../../../symbol-resolution/index.js";
 import type {
   LocalHelperDefinition,
@@ -34,6 +36,11 @@ export type BuildContext = {
   namespaceHelperDefinitionsBySymbolId: Map<string, Map<string, LocalHelperDefinition>>;
   namespaceComponentDefinitionsBySymbolId: Map<string, Map<string, SameFileComponentDefinition>>;
   helperExpansionStack: string[];
+  classExpressionSummarySink?: (record: {
+    location: SourceAnchor;
+    rawExpressionText: string;
+    summary: ClassExpressionSummary;
+  }) => void;
   propsObjectBindingName?: string;
   propsObjectBindingSymbolId?: string;
   propsObjectProperties: Map<string, ExpressionBinding>;

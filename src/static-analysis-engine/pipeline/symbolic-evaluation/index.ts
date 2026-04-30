@@ -32,6 +32,12 @@ export {
   type LegacyParsedProjectFile,
 } from "./adapters/legacyAstExpressionStore.js";
 export {
+  createLegacyRenderModelClassExpressionSummaryStore,
+  summarizeClassNameExpressionInLegacyRenderModel,
+  type LegacyRenderModelClassExpressionSummaryRecord,
+  type LegacyRenderModelClassExpressionSummaryStore,
+} from "./adapters/legacyRenderModelAdapter.js";
+export {
   duplicateEvaluatedExpressionIdDiagnostic,
   missingExpressionSyntaxDiagnostic,
   rawExpressionTextMismatchDiagnostic,

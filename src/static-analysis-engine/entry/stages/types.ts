@@ -12,7 +12,10 @@ import type { RenderGraph } from "../../pipeline/render-model/render-graph/index
 import type { RenderSubtree } from "../../pipeline/render-model/render-ir/index.js";
 import type { SelectorQueryResult } from "../../pipeline/selector-analysis/index.js";
 import type { ProjectBindingResolution } from "../../pipeline/symbol-resolution/index.js";
-import type { SymbolicEvaluationResult } from "../../pipeline/symbolic-evaluation/index.js";
+import type {
+  LegacyRenderModelClassExpressionSummaryRecord,
+  SymbolicEvaluationResult,
+} from "../../pipeline/symbolic-evaluation/index.js";
 
 export type LanguageFrontendsStageResult = LanguageFrontendsResult;
 
@@ -51,6 +54,7 @@ export type RenderModelStageResult = {
   renderSubtrees: RenderSubtree[];
   renderGraph: RenderGraph;
   unsupportedClassReferences: UnsupportedClassReferenceDiagnostic[];
+  legacyClassExpressionSummaries: LegacyRenderModelClassExpressionSummaryRecord[];
 };
 
 export type ProjectAnalysisStageResult = {

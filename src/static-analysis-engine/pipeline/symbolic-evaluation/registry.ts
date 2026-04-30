@@ -1,6 +1,8 @@
 import type { LegacyAstExpressionStore } from "./adapters/legacyAstExpressionStore.js";
+import type { LegacyRenderModelClassExpressionSummaryStore } from "./adapters/legacyRenderModelAdapter.js";
 import { fallbackClassExpressionEvaluator } from "./evaluators/fallbackEvaluator.js";
 import { legacyAstClassExpressionEvaluator } from "./evaluators/legacyAstEvaluator.js";
+import { legacyRenderModelClassExpressionEvaluator } from "./evaluators/legacyRenderModelEvaluator.js";
 import type {
   SymbolicEvaluatorRegistry,
   SymbolicExpressionEvaluator,
@@ -10,9 +12,11 @@ import type {
 
 export function createDefaultSymbolicEvaluatorRegistry(input?: {
   legacyExpressionStore?: LegacyAstExpressionStore;
+  legacyRenderModelSummaryStore?: LegacyRenderModelClassExpressionSummaryStore;
 }): SymbolicEvaluatorRegistry {
   return createSymbolicEvaluatorRegistry(
     [
+      ...(input?.legacyRenderModelSummaryStore ? [legacyRenderModelClassExpressionEvaluator] : []),
       ...(input?.legacyExpressionStore ? [legacyAstClassExpressionEvaluator] : []),
       fallbackClassExpressionEvaluator,
     ],
@@ -24,6 +28,7 @@ export function createSymbolicEvaluatorRegistry(
   evaluators: SymbolicExpressionEvaluator[],
   context?: {
     legacyExpressionStore?: LegacyAstExpressionStore;
+    legacyRenderModelSummaryStore?: LegacyRenderModelClassExpressionSummaryStore;
   },
 ): SymbolicEvaluatorRegistry {
   return {
@@ -32,6 +37,9 @@ export function createSymbolicEvaluatorRegistry(
         ...input,
         ...(context?.legacyExpressionStore
           ? { legacyExpressionStore: context.legacyExpressionStore }
+          : {}),
+        ...(context?.legacyRenderModelSummaryStore
+          ? { legacyRenderModelSummaryStore: context.legacyRenderModelSummaryStore }
           : {}),
       };
       const evaluator = evaluators.find((candidate) => candidate.canEvaluate(evaluatorInput));
@@ -45,4 +53,8 @@ export function createSymbolicEvaluatorRegistry(
   };
 }
 
-export { fallbackClassExpressionEvaluator, legacyAstClassExpressionEvaluator };
+export {
+  fallbackClassExpressionEvaluator,
+  legacyAstClassExpressionEvaluator,
+  legacyRenderModelClassExpressionEvaluator,
+};

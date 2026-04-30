@@ -24,6 +24,7 @@ import type {
 import type { ProjectBindingResolution } from "../symbol-resolution/index.js";
 import type { ModuleFacts } from "../module-facts/index.js";
 import type { FactGraphReactRenderSyntaxInputs } from "../fact-graph/index.js";
+import type { LegacyRenderModelClassExpressionSummaryRecord } from "../symbolic-evaluation/index.js";
 
 export type RenderModelBuildInput = {
   parsedFiles: Array<{
@@ -40,6 +41,7 @@ export type RenderModel = {
   renderSubtrees: RenderSubtree[];
   renderGraph: RenderGraph;
   unsupportedClassReferences: UnsupportedClassReferenceDiagnostic[];
+  legacyClassExpressionSummaries: LegacyRenderModelClassExpressionSummaryRecord[];
 };
 
 export function buildRenderModel(input: RenderModelBuildInput): RenderModel {
@@ -104,6 +106,7 @@ export function buildRenderModel(input: RenderModelBuildInput): RenderModel {
       ]),
     ),
   });
+  const legacyClassExpressionSummaries: LegacyRenderModelClassExpressionSummaryRecord[] = [];
   const renderSubtrees = buildRenderSubtrees({
     symbolResolution: input.symbolResolution,
     componentDefinitionsByFilePath: renderDefinitions.componentDefinitionsByFilePath,
@@ -127,6 +130,9 @@ export function buildRenderModel(input: RenderModelBuildInput): RenderModel {
       renderBindings.importedNamespaceHelperDefinitionsBySymbolIdByFilePath,
     importedNamespaceComponentDefinitionsBySymbolIdByFilePath:
       componentAvailability.importedNamespaceComponentDefinitionsBySymbolIdByFilePath,
+    classExpressionSummarySink: (record) => {
+      legacyClassExpressionSummaries.push(record);
+    },
     includeTraces,
   });
   const renderGraph = buildRenderGraph({
@@ -143,6 +149,7 @@ export function buildRenderModel(input: RenderModelBuildInput): RenderModel {
     renderSubtrees,
     renderGraph,
     unsupportedClassReferences,
+    legacyClassExpressionSummaries,
   };
 }
 
@@ -166,6 +173,7 @@ function buildRenderSubtrees(input: {
     string,
     Map<string, Map<string, SameFileComponentDefinition>>
   >;
+  classExpressionSummarySink?: (record: LegacyRenderModelClassExpressionSummaryRecord) => void;
   includeTraces: boolean;
 }): RenderSubtree[] {
   return [...input.componentDefinitionsByFilePath.entries()].flatMap(
@@ -196,6 +204,7 @@ function buildRenderSubtrees(input: {
         importedNamespaceComponentDefinitionsBySymbolId:
           input.importedNamespaceComponentDefinitionsBySymbolIdByFilePath.get(filePath) ??
           new Map(),
+        classExpressionSummarySink: input.classExpressionSummarySink,
         includeTraces: input.includeTraces,
       }),
   );

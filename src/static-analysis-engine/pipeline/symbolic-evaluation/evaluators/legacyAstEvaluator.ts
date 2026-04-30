@@ -40,10 +40,11 @@ export const legacyAstClassExpressionEvaluator: SymbolicExpressionEvaluator = {
     }
 
     const value = summarizeClassNameExpression(match.expression);
-    const expression = toCanonicalClassExpression({
+    const expression = buildCanonicalClassExpressionFromValue({
       input,
       value,
       rawExpressionText: match.rawExpressionText,
+      provenanceSummary: "Evaluated class expression with legacy AST adapter",
     });
     const diagnostics: SymbolicEvaluationDiagnostic[] = [];
 
@@ -65,10 +66,13 @@ export const legacyAstClassExpressionEvaluator: SymbolicExpressionEvaluator = {
   },
 };
 
-function toCanonicalClassExpression(input: {
+export function buildCanonicalClassExpressionFromValue(input: {
   input: SymbolicExpressionEvaluatorInput;
   value: AbstractValue;
   rawExpressionText: string;
+  provenanceSummary: string;
+  tokenAnchors?: CanonicalClassExpression["tokenAnchors"];
+  traces?: CanonicalClassExpression["traces"];
 }): CanonicalClassExpression {
   const expressionId = canonicalClassExpressionId(input.input.classExpressionSite.id);
   const abstractClassSet = toAbstractClassSet(
@@ -83,6 +87,7 @@ function toCanonicalClassExpression(input: {
     expressionId,
     conditionKey: "possible",
   });
+  const tokenAnchors = input.tokenAnchors ?? {};
   const tokens = [
     ...abstractClassSet.definite.map((token, index) =>
       buildTokenAlternative({
@@ -92,7 +97,7 @@ function toCanonicalClassExpression(input: {
         presence: "always",
         conditionId: alwaysConditionId,
         confidence: input.value.kind === "unknown" ? "low" : "high",
-        sourceAnchor: input.input.classExpressionSite.location,
+        sourceAnchor: tokenAnchors[token]?.[0] ?? input.input.classExpressionSite.location,
       }),
     ),
     ...abstractClassSet.possible.map((token, index) =>
@@ -103,7 +108,7 @@ function toCanonicalClassExpression(input: {
         presence: "possible",
         conditionId: possibleConditionId,
         confidence: "medium",
-        sourceAnchor: input.input.classExpressionSite.location,
+        sourceAnchor: tokenAnchors[token]?.[0] ?? input.input.classExpressionSite.location,
       }),
     ),
   ];
@@ -134,7 +139,10 @@ function toCanonicalClassExpression(input: {
       sourceAnchor: input.input.classExpressionSite.location,
     }),
     tokenAnchors: Object.fromEntries(
-      tokens.map((token) => [token.token, [input.input.classExpressionSite.location]]),
+      tokens.map((token) => [
+        token.token,
+        tokenAnchors[token.token] ?? [input.input.classExpressionSite.location],
+      ]),
     ),
     ...(input.input.classExpressionSite.emittingComponentNodeId
       ? { emittingComponentNodeId: input.input.classExpressionSite.emittingComponentNodeId }
@@ -149,17 +157,19 @@ function toCanonicalClassExpression(input: {
       ? { elementTemplateNodeId: input.input.classExpressionSite.elementTemplateNodeId }
       : {}),
     provenance: symbolicEvaluationProvenance({
-      summary: "Evaluated class expression with legacy AST adapter",
+      summary: input.provenanceSummary,
       filePath: input.input.classExpressionSite.filePath,
       anchor: input.input.classExpressionSite.location,
       upstreamId: input.input.classExpressionSite.id,
     }),
-    traces: buildClassExpressionTraces({
-      sourceAnchor: input.input.classExpressionSite.location,
-      sourceText: input.rawExpressionText,
-      value: input.value,
-      includeTraces: input.input.options.includeTraces,
-    }),
+    traces:
+      input.traces ??
+      buildClassExpressionTraces({
+        sourceAnchor: input.input.classExpressionSite.location,
+        sourceText: input.rawExpressionText,
+        value: input.value,
+        includeTraces: input.input.options.includeTraces,
+      }),
   };
 }
 
@@ -187,7 +197,7 @@ function buildTokenAlternative(input: {
   };
 }
 
-function buildConditions(expressionId: string): ConditionFact[] {
+export function buildConditions(expressionId: string): ConditionFact[] {
   return [
     {
       id: conditionId({

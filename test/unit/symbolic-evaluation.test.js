@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  buildModuleFacts,
+  buildProjectBindingResolution,
+  buildRenderModel,
   summarizeClassNameExpression,
   toAbstractClassSet,
 } from "../../dist/static-analysis-engine.js";
@@ -201,6 +204,48 @@ test("symbolic evaluation reports raw expression text mismatches from the legacy
   );
 });
 
+test("symbolic evaluation prefers legacy render-model summaries for bound class expressions", async () => {
+  const { graph, parsedFiles, frontends } = await buildFixtureAnalysis([
+    'import "./app.css";',
+    'const localClass = "bound local";',
+    "export function App() {",
+    "  return <div className={localClass} />;",
+    "}",
+    "",
+  ]);
+  const moduleFacts = buildModuleFacts({
+    source: frontends.source,
+    stylesheetFilePaths: ["src/app.css"],
+  });
+  const symbolResolution = buildProjectBindingResolution({
+    source: frontends.source,
+    moduleFacts,
+    includeTraces: false,
+  });
+  const renderModel = buildRenderModel({
+    parsedFiles,
+    moduleFacts,
+    symbolResolution,
+    includeTraces: false,
+  });
+
+  const result = evaluateSymbolicExpressions({
+    graph,
+    legacy: {
+      parsedFiles,
+      renderModelClassExpressionSummaries: renderModel.legacyClassExpressionSummaries,
+    },
+  });
+  const expression = getOnlyExpression(result);
+
+  assert.deepEqual(expression.tokens.map((token) => token.token).sort(), ["bound", "local"]);
+  assert.deepEqual(result.evaluatedExpressions.diagnostics, []);
+  assert.equal(
+    expression.provenance[0].summary,
+    "Evaluated class expression with legacy render-model adapter",
+  );
+});
+
 test("symbolic evaluation ids and indexes are deterministic across repeated runs", async () => {
   const graph = await buildFixtureGraph();
   const first = evaluateSymbolicExpressions({ graph });
@@ -352,6 +397,7 @@ async function buildFixtureAnalysis(
     return {
       graph: buildFactGraph({ snapshot, frontends }).graph,
       parsedFiles: frontends.source.files.map((file) => file.legacy.parsedFile),
+      frontends,
     };
   } finally {
     await project.cleanup();
@@ -463,6 +509,11 @@ function toComparableCanonicalTokens(expression) {
     unknownDynamic:
       expression.certainty.kind === "unknown" || expression.certainty.kind === "partial",
   };
+}
+
+function getOnlyExpression(result) {
+  assert.equal(result.evaluatedExpressions.classExpressions.length, 1);
+  return result.evaluatedExpressions.classExpressions[0];
 }
 
 function canonicalExpression(overrides = {}) {

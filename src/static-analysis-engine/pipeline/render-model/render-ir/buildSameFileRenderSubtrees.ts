@@ -14,6 +14,8 @@ import {
 } from "./builders/buildArrayNodes.js";
 import { collectSameFileComponents } from "./collection/discovery/collectSameFileComponents.js";
 import type { BuildContext } from "./shared/internalTypes.js";
+import type { ClassExpressionSummary } from "../abstract-values/types.js";
+import type { SourceAnchor } from "../../../types/core.js";
 import {
   applyPlacementAnchor,
   createEmptyFragmentNode,
@@ -36,8 +38,6 @@ import {
   mergeClassNameValues,
   toAbstractClassSet,
 } from "../abstract-values/classExpressions.js";
-import type { ClassExpressionSummary } from "../abstract-values/types.js";
-import type { SourceAnchor } from "../../../types/core.js";
 import type { RenderNode, RenderSubtree } from "./types.js";
 
 const MAX_RENDER_EXPRESSION_RESOLUTION_DEPTH = 100;
@@ -81,6 +81,11 @@ export function buildSameFileRenderSubtrees(input: {
     Map<string, import("./collection/shared/types.js").SameFileComponentDefinition>
   >;
   includeTraces?: boolean;
+  classExpressionSummarySink?: (record: {
+    location: SourceAnchor;
+    rawExpressionText: string;
+    summary: ClassExpressionSummary;
+  }) => void;
 }): RenderSubtree[] {
   const includeTraces = input.includeTraces ?? true;
   const componentDefinitions = input.componentDefinitions ?? collectSameFileComponents(input);
@@ -136,6 +141,7 @@ export function buildSameFileRenderSubtrees(input: {
         input.importedNamespaceComponentDefinitionsBySymbolId?.entries() ?? [],
       ),
       helperExpansionStack: [],
+      classExpressionSummarySink: input.classExpressionSummarySink,
       propsObjectProperties: new Map(),
       propsObjectSubtreeProperties: new Map(),
       subtreeBindings: new Map(),

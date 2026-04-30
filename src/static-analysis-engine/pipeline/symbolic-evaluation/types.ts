@@ -5,6 +5,10 @@ import type {
   LegacyParsedProjectFile,
 } from "./adapters/legacyAstExpressionStore.js";
 import type {
+  LegacyRenderModelClassExpressionSummaryRecord,
+  LegacyRenderModelClassExpressionSummaryStore,
+} from "./adapters/legacyRenderModelAdapter.js";
+import type {
   ClassExpressionSiteNode,
   ExpressionSyntaxNode,
   FactGraph,
@@ -27,6 +31,7 @@ export type SymbolicEvaluationInput = {
   options?: SymbolicEvaluationOptions;
   legacy?: {
     parsedFiles?: LegacyParsedProjectFile[];
+    renderModelClassExpressionSummaries?: LegacyRenderModelClassExpressionSummaryRecord[];
   };
   evaluatorRegistry?: SymbolicEvaluatorRegistry;
 };
@@ -237,6 +242,7 @@ export type SymbolicExpressionEvaluatorInput = {
   expressionSyntax: ExpressionSyntaxNode;
   options: SymbolicEvaluationOptions;
   legacyExpressionStore?: LegacyAstExpressionStore;
+  legacyRenderModelSummaryStore?: LegacyRenderModelClassExpressionSummaryStore;
 };
 
 export type SymbolicExpressionEvaluatorResult = {
