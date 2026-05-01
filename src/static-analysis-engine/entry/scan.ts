@@ -26,10 +26,11 @@ import type {
 import { compareProjectResourceEdges } from "../pipeline/workspace-discovery/utils/sorting.js";
 import type { AnalysisProgressCallback, StaticAnalysisEngineResult } from "../types/runtime.js";
 import { DEFAULT_SCANNER_CONFIG } from "../../config/index.js";
-import { runAnalysisEvidenceStage } from "./stages/analysisEvidenceStage.js";
 import { runCssAnalysisStage } from "./stages/cssAnalysisStage.js";
 import { runExternalCssStage } from "./stages/externalCssStage.js";
 import { runModuleFactsStage } from "./stages/moduleFactsStage.js";
+import { runOwnershipInferenceStage } from "./stages/ownershipInferenceStage.js";
+import { runProjectEvidenceStage } from "./stages/projectEvidenceStage.js";
 import { runReachabilityStage } from "./stages/reachabilityStage.js";
 import { runRenderStructureStage } from "./stages/renderStructureStage.js";
 import { runSelectorAnalysisStage } from "./stages/selectorAnalysisStage.js";
@@ -265,29 +266,47 @@ export function analyzeProjectSourceTexts(input: {
         includeTraces,
       }),
   );
-  const analysisEvidenceStage = runAnalysisStage(
+  const projectEvidenceStage = runAnalysisStage(
     progress,
-    "analysis-evidence",
-    "Building analysis evidence",
+    "project-evidence",
+    "Building project evidence",
     () =>
-      runAnalysisEvidenceStage({
-        moduleFacts: moduleFactsStage.moduleFacts,
-        factGraph: factGraphStage,
-        cssFiles: cssAnalysisStage.cssFiles,
-        stylesheets: input.stylesheets ?? cssFrontendStylesheets,
-        symbolResolution: symbolResolutionStage,
-        cssModuleLocalsConvention: input.cssModules?.localsConvention,
-        externalCssSummary: externalCssStage.externalCssSummary,
-        reachabilitySummary: reachabilityStage.reachabilitySummary,
-        renderModel: renderStructureStage.renderModel,
-        symbolicEvaluation: symbolicEvaluationStage,
+      runProjectEvidenceStage({
+        includeTraces,
+        projectInput: {
+          moduleFacts: moduleFactsStage.moduleFacts,
+          factGraph: factGraphStage,
+          cssFiles: cssAnalysisStage.cssFiles,
+          stylesheets: input.stylesheets ?? cssFrontendStylesheets,
+          symbolResolution: symbolResolutionStage,
+          cssModuleLocalsConvention: input.cssModules?.localsConvention,
+          externalCssSummary: externalCssStage.externalCssSummary,
+          reachabilitySummary: reachabilityStage.reachabilitySummary,
+          renderModel: renderStructureStage.renderModel,
+          symbolicEvaluation: symbolicEvaluationStage,
+          selectorReachability: selectorReachabilityStage.selectorReachability,
+          selectorQueryResults: selectorAnalysisStage.selectorQueryResults,
+          includeTraces,
+        },
+      }),
+  );
+  const ownershipInferenceStage = runAnalysisStage(
+    progress,
+    "ownership-inference",
+    "Building ownership inference",
+    () =>
+      runOwnershipInferenceStage({
+        projectEvidence: projectEvidenceStage.projectEvidence,
         selectorReachability: selectorReachabilityStage.selectorReachability,
-        selectorQueryResults: selectorAnalysisStage.selectorQueryResults,
         includeTraces,
       }),
   );
   return {
-    analysisEvidence: analysisEvidenceStage.analysisEvidence,
+    analysisEvidence: {
+      projectEvidence: projectEvidenceStage.projectEvidence,
+      selectorReachability: selectorReachabilityStage.selectorReachability,
+      ownershipInference: ownershipInferenceStage.ownershipInference,
+    },
     ...(symbolicEvaluationStage ? { symbolicEvaluation: symbolicEvaluationStage } : {}),
   };
 }

@@ -80,8 +80,6 @@ export {
   projectEvidenceDiagnosticId,
   stylesheetReachabilityEvidenceId,
 } from "./pipeline/project-evidence/index.js";
-export { buildAnalysisEvidence } from "./pipeline/analysis-evidence/index.js";
-export type { AnalysisEvidence } from "./pipeline/analysis-evidence/index.js";
 export { buildReachabilitySummary } from "./pipeline/reachability/index.js";
 export type { EngineModuleId, EngineSymbolId, SourceAnchor } from "./types/core.js";
 export type {
@@ -104,6 +102,7 @@ export type {
   AnalysisTraceCategory,
 } from "./types/analysis.js";
 export type {
+  AnalysisEvidence,
   AnalysisProgressCallback,
   AnalysisProgressEvent,
   AnalysisProgressStatus,

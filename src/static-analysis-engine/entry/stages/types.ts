@@ -3,10 +3,11 @@ import ts from "typescript";
 import type { ExperimentalCssFileAnalysis } from "../../pipeline/css-analysis/index.js";
 import type { ExternalCssSummary } from "../../pipeline/external-css/index.js";
 import type { ReachabilitySummary } from "../../pipeline/reachability/index.js";
-import type { AnalysisEvidence } from "../../pipeline/analysis-evidence/index.js";
 import type { ModuleFacts } from "../../pipeline/module-facts/index.js";
 import type { LanguageFrontendsResult } from "../../pipeline/language-frontends/index.js";
 import type { FactGraphResult } from "../../pipeline/fact-graph/index.js";
+import type { OwnershipInferenceResult } from "../../pipeline/ownership-inference/index.js";
+import type { ProjectEvidenceAssemblyResult } from "../../pipeline/project-evidence/index.js";
 import type { SelectorQueryResult } from "../../pipeline/selector-analysis/index.js";
 import type { SelectorReachabilityResult } from "../../pipeline/selector-reachability/index.js";
 import type { ProjectBindingResolution } from "../../pipeline/symbol-resolution/index.js";
@@ -52,6 +53,10 @@ export type SelectorAnalysisStageResult = {
   selectorQueryResults: SelectorQueryResult[];
 };
 
-export type AnalysisEvidenceStageResult = {
-  analysisEvidence: AnalysisEvidence;
+export type ProjectEvidenceStageResult = {
+  projectEvidence: ProjectEvidenceAssemblyResult;
+};
+
+export type OwnershipInferenceStageResult = {
+  ownershipInference: OwnershipInferenceResult;
 };

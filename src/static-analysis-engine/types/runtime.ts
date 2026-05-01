@@ -1,5 +1,13 @@
-import type { AnalysisEvidence } from "../pipeline/analysis-evidence/index.js";
+import type { OwnershipInferenceResult } from "../pipeline/ownership-inference/index.js";
+import type { ProjectEvidenceAssemblyResult } from "../pipeline/project-evidence/index.js";
+import type { SelectorReachabilityResult } from "../pipeline/selector-reachability/index.js";
 import type { SymbolicEvaluationResult } from "../pipeline/symbolic-evaluation/index.js";
+
+export type AnalysisEvidence = {
+  projectEvidence: ProjectEvidenceAssemblyResult;
+  selectorReachability: SelectorReachabilityResult;
+  ownershipInference: OwnershipInferenceResult;
+};
 
 export type StaticAnalysisEngineResult = {
   analysisEvidence: AnalysisEvidence;
