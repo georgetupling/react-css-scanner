@@ -84,6 +84,67 @@ test("selector reachability respects mutually exclusive class variants", async (
   assert.deepEqual(branch.matchIds, []);
 });
 
+test("selector reachability matches descendant selectors across nested elements", async () => {
+  const renderStructure = await buildRenderStructureFixture({
+    sourceText:
+      'export function App() { return <article className="card"><div><h2 className="title" /></div></article>; }\n',
+    cssText: ".card .title { color: blue; }\n",
+  });
+
+  const result = buildSelectorReachability(renderStructure);
+  const branch = findBranch(result, ".card .title");
+
+  assert.equal(branch.status, "definitely-matchable");
+  assert.equal(branch.matchIds.length, 1);
+
+  const match = result.indexes.matchById.get(branch.matchIds[0]);
+  assert.ok(match);
+  assert.deepEqual(match.requiredClassNames, ["card", "title"]);
+  assert.equal(match.certainty, "definite");
+});
+
+test("selector reachability matches child selectors only across direct children", async () => {
+  const renderStructure = await buildRenderStructureFixture({
+    sourceText:
+      'export function App() { return <article className="card"><div><h2 className="title" /></div></article>; }\n',
+    cssText: ".card > .title { color: blue; }\n",
+  });
+
+  const result = buildSelectorReachability(renderStructure);
+  const branch = findBranch(result, ".card > .title");
+
+  assert.equal(branch.status, "not-matchable");
+  assert.deepEqual(branch.matchIds, []);
+});
+
+test("selector reachability matches adjacent sibling selectors by child order", async () => {
+  const renderStructure = await buildRenderStructureFixture({
+    sourceText:
+      'export function App() { return <div><span className="first" /><span className="second" /></div>; }\n',
+    cssText: ".first + .second { color: blue; }\n",
+  });
+
+  const result = buildSelectorReachability(renderStructure);
+  const branch = findBranch(result, ".first + .second");
+
+  assert.equal(branch.status, "definitely-matchable");
+  assert.equal(branch.matchIds.length, 1);
+});
+
+test("selector reachability matches general sibling selectors by later sibling order", async () => {
+  const renderStructure = await buildRenderStructureFixture({
+    sourceText:
+      'export function App() { return <div><span className="first" /><span /><span className="third" /></div>; }\n',
+    cssText: ".first ~ .third { color: blue; }\n",
+  });
+
+  const result = buildSelectorReachability(renderStructure);
+  const branch = findBranch(result, ".first ~ .third");
+
+  assert.equal(branch.status, "definitely-matchable");
+  assert.equal(branch.matchIds.length, 1);
+});
+
 async function buildRenderStructureFixture(input) {
   const project = await new TestProjectBuilder()
     .withSourceFile("src/App.tsx", input.sourceText)

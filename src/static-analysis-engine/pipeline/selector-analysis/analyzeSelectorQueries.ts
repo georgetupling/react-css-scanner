@@ -126,6 +126,7 @@ function analyzeSelectorQuery(input: {
       constraint,
       analysisTargets,
       renderModelIndex: input.renderModelIndex,
+      selectorReachability: input.selectorReachability,
       includeTraces: input.includeTraces,
     });
   }
@@ -136,6 +137,7 @@ function analyzeSelectorQuery(input: {
       constraint,
       analysisTargets,
       renderModelIndex: input.renderModelIndex,
+      selectorReachability: input.selectorReachability,
       includeTraces: input.includeTraces,
     });
   }
@@ -145,6 +147,7 @@ function analyzeSelectorQuery(input: {
     constraint,
     analysisTargets,
     renderModelIndex: input.renderModelIndex,
+    selectorReachability: input.selectorReachability,
     includeTraces: input.includeTraces,
   });
 }

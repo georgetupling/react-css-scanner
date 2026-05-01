@@ -2,6 +2,7 @@ import type {
   ParsedSelectorQuery,
   SelectorAnalysisTarget,
   SelectorQueryResult,
+  SelectorReachabilityEvidence,
   SelectorRenderModelIndex,
 } from "../types.js";
 import { buildSelectorQueryResult } from "../resultUtils.js";
@@ -12,6 +13,7 @@ import {
   getScopedElements,
   type StructuralEvaluation,
 } from "./renderModelEvaluation.js";
+import { evaluateSelectorReachabilityEvidence } from "./selectorReachabilityEvaluation.js";
 
 type SiblingConstraint = Extract<ParsedSelectorQuery["constraint"], { kind: "sibling" }>;
 
@@ -20,9 +22,15 @@ export function analyzeSiblingConstraint(input: {
   constraint: SiblingConstraint;
   analysisTargets: SelectorAnalysisTarget[];
   renderModelIndex?: SelectorRenderModelIndex;
+  selectorReachability?: SelectorReachabilityEvidence;
   includeTraces?: boolean;
 }): SelectorQueryResult {
   const includeTraces = input.includeTraces ?? true;
+  const stageEvaluation = evaluateSiblingReachability(input);
+  if (stageEvaluation) {
+    return stageEvaluation;
+  }
+
   let sawUnsupportedDynamicClass = false;
   let sawPossibleMatch = false;
   const matchedTargets: SelectorAnalysisTarget[] = [];
@@ -164,6 +172,157 @@ export function analyzeSiblingConstraint(input: {
                 ? input.selectorQuery.source.selectorAnchor
                 : undefined,
             children: [],
+          },
+        ]
+      : [],
+    includeTraces,
+  });
+}
+
+function evaluateSiblingReachability(input: {
+  selectorQuery: ParsedSelectorQuery;
+  constraint: SiblingConstraint;
+  analysisTargets: SelectorAnalysisTarget[];
+  selectorReachability?: SelectorReachabilityEvidence;
+  includeTraces?: boolean;
+}): SelectorQueryResult | undefined {
+  const evaluation = evaluateSelectorReachabilityEvidence(input);
+  if (!evaluation) {
+    return undefined;
+  }
+
+  const includeTraces = input.includeTraces ?? true;
+  const anchor =
+    input.selectorQuery.source.kind === "css-source"
+      ? input.selectorQuery.source.selectorAnchor
+      : undefined;
+  if (evaluation.hasDefiniteMatch) {
+    return attachMatchedReachability({
+      selectorQuery: input.selectorQuery,
+      matchedTargets: evaluation.matchedTargets,
+      result: buildSelectorQueryResult({
+        selectorQuery: input.selectorQuery,
+        outcome: "match",
+        status: "resolved",
+        reasons: [
+          `found a rendered ${describeRelation(input.constraint.relation)} sibling with class "${input.constraint.rightClassName}" after a sibling with class "${input.constraint.leftClassName}"`,
+        ],
+        certainty: "definite",
+        dimensions: { structure: "definite" },
+        traces: includeTraces
+          ? [
+              {
+                traceId: `selector-reachability:sibling:${input.constraint.relation}:definite`,
+                category: "selector-match",
+                summary: `Stage 6 found a rendered ${describeRelation(input.constraint.relation)} sibling with class "${input.constraint.rightClassName}" after a sibling with class "${input.constraint.leftClassName}"`,
+                anchor,
+                children: [],
+                metadata: {
+                  selectorBranchNodeId: evaluation.branch.selectorBranchNodeId,
+                },
+              },
+            ]
+          : [],
+        includeTraces,
+      }),
+      includeTraces,
+    });
+  }
+
+  if (evaluation.hasPossibleMatch) {
+    return attachMatchedReachability({
+      selectorQuery: input.selectorQuery,
+      matchedTargets: evaluation.matchedTargets,
+      result: buildSelectorQueryResult({
+        selectorQuery: input.selectorQuery,
+        outcome: "possible-match",
+        status: "resolved",
+        reasons: [
+          `found a plausible ${describeRelation(input.constraint.relation)} sibling match for "${input.constraint.leftClassName}${input.constraint.relation === "adjacent" ? " + " : " ~ "}${input.constraint.rightClassName}" on at least one bounded path`,
+        ],
+        certainty: "possible",
+        dimensions: { structure: "possible" },
+        traces: includeTraces
+          ? [
+              {
+                traceId: `selector-reachability:sibling:${input.constraint.relation}:possible`,
+                category: "selector-match",
+                summary: `Stage 6 found a plausible ${describeRelation(input.constraint.relation)} sibling match for "${input.constraint.leftClassName}${input.constraint.relation === "adjacent" ? " + " : " ~ "}${input.constraint.rightClassName}"`,
+                anchor,
+                children: [],
+                metadata: {
+                  selectorBranchNodeId: evaluation.branch.selectorBranchNodeId,
+                },
+              },
+            ]
+          : [],
+        includeTraces,
+      }),
+      includeTraces,
+    });
+  }
+
+  if (evaluation.hasUnknownContextMatch) {
+    return buildSelectorQueryResult({
+      selectorQuery: input.selectorQuery,
+      outcome: "possible-match",
+      status: "unsupported",
+      reasons: [
+        `encountered unsupported dynamic class construction while checking ${describeRelation(input.constraint.relation)} sibling structure`,
+      ],
+      certainty: "unknown",
+      dimensions: { structure: "unsupported" },
+      traces: includeTraces
+        ? [
+            {
+              traceId: `selector-reachability:sibling:${input.constraint.relation}:unsupported`,
+              category: "selector-match",
+              summary: `Stage 6 found this ${describeRelation(input.constraint.relation)} sibling selector can only match through unknown class context`,
+              anchor,
+              children: [],
+              metadata: {
+                selectorBranchNodeId: evaluation.branch.selectorBranchNodeId,
+              },
+            },
+          ]
+        : [],
+      includeTraces,
+    });
+  }
+
+  if (evaluation.branch.status === "unsupported") {
+    return buildSelectorQueryResult({
+      selectorQuery: input.selectorQuery,
+      outcome: "possible-match",
+      status: "unsupported",
+      reasons: ["selector branch contains unsupported selector semantics"],
+      certainty: "unknown",
+      dimensions: { structure: "unsupported" },
+      traces: [],
+      includeTraces,
+    });
+  }
+
+  return buildSelectorQueryResult({
+    selectorQuery: input.selectorQuery,
+    outcome: "no-match-under-bounded-analysis",
+    status: "resolved",
+    reasons: [
+      `no bounded rendered path satisfied ${describeRelation(input.constraint.relation)} sibling "${input.constraint.leftClassName}" with sibling "${input.constraint.rightClassName}"`,
+    ],
+    certainty: "definite",
+    dimensions: { structure: "not-found-under-bounded-analysis" },
+    traces: includeTraces
+      ? [
+          {
+            traceId: `selector-reachability:sibling:${input.constraint.relation}:no-match`,
+            category: "selector-match",
+            summary: `Stage 6 found no bounded rendered path satisfying ${describeRelation(input.constraint.relation)} sibling "${input.constraint.leftClassName}" with sibling "${input.constraint.rightClassName}"`,
+            anchor,
+            children: [],
+            metadata: {
+              selectorBranchNodeId: evaluation.branch.selectorBranchNodeId,
+            },
           },
         ]
       : [],
