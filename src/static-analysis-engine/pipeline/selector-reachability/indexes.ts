@@ -129,25 +129,22 @@ export function buildIndexes(input: {
     );
   }
 
-  const mapsRequiringDedupeAndSort = [
-    matchIdsBySelectorBranchNodeId,
-    matchIdsByElementId,
-    matchIdsByClassName,
-    matchIdsByEmissionSiteId,
-    matchIdsByRenderPathId,
-    matchIdsByPlacementConditionId,
-    renderPathIdsByElementId,
-    renderPathIdsByEmissionSiteId,
-    placementConditionIdsByElementId,
-    placementConditionIdsByEmissionSiteId,
-    unknownClassEmissionSiteIdsByElementId,
-    unknownRegionIdsByComponentNodeId,
-    unknownRegionIdsByRenderPathId,
-    branchIdsByRequiredClassName,
-    branchIdsByStylesheetNodeId,
-    diagnosticIdsBySelectorBranchNodeId,
-  ];
-  mapsRequiringDedupeAndSort.forEach((map) => sortMapValues(map, true));
+  dedupeAndSortMapValues(matchIdsBySelectorBranchNodeId);
+  dedupeAndSortMapValues(matchIdsByElementId);
+  dedupeAndSortMapValues(matchIdsByClassName);
+  dedupeAndSortMapValues(matchIdsByEmissionSiteId);
+  dedupeAndSortMapValues(matchIdsByRenderPathId);
+  dedupeAndSortMapValues(matchIdsByPlacementConditionId);
+  dedupeAndSortMapValues(renderPathIdsByElementId);
+  dedupeAndSortMapValues(renderPathIdsByEmissionSiteId);
+  dedupeAndSortMapValues(placementConditionIdsByElementId);
+  dedupeAndSortMapValues(placementConditionIdsByEmissionSiteId);
+  dedupeAndSortMapValues(unknownClassEmissionSiteIdsByElementId);
+  dedupeAndSortMapValues(unknownRegionIdsByComponentNodeId);
+  dedupeAndSortMapValues(unknownRegionIdsByRenderPathId);
+  dedupeAndSortMapValues(branchIdsByRequiredClassName);
+  dedupeAndSortMapValues(branchIdsByStylesheetNodeId);
+  dedupeAndSortMapValues(diagnosticIdsBySelectorBranchNodeId);
 
   return {
     branchReachabilityBySelectorBranchNodeId,
@@ -205,23 +202,46 @@ function selectorBranchSourceKeyFromReachability(branch: SelectorBranchReachabil
 }
 
 function pushMapValue<Key, Value>(map: Map<Key, Value[]>, key: Key, value: Value): void {
-  const values = map.get(key) ?? [];
-  values.push(value);
-  map.set(key, values);
+  const values = map.get(key);
+  if (values) {
+    values.push(value);
+    return;
+  }
+  map.set(key, [value]);
 }
 
-function sortMapValues(map: Map<string, string[]>, dedupe = false): void {
+function dedupeAndSortMapValues(map: Map<string, string[]>): void {
   for (const [key, values] of map.entries()) {
-    if (dedupe) {
-      map.set(key, [...new Set(values)].sort(compareStrings));
+    if (values.length < 2) {
       continue;
     }
-    map.set(key, [...values].sort(compareStrings));
+    values.sort(compareStrings);
+    dedupeSortedInPlace(values);
+    map.set(key, values);
   }
 }
 
 function uniqueSorted(values: string[]): string[] {
-  return [...new Set(values)].sort(compareStrings);
+  if (values.length < 2) {
+    return values.length === 0 ? [] : [values[0]];
+  }
+  const sorted = [...values].sort(compareStrings);
+  dedupeSortedInPlace(sorted);
+  return sorted;
+}
+
+function dedupeSortedInPlace(values: string[]): void {
+  if (values.length < 2) {
+    return;
+  }
+  let writeIndex = 1;
+  for (let readIndex = 1; readIndex < values.length; readIndex += 1) {
+    if (values[readIndex] !== values[writeIndex - 1]) {
+      values[writeIndex] = values[readIndex];
+      writeIndex += 1;
+    }
+  }
+  values.length = writeIndex;
 }
 
 function compareStrings(left: string, right: string): number {

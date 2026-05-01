@@ -1,11 +1,8 @@
 import type { SelectorBranchNode } from "../fact-graph/index.js";
 import type { RenderStructureResult } from "../render-structure/index.js";
-import { selectorBranchMatchId } from "./ids.js";
-import {
-  buildElementMatchesForClassNames,
-  getCandidateElementIds,
-  type SelectorRenderMatchIndexes,
-} from "./subjectMatches.js";
+import { matchElementClassRequirement } from "./elementRequirementMatcher.js";
+import { selectorBranchMatchId, selectorElementMatchId } from "./ids.js";
+import { getCandidateElementIds, type SelectorRenderMatchIndexes } from "./subjectMatches.js";
 import type {
   SelectorBranchMatch,
   SelectorBranchRequirement,
@@ -23,7 +20,34 @@ export type StructuralRelationIndexes = {
   childIndexByElementId: Map<string, number>;
   adjacentLeftSiblingIdByElementId: Map<string, string>;
   precedingSiblingIdsByElementId: Map<string, string[]>;
+  elementBitsetIndex: {
+    indexByElementId: Map<string, number>;
+    elementIdByIndex: string[];
+    wordCount: number;
+  };
+  ancestorBitsByElementId: Map<string, Uint32Array>;
+  precedingSiblingBitsByElementId: Map<string, Uint32Array>;
 };
+
+export type StructuralMatchContext = {
+  classMatchCache: Map<string, CachedClassMatch[]>;
+  constraintJoinCache: Map<string, Map<string, string[]>>;
+};
+
+type CachedClassMatch = {
+  elementId: string;
+  supportingEmissionSiteIds: string[];
+  matchedClassNames: string[];
+  certainty: SelectorElementMatch["certainty"];
+  confidence: SelectorElementMatch["confidence"];
+};
+
+export function createStructuralMatchContext(): StructuralMatchContext {
+  return {
+    classMatchCache: new Map(),
+    constraintJoinCache: new Map(),
+  };
+}
 
 export function projectStructuralConstraintFromRequirement(
   requirement: SelectorBranchRequirement,
@@ -61,36 +85,44 @@ export function buildStructuralMatches(input: {
   renderStructure: RenderStructureResult;
   renderIndexes: SelectorRenderMatchIndexes;
   structuralRelationIndexes?: StructuralRelationIndexes;
+  context?: StructuralMatchContext;
 }): { elementMatches: SelectorElementMatch[]; branchMatches: SelectorBranchMatch[] } {
   const structuralRelationIndexes =
     input.structuralRelationIndexes ?? buildStructuralRelationIndexes(input.renderStructure);
+  const context = input.context ?? createStructuralMatchContext();
+
   const requiredClassNames = uniqueSorted([
     input.constraint.leftClassName,
     input.constraint.rightClassName,
   ]);
-  const leftMatches = buildElementMatchesForClassNames({
-    branch: input.branch,
-    classNames: [input.constraint.leftClassName],
-    elementIds: getCandidateElementIds({
-      classNames: [input.constraint.leftClassName],
-      elementIdsByClassName: input.renderIndexes.elementIdsByClassName,
-      renderIndexes: input.renderIndexes,
-    }),
-    renderIndexes: input.renderIndexes,
-  });
-  const rightMatches = buildElementMatchesForClassNames({
-    branch: input.branch,
-    classNames: [input.constraint.rightClassName],
-    elementIds: getCandidateElementIds({
-      classNames: [input.constraint.rightClassName],
-      elementIdsByClassName: input.renderIndexes.elementIdsByClassName,
-      renderIndexes: input.renderIndexes,
-    }),
-    renderIndexes: input.renderIndexes,
-  });
-  const leftMatchByElementId = new Map(leftMatches.map((match) => [match.elementId, match]));
-  const branchMatches: SelectorBranchMatch[] = [];
 
+  const leftMatches = getClassMatches({
+    branch: input.branch,
+    className: input.constraint.leftClassName,
+    renderIndexes: input.renderIndexes,
+    context,
+  });
+  const rightMatches =
+    input.constraint.leftClassName === input.constraint.rightClassName
+      ? leftMatches
+      : getClassMatches({
+          branch: input.branch,
+          className: input.constraint.rightClassName,
+          renderIndexes: input.renderIndexes,
+          context,
+        });
+  const leftMatchByElementId = new Map(leftMatches.map((match) => [match.elementId, match]));
+
+  const relationByRightElementId = getConstraintJoinMap({
+    constraint: input.constraint,
+    leftMatches,
+    rightMatches,
+    renderStructure: input.renderStructure,
+    structuralRelationIndexes,
+    context,
+  });
+
+  const branchMatches: SelectorBranchMatch[] = [];
   for (const rightMatch of rightMatches) {
     const rightElement = input.renderStructure.renderModel.indexes.elementById.get(
       rightMatch.elementId,
@@ -98,12 +130,8 @@ export function buildStructuralMatches(input: {
     if (!rightElement) {
       continue;
     }
-    for (const leftElementId of getRelatedLeftElementIds({
-      renderStructure: input.renderStructure,
-      rightElementId: rightMatch.elementId,
-      combinator: input.constraint.combinator,
-      structuralRelationIndexes,
-    })) {
+
+    for (const leftElementId of relationByRightElementId.get(rightMatch.elementId) ?? []) {
       const leftMatch = leftMatchByElementId.get(leftElementId);
       if (!leftMatch) {
         continue;
@@ -157,33 +185,149 @@ export function buildStructuralMatches(input: {
   };
 }
 
+function getClassMatches(input: {
+  branch: SelectorBranchNode;
+  className: string;
+  renderIndexes: SelectorRenderMatchIndexes;
+  context: StructuralMatchContext;
+}): SelectorElementMatch[] {
+  const cached = getCachedClassMatches(input);
+  return cached.map((match) => ({
+    id: selectorElementMatchId({
+      selectorBranchNodeId: input.branch.id,
+      elementId: match.elementId,
+    }),
+    selectorBranchNodeId: input.branch.id,
+    elementId: match.elementId,
+    requirement: {
+      requiredClassNames: [input.className],
+      unsupportedParts: [],
+    },
+    matchedClassNames: match.matchedClassNames,
+    supportingEmissionSiteIds: match.supportingEmissionSiteIds,
+    certainty: match.certainty,
+    confidence: match.confidence,
+  }));
+}
+
+function getCachedClassMatches(input: {
+  className: string;
+  renderIndexes: SelectorRenderMatchIndexes;
+  context: StructuralMatchContext;
+}): CachedClassMatch[] {
+  const existing = input.context.classMatchCache.get(input.className);
+  if (existing) {
+    return existing;
+  }
+
+  const elementIds = getCandidateElementIds({
+    classNames: [input.className],
+    elementIdsByClassName: input.renderIndexes.elementIdsByClassName,
+    renderIndexes: input.renderIndexes,
+  });
+  const matches: CachedClassMatch[] = [];
+  for (const elementId of elementIds) {
+    const match = matchElementClassRequirement({
+      indexes: input.renderIndexes,
+      elementId,
+      classNames: [input.className],
+    });
+    if (match.certainty === "impossible") {
+      continue;
+    }
+    matches.push({
+      elementId,
+      supportingEmissionSiteIds: match.supportingEmissionSiteIds,
+      matchedClassNames: match.matchedClassNames,
+      certainty: match.certainty,
+      confidence: match.certainty === "definite" ? "high" : "medium",
+    });
+  }
+  input.context.classMatchCache.set(input.className, matches);
+  return matches;
+}
+
+function getConstraintJoinMap(input: {
+  constraint: StructuralConstraint;
+  leftMatches: SelectorElementMatch[];
+  rightMatches: SelectorElementMatch[];
+  renderStructure: RenderStructureResult;
+  structuralRelationIndexes: StructuralRelationIndexes;
+  context: StructuralMatchContext;
+}): Map<string, string[]> {
+  const cacheKey = `${input.constraint.combinator}|${input.constraint.leftClassName}|${input.constraint.rightClassName}`;
+  const cached = input.context.constraintJoinCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const leftIds = input.leftMatches.map((match) => match.elementId).sort(compareStrings);
+  const rightIds = input.rightMatches.map((match) => match.elementId);
+  const leftIdSet = new Set(leftIds);
+  const leftBits = buildElementBitset(leftIds, input.structuralRelationIndexes.elementBitsetIndex);
+
+  const relationByRightElementId = new Map<string, string[]>();
+  for (const rightElementId of rightIds) {
+    relationByRightElementId.set(
+      rightElementId,
+      getRelatedLeftElementIds({
+        renderStructure: input.renderStructure,
+        rightElementId,
+        combinator: input.constraint.combinator,
+        structuralRelationIndexes: input.structuralRelationIndexes,
+        leftIdSet,
+        leftBits,
+      }),
+    );
+  }
+
+  input.context.constraintJoinCache.set(cacheKey, relationByRightElementId);
+  return relationByRightElementId;
+}
+
 function getRelatedLeftElementIds(input: {
   renderStructure: RenderStructureResult;
   rightElementId: string;
   combinator: StructuralConstraint["combinator"];
   structuralRelationIndexes: StructuralRelationIndexes;
+  leftIdSet: Set<string>;
+  leftBits: Uint32Array;
 }): string[] {
-  if (input.combinator === "descendant") {
-    return (
-      input.renderStructure.renderModel.indexes.ancestorElementIdsByElementId.get(
-        input.rightElementId,
-      ) ?? []
-    );
-  }
-
   if (input.combinator === "child") {
     const element = input.renderStructure.renderModel.indexes.elementById.get(input.rightElementId);
-    return element?.parentElementId ? [element.parentElementId] : [];
+    return element?.parentElementId && input.leftIdSet.has(element.parentElementId)
+      ? [element.parentElementId]
+      : [];
   }
 
   if (input.combinator === "adjacent-sibling") {
     const adjacentLeftSiblingId =
       input.structuralRelationIndexes.adjacentLeftSiblingIdByElementId.get(input.rightElementId);
-    return adjacentLeftSiblingId ? [adjacentLeftSiblingId] : [];
+    return adjacentLeftSiblingId && input.leftIdSet.has(adjacentLeftSiblingId)
+      ? [adjacentLeftSiblingId]
+      : [];
   }
 
-  return (
-    input.structuralRelationIndexes.precedingSiblingIdsByElementId.get(input.rightElementId) ?? []
+  const relationIds =
+    input.combinator === "descendant"
+      ? (input.renderStructure.renderModel.indexes.ancestorElementIdsByElementId.get(
+          input.rightElementId,
+        ) ?? [])
+      : (input.structuralRelationIndexes.precedingSiblingIdsByElementId.get(input.rightElementId) ??
+        []);
+
+  if (relationIds.length <= 48) {
+    return relationIds.filter((elementId) => input.leftIdSet.has(elementId));
+  }
+
+  const relationBits =
+    input.combinator === "descendant"
+      ? input.structuralRelationIndexes.ancestorBitsByElementId.get(input.rightElementId)
+      : input.structuralRelationIndexes.precedingSiblingBitsByElementId.get(input.rightElementId);
+  return collectIntersectingElementIds(
+    relationBits,
+    input.leftBits,
+    input.structuralRelationIndexes.elementBitsetIndex,
   );
 }
 
@@ -215,6 +359,15 @@ export function buildStructuralRelationIndexes(
   const adjacentLeftSiblingIdByElementId = new Map<string, string>();
   const precedingSiblingIdsByElementId = new Map<string, string[]>();
 
+  const elementIdByIndex = renderStructure.renderModel.elements.map((element) => element.id);
+  const indexByElementId = new Map<string, number>(
+    elementIdByIndex.map((elementId, index) => [elementId, index]),
+  );
+  const wordCount = Math.ceil(elementIdByIndex.length / 32);
+  const elementBitsetIndex = { indexByElementId, elementIdByIndex, wordCount };
+  const ancestorBitsByElementId = new Map<string, Uint32Array>();
+  const precedingSiblingBitsByElementId = new Map<string, Uint32Array>();
+
   for (const [elementId, siblingIds] of renderStructure.renderModel.indexes
     .siblingElementIdsByElementId) {
     const elementChildIndex = childIndexByElementId.get(elementId);
@@ -233,9 +386,11 @@ export function buildStructuralRelationIndexes(
       continue;
     }
     precedingSiblings.sort((left, right) => left.childIndex - right.childIndex);
-    precedingSiblingIdsByElementId.set(
+    const precedingSiblingIds = precedingSiblings.map((entry) => entry.siblingId);
+    precedingSiblingIdsByElementId.set(elementId, precedingSiblingIds);
+    precedingSiblingBitsByElementId.set(
       elementId,
-      precedingSiblings.map((entry) => entry.siblingId),
+      buildElementBitset(precedingSiblingIds, elementBitsetIndex),
     );
     const adjacent = precedingSiblings[precedingSiblings.length - 1];
     if (adjacent.childIndex === elementChildIndex - 1) {
@@ -243,10 +398,21 @@ export function buildStructuralRelationIndexes(
     }
   }
 
+  for (const [elementId, ancestorElementIds] of renderStructure.renderModel.indexes
+    .ancestorElementIdsByElementId) {
+    ancestorBitsByElementId.set(
+      elementId,
+      buildElementBitset(ancestorElementIds, elementBitsetIndex),
+    );
+  }
+
   return {
     childIndexByElementId,
     adjacentLeftSiblingIdByElementId,
     precedingSiblingIdsByElementId,
+    elementBitsetIndex,
+    ancestorBitsByElementId,
+    precedingSiblingBitsByElementId,
   };
 }
 
@@ -309,4 +475,44 @@ function compareStrings(left: string, right: string): number {
     return 0;
   }
   return left < right ? -1 : 1;
+}
+
+function buildElementBitset(
+  elementIds: readonly string[],
+  bitsetIndex: StructuralRelationIndexes["elementBitsetIndex"],
+): Uint32Array {
+  const bits = new Uint32Array(bitsetIndex.wordCount);
+  for (const elementId of elementIds) {
+    const index = bitsetIndex.indexByElementId.get(elementId);
+    if (index === undefined) {
+      continue;
+    }
+    bits[index >>> 5] |= 1 << (index & 31);
+  }
+  return bits;
+}
+
+function collectIntersectingElementIds(
+  relationBits: Uint32Array | undefined,
+  leftBits: Uint32Array,
+  bitsetIndex: StructuralRelationIndexes["elementBitsetIndex"],
+): string[] {
+  if (!relationBits) {
+    return [];
+  }
+  const result: string[] = [];
+  for (let wordIndex = 0; wordIndex < relationBits.length; wordIndex += 1) {
+    let word = relationBits[wordIndex] & leftBits[wordIndex];
+    while (word !== 0) {
+      const leastSignificant = word & -word;
+      const bitIndex = 31 - Math.clz32(leastSignificant);
+      const elementIndex = (wordIndex << 5) + bitIndex;
+      const elementId = bitsetIndex.elementIdByIndex[elementIndex];
+      if (elementId) {
+        result.push(elementId);
+      }
+      word &= word - 1;
+    }
+  }
+  return result;
 }

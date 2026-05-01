@@ -13,6 +13,7 @@ import {
 import {
   buildStructuralRelationIndexes,
   buildStructuralMatches,
+  createStructuralMatchContext,
   projectStructuralConstraintFromRequirement,
 } from "./structuralMatches.js";
 import type {
@@ -50,6 +51,7 @@ export function buildSelectorReachability(
     "selectorReachability.buildStructuralRelationIndexes",
     () => buildStructuralRelationIndexes(input),
   );
+  const structuralMatchContext = createStructuralMatchContext();
 
   const sortedBranches = profiler.time("selectorReachability.sortSelectorBranches", () =>
     [...input.graph.nodes.selectorBranches].sort(compareSelectorBranches),
@@ -101,6 +103,7 @@ export function buildSelectorReachability(
             renderStructure: input,
             renderIndexes,
             structuralRelationIndexes,
+            context: structuralMatchContext,
           }),
         )
       : undefined;
