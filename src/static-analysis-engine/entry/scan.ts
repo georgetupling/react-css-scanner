@@ -92,19 +92,16 @@ function runAnalysisPipeline(input: {
     "Building project evidence",
     () =>
       runProjectEvidenceStage({
-        includeTraces,
         projectInput: {
           factGraph,
-          stylesheets: input.workspaceDiscovery.files.stylesheets.map((stylesheet) => ({
-            filePath: stylesheet.filePath,
-            cssKind: stylesheet.cssKind,
-            origin: stylesheet.origin,
-          })),
-          cssModuleLocalsConvention: input.workspaceDiscovery.config.cssModules.localsConvention,
+          stylesheets: input.workspaceDiscovery.files.stylesheets,
           renderModel: renderStructureStage.renderModel,
           symbolicEvaluation: symbolicEvaluationStage,
           selectorReachability: selectorReachabilityStage.selectorReachability,
+        },
+        options: {
           includeTraces,
+          cssModuleLocalsConvention: input.workspaceDiscovery.config.cssModules.localsConvention,
         },
       }),
   );

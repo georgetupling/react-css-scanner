@@ -9,17 +9,23 @@ import {
 import type { ProjectEvidenceStageResult } from "./types.js";
 
 export function runProjectEvidenceStage(input: {
-  projectInput: ProjectEvidenceBuildInput;
-  includeTraces?: boolean;
+  projectInput: Omit<ProjectEvidenceBuildInput, "cssModuleLocalsConvention" | "includeTraces">;
+  options?: {
+    includeTraces?: boolean;
+    cssModuleLocalsConvention?: ProjectEvidenceBuildInput["cssModuleLocalsConvention"];
+  };
 }): ProjectEvidenceStageResult {
-  const includeTraces = input.includeTraces ?? true;
+  const includeTraces = input.options?.includeTraces ?? true;
   const indexes = createEmptyIndexes();
-  const projectEvidence = buildProjectEvidence({
-    entities: buildProjectEvidenceEntities({
-      projectInput: input.projectInput,
-      indexes,
-      includeTraces,
-    }),
+  const projectInput: ProjectEvidenceBuildInput = {
+    ...input.projectInput,
+    cssModuleLocalsConvention: input.options?.cssModuleLocalsConvention,
+    includeTraces,
+  };
+  const entities = buildProjectEvidenceEntities({
+    projectInput,
+    indexes,
+    includeTraces,
   });
   const {
     sourceFiles,
@@ -37,7 +43,7 @@ export function runProjectEvidenceStage(input: {
     cssModuleDestructuredBindings,
     cssModuleMemberReferences,
     cssModuleReferenceDiagnostics,
-  } = projectEvidence.entities;
+  } = entities;
 
   indexEntities({
     sourceFiles,
@@ -60,10 +66,10 @@ export function runProjectEvidenceStage(input: {
 
   return {
     projectEvidence: buildProjectEvidence({
-      entities: projectEvidence.entities,
+      entities,
       relations: buildProjectEvidenceRelations({
-        projectInput: input.projectInput,
-        entities: projectEvidence.entities,
+        projectInput,
+        entities,
         indexes,
         includeTraces,
       }),
