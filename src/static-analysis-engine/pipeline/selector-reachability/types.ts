@@ -2,9 +2,14 @@ import type { AnalysisConfidence, AnalysisTrace } from "../../types/analysis.js"
 import type { SourceAnchor } from "../../types/core.js";
 import type { FactNodeId } from "../fact-graph/index.js";
 import type {
+  EmissionSite,
   EmissionSiteId,
   PlacementConditionId,
+  RenderPath,
   RenderPathId,
+  RenderRegion,
+  RenderRegionId,
+  RenderedElement,
   RenderedElementId,
 } from "../render-structure/index.js";
 
@@ -162,9 +167,27 @@ export type SelectorReachabilityIndexes = {
   branchReachabilityBySourceKey: Map<string, SelectorBranchReachability>;
   matchById: Map<SelectorBranchMatchId, SelectorBranchMatch>;
   elementMatchById: Map<SelectorElementMatchId, SelectorElementMatch>;
+  renderElementById: Map<RenderedElementId, RenderedElement>;
+  emissionSiteById: Map<EmissionSiteId, EmissionSite>;
+  renderPathById: Map<RenderPathId, RenderPath>;
+  unknownRegionById: Map<RenderRegionId, RenderRegion>;
   matchIdsBySelectorBranchNodeId: Map<FactNodeId, SelectorBranchMatchId[]>;
   matchIdsByElementId: Map<RenderedElementId, SelectorBranchMatchId[]>;
   matchIdsByClassName: Map<string, SelectorBranchMatchId[]>;
+  matchIdsByEmissionSiteId: Map<EmissionSiteId, SelectorBranchMatchId[]>;
+  matchIdsByRenderPathId: Map<RenderPathId, SelectorBranchMatchId[]>;
+  matchIdsByPlacementConditionId: Map<PlacementConditionId, SelectorBranchMatchId[]>;
+  renderPathIdsByElementId: Map<RenderedElementId, RenderPathId[]>;
+  renderPathIdsByEmissionSiteId: Map<EmissionSiteId, RenderPathId[]>;
+  placementConditionIdsByElementId: Map<RenderedElementId, PlacementConditionId[]>;
+  placementConditionIdsByEmissionSiteId: Map<EmissionSiteId, PlacementConditionId[]>;
+  emissionSiteIdsByElementId: Map<RenderedElementId, EmissionSiteId[]>;
+  emissionSiteIdsByToken: Map<string, EmissionSiteId[]>;
+  unknownClassElementIds: RenderedElementId[];
+  unknownClassEmissionSiteIds: EmissionSiteId[];
+  unknownClassEmissionSiteIdsByElementId: Map<RenderedElementId, EmissionSiteId[]>;
+  unknownRegionIdsByComponentNodeId: Map<FactNodeId, RenderRegionId[]>;
+  unknownRegionIdsByRenderPathId: Map<RenderPathId, RenderRegionId[]>;
   branchIdsByRequiredClassName: Map<string, FactNodeId[]>;
   branchIdsByStylesheetNodeId: Map<FactNodeId, FactNodeId[]>;
   diagnosticIdsBySelectorBranchNodeId: Map<FactNodeId, SelectorReachabilityDiagnosticId[]>;

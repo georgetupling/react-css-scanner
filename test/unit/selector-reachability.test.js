@@ -65,6 +65,77 @@ test("selector reachability matches same-element compound class selectors", asyn
   assert.equal(match.certainty, "definite");
 });
 
+test("selector reachability indexes render elements, emissions, paths, and match evidence", async () => {
+  const renderStructure = await buildRenderStructureFixture({
+    sourceText: 'export function App() { return <button className="button button--primary" />; }\n',
+    cssText: ".button.button--primary { color: blue; }\n",
+  });
+
+  const result = buildSelectorReachability(renderStructure);
+  const branch = findBranch(result, ".button.button--primary");
+  const match = result.indexes.matchById.get(branch.matchIds[0]);
+  assert.ok(match);
+
+  const subjectElement = result.indexes.renderElementById.get(match.subjectElementId);
+  assert.ok(subjectElement);
+  assert.equal(subjectElement.tagName, "button");
+  assert.deepEqual(result.indexes.matchIdsByElementId.get(subjectElement.id), [match.id]);
+  assert.ok(
+    result.indexes.renderPathIdsByElementId
+      .get(subjectElement.id)
+      ?.includes(subjectElement.renderPathId),
+  );
+
+  for (const emissionSiteId of match.supportingEmissionSiteIds) {
+    const emissionSite = result.indexes.emissionSiteById.get(emissionSiteId);
+    assert.ok(emissionSite);
+    assert.equal(emissionSite.elementId, subjectElement.id);
+    assert.ok(
+      result.indexes.emissionSiteIdsByElementId.get(subjectElement.id)?.includes(emissionSiteId),
+    );
+    assert.ok(
+      result.indexes.renderPathIdsByEmissionSiteId
+        .get(emissionSiteId)
+        ?.includes(emissionSite.renderPathId),
+    );
+    assert.ok(result.indexes.matchIdsByEmissionSiteId.get(emissionSiteId)?.includes(match.id));
+  }
+
+  for (const renderPathId of match.renderPathIds) {
+    assert.ok(result.indexes.renderPathById.get(renderPathId));
+    assert.ok(result.indexes.matchIdsByRenderPathId.get(renderPathId)?.includes(match.id));
+  }
+});
+
+test("selector reachability indexes unknown class emissions and unknown render regions", async () => {
+  const renderStructure = await buildRenderStructureFixture({
+    sourceText: [
+      "export function App(props) {",
+      '  return <main className={props.wrapperClass}><MissingWidget className="missing" /></main>;',
+      "}",
+      "",
+    ].join("\n"),
+    cssText: ".missing { color: blue; }\n",
+  });
+
+  const result = buildSelectorReachability(renderStructure);
+
+  assert.ok(result.indexes.unknownClassElementIds.length > 0);
+  assert.ok(result.indexes.unknownClassEmissionSiteIds.length > 0);
+  for (const elementId of result.indexes.unknownClassElementIds) {
+    assert.ok(result.indexes.renderElementById.get(elementId));
+    assert.ok(result.indexes.unknownClassEmissionSiteIdsByElementId.get(elementId)?.length);
+  }
+
+  assert.ok(result.indexes.unknownRegionById.size > 0);
+  for (const region of result.indexes.unknownRegionById.values()) {
+    assert.equal(region.regionKind, "unknown-barrier");
+    assert.ok(
+      result.indexes.unknownRegionIdsByRenderPathId.get(region.renderPathId)?.includes(region.id),
+    );
+  }
+});
+
 test("selector reachability does not match compound classes split across elements", async () => {
   const renderStructure = await buildRenderStructureFixture({
     sourceText:

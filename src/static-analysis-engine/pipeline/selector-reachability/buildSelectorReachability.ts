@@ -112,6 +112,7 @@ export function buildSelectorReachability(
   }
 
   const indexes = buildIndexes({
+    renderModel: input.renderModel,
     selectorBranches,
     elementMatches,
     branchMatches,

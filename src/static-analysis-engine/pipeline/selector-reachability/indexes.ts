@@ -1,4 +1,5 @@
 import type { SelectorBranchNode } from "../fact-graph/index.js";
+import type { RenderModel } from "../render-structure/index.js";
 import type {
   SelectorBranchMatch,
   SelectorBranchReachability,
@@ -9,6 +10,7 @@ import type {
 import { anchorKey } from "./utils.js";
 
 export function buildIndexes(input: {
+  renderModel: RenderModel;
   selectorBranches: SelectorBranchReachability[];
   elementMatches: SelectorElementMatch[];
   branchMatches: SelectorBranchMatch[];
@@ -18,12 +20,67 @@ export function buildIndexes(input: {
   const branchReachabilityBySourceKey = new Map<string, SelectorBranchReachability>();
   const matchById = new Map<string, SelectorBranchMatch>();
   const elementMatchById = new Map<string, SelectorElementMatch>();
+  const renderElementById = input.renderModel.indexes.elementById;
+  const emissionSiteById = input.renderModel.indexes.emissionSiteById;
+  const renderPathById = input.renderModel.indexes.renderPathById;
+  const unknownRegionById = new Map(
+    input.renderModel.renderRegions
+      .filter((region) => region.regionKind === "unknown-barrier")
+      .map((region) => [region.id, region]),
+  );
   const matchIdsBySelectorBranchNodeId = new Map<string, string[]>();
   const matchIdsByElementId = new Map<string, string[]>();
   const matchIdsByClassName = new Map<string, string[]>();
+  const matchIdsByEmissionSiteId = new Map<string, string[]>();
+  const matchIdsByRenderPathId = new Map<string, string[]>();
+  const matchIdsByPlacementConditionId = new Map<string, string[]>();
+  const renderPathIdsByElementId = new Map<string, string[]>();
+  const renderPathIdsByEmissionSiteId = new Map<string, string[]>();
+  const placementConditionIdsByElementId = new Map<string, string[]>();
+  const placementConditionIdsByEmissionSiteId = new Map<string, string[]>();
+  const emissionSiteIdsByElementId = input.renderModel.indexes.emissionSiteIdsByElementId;
+  const emissionSiteIdsByToken = input.renderModel.indexes.emissionSiteIdsByToken;
+  const unknownClassElementIds: string[] = [];
+  const unknownClassEmissionSiteIds: string[] = [];
+  const unknownClassEmissionSiteIdsByElementId = new Map<string, string[]>();
+  const unknownRegionIdsByComponentNodeId = new Map<string, string[]>();
+  const unknownRegionIdsByRenderPathId = new Map<string, string[]>();
   const branchIdsByRequiredClassName = new Map<string, string[]>();
   const branchIdsByStylesheetNodeId = new Map<string, string[]>();
   const diagnosticIdsBySelectorBranchNodeId = new Map<string, string[]>();
+
+  for (const element of input.renderModel.elements) {
+    pushMapValue(renderPathIdsByElementId, element.id, element.renderPathId);
+    for (const placementConditionId of element.placementConditionIds) {
+      pushMapValue(placementConditionIdsByElementId, element.id, placementConditionId);
+    }
+  }
+
+  for (const emissionSite of input.renderModel.emissionSites) {
+    pushMapValue(renderPathIdsByEmissionSiteId, emissionSite.id, emissionSite.renderPathId);
+    for (const placementConditionId of emissionSite.placementConditionIds) {
+      pushMapValue(placementConditionIdsByEmissionSiteId, emissionSite.id, placementConditionId);
+    }
+
+    if (emissionSite.confidence === "low" || emissionSite.unsupported.length > 0) {
+      unknownClassEmissionSiteIds.push(emissionSite.id);
+      if (emissionSite.elementId) {
+        unknownClassElementIds.push(emissionSite.elementId);
+        pushMapValue(
+          unknownClassEmissionSiteIdsByElementId,
+          emissionSite.elementId,
+          emissionSite.id,
+        );
+      }
+    }
+  }
+
+  for (const region of unknownRegionById.values()) {
+    if (region.componentNodeId) {
+      pushMapValue(unknownRegionIdsByComponentNodeId, region.componentNodeId, region.id);
+    }
+    pushMapValue(unknownRegionIdsByRenderPathId, region.renderPathId, region.id);
+  }
 
   for (const branch of input.selectorBranches) {
     branchReachabilityBySelectorBranchNodeId.set(branch.selectorBranchNodeId, branch);
@@ -53,6 +110,15 @@ export function buildIndexes(input: {
     for (const className of match.requiredClassNames) {
       pushMapValue(matchIdsByClassName, className, match.id);
     }
+    for (const emissionSiteId of match.supportingEmissionSiteIds) {
+      pushMapValue(matchIdsByEmissionSiteId, emissionSiteId, match.id);
+    }
+    for (const renderPathId of match.renderPathIds) {
+      pushMapValue(matchIdsByRenderPathId, renderPathId, match.id);
+    }
+    for (const placementConditionId of match.placementConditionIds) {
+      pushMapValue(matchIdsByPlacementConditionId, placementConditionId, match.id);
+    }
   }
 
   for (const diagnostic of input.diagnostics) {
@@ -67,6 +133,16 @@ export function buildIndexes(input: {
     matchIdsBySelectorBranchNodeId,
     matchIdsByElementId,
     matchIdsByClassName,
+    matchIdsByEmissionSiteId,
+    matchIdsByRenderPathId,
+    matchIdsByPlacementConditionId,
+    renderPathIdsByElementId,
+    renderPathIdsByEmissionSiteId,
+    placementConditionIdsByElementId,
+    placementConditionIdsByEmissionSiteId,
+    unknownClassEmissionSiteIdsByElementId,
+    unknownRegionIdsByComponentNodeId,
+    unknownRegionIdsByRenderPathId,
     branchIdsByRequiredClassName,
     branchIdsByStylesheetNodeId,
     diagnosticIdsBySelectorBranchNodeId,
@@ -77,9 +153,27 @@ export function buildIndexes(input: {
     branchReachabilityBySourceKey,
     matchById,
     elementMatchById,
+    renderElementById,
+    emissionSiteById,
+    renderPathById,
+    unknownRegionById,
     matchIdsBySelectorBranchNodeId,
     matchIdsByElementId,
     matchIdsByClassName,
+    matchIdsByEmissionSiteId,
+    matchIdsByRenderPathId,
+    matchIdsByPlacementConditionId,
+    renderPathIdsByElementId,
+    renderPathIdsByEmissionSiteId,
+    placementConditionIdsByElementId,
+    placementConditionIdsByEmissionSiteId,
+    emissionSiteIdsByElementId,
+    emissionSiteIdsByToken,
+    unknownClassElementIds: uniqueSorted(unknownClassElementIds),
+    unknownClassEmissionSiteIds: uniqueSorted(unknownClassEmissionSiteIds),
+    unknownClassEmissionSiteIdsByElementId,
+    unknownRegionIdsByComponentNodeId,
+    unknownRegionIdsByRenderPathId,
     branchIdsByRequiredClassName,
     branchIdsByStylesheetNodeId,
     diagnosticIdsBySelectorBranchNodeId,
@@ -122,4 +216,8 @@ function sortMapValues(map: Map<string, string[]>): void {
       [...new Set(values)].sort((left, right) => left.localeCompare(right)),
     );
   }
+}
+
+function uniqueSorted(values: string[]): string[] {
+  return [...new Set(values)].sort((left, right) => left.localeCompare(right));
 }
