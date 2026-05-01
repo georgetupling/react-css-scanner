@@ -1,5 +1,9 @@
-import type { ReachabilityStylesheetInput } from "../../reachability/index.js";
 import type { FactGraph } from "../types.js";
+
+export type ReachabilityStylesheetInput = {
+  filePath?: string;
+  cssText?: string;
+};
 
 export function graphToStylesheetFilePaths(graph: FactGraph): string[] {
   return graph.nodes.stylesheets

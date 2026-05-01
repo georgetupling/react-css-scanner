@@ -9,6 +9,7 @@ import {
   getClassDefinitions,
   getClassReferences,
   getClassReferencesByClassName,
+  getProviderBackedStylesheetRelationsByStylesheetId,
   getSelectorBranches,
   getSelectorBranchesByStylesheetId,
   getStaticallySkippedClassReferencesByClassName,
@@ -39,6 +40,14 @@ function runUnusedCssClassRule(context: RuleContext): UnresolvedFinding[] {
   for (const definition of getClassDefinitions(context.analysisEvidence)) {
     const stylesheet = getStylesheetById(context.analysisEvidence, definition.stylesheetId);
     if (!stylesheet || stylesheet.origin === "external-import" || definition.isCssModule) {
+      continue;
+    }
+    if (
+      getProviderBackedStylesheetRelationsByStylesheetId(
+        context.analysisEvidence,
+        definition.stylesheetId,
+      ).length > 0
+    ) {
       continue;
     }
 

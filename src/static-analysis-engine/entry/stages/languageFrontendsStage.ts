@@ -3,9 +3,9 @@ import type { ProjectSnapshot } from "../../pipeline/workspace-discovery/index.j
 import type { LanguageFrontendsStageResult } from "./types.js";
 
 export function runLanguageFrontendsStage(input: {
-  snapshot: ProjectSnapshot;
+  workspaceDiscovery: ProjectSnapshot;
 }): LanguageFrontendsStageResult {
   return buildLanguageFrontends({
-    snapshot: input.snapshot,
+    snapshot: input.workspaceDiscovery,
   });
 }

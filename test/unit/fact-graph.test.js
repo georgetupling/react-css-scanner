@@ -1,12 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { graphToCssRuleFileInputs } from "../../dist/static-analysis-engine/pipeline/fact-graph/adapters/cssAnalysisInputs.js";
-import { graphToProjectResourceEdges } from "../../dist/static-analysis-engine/pipeline/fact-graph/adapters/graphToProjectResourceEdges.js";
+import { buildFactGraph, buildLanguageFrontends } from "../../dist/static-analysis-engine.js";
 import { graphToReactRenderSyntaxInputs } from "../../dist/static-analysis-engine/pipeline/fact-graph/adapters/reactRenderSyntaxInputs.js";
 import { graphToSelectorEntries } from "../../dist/static-analysis-engine/pipeline/fact-graph/adapters/selectorAnalysisInputs.js";
-import { buildFactGraph } from "../../dist/static-analysis-engine/pipeline/fact-graph/buildFactGraph.js";
-import { buildLanguageFrontends } from "../../dist/static-analysis-engine/pipeline/language-frontends/buildLanguageFrontends.js";
 import { buildProjectSnapshot } from "../../dist/static-analysis-engine/pipeline/workspace-discovery/buildProjectSnapshot.js";
 import { TestProjectBuilder } from "../support/TestProjectBuilder.js";
 
@@ -294,18 +291,6 @@ test("fact graph builds file, module, stylesheet, and origin facts without chang
       "selector-branch:stylesheet:src/app.css:0:1",
     ]);
     assert.deepEqual(
-      graphToCssRuleFileInputs(result.graph).map((file) => ({
-        filePath: file.filePath,
-        selectors: file.rules.map((rule) => rule.selector),
-      })),
-      [
-        {
-          filePath: "src/app.css",
-          selectors: [".app, .shell .app"],
-        },
-      ],
-    );
-    assert.deepEqual(
       graphToSelectorEntries(result.graph).map((entry) => ({
         selectorText: entry.selectorText,
         branchIndex: entry.source.branchIndex,
@@ -473,59 +458,6 @@ test("fact graph normalizes source and stylesheet imports into import edges", as
           id: "external:remote:https://example.com/remote.css",
           specifier: "https://example.com/remote.css",
           resourceKind: "remote",
-        },
-      ],
-    );
-
-    assert.deepEqual(
-      graphToProjectResourceEdges(result.graph).map((edge) => ({
-        kind: edge.kind,
-        importerKind: edge.kind === "source-import" ? edge.importerKind : undefined,
-        importerFilePath: edge.importerFilePath,
-        specifier: edge.specifier,
-        resolutionStatus: edge.kind === "source-import" ? edge.resolutionStatus : undefined,
-        importKind: edge.kind === "source-import" ? edge.importKind : undefined,
-        resolvedFilePath:
-          edge.kind === "source-import" || edge.kind === "stylesheet-import"
-            ? edge.resolvedFilePath
-            : undefined,
-      })),
-      [
-        {
-          kind: "source-import",
-          importerKind: undefined,
-          importerFilePath: "src/App.tsx",
-          specifier: "./theme.css",
-          importKind: "css",
-          resolutionStatus: "resolved",
-          resolvedFilePath: "src/theme.css",
-        },
-        {
-          kind: "source-import",
-          importerKind: undefined,
-          importerFilePath: "src/App.tsx",
-          specifier: "https://example.com/remote.css",
-          importKind: "css",
-          resolutionStatus: "external",
-          resolvedFilePath: undefined,
-        },
-        {
-          kind: "source-import",
-          importerKind: undefined,
-          importerFilePath: "src/App.tsx",
-          specifier: "pkg/theme.css",
-          importKind: "css",
-          resolutionStatus: "external",
-          resolvedFilePath: undefined,
-        },
-        {
-          kind: "stylesheet-import",
-          importerKind: undefined,
-          importerFilePath: "src/theme.css",
-          specifier: "./tokens.css",
-          importKind: undefined,
-          resolutionStatus: undefined,
-          resolvedFilePath: "src/tokens.css",
         },
       ],
     );

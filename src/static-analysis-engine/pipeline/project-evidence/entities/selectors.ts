@@ -1,5 +1,5 @@
-import type { ProjectSelectorProjectionResult } from "../../selector-reachability/index.js";
 import type {
+  ProjectEvidenceBuildInput,
   ProjectEvidenceBuilderIndexes,
   SelectorBranchAnalysis,
   SelectorQueryAnalysis,
@@ -14,40 +14,22 @@ import {
 } from "../internal/shared.js";
 
 export function buildSelectorQueries(input: {
-  projectSelectorProjection: ProjectSelectorProjectionResult | undefined;
+  projectInput: ProjectEvidenceBuildInput;
   indexes: ProjectEvidenceBuilderIndexes;
   includeTraces: boolean;
   stylesheetIdByFactGraphNodeId: Map<string, string>;
 }): SelectorQueryAnalysis[] {
-  const projection = input.projectSelectorProjection;
-  if (!projection) {
+  const selectorReachability = input.projectInput.selectorReachability;
+  if (!selectorReachability) {
     return [];
   }
-  const branchProjectionsBySelectorNodeId = new Map<string, typeof projection.selectorBranches>();
-  for (const branch of projection.selectorBranches) {
-    const branches = branchProjectionsBySelectorNodeId.get(branch.selectorNodeId) ?? [];
-    branches.push(branch);
-    branchProjectionsBySelectorNodeId.set(branch.selectorNodeId, branches);
-  }
-
-  const selectorQueries = projection.selectorQueries.map((queryProjection, index) => {
+  const selectorQueries = selectorReachability.selectorQueries.map((queryProjection, index) => {
     const stylesheetId = resolveStylesheetId({
       stylesheetNodeId: queryProjection.stylesheetNodeId,
       locationFilePath: queryProjection.location?.filePath,
       stylesheetIdByFactGraphNodeId: input.stylesheetIdByFactGraphNodeId,
       indexes: input.indexes,
     });
-
-    const selectorBranches =
-      branchProjectionsBySelectorNodeId.get(queryProjection.selectorNodeId) ?? [];
-    const scopedCandidates = selectorBranches
-      .map((branch) => branch.scopedReachability)
-      .filter(
-        (
-          candidate,
-        ): candidate is NonNullable<(typeof selectorBranches)[number]["scopedReachability"]> =>
-          Boolean(candidate),
-      );
 
     const query: SelectorQueryAnalysis = {
       id: createSelectorQueryId({
@@ -69,25 +51,6 @@ export function buildSelectorQueries(input: {
         : (queryProjection.selectorReachabilityStatuses[0] ?? "unsupported"),
       selectorReachabilityStatuses: [...queryProjection.selectorReachabilityStatuses],
       reasons: [...queryProjection.reasons],
-      scopedReachability:
-        scopedCandidates.length > 0
-          ? {
-              availability: scopedCandidates.some(
-                (candidate) => candidate.availability === "definite",
-              )
-                ? "definite"
-                : scopedCandidates[0].availability,
-              contextCount: Math.max(
-                ...scopedCandidates.map((candidate) => candidate.contexts.length),
-              ),
-              matchedContextCount: Math.max(
-                ...scopedCandidates.map((candidate) => candidate.matchedContexts.length),
-              ),
-              reasons: [
-                ...new Set(scopedCandidates.flatMap((candidate) => candidate.reasons)),
-              ].sort((left, right) => left.localeCompare(right)),
-            }
-          : undefined,
       confidence: queryProjection.confidence,
       traces: input.includeTraces ? [...queryProjection.traces] : [],
     };
@@ -104,13 +67,13 @@ export function buildSelectorQueries(input: {
 }
 
 export function buildSelectorBranches(input: {
-  projectSelectorProjection: ProjectSelectorProjectionResult | undefined;
+  projectInput: ProjectEvidenceBuildInput;
   selectorQueries: SelectorQueryAnalysis[];
   indexes: ProjectEvidenceBuilderIndexes;
   includeTraces: boolean;
 }): SelectorBranchAnalysis[] {
-  const projection = input.projectSelectorProjection;
-  if (!projection) {
+  const selectorReachability = input.projectInput.selectorReachability;
+  if (!selectorReachability) {
     return [];
   }
 
@@ -121,7 +84,7 @@ export function buildSelectorBranches(input: {
   );
 
   const selectorBranches: SelectorBranchAnalysis[] = [];
-  for (const [index, branchProjection] of projection.selectorBranches.entries()) {
+  for (const [index, branchProjection] of selectorReachability.selectorBranches.entries()) {
     const sourceQuery = queryBySelectorNodeId.get(branchProjection.selectorNodeId);
     if (!sourceQuery) {
       continue;
@@ -143,22 +106,14 @@ export function buildSelectorBranches(input: {
       ruleDefinitionNodeId: branchProjection.ruleDefinitionNodeId,
       stylesheetNodeId: branchProjection.stylesheetNodeId,
       stylesheetId: sourceQuery.stylesheetId,
-      selectorText: branchProjection.selectorText,
+      selectorText: branchProjection.branchText,
       selectorListText: branchProjection.selectorListText,
       branchIndex: branchProjection.branchIndex,
       branchCount: branchProjection.branchCount,
       ruleKey: branchProjection.ruleKey,
       location: branchProjection.location,
-      selectorReachabilityStatus: branchProjection.selectorReachabilityStatus,
+      selectorReachabilityStatus: branchProjection.status,
       reasons: [...branchProjection.reasons],
-      scopedReachability: branchProjection.scopedReachability
-        ? {
-            availability: branchProjection.scopedReachability.availability,
-            contextCount: branchProjection.scopedReachability.contexts.length,
-            matchedContextCount: branchProjection.scopedReachability.matchedContexts.length,
-            reasons: [...branchProjection.scopedReachability.reasons],
-          }
-        : undefined,
       confidence: branchProjection.confidence,
       traces: input.includeTraces ? [...branchProjection.traces] : [],
       sourceQuery,

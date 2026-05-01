@@ -57,9 +57,9 @@ test("scanProject reports scan progress events", async () => {
     assert.ok(
       events.some(
         (event) =>
-          event.stage === "reachability" &&
+          event.stage === "selector-reachability" &&
           event.status === "started" &&
-          event.message === "Building reachability graph",
+          event.message === "Building selector reachability evidence",
       ),
     );
     assert.ok(events.some((event) => event.stage === "run-rules" && event.status === "completed"));
@@ -84,7 +84,7 @@ test("scanProject can collect performance timings", async () => {
     assert.ok(result.performance.totalMs >= 0);
     assert.ok(
       result.performance.stages.some(
-        (stage) => stage.stage === "reachability" && stage.durationMs >= 0,
+        (stage) => stage.stage === "selector-reachability" && stage.durationMs >= 0,
       ),
     );
   } finally {

@@ -2,6 +2,7 @@ import { buildCssModuleMemberMatches } from "./entities/cssModules.js";
 import type { ProjectEvidenceBuildInput, ProjectEvidenceBuilderIndexes } from "./analysisTypes.js";
 import { buildComponentRenders, buildModuleImports } from "./relations/moduleAndComponent.js";
 import {
+  buildProviderBackedStylesheets,
   buildProviderClassSatisfactions,
   buildSelectorMatches,
 } from "./relations/providerAndSelectorMatches.js";
@@ -32,6 +33,11 @@ export function buildProjectEvidenceRelations(input: {
     input: input.projectInput,
     includeTraces: input.includeTraces,
   });
+  const providerBackedStylesheets = buildProviderBackedStylesheets({
+    input: input.projectInput,
+    indexes: input.indexes,
+    includeTraces: input.includeTraces,
+  });
   const selectorMatches = buildSelectorMatches(input.entities.selectorQueries, input.includeTraces);
   const cssModuleMemberMatches = buildCssModuleMemberMatches({
     references: input.entities.cssModuleMemberReferences,
@@ -51,6 +57,7 @@ export function buildProjectEvidenceRelations(input: {
     referenceMatches,
     selectorMatches,
     providerClassSatisfactions,
+    providerBackedStylesheets,
     cssModuleMemberMatches,
   };
 }

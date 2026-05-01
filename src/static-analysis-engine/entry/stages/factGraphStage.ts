@@ -4,12 +4,12 @@ import type { ProjectSnapshot } from "../../pipeline/workspace-discovery/index.j
 import type { FactGraphStageResult } from "./types.js";
 
 export function runFactGraphStage(input: {
-  snapshot: ProjectSnapshot;
+  workspaceDiscovery: ProjectSnapshot;
   frontends: LanguageFrontendsResult;
   includeTraces?: boolean;
 }): FactGraphStageResult {
   return buildFactGraph({
-    snapshot: input.snapshot,
+    snapshot: input.workspaceDiscovery,
     frontends: input.frontends,
     includeTraces: input.includeTraces,
   });

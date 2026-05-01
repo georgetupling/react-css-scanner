@@ -1,5 +1,4 @@
-export { analyzeProjectSourceTexts, analyzeSourceText } from "./entry/scan.js";
-export { analyzeCssSources } from "./pipeline/css-analysis/index.js";
+export { analyzeProjectScanInput } from "./entry/scan.js";
 export {
   buildLanguageFrontends,
   buildSourceFrontendFactsFromSourceFiles,
@@ -14,23 +13,9 @@ export {
 } from "./pipeline/fact-graph/index.js";
 export { evaluateSymbolicExpressions } from "./pipeline/symbolic-evaluation/index.js";
 export { buildRenderStructure } from "./pipeline/render-structure/index.js";
-export { buildModuleFacts } from "./pipeline/module-facts/buildModuleFacts.js";
-export {
-  collectAvailableExportedNames,
-  getAllResolvedModuleFacts,
-  getAnalyzedModuleFilePaths,
-  getDirectSourceImportFacts,
-  getDirectStylesheetImportFacts,
-  getResolvedModuleFacts,
-  resolveModuleFactExport,
-  resolveModuleFactSourceSpecifier,
-  resolveSourceSpecifier,
-} from "./pipeline/module-facts/index.js";
 export { toAbstractClassSet } from "./pipeline/symbolic-evaluation/class-values/index.js";
 export { toClassExpressionSummary } from "./pipeline/symbolic-evaluation/index.js";
-export { buildExternalCssSummary } from "./pipeline/external-css/index.js";
 export {
-  buildProjectSelectorProjection,
   buildSelectorReachability,
   selectorBranchSourceKey,
 } from "./pipeline/selector-reachability/index.js";
@@ -50,7 +35,6 @@ export {
   projectEvidenceDiagnosticId,
   stylesheetReachabilityEvidenceId,
 } from "./pipeline/project-evidence/index.js";
-export { buildReachabilitySummary } from "./pipeline/reachability/index.js";
 export type { EngineModuleId, EngineSymbolId, SourceAnchor } from "./types/core.js";
 export type {
   CssAtRuleContextFact,
@@ -76,9 +60,9 @@ export type {
   AnalysisProgressCallback,
   AnalysisProgressEvent,
   AnalysisProgressStatus,
+  StaticAnalysisEngineProjectResult,
   StaticAnalysisEngineResult,
 } from "./types/runtime.js";
-export type { ExperimentalCssFileAnalysis } from "./pipeline/css-analysis/index.js";
 export type {
   CssFrontendFacts,
   CssFrontendFile,
@@ -165,12 +149,6 @@ export type {
   UnsupportedClassReferenceReason,
 } from "./pipeline/render-structure/index.js";
 export type {
-  ActiveExternalCssProvider,
-  ExternalCssAnalysisInput,
-  ExternalCssGlobalProviderConfig,
-  ExternalCssSummary,
-} from "./pipeline/external-css/index.js";
-export type {
   HtmlStylesheetLinkFact,
   HtmlStylesheetLinkInput,
 } from "./pipeline/workspace-discovery/index.js";
@@ -179,18 +157,6 @@ export type {
   RenderGraphProjectionEdge as RenderGraphEdge,
   RenderGraphProjectionNode as RenderGraphNode,
 } from "./pipeline/render-structure/index.js";
-export type {
-  ReachabilityAvailability,
-  ReachabilitySummary,
-  StylesheetReachabilityContext,
-  StylesheetReachabilityContextRecord,
-  StylesheetReachabilityRecord,
-} from "./pipeline/reachability/index.js";
-export type {
-  ModuleFacts,
-  ModuleFactsImportKind,
-  ResolvedModuleFacts,
-} from "./pipeline/module-facts/index.js";
 export type {
   AbstractClassSet,
   AbstractValue,
@@ -227,10 +193,6 @@ export type {
   UnsupportedClassReferenceAnalysis,
 } from "./pipeline/project-evidence/index.js";
 export type {
-  ProjectSelectorBranchProjection,
-  ProjectSelectorProjectionResult,
-  ProjectSelectorQueryProjection,
-  ProjectSelectorScopedReachability,
   SelectorBranchMatch,
   SelectorBranchRequirement,
   SelectorBranchReachability,

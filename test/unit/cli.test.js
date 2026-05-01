@@ -94,7 +94,7 @@ test("CLI includes performance timings when requested in JSON output", async () 
     assert.ok(output.performance.totalMs >= 0);
     assert.ok(
       output.performance.stages.some(
-        (stage) => stage.stage === "reachability" && typeof stage.durationMs === "number",
+        (stage) => stage.stage === "selector-reachability" && typeof stage.durationMs === "number",
       ),
     );
   } finally {
@@ -115,7 +115,10 @@ test("CLI includes performance timings when requested in text output", async () 
     const { stdout } = await runCli([project.rootDir, "--timings"]);
 
     assert.match(stdout, /Timings\n/);
-    assert.match(stdout, /reachability: \d+(?:\.\d)?ms \(Building reachability graph\)/);
+    assert.match(
+      stdout,
+      /selector-reachability: \d+(?:\.\d)?ms \(Building selector reachability evidence\)/,
+    );
     assert.match(stdout, /total: \d+(?:\.\d)?ms/);
   } finally {
     await project.cleanup();

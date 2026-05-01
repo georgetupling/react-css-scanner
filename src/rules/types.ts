@@ -5,7 +5,7 @@ import type {
   ProjectEvidenceId,
   SourceAnchor,
 } from "../static-analysis-engine/index.js";
-import type { PackageCssImportFact } from "../static-analysis-engine/pipeline/external-css/index.js";
+import type { PackageCssImportFact } from "../static-analysis-engine/pipeline/workspace-discovery/index.js";
 import type { ScannerConfig } from "../config/index.js";
 
 export type RuleSeverity = "debug" | "info" | "warn" | "error";

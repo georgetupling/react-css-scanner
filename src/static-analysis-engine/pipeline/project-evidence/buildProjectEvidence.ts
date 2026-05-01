@@ -99,6 +99,7 @@ function normalizeRelations(
     referenceMatches: [...(input.referenceMatches ?? [])].sort(compareById),
     selectorMatches: [...(input.selectorMatches ?? [])].sort(compareById),
     providerClassSatisfactions: [...(input.providerClassSatisfactions ?? [])].sort(compareById),
+    providerBackedStylesheets: [...(input.providerBackedStylesheets ?? [])].sort(compareById),
     cssModuleMemberMatches: [...(input.cssModuleMemberMatches ?? [])].sort(compareById),
   };
 }

@@ -23,7 +23,9 @@ export type {
   CssModuleReferenceDiagnosticAnalysis,
   CssFileRecord,
   DeclarationForSignature,
+  ExperimentalCssFileAnalysis,
   ModuleImportRelation,
+  ProjectImportKind,
   ProjectEvidenceId,
   ProjectEvidenceBuilderIndexes,
   ProjectEvidenceStylesheetInput,
@@ -39,6 +41,7 @@ export type {
   StylesheetAnalysis,
   StylesheetOrigin,
   StylesheetReachabilityRelation,
+  ReachabilityAvailability,
   UnsupportedClassReferenceAnalysis,
 } from "./analysisTypes.js";
 export type {

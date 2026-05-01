@@ -1,17 +1,10 @@
 import ts from "typescript";
 
-import type { ExperimentalCssFileAnalysis } from "../../pipeline/css-analysis/index.js";
-import type { ExternalCssSummary } from "../../pipeline/external-css/index.js";
-import type { ReachabilitySummary } from "../../pipeline/reachability/index.js";
-import type { ModuleFacts } from "../../pipeline/module-facts/index.js";
 import type { LanguageFrontendsResult } from "../../pipeline/language-frontends/index.js";
 import type { FactGraphResult } from "../../pipeline/fact-graph/index.js";
 import type { OwnershipInferenceResult } from "../../pipeline/ownership-inference/index.js";
 import type { ProjectEvidenceAssemblyResult } from "../../pipeline/project-evidence/index.js";
-import type {
-  ProjectSelectorProjectionResult,
-  SelectorReachabilityResult,
-} from "../../pipeline/selector-reachability/index.js";
+import type { SelectorReachabilityResult } from "../../pipeline/selector-reachability/index.js";
 import type { SymbolicEvaluationResult } from "../../pipeline/symbolic-evaluation/index.js";
 import type { RenderStructureResult } from "../../pipeline/render-structure/index.js";
 
@@ -28,25 +21,8 @@ export type ParsedProjectFile = {
   parsedSourceFile: ts.SourceFile;
 };
 
-export type ModuleFactsStageResult = {
-  moduleFacts: ModuleFacts;
-};
-
-export type CssAnalysisStageResult = {
-  cssFiles: ExperimentalCssFileAnalysis[];
-};
-
-export type ExternalCssStageResult = {
-  externalCssSummary: ExternalCssSummary;
-};
-
-export type ReachabilityStageResult = {
-  reachabilitySummary: ReachabilitySummary;
-};
-
 export type SelectorReachabilityStageResult = {
   selectorReachability: SelectorReachabilityResult;
-  projectSelectorProjection: ProjectSelectorProjectionResult;
 };
 
 export type ProjectEvidenceStageResult = {

@@ -1,5 +1,4 @@
 import type { RenderGraphProjectionEdge } from "../../render-structure/index.js";
-import { getAllResolvedModuleFacts } from "../../module-facts/index.js";
 import type {
   ComponentRenderRelation,
   ModuleImportRelation,
@@ -12,47 +11,9 @@ export function buildModuleImports(
   input: ProjectEvidenceBuildInput,
   indexes: ProjectEvidenceBuilderIndexes,
 ): ModuleImportRelation[] {
-  if (input.factGraph) {
-    return buildModuleImportsFromFactGraph(input, indexes);
-  }
-
   const imports: ModuleImportRelation[] = [];
 
-  for (const moduleFacts of getAllResolvedModuleFacts({
-    moduleFacts: input.moduleFacts,
-  })) {
-    const sourceFileId = indexes.sourceFileIdByPath.get(normalizeProjectPath(moduleFacts.filePath));
-    if (!sourceFileId) {
-      continue;
-    }
-
-    for (const importRecord of moduleFacts.imports) {
-      imports.push({
-        fromSourceFileId: sourceFileId,
-        toModuleId: importRecord.resolution.resolvedModuleId,
-        resolvedFilePath: importRecord.resolution.resolvedFilePath
-          ? normalizeProjectPath(importRecord.resolution.resolvedFilePath)
-          : undefined,
-        specifier: importRecord.specifier,
-        importKind: importRecord.importKind,
-      });
-    }
-  }
-
-  return imports.sort((left, right) =>
-    `${left.fromSourceFileId}:${left.specifier}:${left.importKind}`.localeCompare(
-      `${right.fromSourceFileId}:${right.specifier}:${right.importKind}`,
-    ),
-  );
-}
-
-function buildModuleImportsFromFactGraph(
-  input: ProjectEvidenceBuildInput,
-  indexes: ProjectEvidenceBuilderIndexes,
-): ModuleImportRelation[] {
-  const imports: ModuleImportRelation[] = [];
-
-  for (const importEdge of input.factGraph?.graph.edges.imports ?? []) {
+  for (const importEdge of input.factGraph.graph.edges.imports) {
     if (importEdge.importerKind !== "source") {
       continue;
     }

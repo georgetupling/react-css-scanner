@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { analyzeProjectSourceTexts } from "../../dist/static-analysis-engine.js";
 import { buildFactGraph } from "../../dist/static-analysis-engine/pipeline/fact-graph/buildFactGraph.js";
 import { buildLanguageFrontends } from "../../dist/static-analysis-engine/pipeline/language-frontends/buildLanguageFrontends.js";
 import { toClassExpressionSummary } from "../../dist/static-analysis-engine/pipeline/symbolic-evaluation/adapters/classExpressionSummary.js";
@@ -301,27 +300,6 @@ test("symbolic evaluation preserves runtime DOM exact class text", async () => {
     runtimeExpression.tokens.map((token) => token.token),
     ["ProseMirror", "editor-shell"],
   );
-});
-
-test("analyzeProjectSourceTexts keeps symbolic internals out of return payload", async () => {
-  const { snapshot, frontends, factGraph } = await buildEngineFlowFixture([
-    'export function App() { return <div className="internal-symbolic" />; }',
-    "",
-  ]);
-  const result = analyzeProjectSourceTexts({
-    sourceFiles: frontends.source.files.map((file) => ({
-      filePath: file.filePath,
-      sourceText: file.sourceText,
-    })),
-    source: frontends.source,
-    css: frontends.css,
-    boundaries: snapshot.boundaries,
-    resourceEdges: snapshot.edges,
-    factGraph,
-    includeTraces: false,
-  });
-
-  assert.equal("symbolicEvaluation" in result, false);
 });
 
 test("symbolic evaluation ids and indexes are deterministic across repeated runs", async () => {

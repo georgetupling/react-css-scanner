@@ -1,18 +1,8 @@
 import ts from "typescript";
 
 import type { EngineModuleId, EngineSymbolId } from "../../../../types/core.js";
-import { collectComponentLikeDefinitions } from "../../../../libraries/react-components/index.js";
-import {
-  getExportedNamesByLocalName,
-  getResolvedModuleFacts,
-  getTopLevelBindingFacts,
-} from "../../../module-facts/index.js";
-import type { ModuleFacts, ResolvedTopLevelBindingFact } from "../../../module-facts/types.js";
 import type { EngineSymbol, ScopeId, ScopeKind, SourceScope, SymbolKind } from "./types.js";
-import {
-  collectSourceDeclarationIndex,
-  type SourceValueDeclaration,
-} from "./collectSourceDeclarations.js";
+import { collectSourceDeclarationIndex } from "./collectSourceDeclarations.js";
 import {
   createScopeId,
   createSymbolId,
@@ -40,7 +30,6 @@ export function collectSourceSymbols(input: {
   filePath: string;
   parsedSourceFile: ts.SourceFile;
   moduleId: EngineModuleId;
-  moduleFacts?: ModuleFacts;
 }): CollectedSourceSymbols {
   const moduleScopeSymbols = collectModuleScopeSymbols(input);
   const symbols = new Map(moduleScopeSymbols);
@@ -80,7 +69,6 @@ function collectModuleScopeSymbols(input: {
   filePath: string;
   parsedSourceFile: ts.SourceFile;
   moduleId: EngineModuleId;
-  moduleFacts?: ModuleFacts;
 }): Map<EngineSymbolId, EngineSymbol> {
   const symbols = new Map<EngineSymbolId, EngineSymbol>();
   const moduleScopeId = createScopeId(
@@ -89,66 +77,8 @@ function collectModuleScopeSymbols(input: {
     toSourceFileAnchor(input.parsedSourceFile, input.filePath),
   );
   const declarationIndex = collectSourceDeclarationIndex(input.parsedSourceFile);
-  const componentLikeNames = new Set(
-    collectComponentLikeDefinitions({
-      filePath: input.filePath,
-      parsedSourceFile: input.parsedSourceFile,
-    }).map((definition) => definition.componentName),
-  );
-  const resolvedModuleFacts = input.moduleFacts
-    ? getResolvedModuleFacts({
-        moduleFacts: input.moduleFacts,
-        filePath: input.filePath,
-      })
-    : undefined;
-
-  if (!resolvedModuleFacts) {
-    collectLegacyModuleScopeSymbols(input, symbols, moduleScopeId);
-    return symbols;
-  }
-
-  const exportedNamesByLocalName = getExportedNamesByLocalName({
-    moduleFacts: input.moduleFacts!,
-    filePath: input.filePath,
-  });
-
-  for (const binding of getTopLevelBindingFacts({
-    moduleFacts: input.moduleFacts!,
-    filePath: input.filePath,
-  })) {
-    const declaration = toTopLevelDeclarationAnchor({
-      localName: binding.localName,
-      bindingKind: binding.bindingKind,
-      declarationIndex,
-      parsedSourceFile: input.parsedSourceFile,
-      filePath: input.filePath,
-    });
-    if (!declaration) {
-      continue;
-    }
-
-    const symbol = createModuleScopeSymbol({
-      moduleId: input.moduleId,
-      localName: binding.localName,
-      kind: toTopLevelSymbolKind(
-        binding.bindingKind,
-        declarationIndex,
-        binding.localName,
-        componentLikeNames,
-      ),
-      symbolSpace: "value",
-      scopeId: moduleScopeId,
-      declaration,
-      exportedNames: exportedNamesByLocalName.get(binding.localName) ?? [],
-      resolution:
-        binding.bindingKind === "import-default" ||
-        binding.bindingKind === "import-named" ||
-        binding.bindingKind === "import-namespace"
-          ? { kind: "imported" as const }
-          : { kind: "local" as const },
-    });
-    symbols.set(symbol.id, symbol);
-  }
+  const exportedNamesByLocalName = new Map<string, string[]>();
+  collectLegacyModuleScopeSymbols(input, symbols, moduleScopeId);
 
   for (const [localName, declaration] of declarationIndex.typeAliases.entries()) {
     const symbol = createModuleScopeSymbol({
@@ -616,125 +546,6 @@ function getVariableStatementKind(statement: ts.VariableStatement): "const" | "l
     return "let";
   }
   return "var";
-}
-
-function toTopLevelDeclarationAnchor(input: {
-  localName: string;
-  bindingKind: ResolvedTopLevelBindingFact["bindingKind"];
-  declarationIndex: ReturnType<typeof collectSourceDeclarationIndex>;
-  parsedSourceFile: ts.SourceFile;
-  filePath: string;
-}) {
-  if (
-    input.bindingKind === "import-default" ||
-    input.bindingKind === "import-named" ||
-    input.bindingKind === "import-namespace"
-  ) {
-    return findImportAnchor(input.parsedSourceFile, input.filePath, input.localName);
-  }
-
-  const declaration = input.declarationIndex.valueDeclarations.get(input.localName);
-  if (!declaration) {
-    return undefined;
-  }
-
-  return toValueDeclarationAnchor(declaration, input.parsedSourceFile, input.filePath);
-}
-
-function toValueDeclarationAnchor(
-  declaration: SourceValueDeclaration,
-  parsedSourceFile: ts.SourceFile,
-  filePath: string,
-) {
-  switch (declaration.kind) {
-    case "function":
-    case "class":
-    case "enum":
-    case "const-enum":
-      return declaration.node.name
-        ? toSourceAnchor(declaration.node.name, parsedSourceFile, filePath)
-        : toSourceAnchor(declaration.node, parsedSourceFile, filePath);
-    case "namespace":
-      return ts.isIdentifier(declaration.node.name)
-        ? toSourceAnchor(declaration.node.name, parsedSourceFile, filePath)
-        : toSourceAnchor(declaration.node, parsedSourceFile, filePath);
-    case "const":
-    case "let":
-    case "var":
-      return toSourceAnchor(declaration.node.name, parsedSourceFile, filePath);
-  }
-}
-
-function findImportAnchor(sourceFile: ts.SourceFile, filePath: string, localName: string) {
-  for (const statement of sourceFile.statements) {
-    if (!ts.isImportDeclaration(statement) || !statement.importClause) {
-      continue;
-    }
-
-    const importClause = statement.importClause;
-    if (importClause.name?.text === localName) {
-      return toSourceAnchor(importClause.name, sourceFile, filePath);
-    }
-
-    if (!importClause.namedBindings) {
-      continue;
-    }
-
-    if (ts.isNamedImports(importClause.namedBindings)) {
-      for (const element of importClause.namedBindings.elements) {
-        if (element.name.text === localName) {
-          return toSourceAnchor(element.name, sourceFile, filePath);
-        }
-      }
-      continue;
-    }
-
-    if (importClause.namedBindings.name.text === localName) {
-      return toSourceAnchor(importClause.namedBindings.name, sourceFile, filePath);
-    }
-  }
-
-  return undefined;
-}
-
-function toTopLevelSymbolKind(
-  bindingKind: ResolvedTopLevelBindingFact["bindingKind"],
-  declarationIndex: ReturnType<typeof collectSourceDeclarationIndex>,
-  localName: string,
-  componentLikeNames: ReadonlySet<string>,
-): SymbolKind {
-  switch (bindingKind) {
-    case "import-default":
-    case "import-named":
-    case "import-namespace":
-      return "imported-binding";
-    case "function":
-      return componentLikeNames.has(localName) ? "component" : "function";
-    case "class":
-      return componentLikeNames.has(localName) ? "component" : "class";
-    case "enum":
-      return "enum";
-    case "namespace":
-      return "namespace";
-    case "variable":
-      return classifyTopLevelVariableKind(
-        declarationIndex.valueDeclarations.get(localName),
-        localName,
-        componentLikeNames,
-      );
-  }
-}
-
-function classifyTopLevelVariableKind(
-  declaration: SourceValueDeclaration | undefined,
-  localName: string,
-  componentLikeNames: ReadonlySet<string>,
-): SymbolKind {
-  if (componentLikeNames.has(localName)) {
-    return "component";
-  }
-
-  return declaration?.kind === "const" ? "constant" : "variable";
 }
 
 function collectLegacyModuleScopeSymbols(

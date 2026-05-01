@@ -1,8 +1,7 @@
 import { runRules } from "../rules/index.js";
 import { severityMeetsThreshold } from "../rules/severity.js";
-import { analyzeProjectSourceTexts } from "../static-analysis-engine/index.js";
+import { analyzeProjectScanInput } from "../static-analysis-engine/index.js";
 import { applyIgnoreFilter, mergeIgnoreConfig } from "./ignoreFilter.js";
-import { resolveRootDir } from "./pathUtils.js";
 import { countFindingsByRule, countFindingsBySeverity } from "./summaryCounts.js";
 import type {
   ScanDiagnostic,
@@ -13,57 +12,23 @@ import type {
   ScanProgressCallback,
   ScanSummary,
 } from "./types.js";
-import { buildProjectSnapshot } from "../static-analysis-engine/pipeline/workspace-discovery/index.js";
-import { runFactGraphStage } from "../static-analysis-engine/entry/stages/factGraphStage.js";
-import { runLanguageFrontendsStage } from "../static-analysis-engine/entry/stages/languageFrontendsStage.js";
 
 export async function scanProject(input: ScanProjectInput = {}): Promise<ScanProjectResult> {
   const totalStartedAt = performance.now();
   const performanceStages: ScanPerformanceStage[] = [];
-  const rootDir = resolveRootDir(input.rootDir);
   const progress = createScanProgressReporter({
     onProgress: input.onProgress,
     performanceStages: input.collectPerformance ? performanceStages : undefined,
   });
-  const snapshot = await buildProjectSnapshot({
+  const engineProjectResult = await analyzeProjectScanInput({
     scanInput: input,
-    rootDir,
-    runStage: (stage, message, run) => runScanStage(progress, stage, message, run),
-  });
-  const languageFrontends = runLanguageFrontendsStage({ snapshot });
-  const factGraph = runFactGraphStage({
-    snapshot,
-    frontends: languageFrontends,
-    includeTraces: input.includeTraces ?? true,
-  });
-
-  const engineResult = analyzeProjectSourceTexts({
-    sourceFiles: languageFrontends.source.files.map((file) => ({
-      filePath: file.filePath,
-      sourceText: file.sourceText,
-    })),
-    projectRoot: snapshot.rootDir,
-    source: languageFrontends.source,
-    css: languageFrontends.css,
-    stylesheets: languageFrontends.css.files.map((file) => ({
-      filePath: file.filePath,
-      cssKind: file.cssKind,
-      origin: file.origin,
-    })),
-    boundaries: snapshot.boundaries,
-    resourceEdges: snapshot.edges,
-    cssModules: snapshot.config.cssModules,
-    externalCss: {
-      fetchRemote: snapshot.externalCss.fetchRemote,
-      globalProviders: snapshot.externalCss.globalProviders,
-    },
-    factGraph,
     includeTraces: input.includeTraces ?? true,
     onProgress: (event) => progress(event.stage, event.status, event.message, event.durationMs),
   });
+  const { snapshot, analysisEvidence } = engineProjectResult;
   const ruleResult = await runScanStage(progress, "run-rules", "Running rules", () =>
     runRules({
-      analysisEvidence: engineResult.analysisEvidence,
+      analysisEvidence,
       externalCssPackageImports: snapshot.edges.filter(
         (edge) => edge.kind === "package-css-import",
       ),
@@ -81,10 +46,9 @@ export async function scanProject(input: ScanProjectInput = {}): Promise<ScanPro
     cssFileCount: snapshot.discoveredFiles.cssFiles.length,
     findings: ruleResult.findings,
     diagnostics: snapshot.diagnostics,
-    classReferenceCount: engineResult.analysisEvidence.projectEvidence.meta.classReferenceCount,
-    classDefinitionCount: engineResult.analysisEvidence.projectEvidence.meta.classDefinitionCount,
-    selectorQueryCount:
-      engineResult.analysisEvidence.projectEvidence.entities.selectorQueries.length,
+    classReferenceCount: analysisEvidence.projectEvidence.meta.classReferenceCount,
+    classDefinitionCount: analysisEvidence.projectEvidence.meta.classDefinitionCount,
+    selectorQueryCount: analysisEvidence.projectEvidence.entities.selectorQueries.length,
     failed,
   });
 

@@ -1,5 +1,4 @@
-import { getAllResolvedModuleFacts } from "../../module-facts/index.js";
-import type { StyleSheetNode } from "../../fact-graph/index.js";
+import type { RuleDefinitionNode, StyleSheetNode } from "../../fact-graph/index.js";
 import type {
   RenderGraphProjectionNode,
   RenderModel,
@@ -45,20 +44,8 @@ export function buildSourceFiles(
   const sourceFiles: SourceFileAnalysis[] = [];
   const sourcePaths = new Set<string>();
 
-  if (input.factGraph) {
-    for (const moduleNode of input.factGraph.graph.nodes.modules) {
-      sourcePaths.add(normalizeProjectPath(moduleNode.filePath));
-    }
-  } else {
-    for (const moduleFacts of getAllResolvedModuleFacts({
-      moduleFacts: input.moduleFacts,
-    })) {
-      sourcePaths.add(normalizeProjectPath(moduleFacts.filePath));
-    }
-
-    for (const component of input.renderModel.components) {
-      sourcePaths.add(normalizeProjectPath(component.filePath));
-    }
+  for (const moduleNode of input.factGraph.graph.nodes.modules) {
+    sourcePaths.add(normalizeProjectPath(moduleNode.filePath));
   }
 
   for (const filePath of [...sourcePaths].sort((left, right) => left.localeCompare(right))) {
@@ -166,8 +153,8 @@ export function buildStylesheets(
   indexes: ProjectEvidenceBuilderIndexes,
 ): StylesheetAnalysis[] {
   const stylesheetInputsByPath = indexStylesheetInputsByPath(input);
-  const stylesheets = input.cssFiles.map((cssFile, index) => {
-    const filePath = normalizeOptionalProjectPath(cssFile.filePath);
+  const stylesheets = input.factGraph.graph.nodes.stylesheets.map((stylesheet, index) => {
+    const filePath = normalizeOptionalProjectPath(stylesheet.filePath);
     const stylesheetInput = filePath ? stylesheetInputsByPath.get(filePath) : undefined;
     const id = filePath ? createPathId("stylesheet", filePath) : `stylesheet:anonymous:${index}`;
     if (filePath) {
@@ -192,42 +179,58 @@ export function buildClassDefinitions(
   indexes: ProjectEvidenceBuilderIndexes,
 ): ClassDefinitionAnalysis[] {
   const stylesheetInputsByPath = indexStylesheetInputsByPath(input);
-  const stylesheetsByPath = new Map(
-    stylesheets.map((stylesheet) => [stylesheet.filePath ?? stylesheet.id, stylesheet]),
-  );
+  const stylesheetsByNodeId = new Map<string, StylesheetAnalysis>();
+  for (const stylesheetNode of input.factGraph.graph.nodes.stylesheets) {
+    const filePath = normalizeOptionalProjectPath(stylesheetNode.filePath);
+    const stylesheet = filePath
+      ? stylesheets.find((candidate) => candidate.filePath === filePath)
+      : stylesheets.find((candidate) => candidate.filePath === undefined);
+    if (stylesheet) {
+      stylesheetsByNodeId.set(stylesheetNode.id, stylesheet);
+    }
+  }
   const definitions: ClassDefinitionAnalysis[] = [];
 
-  for (const cssFile of input.cssFiles) {
-    const stylesheet =
-      stylesheetsByPath.get(normalizeOptionalProjectPath(cssFile.filePath) ?? "") ??
-      stylesheets.find((candidate) => candidate.filePath === undefined);
+  for (const rule of getRuleDefinitionNodes(input)) {
+    const stylesheet = stylesheetsByNodeId.get(rule.stylesheetNodeId);
     if (!stylesheet) {
       continue;
     }
 
-    for (const definition of cssFile.classDefinitions) {
-      const stylesheetInput = stylesheet.filePath
-        ? stylesheetInputsByPath.get(stylesheet.filePath)
-        : undefined;
-      const id = createClassDefinitionId(stylesheet.id, definition);
-      const analysis: ClassDefinitionAnalysis = {
-        id,
-        stylesheetId: stylesheet.id,
-        className: definition.className,
-        selectorText: definition.selector,
-        selectorKind: getDefinitionSelectorKind(definition),
-        line: definition.line,
-        atRuleContext: [...definition.atRuleContext],
-        declarationProperties: [...definition.declarations],
-        declarationSignature: getDeclarationSignature(definition.declarationDetails),
-        isCssModule: isCssModuleStylesheetFromInventory(stylesheetInput, stylesheet.filePath),
-        sourceDefinition: definition,
-      };
+    for (const branch of rule.sourceRule.selectorBranches) {
+      for (const className of branch.subjectClassNames) {
+        const definition = {
+          className,
+          selector: branch.raw,
+          selectorBranch: branch,
+          declarations: [...new Set(rule.sourceRule.declarations.map((decl) => decl.property))],
+          declarationDetails: [...rule.sourceRule.declarations],
+          line: rule.sourceRule.line,
+          atRuleContext: [...rule.sourceRule.atRuleContext],
+        };
+        const stylesheetInput = stylesheet.filePath
+          ? stylesheetInputsByPath.get(stylesheet.filePath)
+          : undefined;
+        const id = createClassDefinitionId(stylesheet.id, definition);
+        const analysis: ClassDefinitionAnalysis = {
+          id,
+          stylesheetId: stylesheet.id,
+          className: definition.className,
+          selectorText: definition.selector,
+          selectorKind: getDefinitionSelectorKind(definition),
+          line: definition.line,
+          atRuleContext: [...definition.atRuleContext],
+          declarationProperties: [...definition.declarations],
+          declarationSignature: getDeclarationSignature(definition.declarationDetails),
+          isCssModule: isCssModuleStylesheetFromInventory(stylesheetInput, stylesheet.filePath),
+          sourceDefinition: definition,
+        };
 
-      definitions.push(analysis);
-      stylesheet.definitions.push(id);
-      pushMapValue(indexes.definitionsByClassName, definition.className, id);
-      pushMapValue(indexes.definitionsByStylesheetId, stylesheet.id, id);
+        definitions.push(analysis);
+        stylesheet.definitions.push(id);
+        pushMapValue(indexes.definitionsByClassName, definition.className, id);
+        pushMapValue(indexes.definitionsByStylesheetId, stylesheet.id, id);
+      }
     }
   }
 
@@ -280,41 +283,59 @@ export function buildClassContexts(
   stylesheets: StylesheetAnalysis[],
   indexes: ProjectEvidenceBuilderIndexes,
 ): ClassContextAnalysis[] {
-  const stylesheetsByPath = new Map(
-    stylesheets.map((stylesheet) => [stylesheet.filePath ?? stylesheet.id, stylesheet]),
-  );
+  const stylesheetsByNodeId = new Map<string, StylesheetAnalysis>();
+  for (const stylesheetNode of input.factGraph.graph.nodes.stylesheets) {
+    const filePath = normalizeOptionalProjectPath(stylesheetNode.filePath);
+    const stylesheet = filePath
+      ? stylesheets.find((candidate) => candidate.filePath === filePath)
+      : stylesheets.find((candidate) => candidate.filePath === undefined);
+    if (stylesheet) {
+      stylesheetsByNodeId.set(stylesheetNode.id, stylesheet);
+    }
+  }
   const contexts: ClassContextAnalysis[] = [];
 
-  for (const cssFile of input.cssFiles) {
-    const stylesheet =
-      stylesheetsByPath.get(normalizeOptionalProjectPath(cssFile.filePath) ?? "") ??
-      stylesheets.find((candidate) => candidate.filePath === undefined);
+  for (const rule of getRuleDefinitionNodes(input)) {
+    const stylesheet = stylesheetsByNodeId.get(rule.stylesheetNodeId);
     if (!stylesheet) {
       continue;
     }
 
-    for (const context of cssFile.classContexts) {
-      const id = createClassContextId(stylesheet.id, context);
-      const analysis: ClassContextAnalysis = {
-        id,
-        stylesheetId: stylesheet.id,
-        className: context.className,
-        selectorText: context.selector,
-        selectorKind: getSelectorBranchKind(context.selectorBranch),
-        line: context.line,
-        atRuleContext: [...context.atRuleContext],
-        sourceContext: context,
-      };
+    for (const branch of rule.sourceRule.selectorBranches) {
+      for (const className of branch.contextClassNames) {
+        const context = {
+          className,
+          selector: branch.raw,
+          selectorBranch: branch,
+          line: rule.sourceRule.line,
+          atRuleContext: [...rule.sourceRule.atRuleContext],
+        };
+        const id = createClassContextId(stylesheet.id, context);
+        const analysis: ClassContextAnalysis = {
+          id,
+          stylesheetId: stylesheet.id,
+          className: context.className,
+          selectorText: context.selector,
+          selectorKind: getSelectorBranchKind(context.selectorBranch),
+          line: context.line,
+          atRuleContext: [...context.atRuleContext],
+          sourceContext: context,
+        };
 
-      contexts.push(analysis);
-      pushMapValue(indexes.contextsByClassName, context.className, id);
-      pushMapValue(indexes.contextsByStylesheetId, stylesheet.id, id);
+        contexts.push(analysis);
+        pushMapValue(indexes.contextsByClassName, context.className, id);
+        pushMapValue(indexes.contextsByStylesheetId, stylesheet.id, id);
+      }
     }
   }
 
   sortIndexValues(indexes.contextsByClassName);
   sortIndexValues(indexes.contextsByStylesheetId);
   return contexts.sort(compareById);
+}
+
+function getRuleDefinitionNodes(input: ProjectEvidenceBuildInput): RuleDefinitionNode[] {
+  return input.factGraph.graph.nodes.ruleDefinitions;
 }
 
 export function buildUnsupportedClassReferences(

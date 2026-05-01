@@ -1,6 +1,6 @@
 import ts from "typescript";
 
-import type { ModuleFactsImportRecord } from "../../../module-facts/types.js";
+import type { SourceImportSyntaxRecord } from "../module-syntax/index.js";
 import type { RuntimeDomClassSite, RuntimeDomLibraryHint } from "../../types.js";
 import {
   buildRuntimeDomClassSite,
@@ -15,7 +15,7 @@ const PROSEMIRROR_VIEW_PACKAGE = "prosemirror-view";
 export function collectProseMirrorEditorViewRuntimeDomSites(input: {
   node: ts.Node;
   context: RuntimeDomFrontendAdapterContext;
-  imports: ModuleFactsImportRecord[];
+  imports: SourceImportSyntaxRecord[];
 }): RuntimeDomClassSite[] {
   if (!ts.isNewExpression(input.node)) {
     return [];
@@ -125,7 +125,7 @@ type ProseMirrorViewBindings = {
 };
 
 function collectProseMirrorViewBindings(
-  imports: ModuleFactsImportRecord[],
+  imports: SourceImportSyntaxRecord[],
 ): ProseMirrorViewBindings {
   const namedImports = new Map<string, string>();
   const namespaceImports = new Set<string>();

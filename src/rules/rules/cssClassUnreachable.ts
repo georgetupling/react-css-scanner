@@ -45,7 +45,14 @@ function runCssClassUnreachableRule(context: RuleContext): UnresolvedFinding[] {
         reference.id,
         className,
       );
-      if (matches.length === 0 || matches.some((match) => match.reachability !== "unavailable")) {
+      if (matches.length === 0) {
+        continue;
+      }
+      if (
+        matches.some(
+          (match) => match.reachability === "definite" || match.reachability === "possible",
+        )
+      ) {
         continue;
       }
 

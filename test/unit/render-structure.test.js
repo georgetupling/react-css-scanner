@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildModuleFacts } from "../../dist/static-analysis-engine.js";
 import { buildFactGraph } from "../../dist/static-analysis-engine/pipeline/fact-graph/buildFactGraph.js";
 import { buildLanguageFrontends } from "../../dist/static-analysis-engine/pipeline/language-frontends/buildLanguageFrontends.js";
 import { buildRenderStructure } from "../../dist/static-analysis-engine/pipeline/render-structure/buildRenderStructure.js";
@@ -404,13 +403,8 @@ async function buildProjectionFixture() {
     });
     const frontends = buildLanguageFrontends({ snapshot });
     const factGraph = buildFactGraph({ snapshot, frontends });
-    const moduleFacts = buildModuleFacts({
-      source: frontends.source,
-      stylesheetFilePaths: ["src/app.css"],
-    });
     return {
       graph: factGraph.graph,
-      moduleFacts,
     };
   } finally {
     await project.cleanup();
@@ -446,13 +440,8 @@ async function buildForwardedContributionFixture() {
     });
     const frontends = buildLanguageFrontends({ snapshot });
     const factGraph = buildFactGraph({ snapshot, frontends });
-    const moduleFacts = buildModuleFacts({
-      source: frontends.source,
-      stylesheetFilePaths: ["src/app.css"],
-    });
     return {
       graph: factGraph.graph,
-      moduleFacts,
     };
   } finally {
     await project.cleanup();

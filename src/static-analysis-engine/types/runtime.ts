@@ -1,6 +1,7 @@
 import type { OwnershipInferenceResult } from "../pipeline/ownership-inference/index.js";
 import type { ProjectEvidenceAssemblyResult } from "../pipeline/project-evidence/index.js";
 import type { SelectorReachabilityResult } from "../pipeline/selector-reachability/index.js";
+import type { ProjectSnapshot } from "../pipeline/workspace-discovery/index.js";
 
 export type AnalysisEvidence = {
   projectEvidence: ProjectEvidenceAssemblyResult;
@@ -10,6 +11,10 @@ export type AnalysisEvidence = {
 
 export type StaticAnalysisEngineResult = {
   analysisEvidence: AnalysisEvidence;
+};
+
+export type StaticAnalysisEngineProjectResult = StaticAnalysisEngineResult & {
+  snapshot: ProjectSnapshot;
 };
 
 export type AnalysisProgressStatus = "started" | "completed";

@@ -1,10 +1,4 @@
 import type { ClassExpressionSummary } from "../symbolic-evaluation/class-values/types.js";
-import type { ExternalCssSummary } from "../external-css/types.js";
-import type { ModuleFacts, ModuleFactsImportKind } from "../module-facts/types.js";
-import type {
-  ReachabilityAvailability,
-  StylesheetReachabilityContextRecord,
-} from "../reachability/types.js";
 import type {
   RenderGraphProjectionEdge,
   RenderModel,
@@ -12,7 +6,6 @@ import type {
 } from "../render-structure/types.js";
 import type { RuntimeDomLibraryHint } from "../language-frontends/types.js";
 import type {
-  ProjectSelectorProjectionResult,
   SelectorReachabilityResult,
   SelectorReachabilityStatus,
 } from "../selector-reachability/index.js";
@@ -26,10 +19,68 @@ import type {
   CssClassContextFact,
   CssClassDefinitionFact,
   CssDeclarationFact,
+  CssStyleRuleFact,
 } from "../../types/css.js";
 
 export type ProjectEvidenceId = string;
 export type CssModuleLocalsConvention = "asIs" | "camelCase" | "camelCaseOnly";
+
+export type ProjectImportKind = "source" | "css" | "external-css" | "type-only" | "unknown";
+
+export type ExperimentalCssFileAnalysis = {
+  filePath?: string;
+  styleRules: CssStyleRuleFact[];
+  classDefinitions: CssClassDefinitionFact[];
+  classContexts: CssClassContextFact[];
+  atRuleContexts: CssAtRuleContextFact[][];
+};
+
+export type ReachabilityAvailability = "definite" | "possible" | "unknown" | "unavailable";
+
+export type StylesheetReachabilityContextRecord = {
+  context:
+    | { kind: "source-file"; filePath: string }
+    | { kind: "component"; filePath: string; componentKey?: string; componentName: string }
+    | {
+        kind: "render-subtree-root";
+        filePath: string;
+        componentKey?: string;
+        componentName?: string;
+        rootAnchor: {
+          startLine: number;
+          startColumn: number;
+          endLine?: number;
+          endColumn?: number;
+        };
+      }
+    | {
+        kind: "render-region";
+        filePath: string;
+        componentKey?: string;
+        componentName?: string;
+        regionKind: "subtree-root" | "conditional-branch" | "repeated-template" | "unknown-barrier";
+        path: Array<
+          | { kind: "root" }
+          | { kind: "fragment-child"; childIndex: number }
+          | { kind: "conditional-branch"; branch: "when-true" | "when-false" }
+          | { kind: "repeated-template" }
+        >;
+        sourceAnchor: {
+          startLine: number;
+          startColumn: number;
+          endLine?: number;
+          endColumn?: number;
+        };
+      };
+  availability: ReachabilityAvailability;
+  reasons: string[];
+  derivations: Array<
+    | { kind: "source-file-direct-import" }
+    | { kind: "source-file-project-wide-external-css"; stylesheetHref: string }
+    | { kind: "whole-component-direct-import" }
+  >;
+  traces: AnalysisTrace[];
+};
 
 export type SourceFileRecord = {
   id: ProjectEvidenceId;
@@ -285,7 +336,7 @@ export type ModuleImportRelation = {
   toModuleId?: string;
   resolvedFilePath?: string;
   specifier: string;
-  importKind: ModuleFactsImportKind;
+  importKind: ProjectImportKind;
 };
 
 export type ComponentRenderRelation = {
@@ -336,6 +387,14 @@ export type ProviderClassSatisfactionRelation = {
   referenceId: ProjectEvidenceId;
   className: string;
   referenceClassKind: "definite" | "possible";
+  provider: string;
+  reasons: string[];
+  traces: AnalysisTrace[];
+};
+
+export type ProviderBackedStylesheetRelation = {
+  id: ProjectEvidenceId;
+  stylesheetId: ProjectEvidenceId;
   provider: string;
   reasons: string[];
   traces: AnalysisTrace[];
@@ -400,18 +459,13 @@ export type ProjectEvidenceBuilderIndexes = {
 };
 
 export type ProjectEvidenceBuildInput = {
-  moduleFacts: ModuleFacts;
-  factGraph?: FactGraphResult;
-  cssFiles: import("../css-analysis/types.js").ExperimentalCssFileAnalysis[];
+  factGraph: FactGraphResult;
   stylesheets?: ProjectEvidenceStylesheetInput[];
   cssModuleLocalsConvention?: CssModuleLocalsConvention;
-  externalCssSummary: ExternalCssSummary;
-  reachabilitySummary: import("../reachability/types.js").ReachabilitySummary;
   renderModel: RenderModel;
   unsupportedClassReferences?: UnsupportedClassReferenceDiagnostic[];
   symbolicEvaluation?: SymbolicEvaluationResult;
   selectorReachability?: SelectorReachabilityResult;
-  projectSelectorProjection?: ProjectSelectorProjectionResult;
   includeTraces?: boolean;
 };
 

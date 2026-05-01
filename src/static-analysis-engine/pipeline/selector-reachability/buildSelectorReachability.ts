@@ -19,6 +19,7 @@ import type {
   SelectorBranchReachability,
   SelectorElementMatch,
   SelectorReachabilityDiagnostic,
+  SelectorReachabilityStatus,
   SelectorReachabilityResult,
 } from "./types.js";
 import { uniqueSorted } from "./utils.js";
@@ -81,6 +82,8 @@ export function buildSelectorReachability(
 
     elementMatches.push(...branchElementMatches);
     branchMatches.push(...candidateBranchMatches);
+    const status = getBranchStatus(branchDiagnostics, candidateBranchMatches);
+    const confidence = getBranchConfidence(branchDiagnostics, candidateBranchMatches);
 
     selectorBranches.push({
       selectorBranchNodeId: branch.id,
@@ -100,8 +103,9 @@ export function buildSelectorReachability(
           ...(diagnostic.location ? { location: diagnostic.location } : {}),
         })),
       },
-      status: getBranchStatus(branchDiagnostics, candidateBranchMatches),
-      confidence: getBranchConfidence(branchDiagnostics, candidateBranchMatches),
+      status,
+      confidence,
+      reasons: buildBranchReasons({ status }),
       matchIds: candidateBranchMatches
         .map((match) => match.id)
         .sort((left, right) => left.localeCompare(right)),
@@ -119,18 +123,128 @@ export function buildSelectorReachability(
     diagnostics,
   });
 
+  const selectorQueries = buildSelectorQueries(selectorBranches);
+
   return {
     meta: {
       generatedAtStage: "selector-reachability",
       selectorBranchCount: selectorBranches.length,
+      selectorQueryCount: selectorQueries.length,
       elementMatchCount: elementMatches.length,
       branchMatchCount: branchMatches.length,
       diagnosticCount: diagnostics.length,
     },
     selectorBranches,
+    selectorQueries,
     elementMatches,
     branchMatches,
     diagnostics,
     indexes,
   };
+}
+
+function buildSelectorQueries(selectorBranches: SelectorBranchReachability[]) {
+  const queryBySelectorNodeId = new Map<string, (typeof selectorBranches)[number]>();
+  const queries = new Map<
+    string,
+    {
+      selectorNodeId: string;
+      stylesheetNodeId?: string;
+      ruleDefinitionNodeId?: string;
+      selectorText: string;
+      location?: SelectorBranchReachability["location"];
+      branchIds: string[];
+      selectorReachabilityStatuses: SelectorReachabilityStatus[];
+      confidence: SelectorBranchReachability["confidence"];
+      reasons: string[];
+      traces: SelectorBranchReachability["traces"];
+    }
+  >();
+
+  for (const branch of selectorBranches) {
+    queryBySelectorNodeId.set(branch.selectorNodeId, branch);
+    const existing = queries.get(branch.selectorNodeId);
+    if (!existing) {
+      queries.set(branch.selectorNodeId, {
+        selectorNodeId: branch.selectorNodeId,
+        ...(branch.stylesheetNodeId ? { stylesheetNodeId: branch.stylesheetNodeId } : {}),
+        ...(branch.ruleDefinitionNodeId
+          ? { ruleDefinitionNodeId: branch.ruleDefinitionNodeId }
+          : {}),
+        selectorText: branch.branchText,
+        ...(branch.location ? { location: branch.location } : {}),
+        branchIds: [branch.selectorBranchNodeId],
+        selectorReachabilityStatuses: [branch.status],
+        confidence: branch.confidence,
+        reasons: [...branch.reasons],
+        traces: [...branch.traces],
+      });
+      continue;
+    }
+
+    existing.branchIds.push(branch.selectorBranchNodeId);
+    existing.selectorReachabilityStatuses.push(branch.status);
+    for (const reason of branch.reasons) {
+      if (!existing.reasons.includes(reason)) {
+        existing.reasons.push(reason);
+      }
+    }
+    if (confidenceRank(branch.confidence) < confidenceRank(existing.confidence)) {
+      existing.confidence = branch.confidence;
+    }
+    if (branch.stylesheetNodeId && !existing.stylesheetNodeId) {
+      existing.stylesheetNodeId = branch.stylesheetNodeId;
+    }
+    if (branch.ruleDefinitionNodeId && !existing.ruleDefinitionNodeId) {
+      existing.ruleDefinitionNodeId = branch.ruleDefinitionNodeId;
+    }
+    if (branch.location && !existing.location) {
+      existing.location = branch.location;
+    }
+    existing.traces.push(...branch.traces);
+  }
+
+  return [...queries.values()]
+    .map((query) => ({
+      ...query,
+      branchIds: [...new Set(query.branchIds)].sort((left, right) => left.localeCompare(right)),
+      selectorReachabilityStatuses: [...query.selectorReachabilityStatuses].sort((left, right) =>
+        left.localeCompare(right),
+      ),
+    }))
+    .sort((left, right) => {
+      return (
+        (left.location?.filePath ?? "").localeCompare(right.location?.filePath ?? "") ||
+        (left.location?.startLine ?? 0) - (right.location?.startLine ?? 0) ||
+        (left.location?.startColumn ?? 0) - (right.location?.startColumn ?? 0) ||
+        left.selectorText.localeCompare(right.selectorText) ||
+        left.selectorNodeId.localeCompare(right.selectorNodeId)
+      );
+    });
+}
+
+function buildBranchReasons(input: { status: SelectorReachabilityStatus }): string[] {
+  if (input.status === "unsupported") {
+    return ["selector branch contains unsupported selector semantics"];
+  }
+  if (input.status === "not-matchable") {
+    return ["no bounded selector match was found"];
+  }
+  if (input.status === "only-matches-in-unknown-context") {
+    return ["selector can only match through unknown render or class context"];
+  }
+  if (input.status === "possibly-matchable") {
+    return ["a bounded selector match is possible"];
+  }
+  return ["a bounded selector match was found"];
+}
+
+function confidenceRank(confidence: "low" | "medium" | "high"): number {
+  if (confidence === "high") {
+    return 2;
+  }
+  if (confidence === "medium") {
+    return 1;
+  }
+  return 0;
 }

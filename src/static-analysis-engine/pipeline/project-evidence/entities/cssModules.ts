@@ -12,7 +12,6 @@ import type {
 import { buildCssModuleAliases } from "../../language-frontends/source/css-module-syntax/analyzeCssModuleAliases.js";
 import { getCssModuleDestructuring } from "../../language-frontends/source/css-module-syntax/analyzeCssModuleDestructuring.js";
 import { getCssModuleMemberAccess } from "../../language-frontends/source/css-module-syntax/analyzeCssModuleMemberAccess.js";
-import { getAllResolvedModuleFacts } from "../../module-facts/index.js";
 import {
   compareById,
   createCssModuleAliasId,
@@ -32,42 +31,65 @@ export function buildCssModuleImports(
 ): CssModuleImportAnalysis[] {
   const imports: CssModuleImportAnalysis[] = [];
 
-  for (const moduleFact of getAllResolvedModuleFacts({ moduleFacts: input.moduleFacts })) {
-    for (const importFact of moduleFact.imports) {
-      if (importFact.cssSemantics !== "module") {
+  for (const sourceFile of input.factGraph.frontends.source.files) {
+    for (const importSyntax of sourceFile.moduleSyntax.imports) {
+      if (importSyntax.importKind !== "css" || !isCssModuleSpecifier(importSyntax.specifier)) {
         continue;
       }
-      const stylesheetFilePath = importFact.resolution.resolvedFilePath;
+      const stylesheetFilePath = findResolvedStylesheetImportPath({
+        sourceFilePath: sourceFile.filePath,
+        specifier: importSyntax.specifier,
+        input,
+      });
       if (!stylesheetFilePath) {
         continue;
       }
 
-      const sourceFileId = indexes.sourceFileIdByPath.get(moduleFact.filePath.replace(/\\/g, "/"));
+      const sourceFileId = indexes.sourceFileIdByPath.get(sourceFile.filePath.replace(/\\/g, "/"));
       const stylesheetId = indexes.stylesheetIdByPath.get(stylesheetFilePath.replace(/\\/g, "/"));
       if (!sourceFileId || !stylesheetId) {
         continue;
       }
 
-      for (const binding of importFact.importedBindings) {
+      for (const binding of importSyntax.importNames) {
         imports.push({
           id: createCssModuleImportId({
-            sourceFilePath: moduleFact.filePath,
+            sourceFilePath: sourceFile.filePath,
             stylesheetFilePath,
             localName: binding.localName,
           }),
           sourceFileId,
           stylesheetId,
-          sourceFilePath: moduleFact.filePath.replace(/\\/g, "/"),
+          sourceFilePath: sourceFile.filePath.replace(/\\/g, "/"),
           stylesheetFilePath: stylesheetFilePath.replace(/\\/g, "/"),
-          specifier: importFact.specifier,
+          specifier: importSyntax.specifier,
           localName: binding.localName,
-          importKind: binding.bindingKind,
+          importKind: binding.kind,
         });
       }
     }
   }
 
   return imports.sort(compareById);
+}
+
+function findResolvedStylesheetImportPath(input: {
+  sourceFilePath: string;
+  specifier: string;
+  input: ProjectEvidenceBuildInput;
+}): string | undefined {
+  const normalizedSourceFilePath = normalizeProjectPath(input.sourceFilePath);
+  return input.input.factGraph.graph.edges.imports.find(
+    (edge) =>
+      edge.importerKind === "source" &&
+      normalizeProjectPath(edge.importerFilePath) === normalizedSourceFilePath &&
+      edge.importKind === "css" &&
+      edge.specifier === input.specifier,
+  )?.resolvedFilePath;
+}
+
+function isCssModuleSpecifier(specifier: string): boolean {
+  return /\.module\.[cm]?css$/i.test(specifier);
 }
 
 export function buildCssModuleMemberReferences(input: {

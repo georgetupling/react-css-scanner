@@ -16,6 +16,7 @@ import type {
   ModuleImportRelation,
   ProjectEvidenceId,
   ProviderClassSatisfactionRelation,
+  ProviderBackedStylesheetRelation,
   RenderSubtreeAnalysis,
   SelectorBranchAnalysis,
   SelectorMatchRelation,
@@ -74,6 +75,7 @@ export type ProjectEvidenceRelations = {
   referenceMatches: ClassReferenceMatchRelation[];
   selectorMatches: SelectorMatchRelation[];
   providerClassSatisfactions: ProviderClassSatisfactionRelation[];
+  providerBackedStylesheets: ProviderBackedStylesheetRelation[];
   cssModuleMemberMatches: CssModuleMemberMatchRelation[];
 };
 

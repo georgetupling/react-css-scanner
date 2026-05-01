@@ -1,6 +1,5 @@
 import type { ClassExpressionSummary } from "../../symbolic-evaluation/class-values/types.js";
-import { getAllResolvedModuleFacts } from "../../module-facts/index.js";
-import type { ReachabilityAvailability } from "../../reachability/types.js";
+import type { ReachabilityAvailability } from "../analysisTypes.js";
 import type { AnalysisTrace } from "../../../types/analysis.js";
 import type { SourceAnchor } from "../../../types/core.js";
 import type {
@@ -69,24 +68,21 @@ export function isCssModuleStylesheetFromInventory(
 
 export function isExternalStylesheet(filePath: string, input: ProjectEvidenceBuildInput): boolean {
   const normalizedFilePath = normalizeProjectPath(filePath);
-  for (const moduleFacts of getAllResolvedModuleFacts({
-    moduleFacts: input.moduleFacts,
-  })) {
-    if (
-      moduleFacts.imports.some(
-        (importFact) =>
-          (importFact.importKind === "external-css" ||
-            (importFact.importKind === "css" && importFact.resolution.status === "external")) &&
-          normalizeProjectPath(importFact.specifier) === normalizedFilePath,
-      )
-    ) {
-      return true;
-    }
-  }
-
-  return input.externalCssSummary.externalStylesheetFilePaths
-    .map(normalizeProjectPath)
-    .includes(normalizedFilePath);
+  return (
+    input.factGraph.snapshot.edges.some(
+      (edge) =>
+        edge.kind === "package-css-import" &&
+        normalizeProjectPath(edge.resolvedFilePath) === normalizedFilePath,
+    ) ||
+    input.factGraph.graph.edges.imports.some(
+      (edge) =>
+        edge.importKind === "external-css" &&
+        (normalizeProjectPath(edge.specifier) === normalizedFilePath ||
+          (edge.resolvedFilePath
+            ? normalizeProjectPath(edge.resolvedFilePath) === normalizedFilePath
+            : false)),
+    )
+  );
 }
 
 export function getDefinitionSelectorKind(

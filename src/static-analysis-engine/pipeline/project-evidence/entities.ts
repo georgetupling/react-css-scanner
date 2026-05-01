@@ -48,7 +48,7 @@ export function buildProjectEvidenceEntities(input: {
     input.includeTraces,
   );
   const selectorQueries = buildSelectorQueries({
-    projectSelectorProjection: input.projectInput.projectSelectorProjection,
+    projectInput: input.projectInput,
     indexes: input.indexes,
     includeTraces: input.includeTraces,
     stylesheetIdByFactGraphNodeId: buildStylesheetIdByFactGraphNodeId(
@@ -57,7 +57,7 @@ export function buildProjectEvidenceEntities(input: {
     ),
   });
   const selectorBranches = buildSelectorBranches({
-    projectSelectorProjection: input.projectInput.projectSelectorProjection,
+    projectInput: input.projectInput,
     selectorQueries,
     indexes: input.indexes,
     includeTraces: input.includeTraces,

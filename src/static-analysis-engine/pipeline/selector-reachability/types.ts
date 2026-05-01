@@ -20,6 +20,7 @@ export type SelectorElementMatchId = string;
 export type SelectorReachabilityResult = {
   meta: SelectorReachabilityMeta;
   selectorBranches: SelectorBranchReachability[];
+  selectorQueries: SelectorQueryReachability[];
   elementMatches: SelectorElementMatch[];
   branchMatches: SelectorBranchMatch[];
   diagnostics: SelectorReachabilityDiagnostic[];
@@ -29,6 +30,7 @@ export type SelectorReachabilityResult = {
 export type SelectorReachabilityMeta = {
   generatedAtStage: "selector-reachability";
   selectorBranchCount: number;
+  selectorQueryCount: number;
   elementMatchCount: number;
   branchMatchCount: number;
   diagnosticCount: number;
@@ -57,9 +59,23 @@ export type SelectorBranchReachability = {
   subject: SelectorSubjectRequirement;
   status: SelectorReachabilityStatus;
   confidence: AnalysisConfidence;
+  reasons: string[];
   matchIds: SelectorBranchMatchId[];
   diagnosticIds: SelectorReachabilityDiagnosticId[];
   location?: SourceAnchor;
+  traces: AnalysisTrace[];
+};
+
+export type SelectorQueryReachability = {
+  selectorNodeId: FactNodeId;
+  stylesheetNodeId?: FactNodeId;
+  ruleDefinitionNodeId?: FactNodeId;
+  selectorText: string;
+  location?: SourceAnchor;
+  branchIds: FactNodeId[];
+  selectorReachabilityStatuses: SelectorReachabilityStatus[];
+  confidence: AnalysisConfidence;
+  reasons: string[];
   traces: AnalysisTrace[];
 };
 
