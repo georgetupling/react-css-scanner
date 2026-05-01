@@ -7,7 +7,7 @@ import {
 import type { CssFrontendFacts } from "../../pipeline/language-frontends/index.js";
 import type { ModuleFacts } from "../../pipeline/module-facts/index.js";
 import type { RenderModel } from "../../pipeline/render-structure/index.js";
-import type { SelectorSourceInput } from "../../pipeline/selector-analysis/index.js";
+import type { SelectorSourceInput } from "../../libraries/selector-parsing/queryTypes.js";
 import type { ProjectResourceEdge } from "../../pipeline/workspace-discovery/index.js";
 import type { ReachabilityStageResult } from "./types.js";
 

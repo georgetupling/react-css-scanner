@@ -10,6 +10,17 @@ export {
   projectToSelectorConstraint,
 } from "./projectToSelectorAnalysis.js";
 export type {
+  CssAtRuleContext,
+  CssSelectorBranchSource,
+  ExtractedSelectorQuery,
+  NormalizedSelector,
+  NormalizedSelectorCombinator,
+  NormalizedSelectorSimpleSelector,
+  NormalizedSelectorStep,
+  SelectorConstraint,
+  SelectorSourceInput,
+} from "./queryTypes.js";
+export type {
   ParsedCssAtRuleContext,
   ParsedCssSelectorEntry,
   ParsedSelectorBranch,

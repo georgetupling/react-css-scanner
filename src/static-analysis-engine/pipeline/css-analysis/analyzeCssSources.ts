@@ -1,6 +1,6 @@
 import { extractCssStyleRules } from "../../libraries/css-parsing/index.js";
+import type { SelectorSourceInput } from "../../libraries/selector-parsing/queryTypes.js";
 import type { CssAtRuleContextFact, CssStyleRuleFact } from "../../types/css.js";
-import type { SelectorSourceInput } from "../selector-analysis/types.js";
 import type { ExperimentalCssFileAnalysis } from "./types.js";
 
 export function analyzeCssRuleFiles(

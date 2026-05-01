@@ -1,7 +1,7 @@
 import type { AnalysisConfidence, AnalysisSeverity, AnalysisTrace } from "../../types/analysis.js";
 import type { SourceAnchor } from "../../types/core.js";
 import type { CssAtRuleContextFact, CssStyleRuleFact } from "../../types/css.js";
-import type { ExtractedSelectorQuery } from "../selector-analysis/index.js";
+import type { ExtractedSelectorQuery } from "../../libraries/selector-parsing/queryTypes.js";
 import type { LanguageFrontendsResult } from "../language-frontends/index.js";
 import type { SourceExpressionSyntaxFact } from "../language-frontends/source/expression-syntax/index.js";
 import type {

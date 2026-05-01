@@ -1,4 +1,4 @@
-import type { SelectorSourceInput } from "../pipeline/selector-analysis/index.js";
+import type { SelectorSourceInput } from "../libraries/selector-parsing/queryTypes.js";
 import type { ExternalCssAnalysisInput } from "../pipeline/external-css/index.js";
 import {
   buildFactGraph,

@@ -1,8 +1,5 @@
 import type { AnalysisTrace } from "../../types/analysis.js";
-import type {
-  NormalizedSelector,
-  SelectorConstraint,
-} from "../../pipeline/selector-analysis/types.js";
+import type { NormalizedSelector, SelectorConstraint } from "./queryTypes.js";
 import { projectSelectorBranchRequirement } from "../../pipeline/selector-reachability/selectorRequirements.js";
 import type { ParsedSelectorBranch } from "./types.js";
 
