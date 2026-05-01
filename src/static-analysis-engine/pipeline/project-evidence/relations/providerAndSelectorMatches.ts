@@ -62,7 +62,7 @@ function collectActiveExternalCssProviders(input: ProjectEvidenceBuildInput): Ar
       stylesheetLinks.some((link) =>
         provider.match.some(
           (pattern) =>
-            globToRegExp(pattern).test(normalizeProjectPath(link.href)) ||
+            globToRegExp(pattern).test(normalizeProjectPath(link.href ?? "")) ||
             (link.resolvedFilePath
               ? globToRegExp(pattern).test(normalizeProjectPath(link.resolvedFilePath))
               : false),
@@ -173,8 +173,8 @@ export function buildProviderBackedStylesheets(input: {
     for (const provider of activeProviders) {
       const matchesProvider = provider.match.some(
         (pattern) =>
-          globToRegExp(pattern).test(normalizeProjectPath(link.href)) ||
-          globToRegExp(pattern).test(normalizeProjectPath(link.resolvedFilePath)),
+          globToRegExp(pattern).test(normalizeProjectPath(link.href ?? "")) ||
+          globToRegExp(pattern).test(normalizeProjectPath(link.resolvedFilePath ?? "")),
       );
       if (!matchesProvider) {
         continue;
