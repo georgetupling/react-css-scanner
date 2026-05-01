@@ -1,32 +1,28 @@
 import { buildIndexes } from "./indexes.js";
-import type {
-  ClassDefinitionConsumerEvidence,
-  ClassOwnershipEvidence,
-  OwnershipInferenceResult,
-  StyleClassificationEvidence,
-  StyleOwnerCandidate,
-  StylesheetOwnershipEvidence,
-  OwnershipInferenceDiagnostic,
-} from "./types.js";
+import type { ProjectEvidenceAssemblyResult } from "../project-evidence/index.js";
+import type { SelectorReachabilityResult } from "../selector-reachability/index.js";
+import type { OwnershipInferenceResult } from "./types.js";
 
 export type OwnershipInferenceInput = {
-  classOwnership?: ClassOwnershipEvidence[];
-  definitionConsumers?: ClassDefinitionConsumerEvidence[];
-  ownerCandidates?: StyleOwnerCandidate[];
-  stylesheetOwnership?: StylesheetOwnershipEvidence[];
-  classifications?: StyleClassificationEvidence[];
-  diagnostics?: OwnershipInferenceDiagnostic[];
+  projectEvidence: ProjectEvidenceAssemblyResult;
+  selectorReachability: SelectorReachabilityResult;
+  options?: OwnershipInferenceOptions;
 };
 
-export function buildOwnershipInference(
-  input: OwnershipInferenceInput = {},
-): OwnershipInferenceResult {
-  const classOwnership = [...(input.classOwnership ?? [])].sort(compareById);
-  const definitionConsumers = [...(input.definitionConsumers ?? [])].sort(compareById);
-  const ownerCandidates = [...(input.ownerCandidates ?? [])].sort(compareById);
-  const stylesheetOwnership = [...(input.stylesheetOwnership ?? [])].sort(compareById);
-  const classifications = [...(input.classifications ?? [])].sort(compareById);
-  const diagnostics = [...(input.diagnostics ?? [])].sort(compareById);
+export type OwnershipInferenceOptions = {
+  sharedCssPatterns?: string[];
+  includeTraces?: boolean;
+};
+
+export function buildOwnershipInference(input: OwnershipInferenceInput): OwnershipInferenceResult {
+  void input;
+
+  const classOwnership: OwnershipInferenceResult["classOwnership"] = [];
+  const definitionConsumers: OwnershipInferenceResult["definitionConsumers"] = [];
+  const ownerCandidates: OwnershipInferenceResult["ownerCandidates"] = [];
+  const stylesheetOwnership: OwnershipInferenceResult["stylesheetOwnership"] = [];
+  const classifications: OwnershipInferenceResult["classifications"] = [];
+  const diagnostics: OwnershipInferenceResult["diagnostics"] = [];
 
   return {
     meta: {
@@ -53,8 +49,4 @@ export function buildOwnershipInference(
       diagnostics,
     }),
   };
-}
-
-function compareById(left: { id: string }, right: { id: string }): number {
-  return left.id.localeCompare(right.id);
 }

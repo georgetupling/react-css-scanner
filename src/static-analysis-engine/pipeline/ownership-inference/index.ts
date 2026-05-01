@@ -1,5 +1,8 @@
 export { buildOwnershipInference } from "./buildOwnershipInference.js";
-export type { OwnershipInferenceInput } from "./buildOwnershipInference.js";
+export type {
+  OwnershipInferenceInput,
+  OwnershipInferenceOptions,
+} from "./buildOwnershipInference.js";
 export {
   classDefinitionConsumerEvidenceId,
   classOwnershipEvidenceId,

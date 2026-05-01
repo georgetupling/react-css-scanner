@@ -338,6 +338,7 @@ export type {
   OwnershipInferenceIndexes,
   OwnershipInferenceInput,
   OwnershipInferenceMeta,
+  OwnershipInferenceOptions,
   OwnershipInferenceResult,
   StyleClassificationEvidence,
   StyleOwnerCandidate,
