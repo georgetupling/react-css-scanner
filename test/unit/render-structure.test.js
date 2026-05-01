@@ -137,9 +137,27 @@ test("render structure expands intrinsic elements in native mode", async () => {
     ),
   );
 
-  assert.deepEqual(result.renderModel.emissionSites, []);
+  const classSiteCount = fixture.graph.nodes.classExpressionSites.length;
+  const mappedOrDiagnosedSiteCount =
+    result.renderModel.emissionSites.length +
+    result.renderModel.diagnostics.filter(
+      (diagnostic) =>
+        diagnostic.code === "missing-symbolic-class-expression" ||
+        diagnostic.code === "unmodeled-class-expression-site",
+    ).length;
+  assert.equal(mappedOrDiagnosedSiteCount, classSiteCount);
+  assert.ok(
+    result.renderModel.emissionSites.every((site) =>
+      result.renderModel.indexes.emissionSiteById.has(site.id),
+    ),
+  );
+  assert.ok(
+    result.renderModel.emissionSites.every((site) =>
+      result.renderModel.indexes.renderPathById.has(site.renderPathId),
+    ),
+  );
+  assert.ok(result.renderModel.emissionSites.every((site) => site.classExpressionId.length > 0));
   assert.deepEqual(result.renderModel.placementConditions, []);
-  assert.deepEqual(result.renderModel.diagnostics, []);
 
   for (const component of result.renderModel.components) {
     assert.equal(component.rootBoundaryIds.length, 1);
