@@ -35,6 +35,8 @@ test("unsatisfiable-selector reports supported selectors with no reachable rende
     assert.match(findings[0].message, /cannot match/);
     assert.equal(findings[0].data?.selectorText, ".card > .missing");
     assert.equal(findings[0].data?.outcome, "no-match-under-bounded-analysis");
+    assert.equal(findings[0].data?.selectorReachabilityStatus, "not-matchable");
+    assert.equal(typeof findings[0].data?.selectorBranchNodeId, "string");
     assert.equal(findings[0].traces[0].category, "rule-evaluation");
     assert.equal(findings[0].traces[0].children[0].category, "selector-match");
   } finally {

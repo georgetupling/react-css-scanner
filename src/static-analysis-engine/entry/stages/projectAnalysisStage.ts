@@ -4,6 +4,7 @@ import { buildProjectAnalysis } from "../../pipeline/project-analysis/index.js";
 import type { ModuleFacts } from "../../pipeline/module-facts/index.js";
 import type { ReachabilitySummary } from "../../pipeline/reachability/index.js";
 import type { RenderModel as RenderStructureModel } from "../../pipeline/render-structure/index.js";
+import type { SelectorReachabilityResult } from "../../pipeline/selector-reachability/index.js";
 import type { ProjectBindingResolution } from "../../pipeline/symbol-resolution/index.js";
 import type {
   CssModuleLocalsConvention,
@@ -27,6 +28,7 @@ export function runProjectAnalysisStage(input: {
   reachabilitySummary: ReachabilitySummary;
   renderModel: RenderStructureModel;
   symbolicEvaluation?: SymbolicEvaluationStageResult;
+  selectorReachability?: SelectorReachabilityResult;
   selectorQueryResults: SelectorAnalysisStageResult["selectorQueryResults"];
   includeTraces?: boolean;
 }): ProjectAnalysisStageResult {

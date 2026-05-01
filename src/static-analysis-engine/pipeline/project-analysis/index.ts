@@ -25,6 +25,7 @@ export type {
   ProjectAnalysis,
   ProjectAnalysisBuildInput,
   ProjectAnalysisEntities,
+  ProjectAnalysisEvidence,
   ProjectAnalysisId,
   ProjectAnalysisIndexes,
   ProjectAnalysisInputs,

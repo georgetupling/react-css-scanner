@@ -146,6 +146,9 @@ export function buildProjectAnalysis(input: ProjectAnalysisBuildInput): ProjectA
       cssFiles: stylesheets.map(({ id, filePath }) => ({ id, filePath })),
       externalCss: input.externalCssSummary,
     },
+    evidence: {
+      ...(input.selectorReachability ? { selectorReachability: input.selectorReachability } : {}),
+    },
     entities: {
       sourceFiles,
       stylesheets,

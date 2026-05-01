@@ -60,7 +60,10 @@ export {
   analyzeSelectorQueries,
   extractSelectorQueriesFromCssText,
 } from "./pipeline/selector-analysis/index.js";
-export { buildSelectorReachability } from "./pipeline/selector-reachability/index.js";
+export {
+  buildSelectorReachability,
+  selectorBranchSourceKey,
+} from "./pipeline/selector-reachability/index.js";
 export { buildReachabilitySummary } from "./pipeline/reachability/index.js";
 export {
   buildProjectAnalysis,
@@ -260,6 +263,7 @@ export type {
   OwnerCandidateReason,
   ProjectAnalysis,
   ProjectAnalysisEntities,
+  ProjectAnalysisEvidence,
   ProjectAnalysisId,
   ProjectAnalysisIndexes,
   ProjectAnalysisInputs,

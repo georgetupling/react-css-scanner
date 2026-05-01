@@ -285,6 +285,7 @@ export function analyzeProjectSourceTexts(input: {
         reachabilitySummary: reachabilityStage.reachabilitySummary,
         renderModel: renderStructureStage.renderModel,
         symbolicEvaluation: symbolicEvaluationStage,
+        selectorReachability: selectorReachabilityStage.selectorReachability,
         selectorQueryResults: selectorAnalysisStage.selectorQueryResults,
         includeTraces,
       }),

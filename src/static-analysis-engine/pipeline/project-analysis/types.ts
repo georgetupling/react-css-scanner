@@ -12,6 +12,7 @@ import type {
 } from "../render-structure/types.js";
 import type { RuntimeDomLibraryHint } from "../runtime-dom/types.js";
 import type { SelectorConstraint, SelectorQueryResult } from "../selector-analysis/types.js";
+import type { SelectorReachabilityResult } from "../selector-reachability/types.js";
 import type { FactGraphResult } from "../fact-graph/types.js";
 import type { SymbolicEvaluationResult } from "../symbolic-evaluation/types.js";
 import type { AnalysisConfidence, AnalysisTrace } from "../../types/analysis.js";
@@ -33,6 +34,7 @@ export type CssModuleLocalsConvention = "asIs" | "camelCase" | "camelCaseOnly";
 export type ProjectAnalysis = {
   meta: ProjectAnalysisMeta;
   inputs: ProjectAnalysisInputs;
+  evidence: ProjectAnalysisEvidence;
   entities: ProjectAnalysisEntities;
   relations: ProjectAnalysisRelations;
   indexes: ProjectAnalysisIndexes;
@@ -48,6 +50,10 @@ export type ProjectAnalysisInputs = {
   sourceFiles: SourceFileRecord[];
   cssFiles: CssFileRecord[];
   externalCss: ExternalCssSummary;
+};
+
+export type ProjectAnalysisEvidence = {
+  selectorReachability?: SelectorReachabilityResult;
 };
 
 export type SourceFileRecord = {
@@ -513,6 +519,7 @@ export type ProjectAnalysisBuildInput = {
   renderModel: RenderStructureModel;
   unsupportedClassReferences?: UnsupportedClassReferenceDiagnostic[];
   symbolicEvaluation?: SymbolicEvaluationResult;
+  selectorReachability?: SelectorReachabilityResult;
   selectorQueryResults: SelectorQueryResult[];
   includeTraces?: boolean;
 };
