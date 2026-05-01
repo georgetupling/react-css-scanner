@@ -10,7 +10,7 @@ import type {
   RenderModel,
   UnsupportedClassReferenceDiagnostic,
 } from "../render-structure/types.js";
-import type { RuntimeDomLibraryHint } from "../runtime-dom/types.js";
+import type { RuntimeDomLibraryHint } from "../language-frontends/types.js";
 import type { SelectorConstraint, SelectorQueryResult } from "../selector-analysis/types.js";
 import type { SelectorReachabilityResult } from "../selector-reachability/types.js";
 import type { FactGraphResult } from "../fact-graph/types.js";

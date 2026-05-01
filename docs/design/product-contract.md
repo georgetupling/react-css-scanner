@@ -137,7 +137,7 @@ It is a final projection stage over the existing pipeline outputs and is the onl
 `StaticAnalysisEngineResult`. Feature-specific extraction should happen before this projection when
 it needs raw syntax or stage-specific context. For example, CSS Module import and member-reference
 extraction lives in `cssModuleAnalysisStage` and `pipeline/css-modules`, and usage-only runtime DOM
-class extraction lives in `runtimeDomStage` and `pipeline/runtime-dom`; `ProjectAnalysis` indexes
+class extraction lives in `languageFrontendsStage` under `pipeline/language-frontends/source/runtime-dom-syntax`; `ProjectAnalysis` indexes
 those records for rules instead of walking parsed source text itself.
 
 This first slice intentionally covers the rule-facing contract that current stages can support:
