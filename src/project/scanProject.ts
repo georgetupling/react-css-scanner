@@ -63,8 +63,10 @@ export async function scanProject(input: ScanProjectInput = {}): Promise<ScanPro
   });
   const ruleResult = await runScanStage(progress, "run-rules", "Running rules", () =>
     runRules({
-      analysis: engineResult.projectAnalysis,
       analysisEvidence: engineResult.analysisEvidence,
+      externalCssPackageImports: snapshot.edges.filter(
+        (edge) => edge.kind === "package-css-import",
+      ),
       config: snapshot.config,
       includeTraces: input.includeTraces ?? true,
     }),
@@ -79,9 +81,10 @@ export async function scanProject(input: ScanProjectInput = {}): Promise<ScanPro
     cssFileCount: snapshot.discoveredFiles.cssFiles.length,
     findings: ruleResult.findings,
     diagnostics: snapshot.diagnostics,
-    classReferenceCount: engineResult.projectAnalysis.entities.classReferences.length,
-    classDefinitionCount: engineResult.projectAnalysis.entities.classDefinitions.length,
-    selectorQueryCount: engineResult.projectAnalysis.entities.selectorQueries.length,
+    classReferenceCount: engineResult.analysisEvidence.projectEvidence.meta.classReferenceCount,
+    classDefinitionCount: engineResult.analysisEvidence.projectEvidence.meta.classDefinitionCount,
+    selectorQueryCount:
+      engineResult.analysisEvidence.projectEvidence.entities.selectorQueries.length,
     failed,
   });
 

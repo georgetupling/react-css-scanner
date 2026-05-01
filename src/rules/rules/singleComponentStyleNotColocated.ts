@@ -1,4 +1,9 @@
-import type { AnalysisTrace, SourceAnchor } from "../../static-analysis-engine/index.js";
+import type {
+  AnalysisTrace,
+  ComponentAnalysis,
+  SourceAnchor,
+} from "../../static-analysis-engine/index.js";
+import { getClassDefinitionById, getComponentById, getStylesheetById } from "../analysisQueries.js";
 import type { RuleContext, RuleDefinition, UnresolvedFinding } from "../types.js";
 import {
   getClassOwnershipEvidence,
@@ -26,10 +31,11 @@ function runSingleComponentStyleNotColocatedRule(context: RuleContext): Unresolv
   const groups = new Map<string, NotColocatedFindingGroup>();
 
   for (const ownership of getClassOwnershipEvidence(context)) {
-    const definition = context.analysis.indexes.classDefinitionsById.get(
+    const definition = getClassDefinitionById(
+      context.analysisEvidence,
       ownership.classDefinitionId,
     );
-    const stylesheet = context.analysis.indexes.stylesheetsById.get(ownership.stylesheetId);
+    const stylesheet = getStylesheetById(context.analysisEvidence, ownership.stylesheetId);
     if (
       !definition ||
       !stylesheet ||
@@ -41,7 +47,7 @@ function runSingleComponentStyleNotColocatedRule(context: RuleContext): Unresolv
     }
 
     const componentId = ownership.consumerSummary.consumerComponentIds[0];
-    const component = context.analysis.indexes.componentsById.get(componentId);
+    const component = getComponentById(context.analysisEvidence, componentId);
     if (!component || hasColocationEvidence(ownership, componentId)) {
       continue;
     }
@@ -116,7 +122,6 @@ function hasColocationEvidence(
 }
 
 type ClassOwnership = RuleClassOwnershipEvidence;
-type ComponentAnalysis = RuleContext["analysis"]["entities"]["components"][number];
 
 type NotColocatedFindingGroup = {
   key: string;

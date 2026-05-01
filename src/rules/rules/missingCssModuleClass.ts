@@ -1,4 +1,14 @@
-import type { AnalysisTrace } from "../../static-analysis-engine/index.js";
+import type {
+  AnalysisTrace,
+  CssModuleImportAnalysis,
+  CssModuleMemberMatchRelation,
+  CssModuleMemberReferenceAnalysis,
+} from "../../static-analysis-engine/index.js";
+import {
+  getCssModuleImportById,
+  getCssModuleMemberMatches,
+  getCssModuleMemberReferenceById,
+} from "../analysisQueries.js";
 import type { RuleContext, RuleDefinition, UnresolvedFinding } from "../types.js";
 
 export const missingCssModuleClassRule: RuleDefinition = {
@@ -11,13 +21,13 @@ export const missingCssModuleClassRule: RuleDefinition = {
 function runMissingCssModuleClassRule(context: RuleContext): UnresolvedFinding[] {
   const findings: UnresolvedFinding[] = [];
 
-  for (const match of context.analysis.relations.cssModuleMemberMatches) {
+  for (const match of getCssModuleMemberMatches(context.analysisEvidence)) {
     if (match.status !== "missing") {
       continue;
     }
 
-    const reference = context.analysis.indexes.cssModuleMemberReferencesById.get(match.referenceId);
-    const cssModuleImport = context.analysis.indexes.cssModuleImportsById.get(match.importId);
+    const reference = getCssModuleMemberReferenceById(context.analysisEvidence, match.referenceId);
+    const cssModuleImport = getCssModuleImportById(context.analysisEvidence, match.importId);
     if (!reference || !cssModuleImport) {
       continue;
     }
@@ -63,9 +73,9 @@ function runMissingCssModuleClassRule(context: RuleContext): UnresolvedFinding[]
 }
 
 function buildMissingCssModuleClassTraces(input: {
-  reference: RuleContext["analysis"]["entities"]["cssModuleMemberReferences"][number];
-  cssModuleImport: RuleContext["analysis"]["entities"]["cssModuleImports"][number];
-  match: RuleContext["analysis"]["relations"]["cssModuleMemberMatches"][number];
+  reference: CssModuleMemberReferenceAnalysis;
+  cssModuleImport: CssModuleImportAnalysis;
+  match: CssModuleMemberMatchRelation;
 }): AnalysisTrace[] {
   return [
     {

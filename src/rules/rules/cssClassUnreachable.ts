@@ -1,4 +1,16 @@
-import type { AnalysisTrace } from "../../static-analysis-engine/index.js";
+import type {
+  AnalysisTrace,
+  ClassReferenceAnalysis,
+  ClassReferenceMatchRelation,
+} from "../../static-analysis-engine/index.js";
+import {
+  getClassDefinitionsByClassName,
+  getClassReferences,
+  getComponentById,
+  getReferenceMatchesByReferenceAndClassName,
+  getStylesheetById,
+  hasProviderSatisfactionForReferenceClass,
+} from "../analysisQueries.js";
 import type { RuleContext, RuleDefinition, UnresolvedFinding } from "../types.js";
 
 export const cssClassUnreachableRule: RuleDefinition = {
@@ -11,35 +23,33 @@ export const cssClassUnreachableRule: RuleDefinition = {
 function runCssClassUnreachableRule(context: RuleContext): UnresolvedFinding[] {
   const findings: UnresolvedFinding[] = [];
 
-  for (const reference of context.analysis.entities.classReferences) {
+  for (const reference of getClassReferences(context.analysisEvidence)) {
     for (const className of reference.definiteClassNames) {
       if (
-        context.analysis.indexes.providerSatisfactionsByReferenceAndClassName.has(
-          createReferenceClassKey(reference.id, className),
-        )
+        hasProviderSatisfactionForReferenceClass({
+          analysis: context.analysisEvidence,
+          referenceId: reference.id,
+          className,
+        })
       ) {
         continue;
       }
 
-      const definitionIds = context.analysis.indexes.definitionsByClassName.get(className) ?? [];
-      if (definitionIds.length === 0) {
+      const definitions = getClassDefinitionsByClassName(context.analysisEvidence, className);
+      if (definitions.length === 0) {
         continue;
       }
 
-      const matches = (
-        context.analysis.indexes.referenceMatchesByReferenceAndClassName.get(
-          createReferenceClassKey(reference.id, className),
-        ) ?? []
-      )
-        .map((matchId) => context.analysis.indexes.referenceMatchesById.get(matchId))
-        .filter((match): match is NonNullable<typeof match> => Boolean(match));
+      const matches = getReferenceMatchesByReferenceAndClassName(
+        context.analysisEvidence,
+        reference.id,
+        className,
+      );
       if (matches.length === 0 || matches.some((match) => match.reachability !== "unavailable")) {
         continue;
       }
 
-      const definitions = definitionIds
-        .map((definitionId) => context.analysis.indexes.classDefinitionsById.get(definitionId))
-        .filter((definition): definition is NonNullable<typeof definition> => Boolean(definition));
+      const definitionIds = definitions.map((definition) => definition.id);
       const stylesheetIds = [
         ...new Set(definitions.map((definition) => definition.stylesheetId)),
       ].sort((left, right) => left.localeCompare(right));
@@ -74,7 +84,7 @@ function runCssClassUnreachableRule(context: RuleContext): UnresolvedFinding[] {
                 stylesheetFilePaths: stylesheetIds
                   .map(
                     (stylesheetId) =>
-                      context.analysis.indexes.stylesheetsById.get(stylesheetId)?.filePath,
+                      getStylesheetById(context.analysisEvidence, stylesheetId)?.filePath,
                   )
                   .filter((filePath): filePath is string => Boolean(filePath)),
               }),
@@ -93,26 +103,22 @@ function runCssClassUnreachableRule(context: RuleContext): UnresolvedFinding[] {
   return findings.sort((left, right) => left.id.localeCompare(right.id));
 }
 
-function createReferenceClassKey(referenceId: string, className: string): string {
-  return `${referenceId}:${className}`;
-}
-
 function collectReferenceFocusFilePaths(
   context: RuleContext,
   className: string,
-  reference: RuleContext["analysis"]["entities"]["classReferences"][number],
+  reference: ClassReferenceAnalysis,
 ): string[] {
   const componentId = reference.classNameComponentIds?.[className] ?? reference.componentId;
   const component = componentId
-    ? context.analysis.indexes.componentsById.get(componentId)
+    ? getComponentById(context.analysisEvidence, componentId)
     : undefined;
   return [component?.filePath ?? reference.location.filePath];
 }
 
 function buildUnreachableClassTraces(input: {
-  reference: RuleContext["analysis"]["entities"]["classReferences"][number];
+  reference: ClassReferenceAnalysis;
   className: string;
-  matches: RuleContext["analysis"]["relations"]["referenceMatches"];
+  matches: ClassReferenceMatchRelation[];
   stylesheetFilePaths: string[];
 }): AnalysisTrace[] {
   return [

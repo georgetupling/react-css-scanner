@@ -1,6 +1,7 @@
 import type {
   AnalysisTrace,
   SelectorBranchReachability,
+  SelectorQueryAnalysis,
 } from "../../static-analysis-engine/index.js";
 import type { RuleContext, RuleDefinition, UnresolvedFinding } from "../types.js";
 import {
@@ -59,7 +60,7 @@ function runSelectorOnlyMatchesInUnknownContextsRule(context: RuleContext): Unre
 
 function buildSelectorOnlyMatchesInUnknownContextsTraces(input: {
   branch: SelectorBranchReachability;
-  query?: RuleContext["analysis"]["entities"]["selectorQueries"][number];
+  query?: SelectorQueryAnalysis;
 }): AnalysisTrace[] {
   return [
     {

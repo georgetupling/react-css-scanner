@@ -1,4 +1,8 @@
-import type { AnalysisTrace } from "../../static-analysis-engine/index.js";
+import type {
+  AnalysisTrace,
+  UnsupportedClassReferenceAnalysis,
+} from "../../static-analysis-engine/index.js";
+import { getUnsupportedClassReferences } from "../analysisQueries.js";
 import type { RuleContext, RuleDefinition, UnresolvedFinding } from "../types.js";
 
 export const unsupportedSyntaxAffectingAnalysisRule: RuleDefinition = {
@@ -9,7 +13,7 @@ export const unsupportedSyntaxAffectingAnalysisRule: RuleDefinition = {
 };
 
 function runUnsupportedSyntaxAffectingAnalysisRule(context: RuleContext): UnresolvedFinding[] {
-  return context.analysis.entities.unsupportedClassReferences
+  return getUnsupportedClassReferences(context.analysisEvidence)
     .map((reference) => ({
       id: `unsupported-syntax-affecting-analysis:${reference.id}`,
       ruleId: "unsupported-syntax-affecting-analysis" as const,
@@ -38,7 +42,7 @@ function runUnsupportedSyntaxAffectingAnalysisRule(context: RuleContext): Unreso
 }
 
 function buildUnsupportedClassReferenceTraces(input: {
-  reference: RuleContext["analysis"]["entities"]["unsupportedClassReferences"][number];
+  reference: UnsupportedClassReferenceAnalysis;
 }): AnalysisTrace[] {
   return [
     {

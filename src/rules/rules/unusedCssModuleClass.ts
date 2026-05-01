@@ -1,4 +1,10 @@
-import type { AnalysisTrace } from "../../static-analysis-engine/index.js";
+import type { AnalysisTrace, ClassDefinitionAnalysis } from "../../static-analysis-engine/index.js";
+import {
+  getClassDefinitions,
+  getCssModuleImportsByStylesheetId,
+  getCssModuleMemberMatchesByDefinitionId,
+  getStylesheetById,
+} from "../analysisQueries.js";
 import type { RuleContext, RuleDefinition, UnresolvedFinding } from "../types.js";
 
 export const unusedCssModuleClassRule: RuleDefinition = {
@@ -11,15 +17,15 @@ export const unusedCssModuleClassRule: RuleDefinition = {
 function runUnusedCssModuleClassRule(context: RuleContext): UnresolvedFinding[] {
   const findings: UnresolvedFinding[] = [];
 
-  for (const definition of context.analysis.entities.classDefinitions) {
+  for (const definition of getClassDefinitions(context.analysisEvidence)) {
     if (
       !definition.isCssModule ||
-      context.analysis.indexes.cssModuleMemberMatchesByDefinitionId.has(definition.id)
+      getCssModuleMemberMatchesByDefinitionId(context.analysisEvidence, definition.id).length > 0
     ) {
       continue;
     }
 
-    const stylesheet = context.analysis.indexes.stylesheetsById.get(definition.stylesheetId);
+    const stylesheet = getStylesheetById(context.analysisEvidence, definition.stylesheetId);
     if (!stylesheet) {
       continue;
     }
@@ -68,13 +74,13 @@ function runUnusedCssModuleClassRule(context: RuleContext): UnresolvedFinding[] 
 
 function buildUnusedCssModuleClassTraces(input: {
   context: RuleContext;
-  definition: RuleContext["analysis"]["entities"]["classDefinitions"][number];
+  definition: ClassDefinitionAnalysis;
   stylesheetFilePath?: string;
 }): AnalysisTrace[] {
-  const importIds =
-    input.context.analysis.indexes.cssModuleImportsByStylesheetId.get(
-      input.definition.stylesheetId,
-    ) ?? [];
+  const importIds = getCssModuleImportsByStylesheetId(
+    input.context.analysisEvidence,
+    input.definition.stylesheetId,
+  ).map((importRecord) => importRecord.id);
 
   return [
     {

@@ -1,4 +1,9 @@
-import type { AnalysisTrace, SourceAnchor } from "../../static-analysis-engine/index.js";
+import type {
+  AnalysisTrace,
+  ComponentAnalysis,
+  SourceAnchor,
+} from "../../static-analysis-engine/index.js";
+import { getClassDefinitionById, getComponentById, getStylesheetById } from "../analysisQueries.js";
 import type { RuleContext, RuleDefinition, UnresolvedFinding } from "../types.js";
 import {
   findPrivateComponentOwnerCandidate,
@@ -21,10 +26,11 @@ function runStyleUsedOutsideOwnerRule(context: RuleContext): UnresolvedFinding[]
   const groups = new Map<string, OutsideOwnerFindingGroup>();
 
   for (const ownership of getClassOwnershipEvidence(context)) {
-    const definition = context.analysis.indexes.classDefinitionsById.get(
+    const definition = getClassDefinitionById(
+      context.analysisEvidence,
       ownership.classDefinitionId,
     );
-    const stylesheet = context.analysis.indexes.stylesheetsById.get(ownership.stylesheetId);
+    const stylesheet = getStylesheetById(context.analysisEvidence, ownership.stylesheetId);
     if (
       !definition ||
       !stylesheet ||
@@ -48,7 +54,7 @@ function runStyleUsedOutsideOwnerRule(context: RuleContext): UnresolvedFinding[]
       continue;
     }
 
-    const ownerComponent = context.analysis.indexes.componentsById.get(ownerComponentId);
+    const ownerComponent = getComponentById(context.analysisEvidence, ownerComponentId);
     if (!ownerComponent) {
       continue;
     }
@@ -71,7 +77,7 @@ function runStyleUsedOutsideOwnerRule(context: RuleContext): UnresolvedFinding[]
           return false;
         }
 
-        const consumerComponent = context.analysis.indexes.componentsById.get(componentId);
+        const consumerComponent = getComponentById(context.analysisEvidence, componentId);
         return !isOwnerFamilyConsumer({
           ownerComponentFilePath: ownerComponent.filePath,
           consumerComponentFilePath: consumerComponent?.filePath,
@@ -80,7 +86,7 @@ function runStyleUsedOutsideOwnerRule(context: RuleContext): UnresolvedFinding[]
       },
     );
     const outsideConsumerComponents = outsideConsumerIds
-      .map((consumerId) => context.analysis.indexes.componentsById.get(consumerId))
+      .map((consumerId) => getComponentById(context.analysisEvidence, consumerId))
       .filter((component): component is ComponentAnalysis => Boolean(component));
     if (outsideConsumerComponents.length === 0) {
       continue;
@@ -168,7 +174,6 @@ function buildOutsideOwnerTraces(input: {
 }
 
 type ClassOwnership = RuleClassOwnershipEvidence;
-type ComponentAnalysis = RuleContext["analysis"]["entities"]["components"][number];
 
 type OutsideOwnerFindingGroup = {
   key: string;

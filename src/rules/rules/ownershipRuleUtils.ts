@@ -1,7 +1,4 @@
-import type {
-  ClassOwnershipEvidence,
-  StyleOwnerCandidate,
-} from "../../static-analysis-engine/index.js";
+import { getClassOwnershipEvidence as queryClassOwnershipEvidence } from "../analysisQueries.js";
 import type { RuleContext } from "../types.js";
 
 const BROAD_STYLESHEET_SEGMENTS = new Set([
@@ -25,9 +22,7 @@ const PRIVATE_OWNER_REASONS = new Set([
   "component-folder-convention",
 ]);
 
-export type RuleClassOwnershipEvidence = ClassOwnershipEvidence & {
-  ownerCandidates: StyleOwnerCandidate[];
-};
+export type RuleClassOwnershipEvidence = ReturnType<typeof queryClassOwnershipEvidence>[number];
 
 type OwnerCandidateLike = {
   kind?: string;
@@ -39,19 +34,7 @@ type OwnerCandidateLike = {
 };
 
 export function getClassOwnershipEvidence(context: RuleContext): RuleClassOwnershipEvidence[] {
-  const ownershipInference = context.analysis.evidence.ownershipInference;
-  if (!ownershipInference) {
-    return [];
-  }
-
-  return ownershipInference.classOwnership
-    .map((ownership) => ({
-      ...ownership,
-      ownerCandidates: ownership.ownerCandidateIds
-        .map((candidateId) => ownershipInference.indexes.ownerCandidateById.get(candidateId))
-        .filter((candidate): candidate is StyleOwnerCandidate => Boolean(candidate)),
-    }))
-    .sort((left, right) => left.id.localeCompare(right.id));
+  return queryClassOwnershipEvidence(context.analysisEvidence);
 }
 
 export function isIntentionallyBroadStylesheetPath(filePath: string | undefined): boolean {

@@ -2,10 +2,10 @@ import type {
   AnalysisEvidence,
   AnalysisConfidence,
   AnalysisTrace,
-  ProjectAnalysis,
   ProjectAnalysisId,
   SourceAnchor,
 } from "../static-analysis-engine/index.js";
+import type { PackageCssImportFact } from "../static-analysis-engine/pipeline/external-css/index.js";
 import type { ScannerConfig } from "../config/index.js";
 
 export type RuleSeverity = "debug" | "info" | "warn" | "error";
@@ -56,8 +56,8 @@ export type Finding = {
 export type UnresolvedFinding = Omit<Finding, "severity">;
 
 export type RuleContext = {
-  analysis: ProjectAnalysis;
   analysisEvidence: AnalysisEvidence;
+  externalCssPackageImports?: PackageCssImportFact[];
   config: ScannerConfig;
   includeTraces?: boolean;
 };

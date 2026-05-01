@@ -1,5 +1,12 @@
 import type { RuleContext, RuleDefinition, UnresolvedFinding } from "../types.js";
-import type { AnalysisTrace } from "../../static-analysis-engine/index.js";
+import type { AnalysisTrace, ClassReferenceAnalysis } from "../../static-analysis-engine/index.js";
+import {
+  getClassContextsByClassName,
+  getClassDefinitionsByClassName,
+  getClassReferences,
+  getComponentById,
+  hasProviderSatisfactionForReferenceClass,
+} from "../analysisQueries.js";
 
 export const missingCssClassRule: RuleDefinition = {
   id: "missing-css-class",
@@ -12,25 +19,27 @@ function runMissingCssClassRule(context: RuleContext): UnresolvedFinding[] {
   const findingInputsByClassName = new Map<
     string,
     Array<{
-      reference: RuleContext["analysis"]["entities"]["classReferences"][number];
+      reference: ClassReferenceAnalysis;
       className: string;
     }>
   >();
 
-  for (const reference of context.analysis.entities.classReferences) {
+  for (const reference of getClassReferences(context.analysisEvidence)) {
     for (const className of reference.definiteClassNames) {
-      if (context.analysis.indexes.definitionsByClassName.has(className)) {
+      if (getClassDefinitionsByClassName(context.analysisEvidence, className).length > 0) {
         continue;
       }
 
-      if (context.analysis.indexes.contextsByClassName.has(className)) {
+      if (getClassContextsByClassName(context.analysisEvidence, className).length > 0) {
         continue;
       }
 
       if (
-        context.analysis.indexes.providerSatisfactionsByReferenceAndClassName.has(
-          createReferenceClassKey(reference.id, className),
-        )
+        hasProviderSatisfactionForReferenceClass({
+          analysis: context.analysisEvidence,
+          referenceId: reference.id,
+          className,
+        })
       ) {
         continue;
       }
@@ -49,15 +58,11 @@ function runMissingCssClassRule(context: RuleContext): UnresolvedFinding[] {
     .sort((left, right) => left.id.localeCompare(right.id));
 }
 
-function createReferenceClassKey(referenceId: string, className: string): string {
-  return `${referenceId}:${className}`;
-}
-
 function buildMissingClassFinding(
   context: RuleContext,
   className: string,
   inputs: Array<{
-    reference: RuleContext["analysis"]["entities"]["classReferences"][number];
+    reference: ClassReferenceAnalysis;
     className: string;
   }>,
 ): UnresolvedFinding {
@@ -108,7 +113,7 @@ function buildMissingClassMessage(className: string, usageCount: number): string
 }
 
 function buildMissingClassEvidence(
-  references: RuleContext["analysis"]["entities"]["classReferences"],
+  references: ClassReferenceAnalysis[],
 ): UnresolvedFinding["evidence"] {
   const evidenceByKey = new Map<string, UnresolvedFinding["evidence"][number]>();
 
@@ -129,13 +134,13 @@ function buildMissingClassEvidence(
 function collectReferenceFocusFilePaths(
   context: RuleContext,
   className: string,
-  references: RuleContext["analysis"]["entities"]["classReferences"],
+  references: ClassReferenceAnalysis[],
 ): string[] {
   const paths = new Set<string>();
   for (const reference of references) {
     const componentId = reference.classNameComponentIds?.[className] ?? reference.componentId;
     const component = componentId
-      ? context.analysis.indexes.componentsById.get(componentId)
+      ? getComponentById(context.analysisEvidence, componentId)
       : undefined;
     paths.add(component?.filePath ?? reference.location.filePath);
   }
@@ -143,9 +148,7 @@ function collectReferenceFocusFilePaths(
   return [...paths].sort((left, right) => left.localeCompare(right));
 }
 
-function dedupeUsageLocations(
-  references: RuleContext["analysis"]["entities"]["classReferences"],
-): Array<{
+function dedupeUsageLocations(references: ClassReferenceAnalysis[]): Array<{
   filePath: string;
   startLine: number;
   startColumn: number;
@@ -186,8 +189,8 @@ function dedupeUsageLocations(
 }
 
 function compareReferenceLocations(
-  left: RuleContext["analysis"]["entities"]["classReferences"][number],
-  right: RuleContext["analysis"]["entities"]["classReferences"][number],
+  left: ClassReferenceAnalysis,
+  right: ClassReferenceAnalysis,
 ): number {
   return (
     left.location.filePath.localeCompare(right.location.filePath) ||
@@ -197,7 +200,7 @@ function compareReferenceLocations(
 }
 
 function buildMissingClassTraces(input: {
-  reference: RuleContext["analysis"]["entities"]["classReferences"][number];
+  reference: ClassReferenceAnalysis;
   className: string;
 }): AnalysisTrace[] {
   const runtimeLibraryHint = input.reference.runtimeLibraryHint;
@@ -269,7 +272,7 @@ function buildMissingClassTraces(input: {
 function buildRuntimeLibraryHint(
   context: RuleContext,
   className: string,
-  references: RuleContext["analysis"]["entities"]["classReferences"],
+  references: ClassReferenceAnalysis[],
 ): Record<string, unknown> | undefined {
   const runtimeHint = references
     .map((reference) => reference.runtimeLibraryHint)
@@ -278,7 +281,7 @@ function buildRuntimeLibraryHint(
     return undefined;
   }
 
-  const packageCssImports = context.analysis.inputs.externalCss.packageCssImports.filter(
+  const packageCssImports = (context.externalCssPackageImports ?? []).filter(
     (importRecord) =>
       getPackageNameFromSpecifier(importRecord.specifier) === runtimeHint.packageName,
   );

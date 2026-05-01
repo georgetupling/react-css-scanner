@@ -1,4 +1,5 @@
-import type { AnalysisTrace } from "../../static-analysis-engine/index.js";
+import type { AnalysisTrace, ClassReferenceAnalysis } from "../../static-analysis-engine/index.js";
+import { getClassReferences } from "../analysisQueries.js";
 import type { RuleContext, RuleDefinition, UnresolvedFinding } from "../types.js";
 
 export const dynamicClassReferenceRule: RuleDefinition = {
@@ -9,7 +10,7 @@ export const dynamicClassReferenceRule: RuleDefinition = {
 };
 
 function runDynamicClassReferenceRule(context: RuleContext): UnresolvedFinding[] {
-  return context.analysis.entities.classReferences
+  return getClassReferences(context.analysisEvidence)
     .filter((reference) => reference.unknownDynamic)
     .map((reference) => ({
       id: `dynamic-class-reference:${reference.id}`,
@@ -38,7 +39,7 @@ function runDynamicClassReferenceRule(context: RuleContext): UnresolvedFinding[]
 }
 
 function buildDynamicClassReferenceTraces(input: {
-  reference: RuleContext["analysis"]["entities"]["classReferences"][number];
+  reference: ClassReferenceAnalysis;
 }): AnalysisTrace[] {
   return [
     {

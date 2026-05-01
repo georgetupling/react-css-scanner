@@ -65,6 +65,10 @@ export function getClassDefinitionsByClassName(
   );
 }
 
+export function getClassDefinitions(analysis: AnalysisEvidence): ClassDefinitionAnalysis[] {
+  return analysis.projectEvidence.entities.classDefinitions;
+}
+
 export function getClassDefinitionsByStylesheetId(
   analysis: AnalysisEvidence,
   stylesheetId: ProjectAnalysisId,
@@ -92,6 +96,10 @@ export function getClassReferencesByClassName(
     analysis.projectEvidence.indexes.classReferenceIdsByClassName.get(className),
     analysis.projectEvidence.indexes.classReferencesById,
   );
+}
+
+export function getClassReferences(analysis: AnalysisEvidence): ClassReferenceAnalysis[] {
+  return analysis.projectEvidence.entities.classReferences;
 }
 
 export function getClassReferenceById(
@@ -200,6 +208,10 @@ export function getSelectorBranchesByStylesheetId(
   );
 }
 
+export function getSelectorBranches(analysis: AnalysisEvidence): SelectorBranchAnalysis[] {
+  return analysis.projectEvidence.entities.selectorBranches;
+}
+
 export function getSelectorReachabilityBranches(
   analysis: AnalysisEvidence,
 ): SelectorBranchReachability[] {
@@ -287,6 +299,12 @@ export function getCssModuleMemberMatchesByDefinitionId(
   return analysis.projectEvidence.relations.cssModuleMemberMatches.filter(
     (match) => match.definitionId === definitionId,
   );
+}
+
+export function getCssModuleMemberMatches(
+  analysis: AnalysisEvidence,
+): CssModuleMemberMatchRelation[] {
+  return analysis.projectEvidence.relations.cssModuleMemberMatches;
 }
 
 export function getCssModuleMemberMatchesByReferenceId(

@@ -1,4 +1,9 @@
-import type { AnalysisTrace, SourceAnchor } from "../../static-analysis-engine/index.js";
+import type {
+  AnalysisTrace,
+  ComponentAnalysis,
+  SourceAnchor,
+} from "../../static-analysis-engine/index.js";
+import { getClassDefinitionById, getComponentById, getStylesheetById } from "../analysisQueries.js";
 import type { RuleContext, RuleDefinition, UnresolvedFinding } from "../types.js";
 import {
   getClassOwnershipEvidence,
@@ -18,10 +23,11 @@ function runStyleSharedWithoutSharedOwnerRule(context: RuleContext): UnresolvedF
   const groups = new Map<string, SharedWithoutOwnerFindingGroup>();
 
   for (const ownership of getClassOwnershipEvidence(context)) {
-    const definition = context.analysis.indexes.classDefinitionsById.get(
+    const definition = getClassDefinitionById(
+      context.analysisEvidence,
       ownership.classDefinitionId,
     );
-    const stylesheet = context.analysis.indexes.stylesheetsById.get(ownership.stylesheetId);
+    const stylesheet = getStylesheetById(context.analysisEvidence, ownership.stylesheetId);
     if (
       !definition ||
       !stylesheet ||
@@ -34,7 +40,7 @@ function runStyleSharedWithoutSharedOwnerRule(context: RuleContext): UnresolvedF
     }
 
     const consumerComponents = ownership.consumerSummary.consumerComponentIds
-      .map((componentId) => context.analysis.indexes.componentsById.get(componentId))
+      .map((componentId) => getComponentById(context.analysisEvidence, componentId))
       .filter((component): component is NonNullable<typeof component> => Boolean(component));
     if (consumerComponents.length < 2) {
       continue;
@@ -127,7 +133,6 @@ function buildSharedWithoutOwnerTraces(input: {
 }
 
 type ClassOwnership = RuleClassOwnershipEvidence;
-type ComponentAnalysis = RuleContext["analysis"]["entities"]["components"][number];
 
 type SharedWithoutOwnerFindingGroup = {
   key: string;

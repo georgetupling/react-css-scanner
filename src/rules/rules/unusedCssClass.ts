@@ -1,4 +1,20 @@
-import type { AnalysisTrace } from "../../static-analysis-engine/index.js";
+import type {
+  AnalysisTrace,
+  ClassDefinitionAnalysis,
+  SelectorBranchAnalysis,
+  StaticallySkippedClassReferenceAnalysis,
+  StylesheetAnalysis,
+} from "../../static-analysis-engine/index.js";
+import {
+  getClassDefinitions,
+  getClassReferences,
+  getClassReferencesByClassName,
+  getSelectorBranches,
+  getSelectorBranchesByStylesheetId,
+  getStaticallySkippedClassReferencesByClassName,
+  getStylesheetById,
+  getStylesheetReachabilityByStylesheetId,
+} from "../analysisQueries.js";
 import type { RuleContext, RuleDefinition, UnresolvedFinding } from "../types.js";
 
 export const unusedCssClassRule: RuleDefinition = {
@@ -12,24 +28,21 @@ function runUnusedCssClassRule(context: RuleContext): UnresolvedFinding[] {
   const definitionsByClassAndStylesheet = new Map<
     string,
     Array<{
-      definition: RuleContext["analysis"]["entities"]["classDefinitions"][number];
-      stylesheet: NonNullable<
-        ReturnType<RuleContext["analysis"]["indexes"]["stylesheetsById"]["get"]>
-      >;
+      definition: ClassDefinitionAnalysis;
+      stylesheet: StylesheetAnalysis;
     }>
   >();
-  const hasUnknownDynamicReferences = context.analysis.entities.classReferences.some(
+  const hasUnknownDynamicReferences = getClassReferences(context.analysisEvidence).some(
     (reference) => reference.unknownDynamic,
   );
 
-  for (const definition of context.analysis.entities.classDefinitions) {
-    const stylesheet = context.analysis.indexes.stylesheetsById.get(definition.stylesheetId);
+  for (const definition of getClassDefinitions(context.analysisEvidence)) {
+    const stylesheet = getStylesheetById(context.analysisEvidence, definition.stylesheetId);
     if (!stylesheet || stylesheet.origin === "external-import" || definition.isCssModule) {
       continue;
     }
 
-    const referenceIds = context.analysis.indexes.referencesByClassName.get(definition.className);
-    if (referenceIds && referenceIds.length > 0) {
+    if (getClassReferencesByClassName(context.analysisEvidence, definition.className).length > 0) {
       continue;
     }
 
@@ -59,7 +72,7 @@ function runUnusedCssClassRule(context: RuleContext): UnresolvedFinding[] {
 
 function isDefinitionMatchedBySelectorBranch(
   context: RuleContext,
-  definition: RuleContext["analysis"]["entities"]["classDefinitions"][number],
+  definition: ClassDefinitionAnalysis,
 ): boolean {
   if (
     definition.selectorKind === "simple-root" ||
@@ -69,21 +82,15 @@ function isDefinitionMatchedBySelectorBranch(
     return false;
   }
 
-  const stylesheet = context.analysis.indexes.stylesheetsById.get(definition.stylesheetId);
-  const branchIds = context.analysis.indexes.selectorBranchesByStylesheetId.get(
+  const stylesheet = getStylesheetById(context.analysisEvidence, definition.stylesheetId);
+  const branchesById = new Map<string, SelectorBranchAnalysis>();
+  for (const branch of getSelectorBranchesByStylesheetId(
+    context.analysisEvidence,
     definition.stylesheetId,
-  );
-  const branchesById = new Map<
-    string,
-    RuleContext["analysis"]["entities"]["selectorBranches"][number]
-  >();
-  for (const branchId of branchIds ?? []) {
-    const branch = context.analysis.indexes.selectorBranchesById.get(branchId);
-    if (branch) {
-      branchesById.set(branch.id, branch);
-    }
+  )) {
+    branchesById.set(branch.id, branch);
   }
-  for (const branch of context.analysis.entities.selectorBranches) {
+  for (const branch of getSelectorBranches(context.analysisEvidence)) {
     if (sameAnalysisPath(branch.location?.filePath, stylesheet?.filePath)) {
       branchesById.set(branch.id, branch);
     }
@@ -121,10 +128,8 @@ function normalizeAnalysisPath(filePath: string): string {
 function buildUnusedClassFinding(input: {
   context: RuleContext;
   definitions: Array<{
-    definition: RuleContext["analysis"]["entities"]["classDefinitions"][number];
-    stylesheet: NonNullable<
-      ReturnType<RuleContext["analysis"]["indexes"]["stylesheetsById"]["get"]>
-    >;
+    definition: ClassDefinitionAnalysis;
+    stylesheet: StylesheetAnalysis;
   }>;
   hasUnknownDynamicReferences: boolean;
 }): UnresolvedFinding {
@@ -207,12 +212,10 @@ function buildUnusedClassMessage(input: {
 
 function buildUnusedClassEvidence(
   definitions: Array<{
-    definition: RuleContext["analysis"]["entities"]["classDefinitions"][number];
-    stylesheet: NonNullable<
-      ReturnType<RuleContext["analysis"]["indexes"]["stylesheetsById"]["get"]>
-    >;
+    definition: ClassDefinitionAnalysis;
+    stylesheet: StylesheetAnalysis;
   }>,
-  skippedReferences: RuleContext["analysis"]["entities"]["staticallySkippedClassReferences"],
+  skippedReferences: StaticallySkippedClassReferenceAnalysis[],
 ): UnresolvedFinding["evidence"] {
   const evidenceByKey = new Map<string, UnresolvedFinding["evidence"][number]>();
 
@@ -240,31 +243,17 @@ function buildUnusedClassEvidence(
 function getStaticallySkippedReferences(
   context: RuleContext,
   className: string,
-): RuleContext["analysis"]["entities"]["staticallySkippedClassReferences"] {
-  if (
-    !context.analysis.indexes.staticallySkippedReferencesByClassName ||
-    !context.analysis.indexes.staticallySkippedClassReferencesById
-  ) {
-    return [];
-  }
-
-  const referenceIds =
-    context.analysis.indexes.staticallySkippedReferencesByClassName.get(className) ?? [];
-  return referenceIds
-    .map((referenceId) =>
-      context.analysis.indexes.staticallySkippedClassReferencesById.get(referenceId),
-    )
-    .filter((reference): reference is NonNullable<typeof reference> => Boolean(reference))
-    .sort(
-      (left, right) =>
-        left.location.filePath.localeCompare(right.location.filePath) ||
-        left.location.startLine - right.location.startLine ||
-        left.location.startColumn - right.location.startColumn,
-    );
+): StaticallySkippedClassReferenceAnalysis[] {
+  return getStaticallySkippedClassReferencesByClassName(context.analysisEvidence, className).sort(
+    (left, right) =>
+      left.location.filePath.localeCompare(right.location.filePath) ||
+      left.location.startLine - right.location.startLine ||
+      left.location.startColumn - right.location.startColumn,
+  );
 }
 
 function buildSkippedReferenceLocations(
-  references: RuleContext["analysis"]["entities"]["staticallySkippedClassReferences"],
+  references: StaticallySkippedClassReferenceAnalysis[],
 ): Array<{
   filePath: string;
   startLine: number;
@@ -285,10 +274,8 @@ function buildSkippedReferenceLocations(
 
 function buildDefinitionLocations(
   definitions: Array<{
-    definition: RuleContext["analysis"]["entities"]["classDefinitions"][number];
-    stylesheet: NonNullable<
-      ReturnType<RuleContext["analysis"]["indexes"]["stylesheetsById"]["get"]>
-    >;
+    definition: ClassDefinitionAnalysis;
+    stylesheet: StylesheetAnalysis;
   }>,
 ): Array<{
   filePath: string;
@@ -327,12 +314,13 @@ function buildDefinitionLocations(
 
 function buildUnusedClassTraces(input: {
   context: RuleContext;
-  definition: RuleContext["analysis"]["entities"]["classDefinitions"][number];
+  definition: ClassDefinitionAnalysis;
   stylesheetFilePath?: string;
 }): AnalysisTrace[] {
-  const reachabilityTraces = input.context.analysis.relations.stylesheetReachability
-    .filter((relation) => relation.stylesheetId === input.definition.stylesheetId)
-    .flatMap((relation) => relation.traces);
+  const reachabilityTraces = getStylesheetReachabilityByStylesheetId(
+    input.context.analysisEvidence,
+    input.definition.stylesheetId,
+  ).flatMap((relation) => relation.traces);
 
   return [
     {

@@ -2209,32 +2209,116 @@ function buildUnusedClassRuleContext({ outcome, status }) {
 
   return {
     includeTraces: false,
-    analysis: {
-      entities: {
-        classDefinitions: [definition],
-        classReferences: [],
-        selectorBranches: [indexedUnrelatedBranch, branch],
+    analysisEvidence: {
+      selectorReachability: {
+        meta: {
+          generatedAtStage: "selector-reachability",
+          branchCount: 0,
+          diagnosticCount: 0,
+        },
+        selectorBranches: [],
+        diagnostics: [],
+        indexes: {
+          branchReachabilityBySelectorBranchNodeId: new Map(),
+          branchIdsByRequiredClassName: new Map(),
+          branchIdsByStylesheetId: new Map(),
+        },
       },
-      indexes: {
-        referencesByClassName: new Map(),
-        stylesheetsById: new Map([
-          [
-            stylesheetId,
+      ownershipInference: {
+        meta: {
+          generatedAtStage: "ownership-inference",
+          classOwnershipCount: 0,
+          ownerCandidateCount: 0,
+          diagnosticCount: 0,
+        },
+        classOwnership: [],
+        ownerCandidates: [],
+        stylesheetOwnership: [],
+        diagnostics: [],
+        indexes: {
+          classOwnershipById: new Map(),
+          classOwnershipIdsByClassDefinitionId: new Map(),
+          ownerCandidateById: new Map(),
+          ownerCandidateIdsByTargetId: new Map(),
+          stylesheetOwnershipByStylesheetId: new Map(),
+          diagnosticById: new Map(),
+          diagnosticsByTargetId: new Map(),
+        },
+      },
+      projectEvidence: {
+        meta: {
+          generatedAtStage: "project-evidence-assembly",
+          sourceFileCount: 0,
+          componentCount: 0,
+          stylesheetCount: 1,
+          classDefinitionCount: 1,
+          classReferenceCount: 0,
+          relationCount: 0,
+          diagnosticCount: 0,
+        },
+        diagnostics: [],
+        entities: {
+          sourceFiles: [],
+          stylesheets: [
             {
               id: stylesheetId,
               origin: "project",
               filePath: "src/BrowseControls.css",
             },
           ],
-        ]),
-        selectorBranchesByStylesheetId: new Map([[stylesheetId, [indexedUnrelatedBranch.id]]]),
-        selectorBranchesById: new Map([
-          [selectorBranchId, branch],
-          [indexedUnrelatedBranch.id, indexedUnrelatedBranch],
-        ]),
-      },
-      relations: {
-        stylesheetReachability: [],
+          components: [],
+          renderSubtrees: [],
+          classDefinitions: [definition],
+          classContexts: [],
+          classReferences: [],
+          staticallySkippedClassReferences: [],
+          selectorQueries: [],
+          selectorBranches: [indexedUnrelatedBranch, branch],
+          unsupportedClassReferences: [],
+          cssModuleImports: [],
+          cssModuleAliases: [],
+          cssModuleDestructuredBindings: [],
+          cssModuleMemberReferences: [],
+          cssModuleReferenceDiagnostics: [],
+        },
+        relations: {
+          moduleImports: [],
+          componentRenders: [],
+          stylesheetReachability: [],
+          referenceMatches: [],
+          selectorMatches: [],
+          providerClassSatisfactions: [],
+          cssModuleMemberMatches: [],
+        },
+        indexes: {
+          sourceFilesById: new Map(),
+          sourceFileIdByPath: new Map(),
+          stylesheetsById: new Map([
+            [
+              stylesheetId,
+              {
+                id: stylesheetId,
+                origin: "project",
+                filePath: "src/BrowseControls.css",
+              },
+            ],
+          ]),
+          stylesheetIdByPath: new Map([["src/BrowseControls.css", stylesheetId]]),
+          componentsById: new Map(),
+          componentIdsBySourceFileId: new Map(),
+          classDefinitionsById: new Map([[definitionId, definition]]),
+          classDefinitionIdsByClassName: new Map([["popover__trigger", [definitionId]]]),
+          classDefinitionIdsByStylesheetId: new Map([[stylesheetId, [definitionId]]]),
+          classReferencesById: new Map(),
+          classReferenceIdsByClassName: new Map(),
+          classReferenceIdsBySourceFileId: new Map(),
+          classReferenceMatchIdsByDefinitionId: new Map(),
+          classReferenceMatchIdsByReferenceId: new Map(),
+          stylesheetReachabilityIdsByStylesheetId: new Map(),
+          selectorBranchIdsByStylesheetId: new Map([[stylesheetId, [indexedUnrelatedBranch.id]]]),
+          diagnosticById: new Map(),
+          diagnosticsByTargetId: new Map(),
+        },
       },
     },
   };
