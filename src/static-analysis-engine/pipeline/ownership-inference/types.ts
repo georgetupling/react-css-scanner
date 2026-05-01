@@ -1,6 +1,6 @@
 import type { AnalysisConfidence, AnalysisTrace } from "../../types/analysis.js";
 import type { FactNodeId } from "../fact-graph/index.js";
-import type { ProjectAnalysisId } from "../project-analysis/index.js";
+import type { ClassOwnershipEvidenceKind, ProjectAnalysisId } from "../project-analysis/index.js";
 import type { SelectorBranchMatchId } from "../selector-reachability/index.js";
 
 export type OwnershipEvidenceId = string;
@@ -47,6 +47,7 @@ export type ClassOwnershipEvidence = {
   ownerCandidateIds: OwnershipCandidateId[];
   classificationIds: OwnershipClassificationId[];
   evidenceKind: OwnershipEvidenceKind;
+  compatibilityEvidenceKind?: ClassOwnershipEvidenceKind;
   confidence: AnalysisConfidence;
   actable: boolean;
   traces: AnalysisTrace[];

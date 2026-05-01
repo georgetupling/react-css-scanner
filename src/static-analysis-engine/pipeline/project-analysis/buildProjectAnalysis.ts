@@ -10,7 +10,10 @@ import {
   buildProjectEvidenceEntities,
   buildProjectEvidenceRelations,
 } from "../project-evidence/index.js";
-import { buildClassOwnership } from "./relations/classOwnership.js";
+import {
+  buildOwnershipInference,
+  classOwnershipAnalysisFromOwnershipInference,
+} from "../ownership-inference/index.js";
 
 export function buildProjectAnalysis(input: ProjectAnalysisBuildInput): ProjectAnalysis {
   const includeTraces = input.includeTraces ?? true;
@@ -76,16 +79,19 @@ export function buildProjectAnalysis(input: ProjectAnalysisBuildInput): ProjectA
     providerClassSatisfactions,
     cssModuleMemberMatches,
   } = projectEvidenceWithRelations.relations;
-  const classOwnership = buildClassOwnership({
-    input,
-    definitions: classDefinitions,
-    references: classReferences,
-    components,
-    stylesheets,
-    referenceMatches,
-    indexes,
-    includeTraces,
+  const ownershipInference = buildOwnershipInference({
+    projectEvidence: projectEvidenceWithRelations,
+    selectorReachability: input.selectorReachability ?? emptySelectorReachability(),
+    options: {
+      includeTraces,
+      sharedCssPatterns: [],
+    },
+    compatibility: {
+      projectInput: input,
+      projectIndexes: indexes,
+    },
   });
+  const classOwnership = classOwnershipAnalysisFromOwnershipInference(ownershipInference);
 
   indexRelations({
     referenceMatches,
@@ -139,5 +145,53 @@ export function buildProjectAnalysis(input: ProjectAnalysisBuildInput): ProjectA
       cssModuleMemberMatches,
     },
     indexes,
+  };
+}
+
+function emptySelectorReachability(): NonNullable<
+  ProjectAnalysisBuildInput["selectorReachability"]
+> {
+  return {
+    meta: {
+      generatedAtStage: "selector-reachability",
+      selectorBranchCount: 0,
+      elementMatchCount: 0,
+      branchMatchCount: 0,
+      diagnosticCount: 0,
+    },
+    selectorBranches: [],
+    elementMatches: [],
+    branchMatches: [],
+    diagnostics: [],
+    indexes: {
+      branchReachabilityBySelectorBranchNodeId: new Map(),
+      branchReachabilityBySourceKey: new Map(),
+      matchById: new Map(),
+      elementMatchById: new Map(),
+      renderElementById: new Map(),
+      emissionSiteById: new Map(),
+      renderPathById: new Map(),
+      unknownRegionById: new Map(),
+      matchIdsBySelectorBranchNodeId: new Map(),
+      matchIdsByElementId: new Map(),
+      matchIdsByClassName: new Map(),
+      matchIdsByEmissionSiteId: new Map(),
+      matchIdsByRenderPathId: new Map(),
+      matchIdsByPlacementConditionId: new Map(),
+      renderPathIdsByElementId: new Map(),
+      renderPathIdsByEmissionSiteId: new Map(),
+      placementConditionIdsByElementId: new Map(),
+      placementConditionIdsByEmissionSiteId: new Map(),
+      emissionSiteIdsByElementId: new Map(),
+      emissionSiteIdsByToken: new Map(),
+      unknownClassElementIds: [],
+      unknownClassEmissionSiteIds: [],
+      unknownClassEmissionSiteIdsByElementId: new Map(),
+      unknownRegionIdsByComponentNodeId: new Map(),
+      unknownRegionIdsByRenderPathId: new Map(),
+      branchIdsByRequiredClassName: new Map(),
+      branchIdsByStylesheetNodeId: new Map(),
+      diagnosticIdsBySelectorBranchNodeId: new Map(),
+    },
   };
 }

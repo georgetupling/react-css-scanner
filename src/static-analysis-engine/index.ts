@@ -66,9 +66,11 @@ export {
 } from "./pipeline/selector-reachability/index.js";
 export {
   buildOwnershipInference,
+  classOwnershipAnalysisFromOwnershipInference,
   classDefinitionConsumerEvidenceId,
   classOwnershipEvidenceId,
   ownershipInferenceDiagnosticId,
+  ownershipEvidenceFromClassOwnershipAnalysis,
   styleClassificationEvidenceId,
   styleOwnerCandidateId,
   stylesheetOwnershipEvidenceId,
@@ -336,6 +338,7 @@ export type {
   OwnershipInferenceDiagnosticCode,
   OwnershipInferenceDiagnosticId,
   OwnershipInferenceIndexes,
+  OwnershipInferenceCompatibilityInput,
   OwnershipInferenceInput,
   OwnershipInferenceMeta,
   OwnershipInferenceOptions,
