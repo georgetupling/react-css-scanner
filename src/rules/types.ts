@@ -1,4 +1,5 @@
 import type {
+  AnalysisEvidence,
   AnalysisConfidence,
   AnalysisTrace,
   ProjectAnalysis,
@@ -56,6 +57,7 @@ export type UnresolvedFinding = Omit<Finding, "severity">;
 
 export type RuleContext = {
   analysis: ProjectAnalysis;
+  analysisEvidence: AnalysisEvidence;
   config: ScannerConfig;
   includeTraces?: boolean;
 };

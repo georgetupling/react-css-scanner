@@ -64,6 +64,7 @@ export async function scanProject(input: ScanProjectInput = {}): Promise<ScanPro
   const ruleResult = await runScanStage(progress, "run-rules", "Running rules", () =>
     runRules({
       analysis: engineResult.projectAnalysis,
+      analysisEvidence: engineResult.analysisEvidence,
       config: snapshot.config,
       includeTraces: input.includeTraces ?? true,
     }),

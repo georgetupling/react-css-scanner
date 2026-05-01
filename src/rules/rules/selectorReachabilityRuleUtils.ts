@@ -1,55 +1,38 @@
 import {
-  selectorBranchSourceKey,
+  type SelectorBranchAnalysis,
   type SelectorBranchReachability,
+  type SelectorQueryAnalysis,
 } from "../../static-analysis-engine/index.js";
+import {
+  getProjectSelectorBranchForReachability as queryProjectSelectorBranchForReachability,
+  getProjectSelectorQueryForReachability as queryProjectSelectorQueryForReachability,
+  getSelectorReachabilityBranches as querySelectorReachabilityBranches,
+  getStylesheetById,
+} from "../analysisQueries.js";
 import type { RuleContext, UnresolvedFinding } from "../types.js";
 
-export type ProjectSelectorBranch = RuleContext["analysis"]["entities"]["selectorBranches"][number];
+export type ProjectSelectorBranch = SelectorBranchAnalysis;
 
-export type ProjectSelectorQuery = RuleContext["analysis"]["entities"]["selectorQueries"][number];
+export type ProjectSelectorQuery = SelectorQueryAnalysis;
 
 export function getSelectorReachabilityBranches(
   context: RuleContext,
 ): SelectorBranchReachability[] {
-  return context.analysis.evidence.selectorReachability?.selectorBranches ?? [];
+  return querySelectorReachabilityBranches(context.analysisEvidence);
 }
 
 export function getProjectSelectorBranchForReachability(
   context: RuleContext,
   branch: SelectorBranchReachability,
 ): ProjectSelectorBranch | undefined {
-  const sourceKey = selectorBranchSourceKey({
-    ruleKey: branch.ruleKey,
-    branchIndex: branch.branchIndex,
-    selectorText: branch.branchText,
-    location: branch.location,
-  });
-
-  return context.analysis.entities.selectorBranches.find((candidate) => {
-    const source = candidate.sourceQuery.sourceResult.source;
-    if (source.kind !== "css-source") {
-      return false;
-    }
-
-    return (
-      selectorBranchSourceKey({
-        ruleKey: source.ruleKey,
-        branchIndex: source.branchIndex,
-        selectorText: candidate.selectorText,
-        location: source.selectorAnchor,
-      }) === sourceKey
-    );
-  });
+  return queryProjectSelectorBranchForReachability(context.analysisEvidence, branch);
 }
 
 export function getProjectSelectorQueryForReachability(
   context: RuleContext,
   branch: SelectorBranchReachability,
 ): ProjectSelectorQuery | undefined {
-  const projectBranch = getProjectSelectorBranchForReachability(context, branch);
-  return projectBranch
-    ? context.analysis.indexes.selectorQueriesById.get(projectBranch.selectorQueryId)
-    : undefined;
+  return queryProjectSelectorQueryForReachability(context.analysisEvidence, branch);
 }
 
 export function buildReachabilitySelectorEvidence(input: {
@@ -61,7 +44,7 @@ export function buildReachabilitySelectorEvidence(input: {
   const evidence: UnresolvedFinding["evidence"] = [];
   const stylesheetId = input.projectBranch?.stylesheetId ?? input.projectQuery?.stylesheetId;
 
-  if (stylesheetId && input.context.analysis.indexes.stylesheetsById.has(stylesheetId)) {
+  if (stylesheetId && getStylesheetById(input.context.analysisEvidence, stylesheetId)) {
     evidence.push({
       kind: "stylesheet",
       id: stylesheetId,
