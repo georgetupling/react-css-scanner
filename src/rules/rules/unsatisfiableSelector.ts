@@ -48,7 +48,6 @@ function runUnsatisfiableSelectorRule(context: RuleContext): UnresolvedFinding[]
         data: {
           selectorText: branch.branchText,
           requirement: branch.requirement,
-          outcome: "no-match-under-bounded-analysis",
           selectorReachabilityStatus: branch.status,
           selectorBranchNodeId: branch.selectorBranchNodeId,
           reasons: query?.reasons ?? [],

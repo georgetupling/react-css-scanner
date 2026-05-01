@@ -156,8 +156,8 @@ test("unused-css-class aggregates repeated definitions for the same class", asyn
 
 test("unused-css-class treats matchable contextual selector subjects as used", () => {
   const context = buildUnusedClassRuleContext({
-    outcome: "possible-match",
-    status: "unsupported",
+    selectorReachabilityStatus: "only-matches-in-unknown-context",
+    confidence: "medium",
   });
 
   assert.deepEqual(unusedCssClassRule.run(context), []);
@@ -165,8 +165,8 @@ test("unused-css-class treats matchable contextual selector subjects as used", (
 
 test("unused-css-class still reports contextual selector subjects with no bounded match", () => {
   const context = buildUnusedClassRuleContext({
-    outcome: "no-match-under-bounded-analysis",
-    status: "resolved",
+    selectorReachabilityStatus: "not-matchable",
+    confidence: "high",
   });
 
   const findings = unusedCssClassRule.run(context);
@@ -2116,7 +2116,7 @@ function assertNoClassFindings(result, ruleId, classNames) {
   );
 }
 
-function buildUnusedClassRuleContext({ outcome, status }) {
+function buildUnusedClassRuleContext({ selectorReachabilityStatus, confidence }) {
   const stylesheetId = "stylesheet:src/BrowseControls.css";
   const definitionId = "class-definition:popover__trigger";
   const selectorBranchId = "selector-branch:popover__trigger";
@@ -2172,9 +2172,9 @@ function buildUnusedClassRuleContext({ outcome, status }) {
       ancestorClassName: "browse-toolbar-group",
       subjectClassName: "popover__trigger",
     },
-    outcome,
-    status,
-    confidence: status === "resolved" ? "high" : "medium",
+    selectorReachabilityStatus,
+    reasons: [],
+    confidence,
     traces: [],
     sourceQuery: {
       id: selectorQueryId,
@@ -2185,26 +2185,19 @@ function buildUnusedClassRuleContext({ outcome, status }) {
         startLine: 6,
         startColumn: 1,
       },
-      outcome,
-      status,
-      confidence: status === "resolved" ? "high" : "medium",
+      selectorReachabilityStatus,
+      selectorReachabilityStatuses: [selectorReachabilityStatus],
+      reasons: [],
+      confidence,
       traces: [],
-      sourceResult: {
-        selectorText,
-        outcome,
-        status,
-        confidence: status === "resolved" ? "high" : "medium",
-        reasons: [],
-        traces: [],
-      },
     },
   };
   const indexedUnrelatedBranch = {
     ...branch,
     id: "selector-branch:unrelated",
     selectorText: ".other",
-    outcome: "no-match-under-bounded-analysis",
-    status: "resolved",
+    selectorReachabilityStatus: "not-matchable",
+    reasons: [],
   };
 
   return {

@@ -46,8 +46,6 @@ function runSelectorOnlyMatchesInUnknownContextsRule(context: RuleContext): Unre
         data: {
           selectorText: branch.branchText,
           requirement: branch.requirement,
-          outcome: "possible-match",
-          status: "unsupported",
           selectorReachabilityStatus: branch.status,
           selectorBranchNodeId: branch.selectorBranchNodeId,
           reasons: query?.reasons ?? [],

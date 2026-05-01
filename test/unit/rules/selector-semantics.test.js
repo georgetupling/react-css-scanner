@@ -34,7 +34,6 @@ test("unsatisfiable-selector reports supported selectors with no reachable rende
     assert.equal(findings[0].subject.kind, "selector-query");
     assert.match(findings[0].message, /cannot match/);
     assert.equal(findings[0].data?.selectorText, ".card > .missing");
-    assert.equal(findings[0].data?.outcome, "no-match-under-bounded-analysis");
     assert.equal(findings[0].data?.selectorReachabilityStatus, "not-matchable");
     assert.equal(typeof findings[0].data?.selectorBranchNodeId, "string");
     assert.equal(findings[0].traces[0].category, "rule-evaluation");
@@ -105,8 +104,7 @@ test("selector-only-matches-in-unknown-contexts reports debug uncertainty for dy
     assert.equal(findings[0].confidence, "low");
     assert.equal(findings[0].subject.kind, "selector-query");
     assert.equal(findings[0].data?.selectorText, ".card > .title");
-    assert.equal(findings[0].data?.outcome, "possible-match");
-    assert.equal(findings[0].data?.status, "unsupported");
+    assert.equal(findings[0].data?.selectorReachabilityStatus, "only-matches-in-unknown-context");
     assert.deepEqual(
       result.findings.filter((finding) => finding.ruleId === "unsatisfiable-selector"),
       [],
