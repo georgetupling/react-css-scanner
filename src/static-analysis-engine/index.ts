@@ -61,6 +61,7 @@ export {
   extractSelectorQueriesFromCssText,
 } from "./pipeline/selector-analysis/index.js";
 export {
+  buildProjectSelectorProjection,
   buildSelectorReachability,
   selectorBranchSourceKey,
 } from "./pipeline/selector-reachability/index.js";
@@ -288,6 +289,10 @@ export type {
   SemanticOutcome,
 } from "./pipeline/selector-analysis/index.js";
 export type {
+  ProjectSelectorBranchProjection,
+  ProjectSelectorProjectionResult,
+  ProjectSelectorQueryProjection,
+  ProjectSelectorScopedReachability,
   SelectorBranchMatch,
   SelectorBranchRequirement,
   SelectorBranchReachability,

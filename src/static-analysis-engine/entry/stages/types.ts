@@ -9,7 +9,10 @@ import type { FactGraphResult } from "../../pipeline/fact-graph/index.js";
 import type { OwnershipInferenceResult } from "../../pipeline/ownership-inference/index.js";
 import type { ProjectEvidenceAssemblyResult } from "../../pipeline/project-evidence/index.js";
 import type { SelectorQueryResult } from "../../pipeline/selector-analysis/index.js";
-import type { SelectorReachabilityResult } from "../../pipeline/selector-reachability/index.js";
+import type {
+  ProjectSelectorProjectionResult,
+  SelectorReachabilityResult,
+} from "../../pipeline/selector-reachability/index.js";
 import type { ProjectBindingResolution } from "../../pipeline/symbol-resolution/index.js";
 import type { SymbolicEvaluationResult } from "../../pipeline/symbolic-evaluation/index.js";
 import type { RenderStructureResult } from "../../pipeline/render-structure/index.js";
@@ -47,6 +50,7 @@ export type ReachabilityStageResult = {
 
 export type SelectorReachabilityStageResult = {
   selectorReachability: SelectorReachabilityResult;
+  projectSelectorProjection: ProjectSelectorProjectionResult;
 };
 
 export type SelectorAnalysisStageResult = {

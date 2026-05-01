@@ -248,7 +248,13 @@ export function analyzeProjectSourceTexts(input: {
     progress,
     "selector-reachability",
     "Building selector reachability evidence",
-    () => runSelectorReachabilityStage(renderStructureStage),
+    () =>
+      runSelectorReachabilityStage({
+        renderStructure: renderStructureStage,
+        factGraph: factGraphStage,
+        reachabilitySummary: reachabilityStage.reachabilitySummary,
+        includeTraces,
+      }),
   );
   const selectorAnalysisStage = runAnalysisStage(
     progress,

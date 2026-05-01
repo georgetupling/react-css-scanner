@@ -8,13 +8,8 @@ import type { SourceAnchor } from "../../types/core.js";
 import type {
   CssAtRuleContext,
   CssSelectorBranchSource,
-  ExtractedSelectorQuery,
   NormalizedSelector,
-  NormalizedSelectorCombinator,
-  NormalizedSelectorSimpleSelector,
-  NormalizedSelectorStep,
   SelectorConstraint,
-  SelectorSourceInput,
 } from "../../libraries/selector-parsing/queryTypes.js";
 import type {
   ReachabilityAvailability,

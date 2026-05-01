@@ -2,8 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  buildProjectSelectorProjection,
+  buildExternalCssSummary,
   buildFactGraph,
   buildLanguageFrontends,
+  buildReachabilitySummary,
   buildModuleFacts,
   buildProjectBindingResolution,
   buildRenderStructure,
@@ -50,6 +53,45 @@ test("selector reachability output is deterministic across repeated runs", async
     serializeSelectorReachability(buildSelectorReachability(firstRenderStructure)),
     serializeSelectorReachability(buildSelectorReachability(secondRenderStructure)),
   );
+});
+
+test("selector reachability project projection is deterministic across repeated runs", async () => {
+  const first = await buildSelectorProjectionFixture({
+    sourceText:
+      'export function App({ active }) { return <button className={active ? "button primary" : "button secondary"} />; }\n',
+    cssText: ".button.primary, .button.secondary { color: blue; }\n",
+  });
+  const second = await buildSelectorProjectionFixture({
+    sourceText:
+      'export function App({ active }) { return <button className={active ? "button primary" : "button secondary"} />; }\n',
+    cssText: ".button.primary, .button.secondary { color: blue; }\n",
+  });
+
+  assert.deepEqual(
+    serializeSelectorProjection(first.projectSelectorProjection),
+    serializeSelectorProjection(second.projectSelectorProjection),
+  );
+});
+
+test("selector reachability project projection scopes matches to stylesheet-reachable contexts", async () => {
+  const fixture = await buildSelectorProjectionFixture({
+    sourceText: [
+      'import "./app.css";',
+      'export function App() { return <main><button className="button button--primary" /></main>; }',
+      "",
+    ].join("\n"),
+    cssText: ".button.button--primary { color: blue; }\n",
+  });
+
+  const branch = fixture.projectSelectorProjection.selectorBranches.find(
+    (candidate) => candidate.selectorText === ".button.button--primary",
+  );
+  assert.ok(branch);
+  assert.equal(branch.selectorReachabilityStatus, "definitely-matchable");
+  assert.ok(branch.scopedReachability);
+  assert.equal(branch.scopedReachability.kind, "css-source");
+  assert.ok(branch.scopedReachability.contexts.length > 0);
+  assert.ok(branch.scopedReachability.matchedContexts.length > 0);
 });
 
 test("selector reachability matches same-element compound class selectors", async () => {
@@ -410,6 +452,68 @@ async function buildRenderStructureFixture(input) {
   }
 }
 
+async function buildSelectorProjectionFixture(input) {
+  const cssFilePath = input.cssFilePath ?? "src/app.css";
+  const project = await new TestProjectBuilder()
+    .withSourceFile("src/App.tsx", input.sourceText)
+    .withCssFile(cssFilePath, input.cssText)
+    .build();
+
+  try {
+    const snapshot = await buildProjectSnapshot({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+        cssFilePaths: [cssFilePath],
+      },
+      runStage: async (_stage, _message, run) => run(),
+    });
+    const frontends = buildLanguageFrontends({ snapshot });
+    const factGraph = buildFactGraph({ snapshot, frontends });
+    const moduleFacts = buildModuleFacts({
+      source: frontends.source,
+      stylesheetFilePaths: [cssFilePath],
+    });
+    const symbolResolution = buildProjectBindingResolution({
+      source: frontends.source,
+      moduleFacts,
+      includeTraces: true,
+    });
+    const symbolicEvaluation = evaluateSymbolicExpressions({
+      graph: factGraph.graph,
+      cssModuleBindingResolution: symbolResolution,
+    });
+    const renderStructure = buildRenderStructure({
+      graph: factGraph.graph,
+      symbolicEvaluation,
+      options: {
+        includeTraces: true,
+      },
+    });
+    const selectorReachability = buildSelectorReachability(renderStructure);
+    const reachabilitySummary = buildReachabilitySummary({
+      moduleFacts,
+      renderModel: renderStructure.renderModel,
+      stylesheets: [{ filePath: cssFilePath, cssText: input.cssText }],
+      externalCssSummary: buildExternalCssSummary(undefined),
+      includeTraces: true,
+    });
+    const projectSelectorProjection = buildProjectSelectorProjection({
+      factGraph,
+      selectorReachability,
+      renderModel: renderStructure.renderModel,
+      reachabilitySummary,
+      includeTraces: true,
+    });
+
+    return {
+      projectSelectorProjection,
+    };
+  } finally {
+    await project.cleanup();
+  }
+}
+
 function findBranch(result, selectorText) {
   const branch = result.selectorBranches.find((candidate) => candidate.branchText === selectorText);
   assert.ok(branch);
@@ -442,4 +546,22 @@ function serializeSelectorReachability(result) {
 
 function mapEntries(map) {
   return [...map.entries()].sort(([left], [right]) => left.localeCompare(right));
+}
+
+function serializeSelectorProjection(result) {
+  return {
+    meta: result.meta,
+    selectorBranches: result.selectorBranches,
+    selectorQueries: result.selectorQueries,
+    indexes: {
+      branchProjectionBySelectorBranchNodeId: mapEntries(
+        result.indexes.branchProjectionBySelectorBranchNodeId,
+      ),
+      branchProjectionBySourceKey: mapEntries(result.indexes.branchProjectionBySourceKey),
+      queryProjectionBySelectorNodeId: mapEntries(result.indexes.queryProjectionBySelectorNodeId),
+      branchProjectionIdsByStylesheetNodeId: mapEntries(
+        result.indexes.branchProjectionIdsByStylesheetNodeId,
+      ),
+    },
+  };
 }
