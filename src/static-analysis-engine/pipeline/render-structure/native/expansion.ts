@@ -1,10 +1,18 @@
-import { renderedComponentBoundaryId, renderedElementId, renderPathId } from "../ids.js";
+import {
+  renderedComponentBoundaryId,
+  renderedElementId,
+  renderPathId,
+  renderRegionId,
+} from "../ids.js";
 import type {
+  PlacementCondition,
   RenderGraphProjectionEdge,
   RenderPath,
   RenderPathSegment,
+  RenderRegion,
   RenderStructureDiagnostic,
   RenderStructureInput,
+  RenderedComponent,
   RenderedComponentBoundary,
   RenderedElement,
 } from "../types.js";
@@ -22,6 +30,8 @@ export type ExpandContext = {
   componentExpansionDepth: number;
   renderExpressionDepth: number;
   rootElementIds: string[];
+  placementConditionIds: string[];
+  certainty: "definite" | "possible" | "unknown";
 };
 
 export type ExpansionState = {
@@ -38,6 +48,8 @@ export type ExpansionState = {
   elementsById: Map<string, RenderedElement>;
   renderPaths: RenderPath[];
   renderGraphEdges: RenderGraphProjectionEdge[];
+  placementConditions: PlacementCondition[];
+  renderRegions: RenderRegion[];
   diagnostics: RenderStructureDiagnostic[];
   componentBoundaries: RenderedComponentBoundary[];
   linkBoundaryToParent: (boundary: RenderedComponentBoundary) => void;
@@ -46,6 +58,7 @@ export type ExpansionState = {
     sourceLocation: RenderStructureInput["graph"]["nodes"]["components"][number]["location"];
     reason: string;
   }) => void;
+  addPlacementCondition: (input: Omit<PlacementCondition, "id"> & { key: string }) => string;
 };
 
 export function expandRenderSite(state: ExpansionState, context: ExpandContext): void {
@@ -76,8 +89,168 @@ export function expandRenderSite(state: ExpansionState, context: ExpandContext):
   }
 
   const templates = state.templatesByRenderSiteId.get(context.renderSite.id) ?? [];
-  const childRenderSiteIds =
+  const childRenderSiteIdsRaw =
     state.childRenderSitesByParentRenderSiteId.get(context.renderSite.id) ?? [];
+  let childRenderSiteIds = childRenderSiteIdsRaw;
+  const maxRepeatedRegionExpansions = state.input.options?.maxRepeatedRegionExpansions;
+  if (
+    Boolean(context.renderSite.repeatedRegion) &&
+    typeof maxRepeatedRegionExpansions === "number" &&
+    childRenderSiteIdsRaw.length > maxRepeatedRegionExpansions
+  ) {
+    childRenderSiteIds = childRenderSiteIdsRaw.slice(0, maxRepeatedRegionExpansions);
+    const boundary = state.boundaryById.get(context.boundaryId);
+    if (boundary) {
+      state.addUnknownBarrier({
+        boundary,
+        sourceLocation: context.renderSite.location,
+        reason: "max repeated region expansions exceeded",
+      });
+    }
+    state.diagnostics.push(
+      buildDiagnostic({
+        code: "render-expansion-budget-exceeded",
+        message: "repeated-region expansion exceeded max repeated region expansions",
+        filePath: context.renderSite.filePath,
+        location: context.renderSite.location,
+        renderSiteNodeId: context.renderSite.id,
+        boundaryId: context.boundaryId,
+      }),
+    );
+  }
+
+  if (context.renderSite.renderSiteKind === "conditional") {
+    const branchSpecs: Array<{ index: number; branch: "when-true" | "when-false" }> = [
+      { index: 0, branch: "when-true" },
+      { index: 1, branch: "when-false" },
+    ];
+    for (const spec of branchSpecs) {
+      const childRenderSiteId = childRenderSiteIds[spec.index];
+      if (!childRenderSiteId) {
+        state.addPlacementCondition({
+          key: `${context.boundaryId}:${context.renderSite.id}:${spec.branch}:missing`,
+          kind: "statically-skipped-branch",
+          sourceText: "missing conditional branch in native expansion",
+          sourceLocation: normalizeAnchor(context.renderSite.location),
+          branch: spec.branch,
+          certainty: "possible",
+          confidence: "medium",
+          traces: [],
+        });
+        continue;
+      }
+      const childRenderSite = state.input.graph.indexes.nodesById.get(childRenderSiteId);
+      if (!childRenderSite || childRenderSite.kind !== "render-site") {
+        continue;
+      }
+      const conditionId = state.addPlacementCondition({
+        key: `${context.boundaryId}:${context.renderSite.id}:${spec.branch}`,
+        kind: "conditional-branch",
+        sourceText: context.renderSite.renderSiteKind,
+        sourceLocation: normalizeAnchor(context.renderSite.location),
+        branch: spec.branch,
+        certainty: "possible",
+        confidence: "medium",
+        traces: [],
+      });
+      const pathSegments = [
+        ...context.basePathSegments,
+        { kind: "conditional-branch", branch: spec.branch, conditionId } as const,
+      ];
+      const regionPathId = renderPathId({
+        terminalKind: "unknown-region",
+        terminalId: `${context.boundaryId}:${context.renderSite.id}:${spec.branch}`,
+      });
+      state.renderPaths.push({
+        id: regionPathId,
+        rootComponentNodeId: context.componentNodeId,
+        terminalKind: "unknown-region",
+        terminalId: `${context.boundaryId}:${context.renderSite.id}:${spec.branch}`,
+        segments: pathSegments,
+        placementConditionIds: uniqueSorted([...context.placementConditionIds, conditionId]),
+        certainty: "possible",
+        traces: [],
+      });
+      state.renderRegions.push({
+        id: renderRegionId({
+          regionKind: "conditional-branch",
+          key: `${context.boundaryId}:${context.renderSite.id}:${spec.branch}`,
+        }),
+        regionKind: "conditional-branch",
+        boundaryId: context.boundaryId,
+        componentNodeId: context.componentNodeId,
+        renderPathId: regionPathId,
+        sourceLocation: normalizeAnchor(context.renderSite.location),
+        placementConditionIds: uniqueSorted([...context.placementConditionIds, conditionId]),
+        childElementIds: [],
+        childBoundaryIds: [],
+      });
+      expandRenderSite(state, {
+        ...context,
+        renderSite: childRenderSite,
+        childIndex: spec.index,
+        basePathSegments: pathSegments,
+        placementConditionIds: uniqueSorted([...context.placementConditionIds, conditionId]),
+        certainty: "possible",
+        renderExpressionDepth: context.renderExpressionDepth + 1,
+      });
+    }
+    return;
+  }
+
+  let repeatedConditionId: string | undefined;
+  const repeatedRegion = context.renderSite.repeatedRegion;
+  if (repeatedRegion) {
+    repeatedConditionId = state.addPlacementCondition({
+      key: `${context.boundaryId}:${context.renderSite.id}:${repeatedRegion.repeatKind}`,
+      kind: "repeated-region",
+      reason: `${repeatedRegion.repeatKind} render repetition`,
+      sourceText: repeatedRegion.sourceText,
+      sourceLocation: normalizeAnchor(repeatedRegion.sourceLocation),
+      certainty: repeatedRegion.certainty,
+      confidence: "medium",
+      traces: [],
+    });
+    const repeatedPathId = renderPathId({
+      terminalKind: "unknown-region",
+      terminalId: `${context.boundaryId}:${context.renderSite.id}:repeated`,
+    });
+    state.renderPaths.push({
+      id: repeatedPathId,
+      rootComponentNodeId: context.componentNodeId,
+      terminalKind: "unknown-region",
+      terminalId: `${context.boundaryId}:${context.renderSite.id}:repeated`,
+      segments: [
+        ...context.basePathSegments,
+        { kind: "repeated-template", conditionId: repeatedConditionId },
+      ],
+      placementConditionIds: uniqueSorted([...context.placementConditionIds, repeatedConditionId]),
+      certainty: repeatedRegion.certainty,
+      traces: [],
+    });
+    state.renderRegions.push({
+      id: renderRegionId({
+        regionKind: "repeated-template",
+        key: `${context.boundaryId}:${context.renderSite.id}`,
+      }),
+      regionKind: "repeated-template",
+      boundaryId: context.boundaryId,
+      componentNodeId: context.componentNodeId,
+      renderPathId: repeatedPathId,
+      sourceLocation: normalizeAnchor(repeatedRegion.sourceLocation),
+      placementConditionIds: uniqueSorted([...context.placementConditionIds, repeatedConditionId]),
+      childElementIds: [],
+      childBoundaryIds: [],
+    });
+  }
+
+  const effectivePlacementConditionIds = repeatedConditionId
+    ? uniqueSorted([...context.placementConditionIds, repeatedConditionId])
+    : context.placementConditionIds;
+  const effectiveCertainty = repeatedConditionId
+    ? (repeatedRegion?.certainty ?? "possible")
+    : context.certainty;
+
   const intrinsicTemplates = templates.filter((template) => template.templateKind === "intrinsic");
   const componentTemplates = templates.filter(
     (template) => template.templateKind === "component-candidate",
@@ -120,8 +293,8 @@ export function expandRenderSite(state: ExpansionState, context: ExpandContext):
             ? { placementComponentNodeId: context.renderSite.placementComponentNodeId }
             : {}),
         renderPathId: pathId,
-        placementConditionIds: [],
-        certainty: "definite",
+        placementConditionIds: effectivePlacementConditionIds,
+        certainty: effectiveCertainty,
         traces: [],
       };
       state.elements.push(element);
@@ -132,8 +305,8 @@ export function expandRenderSite(state: ExpansionState, context: ExpandContext):
         terminalKind: "element",
         terminalId: id,
         segments: pathSegments,
-        placementConditionIds: [],
-        certainty: "definite",
+        placementConditionIds: effectivePlacementConditionIds,
+        certainty: effectiveCertainty,
         traces: [],
       });
 
@@ -161,6 +334,8 @@ export function expandRenderSite(state: ExpansionState, context: ExpandContext):
           parentElementId: element.id,
           basePathSegments: pathSegments,
           renderExpressionDepth: context.renderExpressionDepth + 1,
+          placementConditionIds: effectivePlacementConditionIds,
+          certainty: effectiveCertainty,
         });
       }
     }
@@ -181,6 +356,8 @@ export function expandRenderSite(state: ExpansionState, context: ExpandContext):
       renderSite: childRenderSite,
       childIndex,
       renderExpressionDepth: context.renderExpressionDepth + 1,
+      placementConditionIds: effectivePlacementConditionIds,
+      certainty: effectiveCertainty,
     });
   }
 }
@@ -226,7 +403,7 @@ function projectComponentTemplate(
       terminalKind: "component-boundary",
       terminalId: id,
       segments: boundaryPathSegments,
-      placementConditionIds: [],
+      placementConditionIds: context.placementConditionIds,
       certainty,
       traces: [],
     });
@@ -245,7 +422,7 @@ function projectComponentTemplate(
       childBoundaryIds: [],
       rootElementIds: [],
       renderPathId: renderPathIdValue,
-      placementConditionIds: [],
+      placementConditionIds: context.placementConditionIds,
       expansion,
       traces: [],
     };
@@ -394,6 +571,8 @@ function projectComponentTemplate(
       componentExpansionDepth: context.componentExpansionDepth + 1,
       renderExpressionDepth: context.renderExpressionDepth + 1,
       rootElementIds,
+      placementConditionIds: context.placementConditionIds,
+      certainty: context.certainty,
     });
   }
   boundary.rootElementIds = uniqueSorted(rootElementIds);

@@ -183,6 +183,16 @@ export function buildReactSyntaxFacts(input: FactGraphInput): BuiltReactSyntaxFa
         ...(renderSite.parentSiteKey
           ? { parentRenderSiteNodeId: renderSiteNodeId(renderSite.parentSiteKey) }
           : {}),
+        ...(renderSite.repeatedRegion
+          ? {
+              repeatedRegion: {
+                repeatKind: renderSite.repeatedRegion.repeatKind,
+                sourceText: renderSite.repeatedRegion.sourceText,
+                sourceLocation: renderSite.repeatedRegion.sourceLocation,
+                certainty: renderSite.repeatedRegion.certainty,
+              },
+            }
+          : {}),
         confidence: "high",
         provenance: frontendFileProvenance({
           filePath: renderSite.filePath,

@@ -37,6 +37,12 @@ export type ReactRenderSiteFact = {
   placementComponentKey?: string;
   parentSiteKey?: string;
   elementTemplateKey?: string;
+  repeatedRegion?: {
+    repeatKind: "array-map" | "array-from";
+    sourceText: string;
+    sourceLocation: SourceAnchor;
+    certainty: "possible" | "unknown";
+  };
 };
 
 export type ReactElementTemplateFact = {

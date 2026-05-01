@@ -648,6 +648,34 @@ test("language frontends expose normalized component prop, local binding, and he
   );
 });
 
+test("language frontends annotate render sites with semantic repetition metadata", () => {
+  const file = buildSingleSourceFrontendFile(
+    "src/List.tsx",
+    [
+      "export function List({ items }) {",
+      "  return (",
+      "    <ul>",
+      "      {items.map((item) => <li key={item.id}>{item.label}</li>)}",
+      "      {Array.from(items, (item) => <li key={item.id}>{item.label}</li>)}",
+      "    </ul>",
+      "  );",
+      "}",
+      "",
+    ].join("\n"),
+  );
+
+  const repeatedSites = file.reactSyntax.renderSites.filter((site) => site.repeatedRegion);
+  assert.equal(repeatedSites.length > 0, true);
+  assert.equal(
+    repeatedSites.some((site) => site.repeatedRegion?.repeatKind === "array-map"),
+    true,
+  );
+  assert.equal(
+    repeatedSites.some((site) => site.repeatedRegion?.repeatKind === "array-from"),
+    true,
+  );
+});
+
 test("language frontends expose CSS Module syntax collectors", () => {
   const file = buildSingleSourceFrontendFile(
     "src/Button.tsx",

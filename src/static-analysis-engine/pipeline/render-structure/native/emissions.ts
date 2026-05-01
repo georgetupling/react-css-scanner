@@ -153,7 +153,7 @@ export function buildNativeEmissionSites(input: {
       unsupported,
       confidence,
       renderPathId: emissionPathId,
-      placementConditionIds: [],
+      placementConditionIds: element?.placementConditionIds ?? [],
       traces: [...expression.traces],
     };
 
@@ -174,7 +174,7 @@ export function buildNativeEmissionSites(input: {
         terminalKind: "emission-site",
         terminalId: instantiatedSite.id,
         segments: [...basePath.segments],
-        placementConditionIds: [],
+        placementConditionIds: instantiatedSite.placementConditionIds,
         certainty: basePath.certainty,
         traces: [...instantiatedSite.traces],
       });
@@ -194,7 +194,7 @@ export function buildNativeEmissionSites(input: {
       terminalKind: "emission-site",
       terminalId: id,
       segments: [...basePath.segments],
-      placementConditionIds: [],
+      placementConditionIds: emissionSite.placementConditionIds,
       certainty: basePath.certainty,
       traces: [...expression.traces],
     });
@@ -470,7 +470,7 @@ function instantiateExternalContributionEmissionSite(input: {
     unsupported: [],
     confidence: "medium",
     renderPathId: renderPathId({ terminalKind: "emission-site", terminalId: id }),
-    placementConditionIds: [],
+    placementConditionIds: input.element?.placementConditionIds ?? [],
     traces: [...input.expression.traces],
   };
 }

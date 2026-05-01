@@ -177,6 +177,12 @@ export type RenderSiteNode = FactNodeBase & {
   emittingComponentNodeId?: FactNodeId;
   placementComponentNodeId?: FactNodeId;
   parentRenderSiteNodeId?: FactNodeId;
+  repeatedRegion?: {
+    repeatKind: "array-map" | "array-from";
+    sourceText: string;
+    sourceLocation: SourceAnchor;
+    certainty: "possible" | "unknown";
+  };
 };
 
 export type ElementTemplateNode = FactNodeBase & {

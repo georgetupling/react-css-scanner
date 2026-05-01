@@ -1,4 +1,5 @@
 import {
+  placementConditionId,
   renderedComponentBoundaryId,
   renderedComponentId,
   renderPathId,
@@ -124,6 +125,20 @@ export function buildNativeRenderStructure(
     });
   };
 
+  const addPlacementCondition = (
+    inputCondition: Omit<PlacementCondition, "id"> & { key: string },
+  ): string => {
+    const id = placementConditionId({
+      conditionKind: inputCondition.kind,
+      key: inputCondition.key,
+    });
+    placementConditions.push({
+      ...inputCondition,
+      id,
+    });
+    return id;
+  };
+
   const expansionState: ExpansionState = {
     input,
     componentById,
@@ -138,10 +153,13 @@ export function buildNativeRenderStructure(
     elementsById,
     renderPaths,
     renderGraphEdges,
+    placementConditions,
+    renderRegions,
     diagnostics,
     componentBoundaries,
     linkBoundaryToParent,
     addUnknownBarrier,
+    addPlacementCondition,
   };
 
   for (const componentNode of [...input.graph.nodes.components].sort(compareComponentNodes)) {
@@ -232,6 +250,8 @@ export function buildNativeRenderStructure(
         componentExpansionDepth: 0,
         renderExpressionDepth: 0,
         rootElementIds,
+        placementConditionIds: [],
+        certainty: "definite",
       });
     }
 

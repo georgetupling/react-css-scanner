@@ -624,6 +624,45 @@ test("fact graph normalizes React component references and helper return sites",
   }
 });
 
+test("fact graph preserves semantic repetition metadata on render sites", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/List.tsx",
+      [
+        "export function List({ items }) {",
+        "  return (",
+        "    <ul>",
+        "      {items.map((item) => <li key={item.id}>{item.label}</li>)}",
+        "    </ul>",
+        "  );",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .build();
+
+  try {
+    const snapshot = await buildProjectSnapshot({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/List.tsx"],
+      },
+      runStage: async (_stage, _message, run) => run(),
+    });
+    const frontends = buildLanguageFrontends({ snapshot });
+    const result = buildFactGraph({ snapshot, frontends });
+
+    assert.equal(
+      result.graph.nodes.renderSites.some(
+        (site) => site.repeatedRegion?.repeatKind === "array-map",
+      ),
+      true,
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("fact graph normalizes React prop, local binding, and helper definition facts", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(
