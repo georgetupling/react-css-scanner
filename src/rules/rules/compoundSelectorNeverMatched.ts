@@ -55,7 +55,7 @@ function runCompoundSelectorNeverMatchedRule(context: RuleContext): UnresolvedFi
               : [],
           selectorReachabilityStatus: branch.status,
           selectorBranchNodeId: branch.selectorBranchNodeId,
-          reasons: query?.sourceResult.reasons ?? [],
+          reasons: query?.reasons ?? [],
         },
       };
     })
@@ -84,7 +84,7 @@ function buildCompoundSelectorTraces(input: {
             selectorText: input.branch.branchText,
             selectorReachabilityStatus: input.branch.status,
             selectorBranchNodeId: input.branch.selectorBranchNodeId,
-            reasons: input.query?.sourceResult.reasons ?? [],
+            reasons: input.query?.reasons ?? [],
           },
         },
       ],

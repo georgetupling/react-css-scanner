@@ -85,7 +85,7 @@ function runUnusedCompoundSelectorBranchRule(context: RuleContext): UnresolvedFi
           matchingBranchIds: projectUsefulBranches.map((usefulBranch) => usefulBranch.id),
           selectorReachabilityStatus: branch.status,
           selectorBranchNodeId: branch.selectorBranchNodeId,
-          reasons: projectBranch?.sourceQuery.sourceResult.reasons ?? [],
+          reasons: projectBranch?.reasons ?? [],
         },
       });
     }

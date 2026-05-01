@@ -98,8 +98,16 @@ function isDefinitionMatchedBySelectorBranch(
   const branches = [...branchesById.values()];
 
   return branches.some((branch) => {
+    const legacyOutcome = (branch as SelectorBranchAnalysis & { outcome?: string }).outcome;
+    const isMatchable =
+      branch.selectorReachabilityStatus === "definitely-matchable" ||
+      branch.selectorReachabilityStatus === "possibly-matchable" ||
+      branch.selectorReachabilityStatus === "only-matches-in-unknown-context" ||
+      legacyOutcome === "definitely-matchable" ||
+      legacyOutcome === "possible-match";
+
     return (
-      (branch.outcome === "match" || branch.outcome === "possible-match") &&
+      isMatchable &&
       branch.selectorText === definition.selectorText &&
       (branch.stylesheetId === definition.stylesheetId ||
         sameAnalysisPath(branch.location?.filePath, stylesheet?.filePath))

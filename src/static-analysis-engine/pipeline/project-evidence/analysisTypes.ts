@@ -11,8 +11,11 @@ import type {
   UnsupportedClassReferenceDiagnostic,
 } from "../render-structure/types.js";
 import type { RuntimeDomLibraryHint } from "../language-frontends/types.js";
-import type { SelectorConstraint, SelectorQueryResult } from "../selector-analysis/types.js";
-import type { SelectorReachabilityResult } from "../selector-reachability/types.js";
+import type {
+  ProjectSelectorProjectionResult,
+  SelectorReachabilityResult,
+  SelectorReachabilityStatus,
+} from "../selector-reachability/index.js";
 import type { FactGraphResult } from "../fact-graph/types.js";
 import type { SymbolicEvaluationResult } from "../symbolic-evaluation/types.js";
 import type { AnalysisConfidence, AnalysisTrace } from "../../types/analysis.js";
@@ -146,17 +149,29 @@ export type SelectorQueryAnalysis = {
   stylesheetId?: ProjectEvidenceId;
   selectorText: string;
   location?: SourceAnchor;
-  constraint?: SelectorConstraint | { kind: "unsupported"; reason: string };
-  outcome: SelectorQueryResult["outcome"];
-  status: SelectorQueryResult["status"];
-  confidence: SelectorQueryResult["confidence"];
+  selectorNodeId?: string;
+  ruleDefinitionNodeId?: string;
+  stylesheetNodeId?: string;
+  selectorReachabilityStatus: SelectorReachabilityStatus;
+  selectorReachabilityStatuses: SelectorReachabilityStatus[];
+  reasons: string[];
+  scopedReachability?: {
+    availability: ReachabilityAvailability;
+    contextCount: number;
+    matchedContextCount: number;
+    reasons: string[];
+  };
+  confidence: AnalysisConfidence;
   traces: AnalysisTrace[];
-  sourceResult: SelectorQueryResult;
 };
 
 export type SelectorBranchAnalysis = {
   id: ProjectEvidenceId;
   selectorQueryId: ProjectEvidenceId;
+  selectorBranchNodeId: string;
+  selectorNodeId?: string;
+  ruleDefinitionNodeId?: string;
+  stylesheetNodeId?: string;
   stylesheetId?: ProjectEvidenceId;
   selectorText: string;
   selectorListText: string;
@@ -164,10 +179,15 @@ export type SelectorBranchAnalysis = {
   branchCount: number;
   ruleKey: string;
   location?: SourceAnchor;
-  constraint?: SelectorConstraint | { kind: "unsupported"; reason: string };
-  outcome: SelectorQueryResult["outcome"];
-  status: SelectorQueryResult["status"];
-  confidence: SelectorQueryResult["confidence"];
+  selectorReachabilityStatus: SelectorReachabilityStatus;
+  reasons: string[];
+  scopedReachability?: {
+    availability: ReachabilityAvailability;
+    contextCount: number;
+    matchedContextCount: number;
+    reasons: string[];
+  };
+  confidence: AnalysisConfidence;
   traces: AnalysisTrace[];
   sourceQuery: SelectorQueryAnalysis;
 };
@@ -307,7 +327,7 @@ export type SelectorMatchRelation = {
   selectorQueryId: ProjectEvidenceId;
   stylesheetId?: ProjectEvidenceId;
   availability?: ReachabilityAvailability;
-  outcome: SelectorQueryResult["outcome"];
+  selectorReachabilityStatus: SelectorReachabilityStatus;
   contextCount: number;
   matchedContextCount: number;
   reasons: string[];
@@ -395,7 +415,7 @@ export type ProjectEvidenceBuildInput = {
   unsupportedClassReferences?: UnsupportedClassReferenceDiagnostic[];
   symbolicEvaluation?: SymbolicEvaluationResult;
   selectorReachability?: SelectorReachabilityResult;
-  selectorQueryResults: SelectorQueryResult[];
+  projectSelectorProjection?: ProjectSelectorProjectionResult;
   includeTraces?: boolean;
 };
 

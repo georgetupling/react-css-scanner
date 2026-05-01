@@ -33,7 +33,6 @@ import { runOwnershipInferenceStage } from "./stages/ownershipInferenceStage.js"
 import { runProjectEvidenceStage } from "./stages/projectEvidenceStage.js";
 import { runReachabilityStage } from "./stages/reachabilityStage.js";
 import { runRenderStructureStage } from "./stages/renderStructureStage.js";
-import { runSelectorAnalysisStage } from "./stages/selectorAnalysisStage.js";
 import { runSelectorReachabilityStage } from "./stages/selectorReachabilityStage.js";
 import { runSymbolResolutionStage } from "./stages/symbolResolutionStage.js";
 import { runSymbolicEvaluationStage } from "./stages/symbolicEvaluationStage.js";
@@ -256,22 +255,6 @@ export function analyzeProjectSourceTexts(input: {
         includeTraces,
       }),
   );
-  const selectorAnalysisStage = runAnalysisStage(
-    progress,
-    "selector-analysis",
-    "Analyzing selector reachability",
-    () =>
-      runSelectorAnalysisStage({
-        selectorQueries: input.selectorQueries ?? [],
-        factGraph: factGraphStage,
-        css: cssFrontendFacts,
-        selectorCssSources: input.selectorCssSources ?? [],
-        renderModel: renderStructureStage.renderModel,
-        reachabilitySummary: reachabilityStage.reachabilitySummary,
-        selectorReachability: selectorReachabilityStage.selectorReachability,
-        includeTraces,
-      }),
-  );
   const projectEvidenceStage = runAnalysisStage(
     progress,
     "project-evidence",
@@ -291,7 +274,7 @@ export function analyzeProjectSourceTexts(input: {
           renderModel: renderStructureStage.renderModel,
           symbolicEvaluation: symbolicEvaluationStage,
           selectorReachability: selectorReachabilityStage.selectorReachability,
-          selectorQueryResults: selectorAnalysisStage.selectorQueryResults,
+          projectSelectorProjection: selectorReachabilityStage.projectSelectorProjection,
           includeTraces,
         },
       }),

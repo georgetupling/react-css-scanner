@@ -1,7 +1,6 @@
 import type { ClassExpressionSummary } from "../../symbolic-evaluation/class-values/types.js";
 import { getAllResolvedModuleFacts } from "../../module-facts/index.js";
 import type { ReachabilityAvailability } from "../../reachability/types.js";
-import type { SelectorQueryResult } from "../../selector-analysis/types.js";
 import type { AnalysisTrace } from "../../../types/analysis.js";
 import type { SourceAnchor } from "../../../types/core.js";
 import type {
@@ -272,23 +271,6 @@ export function getComponentIdForContext(
   return undefined;
 }
 
-export function simplifyConstraint(
-  selectorQueryResult: SelectorQueryResult,
-): SelectorQueryAnalysis["constraint"] {
-  const constraint = selectorQueryResult.constraint;
-  if (!constraint) {
-    return undefined;
-  }
-  if (constraint.kind === "unsupported") {
-    return {
-      kind: "unsupported",
-      reason: constraint.reason,
-    };
-  }
-
-  return constraint;
-}
-
 export function getDeclarationSignature(declarations: DeclarationForSignature[]): string {
   return declarations
     .map((declaration) => `${declaration.property}:${declaration.value}`)
@@ -330,28 +312,35 @@ export function createClassContextId(
   ].join(":");
 }
 
-export function createSelectorQueryId(
-  selectorQueryResult: SelectorQueryResult,
-  index: number,
-): ProjectEvidenceId {
-  const anchor =
-    selectorQueryResult.source.kind === "css-source"
-      ? selectorQueryResult.source.selectorAnchor
-      : undefined;
+export function createSelectorQueryId(input: {
+  location?: SourceAnchor;
+  selectorNodeId?: string;
+  index: number;
+  selectorText: string;
+}): ProjectEvidenceId {
+  const anchor = input.location;
   return anchor
-    ? createAnchorId("selector-query", anchor, index)
-    : `selector-query:direct:${index}:${stableHash(selectorQueryResult.selectorText)}`;
+    ? createAnchorId("selector-query", anchor, input.index)
+    : input.selectorNodeId
+      ? `selector-query:node:${stableHash(input.selectorNodeId)}`
+      : `selector-query:direct:${input.index}:${stableHash(input.selectorText)}`;
 }
 
 export function createSelectorBranchId(
-  selectorQuery: SelectorQueryAnalysis,
-  branchIndex: number,
+  selectorBranch: {
+    location?: SourceAnchor;
+    branchIndex: number;
+    selectorBranchNodeId?: string;
+    selectorQueryId: string;
+  },
   index: number,
 ): ProjectEvidenceId {
-  const anchor = selectorQuery.location;
+  const anchor = selectorBranch.location;
   return anchor
-    ? createAnchorId("selector-branch", anchor, branchIndex)
-    : `selector-branch:${index}:${stableHash(`${selectorQuery.id}:${branchIndex}`)}`;
+    ? createAnchorId("selector-branch", anchor, selectorBranch.branchIndex)
+    : selectorBranch.selectorBranchNodeId
+      ? `selector-branch:node:${stableHash(selectorBranch.selectorBranchNodeId)}`
+      : `selector-branch:${index}:${stableHash(`${selectorBranch.selectorQueryId}:${selectorBranch.branchIndex}`)}`;
 }
 
 export function createSelectorRuleKey(selectorQuery: SelectorQueryAnalysis, index: number): string {

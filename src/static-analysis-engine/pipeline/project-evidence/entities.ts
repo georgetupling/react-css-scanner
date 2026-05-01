@@ -47,13 +47,21 @@ export function buildProjectEvidenceEntities(input: {
     input.indexes,
     input.includeTraces,
   );
-  const selectorQueries = buildSelectorQueries(
-    input.projectInput.selectorQueryResults,
-    stylesheets,
-    input.indexes,
-    input.includeTraces,
-  );
-  const selectorBranches = buildSelectorBranches(selectorQueries);
+  const selectorQueries = buildSelectorQueries({
+    projectSelectorProjection: input.projectInput.projectSelectorProjection,
+    indexes: input.indexes,
+    includeTraces: input.includeTraces,
+    stylesheetIdByFactGraphNodeId: buildStylesheetIdByFactGraphNodeId(
+      input.projectInput.factGraph,
+      input.indexes,
+    ),
+  });
+  const selectorBranches = buildSelectorBranches({
+    projectSelectorProjection: input.projectInput.projectSelectorProjection,
+    selectorQueries,
+    indexes: input.indexes,
+    includeTraces: input.includeTraces,
+  });
   const cssModuleImports = buildCssModuleImports(input.projectInput, input.indexes);
   const {
     aliases: cssModuleAliases,
@@ -85,4 +93,22 @@ export function buildProjectEvidenceEntities(input: {
     cssModuleMemberReferences,
     cssModuleReferenceDiagnostics,
   };
+}
+
+function buildStylesheetIdByFactGraphNodeId(
+  factGraph: ProjectEvidenceBuildInput["factGraph"],
+  indexes: ProjectEvidenceBuilderIndexes,
+): Map<string, string> {
+  const mapping = new Map<string, string>();
+  for (const stylesheet of factGraph?.graph.nodes.stylesheets ?? []) {
+    if (!stylesheet.filePath) {
+      continue;
+    }
+
+    const stylesheetId = indexes.stylesheetIdByPath.get(stylesheet.filePath.replace(/\\/g, "/"));
+    if (stylesheetId) {
+      mapping.set(stylesheet.id, stylesheetId);
+    }
+  }
+  return mapping;
 }

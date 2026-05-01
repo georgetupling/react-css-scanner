@@ -7,6 +7,7 @@ export {
 } from "./pipeline/language-frontends/index.js";
 export {
   buildFactGraph,
+  graphToSelectorEntries,
   graphToReachabilityStylesheets,
   graphToReactRenderSyntaxInputs,
   graphToStylesheetFilePaths,

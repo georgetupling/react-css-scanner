@@ -233,6 +233,13 @@ export function getProjectSelectorBranchForReachability(
   analysis: AnalysisEvidence,
   branch: SelectorBranchReachability,
 ): SelectorBranchAnalysis | undefined {
+  const byNodeId = analysis.projectEvidence.entities.selectorBranches.find(
+    (candidate) => candidate.selectorBranchNodeId === branch.selectorBranchNodeId,
+  );
+  if (byNodeId) {
+    return byNodeId;
+  }
+
   const sourceKey = selectorBranchSourceKey({
     ruleKey: branch.ruleKey,
     branchIndex: branch.branchIndex,
@@ -241,17 +248,12 @@ export function getProjectSelectorBranchForReachability(
   });
 
   return analysis.projectEvidence.entities.selectorBranches.find((candidate) => {
-    const source = candidate.sourceQuery.sourceResult.source;
-    if (source.kind !== "css-source") {
-      return false;
-    }
-
     return (
       selectorBranchSourceKey({
-        ruleKey: source.ruleKey,
-        branchIndex: source.branchIndex,
+        ruleKey: candidate.ruleKey,
+        branchIndex: candidate.branchIndex,
         selectorText: candidate.selectorText,
-        location: source.selectorAnchor,
+        location: candidate.location,
       }) === sourceKey
     );
   });

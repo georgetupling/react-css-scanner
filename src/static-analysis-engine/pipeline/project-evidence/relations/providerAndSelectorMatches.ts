@@ -47,29 +47,20 @@ export function buildSelectorMatches(
   includeTraces: boolean,
 ): SelectorMatchRelation[] {
   return selectorQueries
-    .filter((selectorQuery) => selectorQuery.sourceResult.reachability?.kind === "css-source")
+    .filter((selectorQuery) => selectorQuery.scopedReachability !== undefined)
     .map((selectorQuery) => {
-      const reachability =
-        selectorQuery.sourceResult.reachability?.kind === "css-source"
-          ? selectorQuery.sourceResult.reachability
-          : undefined;
+      const reachability = selectorQuery.scopedReachability;
 
       return {
         id: `selector-match:${selectorQuery.id}`,
         selectorQueryId: selectorQuery.id,
         stylesheetId: selectorQuery.stylesheetId,
         availability: reachability?.availability,
-        outcome: selectorQuery.outcome,
-        contextCount: reachability?.contexts.length ?? 0,
-        matchedContextCount: reachability?.matchedContexts?.length ?? 0,
-        reasons: reachability?.reasons ?? selectorQuery.sourceResult.reasons,
-        traces: includeTraces
-          ? mergeTraces([
-              ...selectorQuery.traces,
-              ...(reachability?.contexts.flatMap((context) => context.traces) ?? []),
-              ...(reachability?.matchedContexts?.flatMap((context) => context.traces) ?? []),
-            ])
-          : [],
+        selectorReachabilityStatus: selectorQuery.selectorReachabilityStatus,
+        contextCount: reachability?.contextCount ?? 0,
+        matchedContextCount: reachability?.matchedContextCount ?? 0,
+        reasons: reachability?.reasons ?? selectorQuery.reasons,
+        traces: includeTraces ? mergeTraces([...selectorQuery.traces]) : [],
       };
     })
     .sort(compareById);

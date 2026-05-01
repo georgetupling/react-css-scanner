@@ -1,100 +1,189 @@
-import type { SelectorQueryResult } from "../../selector-analysis/types.js";
+import type { ProjectSelectorProjectionResult } from "../../selector-reachability/index.js";
 import type {
   ProjectEvidenceBuilderIndexes,
   SelectorBranchAnalysis,
   SelectorQueryAnalysis,
-  StylesheetAnalysis,
 } from "../analysisTypes.js";
 import {
   compareById,
   createSelectorBranchId,
   createSelectorQueryId,
-  createSelectorRuleKey,
   normalizeProjectPath,
   pushMapValue,
-  simplifyConstraint,
   sortIndexValues,
 } from "../internal/shared.js";
 
-export function buildSelectorQueries(
-  selectorQueryResults: SelectorQueryResult[],
-  stylesheets: StylesheetAnalysis[],
-  indexes: ProjectEvidenceBuilderIndexes,
-  includeTraces: boolean,
-): SelectorQueryAnalysis[] {
-  const stylesheetById = new Map(stylesheets.map((stylesheet) => [stylesheet.id, stylesheet]));
+export function buildSelectorQueries(input: {
+  projectSelectorProjection: ProjectSelectorProjectionResult | undefined;
+  indexes: ProjectEvidenceBuilderIndexes;
+  includeTraces: boolean;
+  stylesheetIdByFactGraphNodeId: Map<string, string>;
+}): SelectorQueryAnalysis[] {
+  const projection = input.projectSelectorProjection;
+  if (!projection) {
+    return [];
+  }
+  const branchProjectionsBySelectorNodeId = new Map<string, typeof projection.selectorBranches>();
+  for (const branch of projection.selectorBranches) {
+    const branches = branchProjectionsBySelectorNodeId.get(branch.selectorNodeId) ?? [];
+    branches.push(branch);
+    branchProjectionsBySelectorNodeId.set(branch.selectorNodeId, branches);
+  }
 
-  const selectorQueries = selectorQueryResults.map((selectorQueryResult, index) => {
-    const stylesheetId =
-      selectorQueryResult.source.kind === "css-source" &&
-      selectorQueryResult.reachability?.kind === "css-source"
-        ? indexes.stylesheetIdByPath.get(
-            normalizeProjectPath(selectorQueryResult.reachability.cssFilePath ?? ""),
-          )
-        : undefined;
+  const selectorQueries = projection.selectorQueries.map((queryProjection, index) => {
+    const stylesheetId = resolveStylesheetId({
+      stylesheetNodeId: queryProjection.stylesheetNodeId,
+      locationFilePath: queryProjection.location?.filePath,
+      stylesheetIdByFactGraphNodeId: input.stylesheetIdByFactGraphNodeId,
+      indexes: input.indexes,
+    });
+
+    const selectorBranches =
+      branchProjectionsBySelectorNodeId.get(queryProjection.selectorNodeId) ?? [];
+    const scopedCandidates = selectorBranches
+      .map((branch) => branch.scopedReachability)
+      .filter(
+        (
+          candidate,
+        ): candidate is NonNullable<(typeof selectorBranches)[number]["scopedReachability"]> =>
+          Boolean(candidate),
+      );
 
     const query: SelectorQueryAnalysis = {
-      id: createSelectorQueryId(selectorQueryResult, index),
+      id: createSelectorQueryId({
+        location: queryProjection.location,
+        selectorNodeId: queryProjection.selectorNodeId,
+        index,
+        selectorText: queryProjection.selectorText,
+      }),
       stylesheetId,
-      selectorText: selectorQueryResult.selectorText,
-      location:
-        selectorQueryResult.source.kind === "css-source"
-          ? selectorQueryResult.source.selectorAnchor
+      selectorText: queryProjection.selectorText,
+      location: queryProjection.location,
+      selectorNodeId: queryProjection.selectorNodeId,
+      ruleDefinitionNodeId: queryProjection.ruleDefinitionNodeId,
+      stylesheetNodeId: queryProjection.stylesheetNodeId,
+      selectorReachabilityStatus: queryProjection.selectorReachabilityStatuses.includes(
+        "definitely-matchable",
+      )
+        ? "definitely-matchable"
+        : (queryProjection.selectorReachabilityStatuses[0] ?? "unsupported"),
+      selectorReachabilityStatuses: [...queryProjection.selectorReachabilityStatuses],
+      reasons: [...queryProjection.reasons],
+      scopedReachability:
+        scopedCandidates.length > 0
+          ? {
+              availability: scopedCandidates.some(
+                (candidate) => candidate.availability === "definite",
+              )
+                ? "definite"
+                : scopedCandidates[0].availability,
+              contextCount: Math.max(
+                ...scopedCandidates.map((candidate) => candidate.contexts.length),
+              ),
+              matchedContextCount: Math.max(
+                ...scopedCandidates.map((candidate) => candidate.matchedContexts.length),
+              ),
+              reasons: [
+                ...new Set(scopedCandidates.flatMap((candidate) => candidate.reasons)),
+              ].sort((left, right) => left.localeCompare(right)),
+            }
           : undefined,
-      constraint: simplifyConstraint(selectorQueryResult),
-      outcome: selectorQueryResult.outcome,
-      status: selectorQueryResult.status,
-      confidence: selectorQueryResult.confidence,
-      traces: includeTraces ? [...selectorQueryResult.decision.traces] : [],
-      sourceResult: selectorQueryResult,
+      confidence: queryProjection.confidence,
+      traces: input.includeTraces ? [...queryProjection.traces] : [],
     };
 
     if (stylesheetId) {
-      pushMapValue(indexes.selectorQueriesByStylesheetId, stylesheetId, query.id);
-      stylesheetById.get(stylesheetId)?.selectors.push(query.id);
+      pushMapValue(input.indexes.selectorQueriesByStylesheetId, stylesheetId, query.id);
     }
 
     return query;
   });
 
-  sortIndexValues(indexes.selectorQueriesByStylesheetId);
+  sortIndexValues(input.indexes.selectorQueriesByStylesheetId);
   return selectorQueries.sort(compareById);
 }
 
-export function buildSelectorBranches(
-  selectorQueries: SelectorQueryAnalysis[],
-): SelectorBranchAnalysis[] {
-  return selectorQueries
-    .filter((query) => query.sourceResult.source.kind === "css-source")
-    .flatMap((query, index) => {
-      const source = query.sourceResult.source;
-      if (source.kind !== "css-source") {
-        return [];
-      }
-      const selectorListText = source.selectorListText ?? query.selectorText;
-      const branchIndex = source.branchIndex ?? 0;
-      const branchCount = source.branchCount ?? 1;
-      const ruleKey = source.ruleKey ?? createSelectorRuleKey(query, index);
+export function buildSelectorBranches(input: {
+  projectSelectorProjection: ProjectSelectorProjectionResult | undefined;
+  selectorQueries: SelectorQueryAnalysis[];
+  indexes: ProjectEvidenceBuilderIndexes;
+  includeTraces: boolean;
+}): SelectorBranchAnalysis[] {
+  const projection = input.projectSelectorProjection;
+  if (!projection) {
+    return [];
+  }
 
-      return [
+  const queryBySelectorNodeId = new Map(
+    input.selectorQueries
+      .filter((query) => query.selectorNodeId)
+      .map((query) => [query.selectorNodeId as string, query]),
+  );
+
+  const selectorBranches: SelectorBranchAnalysis[] = [];
+  for (const [index, branchProjection] of projection.selectorBranches.entries()) {
+    const sourceQuery = queryBySelectorNodeId.get(branchProjection.selectorNodeId);
+    if (!sourceQuery) {
+      continue;
+    }
+
+    selectorBranches.push({
+      id: createSelectorBranchId(
         {
-          id: createSelectorBranchId(query, branchIndex, index),
-          selectorQueryId: query.id,
-          stylesheetId: query.stylesheetId,
-          selectorText: query.selectorText,
-          selectorListText,
-          branchIndex,
-          branchCount,
-          ruleKey,
-          location: query.location,
-          constraint: query.constraint,
-          outcome: query.outcome,
-          status: query.status,
-          confidence: query.confidence,
-          traces: [...query.traces],
-          sourceQuery: query,
+          location: branchProjection.location,
+          branchIndex: branchProjection.branchIndex,
+          selectorBranchNodeId: branchProjection.selectorBranchNodeId,
+          selectorQueryId: sourceQuery.id,
         },
-      ];
-    })
-    .sort(compareById);
+        index,
+      ),
+      selectorQueryId: sourceQuery.id,
+      selectorBranchNodeId: branchProjection.selectorBranchNodeId,
+      selectorNodeId: branchProjection.selectorNodeId,
+      ruleDefinitionNodeId: branchProjection.ruleDefinitionNodeId,
+      stylesheetNodeId: branchProjection.stylesheetNodeId,
+      stylesheetId: sourceQuery.stylesheetId,
+      selectorText: branchProjection.selectorText,
+      selectorListText: branchProjection.selectorListText,
+      branchIndex: branchProjection.branchIndex,
+      branchCount: branchProjection.branchCount,
+      ruleKey: branchProjection.ruleKey,
+      location: branchProjection.location,
+      selectorReachabilityStatus: branchProjection.selectorReachabilityStatus,
+      reasons: [...branchProjection.reasons],
+      scopedReachability: branchProjection.scopedReachability
+        ? {
+            availability: branchProjection.scopedReachability.availability,
+            contextCount: branchProjection.scopedReachability.contexts.length,
+            matchedContextCount: branchProjection.scopedReachability.matchedContexts.length,
+            reasons: [...branchProjection.scopedReachability.reasons],
+          }
+        : undefined,
+      confidence: branchProjection.confidence,
+      traces: input.includeTraces ? [...branchProjection.traces] : [],
+      sourceQuery,
+    });
+  }
+
+  return selectorBranches.sort(compareById);
+}
+
+function resolveStylesheetId(input: {
+  stylesheetNodeId?: string;
+  locationFilePath?: string;
+  stylesheetIdByFactGraphNodeId: Map<string, string>;
+  indexes: ProjectEvidenceBuilderIndexes;
+}): string | undefined {
+  if (input.stylesheetNodeId) {
+    const byNodeId = input.stylesheetIdByFactGraphNodeId.get(input.stylesheetNodeId);
+    if (byNodeId) {
+      return byNodeId;
+    }
+  }
+
+  if (input.locationFilePath) {
+    return input.indexes.stylesheetIdByPath.get(normalizeProjectPath(input.locationFilePath));
+  }
+
+  return undefined;
 }

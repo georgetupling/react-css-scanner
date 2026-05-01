@@ -47,13 +47,11 @@ function runUnsatisfiableSelectorRule(context: RuleContext): UnresolvedFinding[]
             : buildUnsatisfiableSelectorTraces({ branch, query }),
         data: {
           selectorText: branch.branchText,
-          constraint: query?.constraint,
-          outcome: query?.outcome,
-          status: query?.status,
           requirement: branch.requirement,
+          outcome: "no-match-under-bounded-analysis",
           selectorReachabilityStatus: branch.status,
           selectorBranchNodeId: branch.selectorBranchNodeId,
-          reasons: query?.sourceResult.reasons ?? [],
+          reasons: query?.reasons ?? [],
         },
       };
     })
@@ -64,6 +62,8 @@ function buildUnsatisfiableSelectorTraces(input: {
   branch: SelectorBranchReachability;
   query?: SelectorQueryAnalysis;
 }): AnalysisTrace[] {
+  const selectorMatchTraces = collectTracesByCategory(input.query?.traces ?? [], "selector-match");
+
   return [
     {
       traceId: `rule-evaluation:unsatisfiable-selector:${input.query?.id ?? input.branch.selectorBranchNodeId}`,
@@ -71,7 +71,23 @@ function buildUnsatisfiableSelectorTraces(input: {
       summary: `selector "${input.branch.branchText}" had no match under bounded selector analysis`,
       anchor: input.branch.location,
       children: [
-        ...(input.query?.traces ?? []),
+        ...(selectorMatchTraces.length > 0
+          ? selectorMatchTraces
+          : [
+              {
+                traceId: `selector-match:unsatisfiable-selector:${input.query?.id ?? input.branch.selectorBranchNodeId}`,
+                category: "selector-match" as const,
+                summary: `no bounded selector match was found for "${input.branch.branchText}"`,
+                anchor: input.branch.location,
+                children: [],
+                metadata: {
+                  selectorText: input.branch.branchText,
+                  selectorReachabilityStatus: input.branch.status,
+                  selectorBranchNodeId: input.branch.selectorBranchNodeId,
+                },
+              },
+              ...(input.query?.traces ?? []),
+            ]),
         {
           traceId: `rule-evaluation:unsatisfiable-selector:${input.query?.id ?? input.branch.selectorBranchNodeId}:result`,
           category: "rule-evaluation",
@@ -82,7 +98,7 @@ function buildUnsatisfiableSelectorTraces(input: {
             selectorText: input.branch.branchText,
             selectorReachabilityStatus: input.branch.status,
             selectorBranchNodeId: input.branch.selectorBranchNodeId,
-            reasons: input.query?.sourceResult.reasons ?? [],
+            reasons: input.query?.reasons ?? [],
           },
         },
       ],
@@ -94,4 +110,26 @@ function buildUnsatisfiableSelectorTraces(input: {
       },
     },
   ];
+}
+
+function collectTracesByCategory(
+  traces: AnalysisTrace[],
+  category: AnalysisTrace["category"],
+): AnalysisTrace[] {
+  const results: AnalysisTrace[] = [];
+  const queue = [...traces];
+  while (queue.length > 0) {
+    const trace = queue.shift();
+    if (!trace) {
+      continue;
+    }
+
+    if (trace.category === category) {
+      results.push(trace);
+    }
+    if (trace.children.length > 0) {
+      queue.push(...trace.children);
+    }
+  }
+  return results;
 }

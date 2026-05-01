@@ -45,13 +45,12 @@ function runSelectorOnlyMatchesInUnknownContextsRule(context: RuleContext): Unre
             : buildSelectorOnlyMatchesInUnknownContextsTraces({ branch, query }),
         data: {
           selectorText: branch.branchText,
-          constraint: query?.constraint,
-          outcome: query?.outcome,
-          status: query?.status,
           requirement: branch.requirement,
+          outcome: "possible-match",
+          status: "unsupported",
           selectorReachabilityStatus: branch.status,
           selectorBranchNodeId: branch.selectorBranchNodeId,
-          reasons: query?.sourceResult.reasons ?? [],
+          reasons: query?.reasons ?? [],
         },
       };
     })
@@ -80,7 +79,7 @@ function buildSelectorOnlyMatchesInUnknownContextsTraces(input: {
             selectorText: input.branch.branchText,
             selectorReachabilityStatus: input.branch.status,
             selectorBranchNodeId: input.branch.selectorBranchNodeId,
-            reasons: input.query?.sourceResult.reasons ?? [],
+            reasons: input.query?.reasons ?? [],
           },
         },
       ],
