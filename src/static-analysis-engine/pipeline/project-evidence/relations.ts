@@ -1,18 +1,15 @@
-import { buildCssModuleMemberMatches } from "../project-analysis/entities/cssModules.js";
+import { buildCssModuleMemberMatches } from "./entities/cssModules.js";
 import type {
   ProjectAnalysisBuildInput,
   ProjectAnalysisIndexes,
 } from "../project-analysis/index.js";
-import {
-  buildComponentRenders,
-  buildModuleImports,
-} from "../project-analysis/relations/moduleAndComponent.js";
+import { buildComponentRenders, buildModuleImports } from "./relations/moduleAndComponent.js";
 import {
   buildProviderClassSatisfactions,
   buildSelectorMatches,
-} from "../project-analysis/relations/providerAndSelectorMatches.js";
-import { buildReferenceMatches } from "../project-analysis/relations/referenceMatches.js";
-import { buildStylesheetReachability } from "../project-analysis/relations/stylesheetReachability.js";
+} from "./relations/providerAndSelectorMatches.js";
+import { buildReferenceMatches } from "./relations/referenceMatches.js";
+import { buildStylesheetReachability } from "./relations/stylesheetReachability.js";
 import type { ProjectEvidenceEntities, ProjectEvidenceRelations } from "./types.js";
 
 export function buildProjectEvidenceRelations(input: {

@@ -1,7 +1,7 @@
 import {
   buildClassReferences,
   buildStaticallySkippedClassReferences,
-} from "../project-analysis/entities/classReferences.js";
+} from "./entities/classReferences.js";
 import {
   buildClassContexts,
   buildClassDefinitions,
@@ -10,15 +10,9 @@ import {
   buildSourceFiles,
   buildStylesheets,
   buildUnsupportedClassReferences,
-} from "../project-analysis/entities/core.js";
-import {
-  buildCssModuleImports,
-  buildCssModuleMemberReferences,
-} from "../project-analysis/entities/cssModules.js";
-import {
-  buildSelectorBranches,
-  buildSelectorQueries,
-} from "../project-analysis/entities/selectors.js";
+} from "./entities/core.js";
+import { buildCssModuleImports, buildCssModuleMemberReferences } from "./entities/cssModules.js";
+import { buildSelectorBranches, buildSelectorQueries } from "./entities/selectors.js";
 import type {
   ProjectAnalysisBuildInput,
   ProjectAnalysisIndexes,

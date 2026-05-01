@@ -21,6 +21,7 @@ export type {
   CssModuleMemberReferenceAnalysis,
   CssModuleReferenceDiagnosticAnalysis,
   CssFileRecord,
+  DeclarationForSignature,
   ModuleImportRelation,
   OwnerCandidate,
   OwnerCandidateReason,
