@@ -1,6 +1,5 @@
 import { extractCssStyleRules } from "../../libraries/css-parsing/index.js";
 import type { ParsedCssSelectorEntry } from "../../libraries/selector-parsing/index.js";
-import type { ParsedProjectFile } from "../../entry/stages/types.js";
 import type { ExtractedSelectorQuery } from "../../libraries/selector-parsing/queryTypes.js";
 import type { ProjectSnapshot } from "../workspace-discovery/index.js";
 import { collectSourceModuleSyntax } from "./source/module-syntax/index.js";
@@ -12,6 +11,7 @@ import type {
   CssFrontendFacts,
   CssFrontendFile,
   LanguageFrontendsResult,
+  ParsedProjectFile,
   SourceFrontendFacts,
   SourceFrontendFile,
   SourceLanguageKind,

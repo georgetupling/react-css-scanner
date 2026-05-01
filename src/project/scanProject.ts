@@ -1,6 +1,6 @@
 import { runRules } from "../rules/index.js";
 import { severityMeetsThreshold } from "../rules/severity.js";
-import { analyzeProjectScanInput } from "../static-analysis-engine/index.js";
+import { runAnalysisPipeline } from "../static-analysis-engine/index.js";
 import { applyIgnoreFilter, mergeIgnoreConfig } from "./ignoreFilter.js";
 import { countFindingsByRule, countFindingsBySeverity } from "./summaryCounts.js";
 import type {
@@ -20,7 +20,7 @@ export async function scanProject(input: ScanProjectInput = {}): Promise<ScanPro
     onProgress: input.onProgress,
     performanceStages: input.collectPerformance ? performanceStages : undefined,
   });
-  const engineProjectResult = await analyzeProjectScanInput({
+  const engineProjectResult = await runAnalysisPipeline({
     scanInput: input,
     includeTraces: input.includeTraces ?? true,
     onProgress: (event) => progress(event.stage, event.status, event.message, event.durationMs),

@@ -1,4 +1,4 @@
-export { analyzeProjectScanInput } from "./entry/scan.js";
+export { runAnalysisPipeline, analyzeProjectScanInput } from "./entry/scan.js";
 export {
   buildLanguageFrontends,
   buildSourceFrontendFactsFromSourceFiles,

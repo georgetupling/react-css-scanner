@@ -1,11 +1,16 @@
+import ts from "typescript";
 import type { CssStyleRuleFact } from "../../types/css.js";
 import type { ExtractedSelectorQuery } from "../../libraries/selector-parsing/queryTypes.js";
 import type { ProjectSnapshot } from "../workspace-discovery/index.js";
-import type { ParsedProjectFile } from "../../entry/stages/types.js";
 import type { SourceAnchor } from "../../types/core.js";
 import type { SourceModuleSyntaxFacts } from "./source/module-syntax/index.js";
 import type { SourceExpressionSyntaxFact } from "./source/expression-syntax/index.js";
 import type { SourceReactSyntaxFacts } from "./source/react-syntax/index.js";
+
+export type ParsedProjectFile = {
+  filePath: string;
+  parsedSourceFile: ts.SourceFile;
+};
 
 export type LanguageFrontendsInput = {
   snapshot: ProjectSnapshot;

@@ -1,57 +1,38 @@
-import type { ProjectSnapshot } from "../pipeline/workspace-discovery/index.js";
+import { buildFactGraph } from "../pipeline/fact-graph/index.js";
+import { buildLanguageFrontends } from "../pipeline/language-frontends/index.js";
+import { buildOwnershipInference } from "../pipeline/ownership-inference/index.js";
+import { buildProjectEvidenceAssembly } from "../pipeline/project-evidence/index.js";
+import { buildRenderStructure } from "../pipeline/render-structure/index.js";
+import { buildSelectorReachability } from "../pipeline/selector-reachability/index.js";
+import { evaluateSymbolicExpressions } from "../pipeline/symbolic-evaluation/index.js";
+import { buildProjectSnapshot } from "../pipeline/workspace-discovery/index.js";
 import type {
   AnalysisProgressCallback,
   StaticAnalysisEngineProjectResult,
-  StaticAnalysisEngineResult,
 } from "../types/runtime.js";
 import type { ScanProjectInput } from "../../project/types.js";
-import { runFactGraphStage } from "./stages/factGraphStage.js";
-import { runLanguageFrontendsStage } from "./stages/languageFrontendsStage.js";
-import { runOwnershipInferenceStage } from "./stages/ownershipInferenceStage.js";
-import { runProjectEvidenceStage } from "./stages/projectEvidenceStage.js";
-import { runRenderStructureStage } from "./stages/renderStructureStage.js";
-import { runSelectorReachabilityStage } from "./stages/selectorReachabilityStage.js";
-import { runSymbolicEvaluationStage } from "./stages/symbolicEvaluationStage.js";
-import { runWorkspaceDiscoveryStage } from "./stages/workspaceDiscoveryStage.js";
 
-export async function analyzeProjectScanInput(input: {
+export async function runAnalysisPipeline(input: {
   scanInput: ScanProjectInput;
   onProgress?: AnalysisProgressCallback;
   includeTraces?: boolean;
 }): Promise<StaticAnalysisEngineProjectResult> {
   const progress = createAnalysisProgressReporter(input.onProgress);
-  const snapshot = await runWorkspaceDiscoveryStage({
+  const snapshot = await buildProjectSnapshot({
     scanInput: input.scanInput,
-    progress,
+    rootDir: input.scanInput.rootDir,
+    runStage: (stage, message, run) => runAsyncAnalysisStage(progress, stage, message, run),
   });
-  const result = runAnalysisPipeline({
-    workspaceDiscovery: snapshot,
-    includeTraces: input.includeTraces ?? true,
-    onProgress: (event) => progress(event.stage, event.status, event.message, event.durationMs),
-  });
-
-  return {
-    snapshot,
-    ...result,
-  };
-}
-
-function runAnalysisPipeline(input: {
-  workspaceDiscovery: ProjectSnapshot;
-  onProgress?: AnalysisProgressCallback;
-  includeTraces?: boolean;
-}): StaticAnalysisEngineResult {
   const includeTraces = input.includeTraces ?? true;
-  const progress = createAnalysisProgressReporter(input.onProgress);
   const frontends = runAnalysisStage(
     progress,
     "language-frontends",
     "Building language frontends",
-    () => runLanguageFrontendsStage({ workspaceDiscovery: input.workspaceDiscovery }),
+    () => buildLanguageFrontends({ snapshot }),
   );
   const factGraph = runAnalysisStage(progress, "fact-graph", "Building fact graph", () =>
-    runFactGraphStage({
-      workspaceDiscovery: input.workspaceDiscovery,
+    buildFactGraph({
+      snapshot,
       frontends,
       includeTraces,
     }),
@@ -60,64 +41,65 @@ function runAnalysisPipeline(input: {
     progress,
     "symbolic-evaluation",
     "Evaluating symbolic class expressions",
-    () =>
-      runSymbolicEvaluationStage({
-        graph: factGraph.graph,
-        includeTraces,
-      }),
+    () => evaluateSymbolicExpressions({ graph: factGraph.graph, options: { includeTraces } }),
   );
   const renderStructureStage = runAnalysisStage(
     progress,
     "render-structure",
     "Building render structure",
     () =>
-      runRenderStructureStage({
-        factGraph,
+      buildRenderStructure({
         symbolicEvaluation: symbolicEvaluationStage,
-        includeTraces,
+        graph: factGraph.graph,
+        options: {
+          includeTraces,
+        },
       }),
   );
   const selectorReachabilityStage = runAnalysisStage(
     progress,
     "selector-reachability",
     "Building selector reachability evidence",
-    () =>
-      runSelectorReachabilityStage({
-        renderStructure: renderStructureStage,
-      }),
+    () => ({ selectorReachability: buildSelectorReachability(renderStructureStage) }),
   );
   const projectEvidenceStage = runAnalysisStage(
     progress,
     "project-evidence",
     "Building project evidence",
-    () =>
-      runProjectEvidenceStage({
+    () => ({
+      projectEvidence: buildProjectEvidenceAssembly({
         projectInput: {
           factGraph,
-          stylesheets: input.workspaceDiscovery.files.stylesheets,
+          stylesheets: snapshot.files.stylesheets,
           renderModel: renderStructureStage.renderModel,
           symbolicEvaluation: symbolicEvaluationStage,
           selectorReachability: selectorReachabilityStage.selectorReachability,
         },
         options: {
           includeTraces,
-          cssModuleLocalsConvention: input.workspaceDiscovery.config.cssModules.localsConvention,
+          cssModuleLocalsConvention: snapshot.config.cssModules.localsConvention,
         },
       }),
+    }),
   );
   const ownershipInferenceStage = runAnalysisStage(
     progress,
     "ownership-inference",
     "Building ownership inference",
-    () =>
-      runOwnershipInferenceStage({
+    () => ({
+      ownershipInference: buildOwnershipInference({
         projectEvidence: projectEvidenceStage.projectEvidence,
         selectorReachability: selectorReachabilityStage.selectorReachability,
-        includeTraces,
+        options: {
+          includeTraces,
+          sharedCssPatterns: [],
+        },
       }),
+    }),
   );
 
   return {
+    snapshot,
     analysisEvidence: {
       projectEvidence: projectEvidenceStage.projectEvidence,
       selectorReachability: selectorReachabilityStage.selectorReachability,
@@ -125,6 +107,8 @@ function runAnalysisPipeline(input: {
     },
   };
 }
+
+export const analyzeProjectScanInput = runAnalysisPipeline;
 
 function createAnalysisProgressReporter(onProgress?: AnalysisProgressCallback) {
   return (
@@ -151,6 +135,19 @@ function runAnalysisStage<T>(
   const startedAt = performance.now();
   progress(stage, "started", message);
   const result = run();
+  progress(stage, "completed", message, performance.now() - startedAt);
+  return result;
+}
+
+async function runAsyncAnalysisStage<T>(
+  progress: ReturnType<typeof createAnalysisProgressReporter>,
+  stage: string,
+  message: string,
+  run: () => T | Promise<T>,
+): Promise<T> {
+  const startedAt = performance.now();
+  progress(stage, "started", message);
+  const result = await run();
   progress(stage, "completed", message, performance.now() - startedAt);
   return result;
 }
