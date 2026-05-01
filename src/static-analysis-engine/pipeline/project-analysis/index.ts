@@ -1,4 +1,10 @@
-export { buildProjectAnalysis } from "./buildProjectAnalysis.js";
+export {
+  buildProjectAnalysis,
+  buildProjectAnalysisCompatibility,
+  buildProjectAnalysisFromEvidence,
+} from "./buildProjectAnalysis.js";
+export type { ProjectAnalysisCompatibilityBuildResult } from "./buildProjectAnalysis.js";
+export type { ProjectAnalysisFromEvidenceInput } from "./buildProjectAnalysis.js";
 export { serializeProjectAnalysis } from "./serializeProjectAnalysis.js";
 export type {
   ClassContextAnalysis,

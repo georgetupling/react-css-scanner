@@ -1,7 +1,9 @@
+import type { AnalysisEvidence } from "../pipeline/analysis-evidence/index.js";
 import type { ProjectAnalysis } from "../pipeline/project-analysis/types.js";
 import type { SymbolicEvaluationResult } from "../pipeline/symbolic-evaluation/index.js";
 
 export type StaticAnalysisEngineResult = {
+  analysisEvidence: AnalysisEvidence;
   projectAnalysis: ProjectAnalysis;
   symbolicEvaluation?: SymbolicEvaluationResult;
 };

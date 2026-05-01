@@ -1,4 +1,5 @@
 export { scanProject } from "./project/index.js";
+export * from "./rules/analysisQueries.js";
 export type {
   ProjectFileRecord,
   ScanDiagnostic,

@@ -1,30 +1,51 @@
 import type { ProjectAnalysis, ProjectAnalysisBuildInput } from "./types.js";
 import {
   createEmptyIndexes,
-  indexEntities,
   indexRelations,
   indexClassOwnership,
+  indexEntities,
 } from "./internal/indexes.js";
+import { classOwnershipAnalysisFromOwnershipInference } from "../ownership-inference/index.js";
 import {
-  buildProjectEvidence,
-  buildProjectEvidenceEntities,
-  buildProjectEvidenceRelations,
-} from "../project-evidence/index.js";
-import {
-  buildOwnershipInference,
-  classOwnershipAnalysisFromOwnershipInference,
-} from "../ownership-inference/index.js";
+  buildAnalysisEvidenceWithCompatibilityIndexes,
+  type AnalysisEvidence,
+} from "../analysis-evidence/index.js";
 
 export function buildProjectAnalysis(input: ProjectAnalysisBuildInput): ProjectAnalysis {
-  const includeTraces = input.includeTraces ?? true;
-  const indexes = createEmptyIndexes();
-  const projectEvidence = buildProjectEvidence({
-    entities: buildProjectEvidenceEntities({
-      projectInput: input,
-      indexes,
-      includeTraces,
-    }),
-  });
+  return buildProjectAnalysisCompatibility(input).projectAnalysis;
+}
+
+export type ProjectAnalysisCompatibilityBuildResult = {
+  analysisEvidence: AnalysisEvidence;
+  projectAnalysis: ProjectAnalysis;
+};
+
+export type ProjectAnalysisFromEvidenceInput = Pick<
+  ProjectAnalysisBuildInput,
+  "externalCssSummary" | "selectorReachability"
+>;
+
+export function buildProjectAnalysisCompatibility(
+  input: ProjectAnalysisBuildInput,
+): ProjectAnalysisCompatibilityBuildResult {
+  const { analysisEvidence, projectAnalysisIndexes } =
+    buildAnalysisEvidenceWithCompatibilityIndexes(input);
+  return {
+    analysisEvidence,
+    projectAnalysis: buildProjectAnalysisFromEvidence(
+      input,
+      analysisEvidence,
+      projectAnalysisIndexes,
+    ),
+  };
+}
+
+export function buildProjectAnalysisFromEvidence(
+  input: ProjectAnalysisFromEvidenceInput,
+  analysisEvidence: AnalysisEvidence,
+  projectAnalysisIndexes?: ProjectAnalysis["indexes"],
+): ProjectAnalysis {
+  const indexes = projectAnalysisIndexes ?? createEmptyIndexes();
   const {
     sourceFiles,
     stylesheets,
@@ -42,34 +63,28 @@ export function buildProjectAnalysis(input: ProjectAnalysisBuildInput): ProjectA
     cssModuleDestructuredBindings,
     cssModuleMemberReferences,
     cssModuleReferenceDiagnostics,
-  } = projectEvidence.entities;
-  indexEntities({
-    sourceFiles,
-    stylesheets,
-    classReferences,
-    staticallySkippedClassReferences,
-    classDefinitions,
-    classContexts,
-    selectorQueries,
-    selectorBranches,
-    components,
-    unsupportedClassReferences,
-    cssModuleImports,
-    cssModuleAliases,
-    cssModuleDestructuredBindings,
-    cssModuleMemberReferences,
-    cssModuleReferenceDiagnostics,
-    indexes,
-  });
-  const projectEvidenceWithRelations = buildProjectEvidence({
-    entities: projectEvidence.entities,
-    relations: buildProjectEvidenceRelations({
-      projectInput: input,
-      entities: projectEvidence.entities,
+  } = analysisEvidence.projectEvidence.entities;
+
+  if (!projectAnalysisIndexes) {
+    indexEntities({
+      sourceFiles,
+      stylesheets,
+      classReferences,
+      staticallySkippedClassReferences,
+      classDefinitions,
+      classContexts,
+      selectorQueries,
+      selectorBranches,
+      components,
+      unsupportedClassReferences,
+      cssModuleImports,
+      cssModuleAliases,
+      cssModuleDestructuredBindings,
+      cssModuleMemberReferences,
+      cssModuleReferenceDiagnostics,
       indexes,
-      includeTraces,
-    }),
-  });
+    });
+  }
   const {
     moduleImports,
     componentRenders,
@@ -78,16 +93,10 @@ export function buildProjectAnalysis(input: ProjectAnalysisBuildInput): ProjectA
     selectorMatches,
     providerClassSatisfactions,
     cssModuleMemberMatches,
-  } = projectEvidenceWithRelations.relations;
-  const ownershipInference = buildOwnershipInference({
-    projectEvidence: projectEvidenceWithRelations,
-    selectorReachability: input.selectorReachability ?? emptySelectorReachability(),
-    options: {
-      includeTraces,
-      sharedCssPatterns: [],
-    },
-  });
-  const classOwnership = classOwnershipAnalysisFromOwnershipInference(ownershipInference);
+  } = analysisEvidence.projectEvidence.relations;
+  const classOwnership = classOwnershipAnalysisFromOwnershipInference(
+    analysisEvidence.ownershipInference,
+  );
 
   indexRelations({
     referenceMatches,
@@ -110,8 +119,10 @@ export function buildProjectAnalysis(input: ProjectAnalysisBuildInput): ProjectA
       externalCss: input.externalCssSummary,
     },
     evidence: {
-      ...(input.selectorReachability ? { selectorReachability: input.selectorReachability } : {}),
-      ownershipInference,
+      ...(input.selectorReachability
+        ? { selectorReachability: analysisEvidence.selectorReachability }
+        : {}),
+      ownershipInference: analysisEvidence.ownershipInference,
     },
     entities: {
       sourceFiles,
@@ -142,53 +153,5 @@ export function buildProjectAnalysis(input: ProjectAnalysisBuildInput): ProjectA
       cssModuleMemberMatches,
     },
     indexes,
-  };
-}
-
-function emptySelectorReachability(): NonNullable<
-  ProjectAnalysisBuildInput["selectorReachability"]
-> {
-  return {
-    meta: {
-      generatedAtStage: "selector-reachability",
-      selectorBranchCount: 0,
-      elementMatchCount: 0,
-      branchMatchCount: 0,
-      diagnosticCount: 0,
-    },
-    selectorBranches: [],
-    elementMatches: [],
-    branchMatches: [],
-    diagnostics: [],
-    indexes: {
-      branchReachabilityBySelectorBranchNodeId: new Map(),
-      branchReachabilityBySourceKey: new Map(),
-      matchById: new Map(),
-      elementMatchById: new Map(),
-      renderElementById: new Map(),
-      emissionSiteById: new Map(),
-      renderPathById: new Map(),
-      unknownRegionById: new Map(),
-      matchIdsBySelectorBranchNodeId: new Map(),
-      matchIdsByElementId: new Map(),
-      matchIdsByClassName: new Map(),
-      matchIdsByEmissionSiteId: new Map(),
-      matchIdsByRenderPathId: new Map(),
-      matchIdsByPlacementConditionId: new Map(),
-      renderPathIdsByElementId: new Map(),
-      renderPathIdsByEmissionSiteId: new Map(),
-      placementConditionIdsByElementId: new Map(),
-      placementConditionIdsByEmissionSiteId: new Map(),
-      emissionSiteIdsByElementId: new Map(),
-      emissionSiteIdsByToken: new Map(),
-      unknownClassElementIds: [],
-      unknownClassEmissionSiteIds: [],
-      unknownClassEmissionSiteIdsByElementId: new Map(),
-      unknownRegionIdsByComponentNodeId: new Map(),
-      unknownRegionIdsByRenderPathId: new Map(),
-      branchIdsByRequiredClassName: new Map(),
-      branchIdsByStylesheetNodeId: new Map(),
-      diagnosticIdsBySelectorBranchNodeId: new Map(),
-    },
   };
 }

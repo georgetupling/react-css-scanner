@@ -81,6 +81,8 @@ export {
   projectEvidenceDiagnosticId,
   stylesheetReachabilityEvidenceId,
 } from "./pipeline/project-evidence/index.js";
+export { buildAnalysisEvidence } from "./pipeline/analysis-evidence/index.js";
+export type { AnalysisEvidence } from "./pipeline/analysis-evidence/index.js";
 export { buildReachabilitySummary } from "./pipeline/reachability/index.js";
 export {
   buildProjectAnalysis,
@@ -294,6 +296,7 @@ export type {
   SerializableProjectAnalysis,
   SerializableProjectAnalysisIndexes,
   SourceFileAnalysis,
+  StaticallySkippedClassReferenceAnalysis,
   StylesheetAnalysis,
   StylesheetOrigin,
   StylesheetReachabilityRelation,

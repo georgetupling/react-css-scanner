@@ -26,6 +26,7 @@ import type {
 import { compareProjectResourceEdges } from "../pipeline/workspace-discovery/utils/sorting.js";
 import type { AnalysisProgressCallback, StaticAnalysisEngineResult } from "../types/runtime.js";
 import { DEFAULT_SCANNER_CONFIG } from "../../config/index.js";
+import { runAnalysisEvidenceStage } from "./stages/analysisEvidenceStage.js";
 import { runCssAnalysisStage } from "./stages/cssAnalysisStage.js";
 import { runExternalCssStage } from "./stages/externalCssStage.js";
 import { runModuleFactsStage } from "./stages/moduleFactsStage.js";
@@ -269,12 +270,12 @@ export function analyzeProjectSourceTexts(input: {
         includeTraces,
       }),
   );
-  const projectAnalysisStage = runAnalysisStage(
+  const analysisEvidenceStage = runAnalysisStage(
     progress,
-    "project-analysis",
-    "Building project analysis",
+    "analysis-evidence",
+    "Building analysis evidence",
     () =>
-      runProjectAnalysisStage({
+      runAnalysisEvidenceStage({
         moduleFacts: moduleFactsStage.moduleFacts,
         factGraph: factGraphStage,
         cssFiles: cssAnalysisStage.cssFiles,
@@ -290,8 +291,21 @@ export function analyzeProjectSourceTexts(input: {
         includeTraces,
       }),
   );
+  const projectAnalysisStage = runAnalysisStage(
+    progress,
+    "project-analysis",
+    "Building project analysis",
+    () =>
+      runProjectAnalysisStage({
+        analysisEvidence: analysisEvidenceStage.analysisEvidence,
+        projectAnalysisIndexes: analysisEvidenceStage.projectAnalysisIndexes,
+        externalCssSummary: externalCssStage.externalCssSummary,
+        selectorReachability: selectorReachabilityStage.selectorReachability,
+      }),
+  );
 
   return {
+    analysisEvidence: analysisEvidenceStage.analysisEvidence,
     projectAnalysis: projectAnalysisStage.projectAnalysis,
     ...(symbolicEvaluationStage ? { symbolicEvaluation: symbolicEvaluationStage } : {}),
   };

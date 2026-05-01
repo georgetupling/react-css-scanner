@@ -5,6 +5,35 @@ import {
   serializeProjectAnalysis,
 } from "../../dist/static-analysis-engine.js";
 
+test("static analysis result exposes staged analysis evidence alongside ProjectAnalysis", () => {
+  const result = analyzeProjectSourceTexts({
+    sourceFiles: [
+      {
+        filePath: "src/App.tsx",
+        sourceText: 'export function App() { return <main className="root" />; }\n',
+      },
+    ],
+    selectorCssSources: [
+      {
+        filePath: "src/App.css",
+        cssText: ".root { color: red; }\n",
+      },
+    ],
+  });
+
+  assert.ok(result.analysisEvidence);
+  assert.equal(result.analysisEvidence.projectEvidence.entities.classReferences.length, 1);
+  assert.equal(result.analysisEvidence.projectEvidence.entities.classDefinitions.length, 1);
+  assert.equal(
+    result.analysisEvidence.selectorReachability.meta.generatedAtStage,
+    "selector-reachability",
+  );
+  assert.equal(
+    result.analysisEvidence.ownershipInference.meta.generatedAtStage,
+    "ownership-inference",
+  );
+});
+
 test("ProjectAnalysis exposes reference match semantics for reachable and unreachable definitions", () => {
   const result = analyzeProjectSourceTexts({
     sourceFiles: [
