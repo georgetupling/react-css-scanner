@@ -1,9 +1,9 @@
 import type { AnalysisTrace } from "../../types/analysis.js";
-import type { RenderRegion } from "../render-model/render-ir/index.js";
 import type { ReachabilityDerivation, StylesheetReachabilityContextRecord } from "./types.js";
 import type {
   ComponentAvailabilityRecord,
   PlacedChildRenderRegion,
+  ReachabilityRenderRegion,
   ReachabilityGraphContext,
   ReachabilityComponentRoot,
   UnknownReachabilityBarrier,
@@ -280,8 +280,8 @@ function addPlacedChildRenderRegionContexts(input: {
 function addUnknownBarrierContexts(input: {
   contextRecordsByKey: Map<string, StylesheetReachabilityContextRecord>;
   componentRoot?: ReachabilityComponentRoot;
-  renderRegions: RenderRegion[];
-  renderRegionsByPathKey: Map<string, RenderRegion[]>;
+  renderRegions: ReachabilityRenderRegion[];
+  renderRegionsByPathKey: Map<string, ReachabilityRenderRegion[]>;
   unknownBarriers: UnknownReachabilityBarrier[];
   includeTraces: boolean;
 }): void {
@@ -384,160 +384,16 @@ function addUnknownBarrierContexts(input: {
 }
 
 function collectRenderRegionsForBarrierPath(input: {
-  barrierPath: RenderRegion["path"];
-  renderRegionsByPathKey: Map<string, RenderRegion[]>;
-}): RenderRegion[] {
-  const renderRegions: RenderRegion[] = [];
+  barrierPath: ReachabilityRenderRegion["path"];
+  renderRegionsByPathKey: Map<string, ReachabilityRenderRegion[]>;
+}): ReachabilityRenderRegion[] {
+  const renderRegions: ReachabilityRenderRegion[] = [];
   for (let length = 1; length <= input.barrierPath.length; length += 1) {
     const pathKey = serializeRegionPath(input.barrierPath.slice(0, length));
     renderRegions.push(...(input.renderRegionsByPathKey.get(pathKey) ?? []));
   }
 
   return renderRegions;
-}
-
-function resolvePlacementRegionPaths(input: {
-  node: import("../render-model/render-ir/types.js").RenderNode;
-  sourceAnchor: import("../../types/core.js").SourceAnchor;
-  path: RenderRegion["path"];
-}): RenderRegion["path"][] {
-  if (input.node.kind === "conditional") {
-    if (
-      normalizeProjectPath(input.node.sourceAnchor.filePath) ===
-        normalizeProjectPath(input.sourceAnchor.filePath) &&
-      !sourceAnchorContains(input.node.sourceAnchor, input.sourceAnchor)
-    ) {
-      return [];
-    }
-
-    return [
-      ...resolveConditionalBranchPlacementPaths({
-        branch: "when-true",
-        branchNode: input.node.whenTrue,
-        siblingBranchNode: input.node.whenFalse,
-        sourceAnchor: input.sourceAnchor,
-        path: input.path,
-      }),
-      ...resolveConditionalBranchPlacementPaths({
-        branch: "when-false",
-        branchNode: input.node.whenFalse,
-        siblingBranchNode: input.node.whenTrue,
-        sourceAnchor: input.sourceAnchor,
-        path: input.path,
-      }),
-    ];
-  }
-
-  if (input.node.kind === "repeated-region") {
-    if (
-      normalizeProjectPath(input.node.sourceAnchor.filePath) ===
-        normalizeProjectPath(input.sourceAnchor.filePath) &&
-      !sourceAnchorContains(input.node.sourceAnchor, input.sourceAnchor)
-    ) {
-      return [];
-    }
-
-    const templatePath: RenderRegion["path"] = [...input.path, { kind: "repeated-template" }];
-    return [
-      templatePath,
-      ...resolvePlacementRegionPaths({
-        node: input.node.template,
-        sourceAnchor: input.sourceAnchor,
-        path: templatePath,
-      }),
-    ];
-  }
-
-  if (input.node.kind === "element" || input.node.kind === "fragment") {
-    return input.node.children.flatMap((child, childIndex) =>
-      resolvePlacementRegionPaths({
-        node: child,
-        sourceAnchor: input.sourceAnchor,
-        path: [...input.path, { kind: "fragment-child", childIndex }],
-      }),
-    );
-  }
-
-  return [];
-}
-
-function resolveConditionalBranchPlacementPaths(input: {
-  branch: "when-true" | "when-false";
-  branchNode: import("../render-model/render-ir/types.js").RenderNode;
-  siblingBranchNode: import("../render-model/render-ir/types.js").RenderNode;
-  sourceAnchor: import("../../types/core.js").SourceAnchor;
-  path: RenderRegion["path"];
-}): RenderRegion["path"][] {
-  if (!isRenderNodePlacementCandidate(input.branchNode, input.sourceAnchor)) {
-    return [];
-  }
-
-  const matchingBranchPath: RenderRegion["path"] = [
-    ...input.path,
-    { kind: "conditional-branch", branch: input.branch },
-  ];
-
-  const siblingMatches = isRenderNodePlacementCandidate(
-    input.siblingBranchNode,
-    input.sourceAnchor,
-  );
-  if (
-    siblingMatches &&
-    normalizeProjectPath(input.siblingBranchNode.sourceAnchor.filePath) ===
-      normalizeProjectPath(input.sourceAnchor.filePath)
-  ) {
-    return [];
-  }
-
-  return [
-    matchingBranchPath,
-    ...resolvePlacementRegionPaths({
-      node: input.branchNode,
-      sourceAnchor: input.sourceAnchor,
-      path: matchingBranchPath,
-    }),
-  ];
-}
-
-function isRenderNodePlacementCandidate(
-  node: import("../render-model/render-ir/types.js").RenderNode,
-  sourceAnchor: import("../../types/core.js").SourceAnchor,
-): boolean {
-  const normalizedNodeFilePath = normalizeProjectPath(node.sourceAnchor.filePath);
-  const normalizedSourceFilePath = normalizeProjectPath(sourceAnchor.filePath);
-  if (normalizedNodeFilePath !== normalizedSourceFilePath) {
-    return true;
-  }
-
-  return sourceAnchorContains(node.sourceAnchor, sourceAnchor);
-}
-
-function sourceAnchorContains(
-  containing: import("../../types/core.js").SourceAnchor,
-  contained: import("../../types/core.js").SourceAnchor,
-): boolean {
-  const normalizedContainingFilePath = normalizeProjectPath(containing.filePath);
-  const normalizedContainedFilePath = normalizeProjectPath(contained.filePath);
-  if (normalizedContainingFilePath !== normalizedContainedFilePath) {
-    return false;
-  }
-
-  const containingStart = toAnchorPositionValue(containing.startLine, containing.startColumn);
-  const containingEnd = toAnchorPositionValue(
-    containing.endLine ?? containing.startLine,
-    containing.endColumn ?? containing.startColumn,
-  );
-  const containedStart = toAnchorPositionValue(contained.startLine, contained.startColumn);
-  const containedEnd = toAnchorPositionValue(
-    contained.endLine ?? contained.startLine,
-    contained.endColumn ?? contained.startColumn,
-  );
-
-  return containingStart <= containedStart && containingEnd >= containedEnd;
-}
-
-function toAnchorPositionValue(line: number, column: number): number {
-  return line * 1_000_000 + column;
 }
 
 function addRenderSubtreeRootContexts(input: {
@@ -578,13 +434,13 @@ function addRenderSubtreeRootContexts(input: {
 
 function addRenderRegionContexts(input: {
   contextRecordsByKey: Map<string, StylesheetReachabilityContextRecord>;
-  renderRegions: RenderRegion[];
+  renderRegions: ReachabilityRenderRegion[];
   availability: StylesheetReachabilityContextRecord["availability"];
   reasons: string[];
   derivations: ReachabilityDerivation[];
   traces: AnalysisTrace[];
   includeTraces: boolean;
-  predicate: (region: RenderRegion) => boolean;
+  predicate: (region: ReachabilityRenderRegion) => boolean;
 }): void {
   for (const region of input.renderRegions.filter(input.predicate)) {
     if (region.kind === "subtree-root") {

@@ -1,14 +1,15 @@
 import type { ClassExpressionSummary } from "../symbolic-evaluation/class-values/types.js";
-import type { UnsupportedClassReferenceDiagnostic } from "../render-model/class-reference-diagnostics/types.js";
 import type { ExternalCssSummary } from "../external-css/types.js";
 import type { ModuleFacts, ModuleFactsImportKind } from "../module-facts/types.js";
 import type {
   ReachabilityAvailability,
   StylesheetReachabilityContextRecord,
 } from "../reachability/types.js";
-import type { RenderGraphEdge } from "../render-model/render-graph/types.js";
-import type { RenderSubtree, RenderNode } from "../render-model/render-ir/types.js";
-import type { RenderModel as RenderStructureModel } from "../render-structure/types.js";
+import type {
+  RenderGraphProjectionEdge,
+  RenderModel as RenderStructureModel,
+  UnsupportedClassReferenceDiagnostic,
+} from "../render-structure/types.js";
 import type { RuntimeDomLibraryHint } from "../runtime-dom/types.js";
 import type { SelectorConstraint, SelectorQueryResult } from "../selector-analysis/types.js";
 import type { FactGraphResult } from "../fact-graph/types.js";
@@ -274,7 +275,7 @@ export type RenderSubtreeAnalysis = {
   componentName?: string;
   exported: boolean;
   location: SourceAnchor;
-  sourceSubtree: RenderSubtree;
+  sourceBoundaryId?: string;
 };
 
 export type UnsupportedClassReferenceAnalysis = {
@@ -368,8 +369,8 @@ export type ModuleImportRelation = {
 export type ComponentRenderRelation = {
   fromComponentId: ProjectAnalysisId;
   toComponentId?: ProjectAnalysisId;
-  renderPath: RenderGraphEdge["renderPath"];
-  resolution: RenderGraphEdge["resolution"];
+  renderPath: RenderGraphProjectionEdge["renderPath"];
+  resolution: RenderGraphProjectionEdge["resolution"];
   location: SourceAnchor;
   traces: AnalysisTrace[];
 };
@@ -509,27 +510,11 @@ export type ProjectAnalysisBuildInput = {
   cssModuleLocalsConvention?: CssModuleLocalsConvention;
   externalCssSummary: ExternalCssSummary;
   reachabilitySummary: import("../reachability/types.js").ReachabilitySummary;
-  renderGraph: import("../render-model/render-graph/types.js").RenderGraph;
-  renderSubtrees: RenderSubtree[];
-  renderModel?: RenderStructureModel;
-  unsupportedClassReferences: UnsupportedClassReferenceDiagnostic[];
+  renderModel: RenderStructureModel;
+  unsupportedClassReferences?: UnsupportedClassReferenceDiagnostic[];
   symbolicEvaluation?: SymbolicEvaluationResult;
   selectorQueryResults: SelectorQueryResult[];
   includeTraces?: boolean;
 };
 
 export type DeclarationForSignature = Pick<CssDeclarationFact, "property" | "value">;
-
-export type RenderClassExpressionEntry = {
-  classExpression: ClassExpressionSummary;
-  suppliedByComponentId?: ProjectAnalysisId;
-  emittedByComponentId?: ProjectAnalysisId;
-  classNameComponentIds?: Record<string, ProjectAnalysisId>;
-  renderSubtreeId: ProjectAnalysisId;
-  emittedElementLocation: SourceAnchor;
-  placementLocation?: SourceAnchor;
-};
-
-export type SkippedRenderClassExpressionEntry = RenderClassExpressionEntry & {
-  skippedBranch: NonNullable<RenderNode["staticallySkippedBranches"]>[number];
-};

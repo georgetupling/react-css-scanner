@@ -1,5 +1,3 @@
-import type { RenderGraph } from "../render-model/render-graph/types.js";
-import type { RenderSubtree } from "../render-model/render-ir/index.js";
 import type {
   ReachabilityStylesheetInput,
   StylesheetReachabilityContextRecord,
@@ -17,8 +15,6 @@ import { buildContextRecords } from "./contextRecords.js";
 
 export function buildStylesheetReachabilityRecord(input: {
   stylesheet: ReachabilityStylesheetInput;
-  renderGraph: RenderGraph;
-  renderSubtrees: RenderSubtree[];
   knownCssFilePaths: Set<string>;
   projectWideExternalStylesheetFilePaths: Set<string>;
   projectWideEntrySources: ProjectWideEntrySource[];

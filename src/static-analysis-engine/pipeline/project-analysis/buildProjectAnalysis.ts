@@ -37,13 +37,13 @@ export function buildProjectAnalysis(input: ProjectAnalysisBuildInput): ProjectA
   const includeTraces = input.includeTraces ?? true;
   const indexes = createEmptyIndexes();
   const sourceFiles = buildSourceFiles(input, indexes);
-  const components = buildComponents(input.renderGraph.nodes, indexes, input);
-  const renderSubtrees = buildRenderSubtrees(input.renderSubtrees, indexes);
+  const renderGraph = input.renderModel.renderGraph;
+  const components = buildComponents(renderGraph.nodes, indexes, input);
+  const renderSubtrees = buildRenderSubtrees(input.renderModel, indexes);
   const stylesheets = buildStylesheets(input, indexes);
   const classDefinitions = buildClassDefinitions(input, stylesheets, indexes);
   const classContexts = buildClassContexts(input, stylesheets, indexes);
   const classReferences = buildClassReferences({
-    renderSubtrees,
     renderModel: input.renderModel,
     symbolicEvaluation: input.symbolicEvaluation,
     factGraph: input.factGraph,
@@ -51,7 +51,9 @@ export function buildProjectAnalysis(input: ProjectAnalysisBuildInput): ProjectA
     includeTraces,
   });
   const staticallySkippedClassReferences = buildStaticallySkippedClassReferences({
-    renderSubtrees,
+    renderModel: input.renderModel,
+    symbolicEvaluation: input.symbolicEvaluation,
+    factGraph: input.factGraph,
     indexes,
     includeTraces,
   });
@@ -165,7 +167,7 @@ export function buildProjectAnalysis(input: ProjectAnalysisBuildInput): ProjectA
     },
     relations: {
       moduleImports: buildModuleImports(input, indexes),
-      componentRenders: buildComponentRenders(input.renderGraph.edges, indexes, includeTraces),
+      componentRenders: buildComponentRenders(renderGraph.edges, indexes, includeTraces),
       stylesheetReachability,
       referenceMatches,
       selectorMatches,

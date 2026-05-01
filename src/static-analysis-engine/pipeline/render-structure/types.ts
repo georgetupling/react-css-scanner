@@ -315,6 +315,15 @@ export type RenderStructureDiagnostic = {
   traces: AnalysisTrace[];
 };
 
+export type UnsupportedClassReferenceReason = "raw-jsx-class-not-modeled";
+
+export type UnsupportedClassReferenceDiagnostic = {
+  sourceAnchor: SourceAnchor;
+  rawExpressionText: string;
+  reason: UnsupportedClassReferenceReason;
+  traces: AnalysisTrace[];
+};
+
 export type RenderStructureProvenance = {
   stage: "render-structure";
   filePath?: string;

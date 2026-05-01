@@ -43,4 +43,6 @@ export type {
   RenderStructureOptions,
   RenderStructureProvenance,
   RenderStructureResult,
+  UnsupportedClassReferenceDiagnostic,
+  UnsupportedClassReferenceReason,
 } from "./types.js";

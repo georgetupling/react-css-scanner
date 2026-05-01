@@ -17,6 +17,7 @@ import {
 } from "./bindingFacts.js";
 import {
   dedupeClassExpressionSites,
+  tryCreateCloneElementClassExpressionSite,
   tryCreateCssModuleClassExpressionSite,
   tryCreateJsxClassExpressionSite,
 } from "./classExpressionSites.js";
@@ -155,6 +156,17 @@ export function collectSourceReactSyntax(input: {
     if (cssModuleClassSite) {
       classExpressionSites.push(cssModuleClassSite.site);
       expressionSyntax.push(...cssModuleClassSite.expressionSyntax);
+    }
+
+    const cloneElementClassSite = tryCreateCloneElementClassExpressionSite({
+      node,
+      filePath: input.filePath,
+      sourceFile: input.sourceFile,
+      ...(currentComponentKey ? { emittingComponentKey: currentComponentKey } : {}),
+    });
+    if (cloneElementClassSite) {
+      classExpressionSites.push(cloneElementClassSite.site);
+      expressionSyntax.push(...cloneElementClassSite.expressionSyntax);
     }
 
     ts.forEachChild(node, visit);

@@ -53,19 +53,14 @@ export {
   resolveTypeDeclaration,
   resolveTypeBinding,
 } from "./pipeline/symbol-resolution/index.js";
-export { toAbstractClassSet, toClassExpressionSummary } from "./pipeline/render-model/index.js";
+export { toAbstractClassSet } from "./pipeline/symbolic-evaluation/class-values/index.js";
+export { toClassExpressionSummary } from "./pipeline/symbolic-evaluation/index.js";
 export { buildExternalCssSummary } from "./pipeline/external-css/index.js";
-export { collectUnsupportedClassReferences } from "./pipeline/render-model/index.js";
-export {
-  buildSameFileRenderSubtrees,
-  collectRenderRegionsFromSubtrees,
-} from "./pipeline/render-model/index.js";
 export {
   analyzeSelectorQueries,
   extractSelectorQueriesFromCssText,
 } from "./pipeline/selector-analysis/index.js";
 export { buildReachabilitySummary } from "./pipeline/reachability/index.js";
-export { buildRenderGraph, buildRenderModel } from "./pipeline/render-model/index.js";
 export {
   buildProjectAnalysis,
   serializeProjectAnalysis,
@@ -180,6 +175,8 @@ export type {
   RenderStructureOptions,
   RenderStructureProvenance,
   RenderStructureResult,
+  UnsupportedClassReferenceDiagnostic,
+  UnsupportedClassReferenceReason,
 } from "./pipeline/render-structure/index.js";
 export type {
   ActiveExternalCssProvider,
@@ -192,10 +189,10 @@ export type {
   HtmlStylesheetLinkInput,
 } from "./pipeline/workspace-discovery/index.js";
 export type {
-  RenderGraph,
-  RenderGraphEdge,
-  RenderGraphNode,
-} from "./pipeline/render-model/render-graph/index.js";
+  RenderGraphProjection as RenderGraph,
+  RenderGraphProjectionEdge as RenderGraphEdge,
+  RenderGraphProjectionNode as RenderGraphNode,
+} from "./pipeline/render-structure/index.js";
 export type {
   ReachabilityAvailability,
   ReachabilitySummary,
@@ -240,21 +237,6 @@ export type {
   ClassExpressionSummary,
 } from "./pipeline/symbolic-evaluation/index.js";
 export type {
-  RenderComponentReferenceExpansion,
-  RenderComponentReferenceNode,
-  RenderConditionalNode,
-  RenderElementNode,
-  RenderFragmentNode,
-  RenderNode,
-  RenderNodeKind,
-  RenderRepeatedRegionNode,
-  RenderRegion,
-  RenderRegionKind,
-  RenderRegionPathSegment,
-  RenderSubtree,
-  RenderUnknownNode,
-} from "./pipeline/render-model/render-ir/index.js";
-export type {
   ClassContextAnalysis,
   ClassDefinitionAnalysis,
   ClassDefinitionSelectorKind,
@@ -295,10 +277,6 @@ export type {
   StylesheetReachabilityRelation,
   UnsupportedClassReferenceAnalysis,
 } from "./pipeline/project-analysis/index.js";
-export type {
-  UnsupportedClassReferenceDiagnostic,
-  UnsupportedClassReferenceReason,
-} from "./pipeline/render-model/class-reference-diagnostics/index.js";
 export type {
   ExtractedSelectorQuery,
   SelectorConstraint,

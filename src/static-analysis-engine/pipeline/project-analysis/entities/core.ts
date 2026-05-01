@@ -1,7 +1,10 @@
-import type { RenderGraphNode } from "../../render-model/render-graph/types.js";
-import type { RenderSubtree } from "../../render-model/render-ir/types.js";
 import { getAllResolvedModuleFacts } from "../../module-facts/index.js";
 import type { StyleSheetNode } from "../../fact-graph/index.js";
+import type {
+  RenderGraphProjectionNode,
+  RenderModel,
+  UnsupportedClassReferenceDiagnostic,
+} from "../../render-structure/index.js";
 import type {
   ClassContextAnalysis,
   ClassDefinitionAnalysis,
@@ -16,6 +19,7 @@ import type {
 } from "../types.js";
 import {
   compareById,
+  compareAnchors,
   createAnchorId,
   createClassContextId,
   createClassDefinitionId,
@@ -52,8 +56,8 @@ export function buildSourceFiles(
       sourcePaths.add(normalizeProjectPath(moduleFacts.filePath));
     }
 
-    for (const renderSubtree of input.renderSubtrees) {
-      sourcePaths.add(normalizeProjectPath(renderSubtree.sourceAnchor.filePath));
+    for (const component of input.renderModel.components) {
+      sourcePaths.add(normalizeProjectPath(component.filePath));
     }
   }
 
@@ -71,7 +75,7 @@ export function buildSourceFiles(
 }
 
 export function buildComponents(
-  renderGraphNodes: RenderGraphNode[],
+  renderGraphNodes: RenderGraphProjectionNode[],
   indexes: ProjectAnalysisIndexes,
   input?: ProjectAnalysisBuildInput,
 ): ComponentAnalysis[] {
@@ -110,7 +114,7 @@ export function buildComponents(
           filePath,
           componentName: node.componentName,
           exported: node.exported,
-          location: normalizeAnchor(node.sourceAnchor),
+          location: normalizeAnchor(node.sourceLocation),
         };
       });
 
@@ -118,29 +122,40 @@ export function buildComponents(
 }
 
 export function buildRenderSubtrees(
-  renderSubtrees: RenderSubtree[],
+  renderModel: RenderModel,
   indexes: ProjectAnalysisIndexes,
 ): RenderSubtreeAnalysis[] {
-  return renderSubtrees
-    .map((renderSubtree, index) => {
-      const filePath = normalizeProjectPath(renderSubtree.sourceAnchor.filePath);
-      const componentId = renderSubtree.componentName
-        ? renderSubtree.componentKey
-          ? indexes.componentIdByComponentKey.get(renderSubtree.componentKey)
-          : indexes.componentIdByFilePathAndName.get(
-              createComponentKey(filePath, renderSubtree.componentName),
+  return renderModel.componentBoundaries
+    .filter((boundary) => boundary.boundaryKind === "component-root")
+    .map((boundary, index) => {
+      const location = normalizeAnchor(
+        boundary.declarationLocation ??
+          boundary.referenceLocation ?? {
+            filePath: boundary.filePath ?? "<unknown>",
+            startLine: 1,
+            startColumn: 1,
+          },
+      );
+      const filePath = normalizeProjectPath(boundary.filePath ?? location.filePath);
+      const componentId = boundary.componentKey
+        ? indexes.componentIdByComponentKey.get(boundary.componentKey)
+        : boundary.componentName
+          ? indexes.componentIdByFilePathAndName.get(
+              createComponentKey(filePath, boundary.componentName),
             )
-        : undefined;
+          : undefined;
 
       return {
-        id: createAnchorId("render-subtree", renderSubtree.sourceAnchor, index),
+        id: createAnchorId("render-subtree", location, index),
         componentId,
-        componentKey: renderSubtree.componentKey,
+        componentKey: boundary.componentKey,
         filePath,
-        componentName: renderSubtree.componentName,
-        exported: renderSubtree.exported,
-        location: normalizeAnchor(renderSubtree.sourceAnchor),
-        sourceSubtree: renderSubtree,
+        componentName: boundary.componentName,
+        exported: renderModel.components.some(
+          (component) => component.componentKey === boundary.componentKey && component.exported,
+        ),
+        location,
+        sourceBoundaryId: boundary.id,
       };
     })
     .sort(compareById);
@@ -307,7 +322,11 @@ export function buildUnsupportedClassReferences(
   indexes: ProjectAnalysisIndexes,
   includeTraces: boolean,
 ): UnsupportedClassReferenceAnalysis[] {
-  return input.unsupportedClassReferences
+  const diagnostics =
+    input.unsupportedClassReferences ??
+    collectUnsupportedClassReferenceDiagnosticsFromRenderModel(input, includeTraces);
+
+  return diagnostics
     .map((diagnostic, index) => {
       const location = normalizeAnchor(diagnostic.sourceAnchor);
       const sourceFileId =
@@ -325,4 +344,56 @@ export function buildUnsupportedClassReferences(
       };
     })
     .sort(compareById);
+}
+
+function collectUnsupportedClassReferenceDiagnosticsFromRenderModel(
+  input: ProjectAnalysisBuildInput,
+  includeTraces: boolean,
+): UnsupportedClassReferenceDiagnostic[] {
+  if (!input.factGraph) {
+    return [];
+  }
+
+  const modeledSiteNodeIds = new Set(
+    input.renderModel.emissionSites.map((emissionSite) => emissionSite.classExpressionSiteNodeId),
+  );
+  const diagnostics: UnsupportedClassReferenceDiagnostic[] = [];
+
+  for (const site of input.factGraph.graph.nodes.classExpressionSites) {
+    if (
+      site.classExpressionSiteKind !== "jsx-class" &&
+      site.classExpressionSiteKind !== "component-prop-class"
+    ) {
+      continue;
+    }
+
+    if (modeledSiteNodeIds.has(site.id)) {
+      continue;
+    }
+
+    const location = normalizeAnchor(site.location);
+    diagnostics.push({
+      sourceAnchor: location,
+      rawExpressionText: site.rawExpressionText,
+      reason: "raw-jsx-class-not-modeled",
+      traces: includeTraces
+        ? [
+            {
+              traceId: `diagnostic:class-reference:unsupported:${location.filePath}:${location.startLine}:${location.startColumn}`,
+              category: "render-expansion",
+              summary:
+                "raw JSX className syntax was present in the source file but was not represented in the render structure",
+              anchor: location,
+              children: [],
+              metadata: {
+                reason: "raw-jsx-class-not-modeled",
+                rawExpressionText: site.rawExpressionText,
+              },
+            },
+          ]
+        : [],
+    });
+  }
+
+  return diagnostics.sort((left, right) => compareAnchors(left.sourceAnchor, right.sourceAnchor));
 }

@@ -1,6 +1,10 @@
-import type { RenderRegion } from "../render-model/render-ir/index.js";
 import type { ReachabilityDerivation, StylesheetReachabilityContextRecord } from "./types.js";
-import type { ProjectWideEntrySource, StylesheetImportRecord } from "./internalTypes.js";
+import type {
+  ProjectWideEntrySource,
+  ReachabilityRenderRegion,
+  StylesheetImportRecord,
+} from "./internalTypes.js";
+import type { RenderGraphProjectionEdge } from "../render-structure/index.js";
 import { normalizeProjectPath } from "./pathUtils.js";
 
 export function serializeContextKey(contextRecord: StylesheetReachabilityContextRecord): string {
@@ -149,7 +153,7 @@ export function compareContextRecords(
   return 0;
 }
 
-export function serializeRegionPath(path: RenderRegion["path"]): string {
+export function serializeRegionPath(path: ReachabilityRenderRegion["path"]): string {
   return path
     .map((segment) => {
       if (segment.kind === "root") {
@@ -170,8 +174,8 @@ export function serializeRegionPath(path: RenderRegion["path"]): string {
 }
 
 export function compareEdges(
-  left: import("../render-model/render-graph/types.js").RenderGraphEdge,
-  right: import("../render-model/render-graph/types.js").RenderGraphEdge,
+  left: RenderGraphProjectionEdge,
+  right: RenderGraphProjectionEdge,
 ): number {
   return (
     left.fromFilePath.localeCompare(right.fromFilePath) ||

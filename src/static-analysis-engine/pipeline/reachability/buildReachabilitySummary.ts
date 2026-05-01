@@ -1,6 +1,4 @@
 import type { ModuleFacts } from "../module-facts/index.js";
-import type { RenderGraph } from "../render-model/render-graph/types.js";
-import type { RenderSubtree } from "../render-model/render-ir/index.js";
 import type { RenderModel } from "../render-structure/index.js";
 import type { ExternalCssSummary } from "../external-css/types.js";
 import type { ProjectResourceEdge } from "../workspace-discovery/types.js";
@@ -23,9 +21,7 @@ import { buildStylesheetReachabilityRecord } from "./stylesheetRecords.js";
 
 export function buildReachabilitySummary(input: {
   moduleFacts: ModuleFacts;
-  renderGraph: RenderGraph;
-  renderSubtrees?: RenderSubtree[];
-  renderModel?: RenderModel;
+  renderModel: RenderModel;
   stylesheets: ReachabilityStylesheetInput[];
   resourceEdges?: ProjectResourceEdge[];
   externalCssSummary: ExternalCssSummary;
@@ -65,8 +61,6 @@ export function buildReachabilitySummary(input: {
     sourcePackageCssImports: input.externalCssSummary.packageCssImports,
   });
   const reachabilityGraphContext = buildReachabilityGraphContext({
-    renderGraph: input.renderGraph,
-    renderSubtrees: input.renderSubtrees,
     renderModel: input.renderModel,
   });
   const componentAvailability = computeBatchedComponentAvailability({
@@ -79,8 +73,6 @@ export function buildReachabilitySummary(input: {
   const stylesheets = input.stylesheets.map((stylesheet) =>
     buildStylesheetReachabilityRecord({
       stylesheet,
-      renderGraph: input.renderGraph,
-      renderSubtrees: input.renderSubtrees ?? [],
       knownCssFilePaths,
       projectWideExternalStylesheetFilePaths,
       projectWideEntrySources,

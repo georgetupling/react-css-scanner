@@ -4,8 +4,8 @@ import type {
   BatchedComponentAvailability,
   ReachabilityGraphContext,
 } from "./internalTypes.js";
+import type { RenderGraphProjectionEdge } from "../render-structure/index.js";
 import { normalizeProjectPath } from "./pathUtils.js";
-import { createComponentKey } from "./sortAndKeys.js";
 
 export function computeBatchedComponentAvailability(input: {
   stylesheets: ReachabilityStylesheetInput[];
@@ -76,7 +76,7 @@ export function computeBatchedComponentAvailability(input: {
         let availableParentBits = 0n;
 
         for (const edge of incomingEdges) {
-          const parentKey = createComponentKey(edge.fromFilePath, edge.fromComponentName);
+          const parentKey = edge.fromComponentKey;
           const parentDefiniteBits = definiteBitsByComponentKey.get(parentKey) ?? 0n;
           const parentPossibleBits = possibleBitsByComponentKey.get(parentKey) ?? 0n;
           const parentAvailableBits = parentDefiniteBits | parentPossibleBits;
@@ -144,7 +144,7 @@ function buildComponentAvailabilityRecordForStylesheet(input: {
   directDefiniteBitsByComponentKey: Map<string, bigint>;
   definiteBitsByComponentKey: Map<string, bigint>;
   possibleBitsByComponentKey: Map<string, bigint>;
-  incomingEdges: import("../render-model/render-graph/types.js").RenderGraphEdge[];
+  incomingEdges: RenderGraphProjectionEdge[];
   includeTraces: boolean;
 }): ComponentAvailabilityRecord | undefined {
   const directBits = input.directDefiniteBitsByComponentKey.get(input.componentKey) ?? 0n;
@@ -173,7 +173,7 @@ function buildComponentAvailabilityRecordForStylesheet(input: {
   }
 
   const availableParentEdges = input.incomingEdges.filter((edge) => {
-    const parentKey = createComponentKey(edge.fromFilePath, edge.fromComponentName);
+    const parentKey = edge.fromComponentKey;
     const parentDefiniteBits = input.definiteBitsByComponentKey.get(parentKey) ?? 0n;
     const parentPossibleBits = input.possibleBitsByComponentKey.get(parentKey) ?? 0n;
     return ((parentDefiniteBits | parentPossibleBits) & input.stylesheetBit) !== 0n;

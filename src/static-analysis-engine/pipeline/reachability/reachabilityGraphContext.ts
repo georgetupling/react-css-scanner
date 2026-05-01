@@ -1,11 +1,12 @@
-import {
-  collectRenderRegionsFromSubtrees,
-  type RenderRegion,
-  type RenderSubtree,
-} from "../render-model/render-ir/index.js";
-import type { RenderGraph } from "../render-model/render-graph/types.js";
-import type { RenderModel } from "../render-structure/index.js";
 import type {
+  RenderGraphProjectionEdge,
+  RenderGraphProjectionNode,
+  RenderModel,
+  RenderPathSegment,
+} from "../render-structure/index.js";
+import type { SourceAnchor } from "../../types/core.js";
+import type {
+  ReachabilityRenderRegion,
   ReachabilityComponentRoot,
   ReachabilityGraphContext,
   PlacedChildRenderRegion,
@@ -15,32 +16,24 @@ import { normalizeProjectPath } from "./pathUtils.js";
 import { compareEdges, serializeRegionPath } from "./sortAndKeys.js";
 
 export function buildReachabilityGraphContext(input: {
-  renderGraph: RenderGraph;
-  renderSubtrees?: RenderSubtree[];
-  renderModel?: RenderModel;
+  renderModel: RenderModel;
 }): ReachabilityGraphContext {
-  const renderRegionsByComponentKey = new Map<string, RenderRegion[]>();
-  const renderRegionsByPathKeyByComponentKey = new Map<string, Map<string, RenderRegion[]>>();
+  const renderRegionsByComponentKey = new Map<string, ReachabilityRenderRegion[]>();
+  const renderRegionsByPathKeyByComponentKey = new Map<
+    string,
+    Map<string, ReachabilityRenderRegion[]>
+  >();
   const componentRootsByComponentKey = new Map<string, ReachabilityComponentRoot>();
   const unknownBarriersByComponentKey = new Map<string, UnknownReachabilityBarrier[]>();
   const renderGraphNodesByKey = new Map(
-    input.renderGraph.nodes.map((node) => [node.componentKey, node]),
+    input.renderModel.renderGraph.nodes.map((node) => [node.componentKey, node]),
   );
-  const outgoingEdgesByComponentKey = new Map<
-    string,
-    import("../render-model/render-graph/types.js").RenderGraphEdge[]
-  >();
-  const incomingEdgesByComponentKey = new Map<
-    string,
-    import("../render-model/render-graph/types.js").RenderGraphEdge[]
-  >();
+  const outgoingEdgesByComponentKey = new Map<string, RenderGraphProjectionEdge[]>();
+  const incomingEdgesByComponentKey = new Map<string, RenderGraphProjectionEdge[]>();
   const componentKeysByFilePath = new Map<string, string[]>();
 
-  const projected = input.renderModel
-    ? projectFromRenderModel(input.renderModel, renderGraphNodesByKey)
-    : undefined;
-  const effectiveRegions =
-    projected?.renderRegions ?? collectRenderRegionsFromSubtrees(input.renderSubtrees ?? []);
+  const projected = projectFromRenderModel(input.renderModel, renderGraphNodesByKey);
+  const effectiveRegions = projected.renderRegions;
 
   for (const renderRegion of effectiveRegions) {
     if (!renderRegion.componentKey) {
@@ -61,32 +54,14 @@ export function buildReachabilityGraphContext(input: {
     renderRegionsByPathKeyByComponentKey.set(componentKey, renderRegionsByPathKey);
   }
 
-  if (projected) {
-    for (const [componentKey, root] of projected.componentRootsByComponentKey.entries()) {
-      componentRootsByComponentKey.set(componentKey, root);
-    }
-    for (const [componentKey, barriers] of projected.unknownBarriersByComponentKey.entries()) {
-      unknownBarriersByComponentKey.set(componentKey, barriers);
-    }
-  } else {
-    for (const renderSubtree of input.renderSubtrees ?? []) {
-      if (!renderSubtree.componentKey || !renderSubtree.componentName) {
-        continue;
-      }
-      const componentKey = renderSubtree.componentKey;
-      componentRootsByComponentKey.set(componentKey, {
-        filePath:
-          normalizeProjectPath(renderSubtree.sourceAnchor.filePath) ??
-          renderSubtree.sourceAnchor.filePath,
-        componentKey: renderSubtree.componentKey,
-        componentName: renderSubtree.componentName,
-        rootSourceAnchor: renderSubtree.root.sourceAnchor,
-        declarationSourceAnchor: renderSubtree.sourceAnchor,
-      });
-    }
+  for (const [componentKey, root] of projected.componentRootsByComponentKey.entries()) {
+    componentRootsByComponentKey.set(componentKey, root);
+  }
+  for (const [componentKey, barriers] of projected.unknownBarriersByComponentKey.entries()) {
+    unknownBarriersByComponentKey.set(componentKey, barriers);
   }
 
-  for (const edge of input.renderGraph.edges) {
+  for (const edge of input.renderModel.renderGraph.edges) {
     if (edge.resolution !== "resolved" || !edge.toFilePath) {
       continue;
     }
@@ -136,11 +111,8 @@ export function buildReachabilityGraphContext(input: {
 }
 
 function buildPlacedChildRenderRegionsByComponentKey(input: {
-  renderRegionsByComponentKey: Map<string, RenderRegion[]>;
-  outgoingEdgesByComponentKey: Map<
-    string,
-    import("../render-model/render-graph/types.js").RenderGraphEdge[]
-  >;
+  renderRegionsByComponentKey: Map<string, ReachabilityRenderRegion[]>;
+  outgoingEdgesByComponentKey: Map<string, RenderGraphProjectionEdge[]>;
 }): Map<string, PlacedChildRenderRegion[]> {
   const placementsByComponentKey = new Map<string, PlacedChildRenderRegion[]>();
   for (const [componentKey, outgoingEdges] of input.outgoingEdgesByComponentKey.entries()) {
@@ -149,7 +121,7 @@ function buildPlacedChildRenderRegionsByComponentKey(input: {
 
     for (const edge of outgoingEdges) {
       const containingRenderRegions = renderRegions.filter((region) =>
-        sourceAnchorContains(region.sourceAnchor, edge.sourceAnchor),
+        sourceAnchorContains(region.sourceAnchor, edge.sourceLocation),
       );
       const fallbackRootRegion =
         containingRenderRegions.length === 0
@@ -171,12 +143,9 @@ function buildPlacedChildRenderRegionsByComponentKey(input: {
 
 function projectFromRenderModel(
   renderModel: RenderModel,
-  renderGraphNodesByKey: Map<
-    string,
-    import("../render-model/render-graph/types.js").RenderGraphNode
-  >,
+  renderGraphNodesByKey: Map<string, RenderGraphProjectionNode>,
 ): {
-  renderRegions: RenderRegion[];
+  renderRegions: ReachabilityRenderRegion[];
   componentRootsByComponentKey: Map<string, ReachabilityComponentRoot>;
   unknownBarriersByComponentKey: Map<string, UnknownReachabilityBarrier[]>;
 } {
@@ -190,7 +159,7 @@ function projectFromRenderModel(
       .map((component) => [component.componentNodeId as string, component]),
   );
 
-  const renderRegions: RenderRegion[] = [];
+  const renderRegions: ReachabilityRenderRegion[] = [];
   const unknownBarriersByComponentKey = new Map<string, UnknownReachabilityBarrier[]>();
   const componentRootsByComponentKey = new Map<string, ReachabilityComponentRoot>();
 
@@ -230,7 +199,7 @@ function projectFromRenderModel(
           : region.regionKind === "repeated-template"
             ? "repeated-template"
             : "conditional-branch";
-    const projectedRegion: RenderRegion = {
+    const projectedRegion: ReachabilityRenderRegion = {
       filePath: normalizeProjectPath(component.filePath) ?? component.filePath,
       componentKey: component.componentKey,
       componentName: component.componentName,
@@ -243,13 +212,8 @@ function projectFromRenderModel(
     if (region.regionKind === "unknown-barrier") {
       const barriers = unknownBarriersByComponentKey.get(component.componentKey) ?? [];
       barriers.push({
-        node: {
-          kind: "unknown",
-          reason: "unknown-render-model-region",
-          sourceAnchor: region.sourceLocation,
-        } as import("../render-model/render-ir/types.js").RenderUnknownNode,
         path: projectedRegion.path,
-        reason: "unknown-render-model-region",
+        reason: "unknown-render-structure-region",
         sourceAnchor: region.sourceLocation,
       });
       unknownBarriersByComponentKey.set(component.componentKey, barriers);
@@ -265,13 +229,6 @@ function projectFromRenderModel(
           : "unresolved-component-reference";
       const barriers = unknownBarriersByComponentKey.get(component.componentKey) ?? [];
       barriers.push({
-        node: {
-          kind: "component-reference",
-          componentName: boundary.componentName ?? "unknown",
-          componentKey: boundary.componentKey,
-          reason: unresolvedReason,
-          sourceAnchor: boundary.referenceLocation ?? region.sourceLocation,
-        } as import("../render-model/render-ir/types.js").RenderComponentReferenceNode,
         path: projectedRegion.path,
         reason: unresolvedReason,
         sourceAnchor: boundary.referenceLocation ?? region.sourceLocation,
@@ -289,12 +246,8 @@ function projectFromRenderModel(
   };
 }
 
-function projectLegacyPath(
-  segments: import("../render-structure/index.js").RenderPathSegment[],
-): import("../render-model/render-ir/types.js").RenderRegionPathSegment[] {
-  const result: import("../render-model/render-ir/types.js").RenderRegionPathSegment[] = [
-    { kind: "root" },
-  ];
+function projectLegacyPath(segments: RenderPathSegment[]): ReachabilityRenderRegion["path"] {
+  const result: ReachabilityRenderRegion["path"] = [{ kind: "root" }];
   for (const segment of segments) {
     if (segment.kind === "child-index") {
       result.push({ kind: "fragment-child", childIndex: segment.index });
@@ -312,10 +265,7 @@ function projectLegacyPath(
   return result;
 }
 
-function sourceAnchorContains(
-  containing: import("../../types/core.js").SourceAnchor,
-  contained: import("../../types/core.js").SourceAnchor,
-): boolean {
+function sourceAnchorContains(containing: SourceAnchor, contained: SourceAnchor): boolean {
   const normalizedContainingFilePath = normalizeProjectPath(containing.filePath);
   const normalizedContainedFilePath = normalizeProjectPath(contained.filePath);
   if (normalizedContainingFilePath !== normalizedContainedFilePath) {

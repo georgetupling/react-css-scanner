@@ -115,6 +115,56 @@ export function tryCreateCssModuleClassExpressionSite(input: {
   };
 }
 
+export function tryCreateCloneElementClassExpressionSite(input: {
+  node: ts.Node;
+  filePath: string;
+  sourceFile: ts.SourceFile;
+  emittingComponentKey?: string;
+}): CreatedReactClassExpressionSite | undefined {
+  if (!ts.isCallExpression(input.node) || !isCloneElementCall(input.node)) {
+    return undefined;
+  }
+
+  const propsArgument = input.node.arguments[1];
+  if (!propsArgument || !ts.isObjectLiteralExpression(propsArgument)) {
+    return undefined;
+  }
+
+  const classNameProperty = propsArgument.properties.find(
+    (property): property is ts.PropertyAssignment =>
+      ts.isPropertyAssignment(property) && getStaticPropertyName(property.name) === "className",
+  );
+  if (!classNameProperty) {
+    return undefined;
+  }
+
+  const expression = classNameProperty.initializer;
+  const location = toSourceAnchor(expression, input.sourceFile, input.filePath);
+  const expressionSyntax = collectExpressionSyntaxForNode({
+    node: expression,
+    filePath: input.filePath,
+    sourceFile: input.sourceFile,
+  });
+
+  return {
+    site: {
+      siteKey: createSiteKey("class-expression", location, "clone-element-class"),
+      kind: "jsx-class",
+      filePath: input.filePath,
+      location,
+      expressionId: expressionSyntax.rootExpressionId,
+      rawExpressionText: expression.getText(input.sourceFile),
+      ...(input.emittingComponentKey
+        ? {
+            emittingComponentKey: input.emittingComponentKey,
+            placementComponentKey: input.emittingComponentKey,
+          }
+        : {}),
+    },
+    expressionSyntax: expressionSyntax.expressions,
+  };
+}
+
 export function dedupeClassExpressionSites(
   sites: ReactClassExpressionSiteFact[],
 ): ReactClassExpressionSiteFact[] {
@@ -123,4 +173,21 @@ export function dedupeClassExpressionSites(
     byKey.set(site.siteKey, site);
   }
   return [...byKey.values()];
+}
+
+function isCloneElementCall(expression: ts.CallExpression): boolean {
+  const callee = expression.expression;
+  if (ts.isIdentifier(callee)) {
+    return callee.text === "cloneElement";
+  }
+
+  return ts.isPropertyAccessExpression(callee) && callee.name.text === "cloneElement";
+}
+
+function getStaticPropertyName(name: ts.PropertyName): string | undefined {
+  if (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNumericLiteral(name)) {
+    return name.text;
+  }
+
+  return undefined;
 }

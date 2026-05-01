@@ -1,16 +1,17 @@
-import type { RenderNode } from "../../render-model/render-ir/types.js";
-import type { ClassExpressionSummary } from "../../symbolic-evaluation/class-values/types.js";
 import type {
   ParsedSelectorQuery,
   SelectorAnalysisTarget,
   SelectorRenderModelIndex,
   SelectorQueryResult,
-  SelectorSymbolicClassExpressionIndex,
 } from "../types.js";
 import { buildSelectorQueryResult } from "../resultUtils.js";
-import { mergeBranchEvaluations, mergeInspectionEvaluations } from "../renderInspection.js";
 import { attachMatchedReachability } from "../reachabilityResultUtils.js";
-import { evaluateClassRequirement } from "../selectorEvaluationUtils.js";
+import {
+  evaluateElementClassRequirement,
+  getScopedElements,
+  mergeStructuralEvaluations,
+  type StructuralEvaluation,
+} from "./renderModelEvaluation.js";
 
 type SameNodeConstraint = Extract<
   ParsedSelectorQuery["constraint"],
@@ -22,7 +23,6 @@ export function analyzeSameNodeClassConjunction(input: {
   constraint: SameNodeConstraint;
   analysisTargets: SelectorAnalysisTarget[];
   renderModelIndex?: SelectorRenderModelIndex;
-  symbolicClassExpressions?: SelectorSymbolicClassExpressionIndex;
   includeTraces?: boolean;
 }): SelectorQueryResult {
   const includeTraces = input.includeTraces ?? true;
@@ -31,17 +31,11 @@ export function analyzeSameNodeClassConjunction(input: {
   const matchedTargets: SelectorAnalysisTarget[] = [];
 
   for (const analysisTarget of input.analysisTargets) {
-    const evaluation =
-      evaluateTargetAgainstEmissionSites({
-        analysisTarget,
-        classNames: input.constraint.classNames,
-        renderModelIndex: input.renderModelIndex,
-      }) ??
-      inspectNodeForSameNodeConstraint(
-        analysisTarget.renderSubtree.root,
-        input.constraint.classNames,
-        input.symbolicClassExpressions,
-      );
+    const evaluation = evaluateTargetAgainstEmissionSites({
+      analysisTarget,
+      classNames: input.constraint.classNames,
+      renderModelIndex: input.renderModelIndex,
+    });
     if (evaluation === "match") {
       if (analysisTarget.reachabilityAvailability === "possible") {
         sawPossibleMatch = true;
@@ -180,223 +174,22 @@ export function analyzeSameNodeClassConjunction(input: {
   });
 }
 
-function inspectNodeForSameNodeConstraint(
-  node: RenderNode,
-  classNames: string[],
-  symbolicClassExpressions: SelectorSymbolicClassExpressionIndex | undefined,
-): "match" | "possible-match" | "unsupported" | "no-match" {
-  if (node.kind === "element") {
-    const evaluation =
-      evaluateSymbolicClassRequirement(symbolicClassExpressions, node.className, classNames) ??
-      evaluateClassRequirement(node.className, classNames);
-    if (evaluation !== "no-match") {
-      return evaluation;
-    }
-  }
-
-  if (node.kind === "conditional") {
-    const whenTrue = inspectNodeForSameNodeConstraint(
-      node.whenTrue,
-      classNames,
-      symbolicClassExpressions,
-    );
-    const whenFalse = inspectNodeForSameNodeConstraint(
-      node.whenFalse,
-      classNames,
-      symbolicClassExpressions,
-    );
-    return mergeBranchEvaluations(whenTrue, whenFalse);
-  }
-
-  if (node.kind === "repeated-region") {
-    const evaluation = inspectNodeForSameNodeConstraint(
-      node.template,
-      classNames,
-      symbolicClassExpressions,
-    );
-    return evaluation === "match" ? "possible-match" : evaluation;
-  }
-
-  if (node.kind === "fragment") {
-    return mergeInspectionEvaluations(
-      node.children.map((child) =>
-        inspectNodeForSameNodeConstraint(child, classNames, symbolicClassExpressions),
-      ),
-    );
-  }
-
-  if (node.kind === "element") {
-    return mergeInspectionEvaluations(
-      node.children.map((child) =>
-        inspectNodeForSameNodeConstraint(child, classNames, symbolicClassExpressions),
-      ),
-    );
-  }
-
-  return "no-match";
-}
-
-function evaluateSymbolicClassRequirement(
-  symbolicClassExpressions: SelectorSymbolicClassExpressionIndex | undefined,
-  className: ClassExpressionSummary | undefined,
-  requiredClassNames: string[],
-): "match" | "possible-match" | "unsupported" | "no-match" | undefined {
-  if (!symbolicClassExpressions || !className) {
-    return undefined;
-  }
-
-  const expression = symbolicClassExpressions.classExpressionByAnchorKey.get(
-    createClassExpressionAnchorKey(className),
-  );
-  if (!expression) {
-    return undefined;
-  }
-
-  if (
-    expression.emissionVariants.some((variant) => includesAll(variant.tokens, requiredClassNames))
-  ) {
-    return "match";
-  }
-
-  if (
-    expression.emissionVariants.length > 0 &&
-    expression.emissionVariants.every(
-      (variant) => variant.completeness === "complete" && !variant.unknownDynamic,
-    )
-  ) {
-    return "no-match";
-  }
-
-  const emittedTokens = expression.tokens.filter(
-    (token) => token.tokenKind !== "css-module-export",
-  );
-  const allPresent = requiredClassNames.every((className) =>
-    emittedTokens.some((token) => token.token === className),
-  );
-  if (allPresent) {
-    return "possible-match";
-  }
-
-  if (expression.certainty.kind === "unknown" || expression.certainty.kind === "partial") {
-    return "unsupported";
-  }
-
-  return "no-match";
-}
-
-function includesAll(tokens: string[], requiredClassNames: string[]): boolean {
-  return requiredClassNames.every((className) => tokens.includes(className));
-}
-
-function createClassExpressionAnchorKey(className: ClassExpressionSummary): string {
-  const anchor = className.sourceAnchor;
-  return [
-    anchor.filePath.replace(/\\/g, "/"),
-    anchor.startLine,
-    anchor.startColumn,
-    anchor.endLine ?? "",
-    anchor.endColumn ?? "",
-  ].join(":");
-}
-
 function evaluateTargetAgainstEmissionSites(input: {
   analysisTarget: SelectorAnalysisTarget;
   classNames: string[];
   renderModelIndex?: SelectorRenderModelIndex;
-}): "match" | "possible-match" | "unsupported" | "no-match" | undefined {
+}): StructuralEvaluation {
   if (!input.renderModelIndex) {
-    return undefined;
-  }
-  const renderModelIndex = input.renderModelIndex;
-
-  const subtree = input.analysisTarget.renderSubtree;
-  const renderModel = renderModelIndex.renderModel;
-  const componentKey = subtree.componentKey;
-  const rootAnchor = subtree.root.sourceAnchor;
-  const matchingEmissionSites = renderModel.emissionSites.filter((emissionSite) => {
-    if (!emissionSite.elementId) {
-      return false;
-    }
-    const element = renderModel.indexes.elementById.get(emissionSite.elementId);
-    if (!element) {
-      return false;
-    }
-    if (componentKey) {
-      const emittingComponentKey = element.emittingComponentNodeId
-        ? renderModelIndex.componentKeyByNodeId.get(element.emittingComponentNodeId)
-        : undefined;
-      if (emittingComponentKey !== componentKey) {
-        return false;
-      }
-    }
-    return sourceAnchorContains(rootAnchor, element.sourceLocation);
-  });
-
-  if (matchingEmissionSites.length === 0) {
     return "no-match";
   }
 
-  let sawPossible = false;
-  let sawUnsupported = false;
-  for (const emissionSite of matchingEmissionSites) {
-    if (
-      emissionSite.emissionVariants.some((variant) => includesAll(variant.tokens, input.classNames))
-    ) {
-      return "match";
-    }
-
-    if (
-      emissionSite.emissionVariants.length > 0 &&
-      emissionSite.emissionVariants.every(
-        (variant) => variant.completeness === "complete" && !variant.unknownDynamic,
-      )
-    ) {
-      continue;
-    }
-
-    const allPresent = input.classNames.every((className) =>
-      emissionSite.tokens.some(
-        (token) => token.token === className && token.tokenKind !== "css-module-export",
-      ),
-    );
-    if (allPresent) {
-      sawPossible = true;
-      continue;
-    }
-
-    if (emissionSite.confidence === "low" || emissionSite.unsupported.length > 0) {
-      sawUnsupported = true;
-    }
-  }
-
-  if (sawPossible) {
-    return "possible-match";
-  }
-  if (sawUnsupported) {
-    return "unsupported";
-  }
-
-  return "no-match";
-}
-
-function sourceAnchorContains(
-  containing: import("../../../types/core.js").SourceAnchor,
-  contained: import("../../../types/core.js").SourceAnchor,
-): boolean {
-  const containingPath = containing.filePath.replace(/\\/g, "/");
-  const containedPath = contained.filePath.replace(/\\/g, "/");
-  if (containingPath !== containedPath) {
-    return false;
-  }
-
-  const containingStart = containing.startLine * 1_000_000 + containing.startColumn;
-  const containingEnd =
-    (containing.endLine ?? containing.startLine) * 1_000_000 +
-    (containing.endColumn ?? containing.startColumn);
-  const containedStart = contained.startLine * 1_000_000 + contained.startColumn;
-  const containedEnd =
-    (contained.endLine ?? contained.startLine) * 1_000_000 +
-    (contained.endColumn ?? contained.startColumn);
-
-  return containingStart <= containedStart && containingEnd >= containedEnd;
+  return mergeStructuralEvaluations(
+    getScopedElements(input.analysisTarget, input.renderModelIndex).map((element) =>
+      evaluateElementClassRequirement({
+        renderModelIndex: input.renderModelIndex as SelectorRenderModelIndex,
+        elementId: element.id,
+        classNames: input.classNames,
+      }),
+    ),
+  );
 }

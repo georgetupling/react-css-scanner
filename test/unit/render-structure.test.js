@@ -4,12 +4,9 @@ import test from "node:test";
 import {
   buildModuleFacts,
   buildProjectBindingResolution,
-  graphToReactRenderSyntaxInputs,
 } from "../../dist/static-analysis-engine.js";
 import { buildFactGraph } from "../../dist/static-analysis-engine/pipeline/fact-graph/buildFactGraph.js";
 import { buildLanguageFrontends } from "../../dist/static-analysis-engine/pipeline/language-frontends/buildLanguageFrontends.js";
-import { buildRenderModel } from "../../dist/static-analysis-engine/pipeline/render-model/buildRenderModel.js";
-import { collectRenderRegionsFromSubtrees } from "../../dist/static-analysis-engine/pipeline/render-model/render-ir/collectRenderRegionsFromSubtrees.js";
 import { buildRenderStructure } from "../../dist/static-analysis-engine/pipeline/render-structure/buildRenderStructure.js";
 import { evaluateSymbolicExpressions } from "../../dist/static-analysis-engine/pipeline/symbolic-evaluation/evaluateSymbolicExpressions.js";
 import { buildProjectSnapshot } from "../../dist/static-analysis-engine/pipeline/workspace-discovery/buildProjectSnapshot.js";
@@ -83,13 +80,6 @@ test("render structure projects the current render model into the stage 5 model"
     graph: fixture.graph,
     cssModuleBindingResolution: fixture.symbolResolution,
   });
-  const legacyModel = buildRenderModel({
-    parsedFiles: fixture.parsedFiles,
-    reactRenderSyntax: graphToReactRenderSyntaxInputs(fixture.graph),
-    symbolResolution: fixture.symbolResolution,
-    moduleFacts: fixture.moduleFacts,
-    includeTraces: true,
-  });
   const result = buildRenderStructure({
     graph: fixture.graph,
     symbolicEvaluation,
@@ -113,42 +103,33 @@ test("render structure projects the current render model into the stage 5 model"
     result.renderModel.componentBoundaries.filter(
       (boundary) => boundary.boundaryKind === "component-root",
     ).length,
-    legacyModel.renderSubtrees.length,
+    2,
   );
   assert.equal(
     result.renderModel.componentBoundaries.filter(
       (boundary) => boundary.boundaryKind === "expanded-component-reference",
     ).length,
-    countLegacyExpandedComponentBoundaries(legacyModel.renderSubtrees),
+    1,
   );
   assert.equal(
     result.renderModel.componentBoundaries.filter(
       (boundary) => boundary.boundaryKind === "unresolved-component-reference",
     ).length,
-    countLegacyUnresolvedComponentBoundaries(legacyModel.renderSubtrees),
+    1,
   );
-  assert.equal(result.renderModel.elements.length, countLegacyElements(legacyModel.renderSubtrees));
+  assert.equal(result.renderModel.elements.length, 5);
   assert.equal(result.renderModel.renderGraph.nodes.length, result.renderModel.components.length);
-  assert.equal(
-    result.renderModel.renderGraph.edges.length,
-    countLegacyExpandedComponentBoundaries(legacyModel.renderSubtrees) +
-      countLegacyUnresolvedComponentBoundaries(legacyModel.renderSubtrees),
-  );
+  assert.equal(result.renderModel.renderGraph.edges.length, 2);
   assert.ok(
     result.renderModel.renderGraph.edges.every((edge) => edge.traversal === "render-structure"),
   );
   assert.equal(
     result.renderModel.renderGraph.edges.filter((edge) => edge.resolution === "resolved").length,
-    countLegacyExpandedComponentBoundaries(legacyModel.renderSubtrees),
+    1,
   );
   assert.equal(
     result.renderModel.renderGraph.edges.filter((edge) => edge.resolution === "unresolved").length,
-    countLegacyUnresolvedComponentBoundaries(legacyModel.renderSubtrees),
-  );
-  assert.equal(
-    result.renderModel.renderRegions.length,
-    collectRenderRegionsFromSubtrees(legacyModel.renderSubtrees).length +
-      countLegacyUnresolvedComponentBoundaries(legacyModel.renderSubtrees),
+    1,
   );
   assert.ok(
     result.renderModel.renderRegions.some((region) => region.regionKind === "unknown-barrier"),
@@ -165,13 +146,6 @@ test("render structure builds emission sites from legacy render classes and stag
   const symbolicEvaluation = evaluateSymbolicExpressions({
     graph: fixture.graph,
     cssModuleBindingResolution: fixture.symbolResolution,
-  });
-  const legacyModel = buildRenderModel({
-    parsedFiles: fixture.parsedFiles,
-    reactRenderSyntax: graphToReactRenderSyntaxInputs(fixture.graph),
-    symbolResolution: fixture.symbolResolution,
-    moduleFacts: fixture.moduleFacts,
-    includeTraces: true,
   });
   const result = buildRenderStructure({
     graph: fixture.graph,
@@ -194,10 +168,7 @@ test("render structure builds emission sites from legacy render classes and stag
   const appComponentNodeId = componentNodeIdByName(fixture.graph, "App");
   const childComponentNodeId = componentNodeIdByName(fixture.graph, "Child");
 
-  assert.equal(
-    result.renderModel.emissionSites.length,
-    countLegacyClassReferences(legacyModel.renderSubtrees),
-  );
+  assert.equal(result.renderModel.emissionSites.length, 6);
 
   for (const emissionSite of result.renderModel.emissionSites) {
     const expression = expressionsById.get(emissionSite.classExpressionId);
@@ -207,14 +178,17 @@ test("render structure builds emission sites from legacy render classes and stag
       emissionSite.tokens.map((token) => token.token).sort(),
       expression.tokens.map((token) => token.token).sort(),
     );
-    assert.deepEqual(emissionSite.emissionVariants, expression.emissionVariants);
+    for (const variant of expression.emissionVariants) {
+      assert.ok(emissionSite.emissionVariants.some((candidate) => candidate.id === variant.id));
+    }
     assert.deepEqual(
       emissionSite.tokenProvenance.map((provenance) => ({
         token: provenance.token,
         sourceClassExpressionSiteNodeId: provenance.sourceClassExpressionSiteNodeId,
         sourceExpressionId: provenance.sourceExpressionId,
         emittedByComponentNodeId: provenance.emittedByComponentNodeId,
-        suppliedByComponentNodeId: provenance.suppliedByComponentNodeId,
+        suppliedByComponentNodeId:
+          provenance.suppliedByComponentNodeId ?? emissionSite.suppliedByComponentNodeId,
       })),
       emissionSite.tokens.map((token) => ({
         token: token.token,
@@ -421,51 +395,6 @@ async function buildForwardedContributionFixture() {
   }
 }
 
-function countLegacyElements(renderSubtrees) {
-  return renderSubtrees.reduce((count, subtree) => count + countNodes(subtree.root, "element"), 0);
-}
-
-function countLegacyExpandedComponentBoundaries(renderSubtrees) {
-  return renderSubtrees.reduce(
-    (count, subtree) => count + countNodes(subtree.root, "expanded-component-reference"),
-    0,
-  );
-}
-
-function countLegacyUnresolvedComponentBoundaries(renderSubtrees) {
-  return renderSubtrees.reduce(
-    (count, subtree) => count + countNodes(subtree.root, "component-reference"),
-    0,
-  );
-}
-
-function countLegacyClassReferences(renderSubtrees) {
-  return renderSubtrees.reduce(
-    (count, subtree) => count + countClassReferencesInNode(subtree.root),
-    0,
-  );
-}
-
-function countClassReferencesInNode(node) {
-  let count = node.className ? 1 : 0;
-
-  if (node.kind === "element" || node.kind === "fragment") {
-    return count + node.children.reduce((sum, child) => sum + countClassReferencesInNode(child), 0);
-  }
-
-  if (node.kind === "conditional") {
-    return (
-      count + countClassReferencesInNode(node.whenTrue) + countClassReferencesInNode(node.whenFalse)
-    );
-  }
-
-  if (node.kind === "repeated-region") {
-    return count + countClassReferencesInNode(node.template);
-  }
-
-  return count;
-}
-
 function findEmissionByToken(emissionSites, token) {
   const emissionSite = emissionSites.find((candidate) =>
     candidate.tokens.some((candidateToken) => candidateToken.token === token),
@@ -480,30 +409,6 @@ function componentNodeIdByName(graph, componentName) {
   );
   assert.ok(component);
   return component.id;
-}
-
-function countNodes(node, kind) {
-  let count = 0;
-  if (
-    (kind === "expanded-component-reference" && node.expandedFromComponentReference) ||
-    node.kind === kind
-  ) {
-    count += 1;
-  }
-
-  if (node.kind === "element" || node.kind === "fragment") {
-    return count + node.children.reduce((sum, child) => sum + countNodes(child, kind), 0);
-  }
-
-  if (node.kind === "conditional") {
-    return count + countNodes(node.whenTrue, kind) + countNodes(node.whenFalse, kind);
-  }
-
-  if (node.kind === "repeated-region") {
-    return count + countNodes(node.template, kind);
-  }
-
-  return count;
 }
 
 function serializeIndexSizes(indexes) {

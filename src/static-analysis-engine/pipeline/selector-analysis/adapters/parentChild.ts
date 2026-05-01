@@ -1,4 +1,3 @@
-import type { RenderNode } from "../../render-model/render-ir/types.js";
 import type {
   ParsedSelectorQuery,
   SelectorAnalysisTarget,
@@ -6,21 +5,15 @@ import type {
   SelectorRenderModelIndex,
 } from "../types.js";
 import { buildSelectorQueryResult } from "../resultUtils.js";
-import type { RenderNodeInspectionAdapter } from "../renderInspection.js";
-import { inspectRenderNode } from "../renderInspection.js";
 import { attachMatchedReachability } from "../reachabilityResultUtils.js";
+import { combinePresence } from "../selectorEvaluationUtils.js";
 import {
-  combinePresence,
-  evaluateSingleClassPresence,
-  type PresenceEvaluation,
-} from "../selectorEvaluationUtils.js";
+  evaluateElementPresence,
+  getScopedElements,
+  type StructuralEvaluation,
+} from "./renderModelEvaluation.js";
 
 type ParentChildConstraint = Extract<ParsedSelectorQuery["constraint"], { kind: "parent-child" }>;
-
-type ParentChildState = {
-  parentClassName: string;
-  childClassName: string;
-};
 
 export function analyzeParentChildConstraint(input: {
   selectorQuery: ParsedSelectorQuery;
@@ -35,21 +28,12 @@ export function analyzeParentChildConstraint(input: {
   const matchedTargets: SelectorAnalysisTarget[] = [];
 
   for (const analysisTarget of input.analysisTargets) {
-    const evaluation =
-      evaluateParentChildFromRenderModel({
-        analysisTarget,
-        parentClassName: input.constraint.parentClassName,
-        childClassName: input.constraint.childClassName,
-        renderModelIndex: input.renderModelIndex,
-      }) ??
-      inspectRenderNode({
-        node: analysisTarget.renderSubtree.root,
-        state: {
-          parentClassName: input.constraint.parentClassName,
-          childClassName: input.constraint.childClassName,
-        },
-        adapter: parentChildConstraintAdapter,
-      });
+    const evaluation = evaluateParentChildFromRenderModel({
+      analysisTarget,
+      parentClassName: input.constraint.parentClassName,
+      childClassName: input.constraint.childClassName,
+      renderModelIndex: input.renderModelIndex,
+    });
 
     if (evaluation === "match") {
       if (analysisTarget.reachabilityAvailability === "possible") {
@@ -194,9 +178,9 @@ function evaluateParentChildFromRenderModel(input: {
   parentClassName: string;
   childClassName: string;
   renderModelIndex?: SelectorRenderModelIndex;
-}): "match" | "possible-match" | "unsupported" | "no-match" | undefined {
+}): StructuralEvaluation {
   if (!input.renderModelIndex) {
-    return undefined;
+    return "no-match";
   }
 
   const scopedElements = getScopedElements(input.analysisTarget, input.renderModelIndex);
@@ -241,168 +225,5 @@ function evaluateParentChildFromRenderModel(input: {
   if (sawUnsupported) {
     return "unsupported";
   }
-  return undefined;
-}
-
-function getScopedElements(
-  target: SelectorAnalysisTarget,
-  renderModelIndex: SelectorRenderModelIndex,
-): import("../../render-structure/types.js").RenderedElement[] {
-  const rootAnchor = target.renderSubtree.root.sourceAnchor;
-  const elements = [...renderModelIndex.renderModel.indexes.elementById.values()];
-  return elements.filter((element) => {
-    return containsAnchor(rootAnchor, element.sourceLocation);
-  });
-}
-
-function evaluateElementPresence(
-  renderModelIndex: SelectorRenderModelIndex,
-  elementId: string,
-  className: string,
-): PresenceEvaluation {
-  const emissionSiteIds =
-    renderModelIndex.renderModel.indexes.emissionSiteIdsByElementId.get(elementId) ?? [];
-  if (emissionSiteIds.length === 0) {
-    return "no-match";
-  }
-  let sawPossible = false;
-  let sawUnsupported = false;
-  for (const siteId of emissionSiteIds) {
-    const site = renderModelIndex.renderModel.indexes.emissionSiteById.get(siteId);
-    if (!site) {
-      continue;
-    }
-    if (
-      site.emissionVariants.some(
-        (variant) =>
-          variant.tokens.includes(className) &&
-          variant.completeness === "complete" &&
-          !variant.unknownDynamic,
-      )
-    ) {
-      return "definite";
-    }
-    if (site.emissionVariants.some((variant) => variant.tokens.includes(className))) {
-      sawPossible = true;
-    } else if (site.tokens.some((token) => token.token === className)) {
-      sawPossible = true;
-    } else if (site.unsupported.length > 0 || site.confidence === "low") {
-      sawUnsupported = true;
-    }
-  }
-  if (sawPossible) {
-    return "possible";
-  }
-  if (sawUnsupported) {
-    return "unsupported";
-  }
   return "no-match";
-}
-
-function containsAnchor(
-  containing: import("../../../types/core.js").SourceAnchor,
-  contained: import("../../../types/core.js").SourceAnchor,
-): boolean {
-  const leftPath = containing.filePath.replace(/\\/g, "/");
-  const rightPath = contained.filePath.replace(/\\/g, "/");
-  if (leftPath !== rightPath) {
-    return false;
-  }
-  const leftStart = containing.startLine * 1_000_000 + containing.startColumn;
-  const leftEnd =
-    (containing.endLine ?? containing.startLine) * 1_000_000 +
-    (containing.endColumn ?? containing.startColumn);
-  const rightStart = contained.startLine * 1_000_000 + contained.startColumn;
-  const rightEnd =
-    (contained.endLine ?? contained.startLine) * 1_000_000 +
-    (contained.endColumn ?? contained.startColumn);
-  return leftStart <= rightStart && leftEnd >= rightEnd;
-}
-
-const parentChildConstraintAdapter: RenderNodeInspectionAdapter<ParentChildState> = {
-  inspectElement({ node, state, helpers }) {
-    const parentPresence = evaluateSingleClassPresence(node.className, state.parentClassName);
-    if (parentPresence !== "no-match") {
-      const directChildEvaluation = helpers.inspectDirectChildren(node.children, (child) =>
-        inspectDirectChildForClassRequirement(child, state.childClassName, parentPresence),
-      );
-
-      if (directChildEvaluation !== "no-match") {
-        return directChildEvaluation;
-      }
-    }
-
-    const childEvaluation = helpers.inspectChildren(node.children, state);
-    if (childEvaluation !== "no-match") {
-      return childEvaluation;
-    }
-
-    if (parentPresence === "unsupported") {
-      return "unsupported";
-    }
-
-    return "no-match";
-  },
-};
-
-function inspectDirectChildForClassRequirement(
-  node: RenderNode,
-  childClassName: string,
-  parentPresence: Exclude<PresenceEvaluation, "no-match">,
-): "match" | "possible-match" | "unsupported" | "no-match" {
-  if (node.kind === "conditional") {
-    const whenTrue = inspectDirectChildForClassRequirement(
-      node.whenTrue,
-      childClassName,
-      parentPresence,
-    );
-    const whenFalse = inspectDirectChildForClassRequirement(
-      node.whenFalse,
-      childClassName,
-      parentPresence,
-    );
-    return whenTrue === "match" && whenFalse === "match"
-      ? "match"
-      : whenTrue === "match" || whenFalse === "match"
-        ? "possible-match"
-        : whenTrue === "possible-match" || whenFalse === "possible-match"
-          ? "possible-match"
-          : whenTrue === "unsupported" || whenFalse === "unsupported"
-            ? "unsupported"
-            : "no-match";
-  }
-
-  if (node.kind === "fragment") {
-    const evaluations = node.children.map((child) =>
-      inspectDirectChildForClassRequirement(child, childClassName, parentPresence),
-    );
-    if (evaluations.includes("match")) {
-      return "match";
-    }
-    if (evaluations.includes("possible-match")) {
-      return "possible-match";
-    }
-    if (evaluations.includes("unsupported")) {
-      return "unsupported";
-    }
-    return "no-match";
-  }
-
-  if (node.kind === "repeated-region") {
-    const evaluation = inspectDirectChildForClassRequirement(
-      node.template,
-      childClassName,
-      parentPresence,
-    );
-    return evaluation === "match" ? "possible-match" : evaluation;
-  }
-
-  if (node.kind !== "element") {
-    return "no-match";
-  }
-
-  return combinePresence(
-    parentPresence,
-    evaluateSingleClassPresence(node.className, childClassName),
-  );
 }

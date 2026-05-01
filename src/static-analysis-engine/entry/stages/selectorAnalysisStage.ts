@@ -1,7 +1,6 @@
 import type { ReachabilitySummary } from "../../pipeline/reachability/index.js";
 import { graphToSelectorEntries, type FactGraphResult } from "../../pipeline/fact-graph/index.js";
 import type { CssFrontendFacts } from "../../pipeline/language-frontends/index.js";
-import type { RenderSubtree } from "../../pipeline/render-model/render-ir/index.js";
 import type { RenderModel } from "../../pipeline/render-structure/index.js";
 import {
   analyzeSelectorQueries,
@@ -10,17 +9,14 @@ import {
   type SelectorSourceInput,
 } from "../../pipeline/selector-analysis/index.js";
 import type { SelectorAnalysisStageResult } from "./types.js";
-import type { SymbolicEvaluationStageResult } from "./types.js";
 
 export function runSelectorAnalysisStage(input: {
   selectorQueries: string[];
   factGraph?: FactGraphResult;
   css?: CssFrontendFacts;
   selectorCssSources?: SelectorSourceInput[];
-  renderSubtrees: RenderSubtree[];
-  renderModel?: RenderModel;
+  renderModel: RenderModel;
   reachabilitySummary: ReachabilitySummary;
-  symbolicEvaluation?: SymbolicEvaluationStageResult;
   includeTraces?: boolean;
 }): SelectorAnalysisStageResult {
   const parsedSelectorQueries = buildParsedSelectorQueries(
@@ -39,10 +35,8 @@ export function runSelectorAnalysisStage(input: {
   return {
     selectorQueryResults: analyzeSelectorQueries({
       selectorQueries: parsedSelectorQueries,
-      renderSubtrees: input.renderSubtrees,
       renderModel: input.renderModel,
       reachabilitySummary: input.reachabilitySummary,
-      symbolicEvaluation: input.symbolicEvaluation,
       includeTraces: input.includeTraces,
     }),
   };

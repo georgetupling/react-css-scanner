@@ -1,7 +1,7 @@
 import ts from "typescript";
 
 import { collectComponentLikeDefinitions } from "../../../../libraries/react-components/index.js";
-import { createComponentKey } from "../../../render-model/componentIdentity.js";
+import { createComponentKey } from "./componentIdentity.js";
 import type { ReactComponentDeclarationFact } from "./types.js";
 
 export function collectReactComponents(input: { filePath: string; sourceFile: ts.SourceFile }): {

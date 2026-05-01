@@ -7,6 +7,18 @@ export type ReachabilityStylesheetInput = {
   cssText?: string;
 };
 
+export type ReachabilityRenderRegionPathSegment =
+  | { kind: "root" }
+  | { kind: "fragment-child"; childIndex: number }
+  | { kind: "conditional-branch"; branch: "when-true" | "when-false" }
+  | { kind: "repeated-template" };
+
+export type ReachabilityRenderRegionKind =
+  | "subtree-root"
+  | "conditional-branch"
+  | "repeated-template"
+  | "unknown-barrier";
+
 export type ReachabilityDerivation =
   | {
       kind: "source-file-direct-import";
@@ -81,8 +93,8 @@ export type StylesheetReachabilityContext =
       filePath: string;
       componentKey?: string;
       componentName?: string;
-      regionKind: import("../render-model/render-ir/types.js").RenderRegionKind | "unknown-barrier";
-      path: import("../render-model/render-ir/types.js").RenderRegionPathSegment[];
+      regionKind: ReachabilityRenderRegionKind;
+      path: ReachabilityRenderRegionPathSegment[];
       sourceAnchor: {
         startLine: number;
         startColumn: number;

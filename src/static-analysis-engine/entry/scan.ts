@@ -1,11 +1,13 @@
 import type { SelectorSourceInput } from "../pipeline/selector-analysis/index.js";
 import type { ExternalCssAnalysisInput } from "../pipeline/external-css/index.js";
 import {
+  buildFactGraph,
   graphToProjectResourceEdges,
   graphToStylesheetFilePaths,
   type FactGraphResult,
 } from "../pipeline/fact-graph/index.js";
 import {
+  buildLanguageFrontends,
   buildSourceFrontendFactsFromSourceFiles,
   type CssFrontendFacts,
   type SourceFrontendFacts,
@@ -18,15 +20,17 @@ import { collectWorkspacePackageBoundaries } from "../pipeline/workspace-discove
 import type {
   ProjectBoundary,
   ProjectResourceEdge,
+  ProjectSnapshot,
+  ProjectStylesheetFile,
 } from "../pipeline/workspace-discovery/index.js";
 import { compareProjectResourceEdges } from "../pipeline/workspace-discovery/utils/sorting.js";
 import type { AnalysisProgressCallback, StaticAnalysisEngineResult } from "../types/runtime.js";
+import { DEFAULT_SCANNER_CONFIG } from "../../config/index.js";
 import { runCssAnalysisStage } from "./stages/cssAnalysisStage.js";
 import { runExternalCssStage } from "./stages/externalCssStage.js";
 import { runModuleFactsStage } from "./stages/moduleFactsStage.js";
 import { runProjectAnalysisStage } from "./stages/projectAnalysisStage.js";
 import { runReachabilityStage } from "./stages/reachabilityStage.js";
-import { runRenderModelStage } from "./stages/renderModelStage.js";
 import { runRenderStructureStage } from "./stages/renderStructureStage.js";
 import { runSelectorAnalysisStage } from "./stages/selectorAnalysisStage.js";
 import { runSymbolResolutionStage } from "./stages/symbolResolutionStage.js";
@@ -116,8 +120,24 @@ export function analyzeProjectSourceTexts(input: {
       })),
     );
   const progress = createAnalysisProgressReporter(input.onProgress);
+  const syntheticSnapshot = input.factGraph
+    ? undefined
+    : buildInlineProjectSnapshot({
+        sourceFiles: input.sourceFiles,
+        projectRoot: input.projectRoot,
+        css: input.css,
+        selectorCssSources: input.selectorCssSources,
+        stylesheets: input.stylesheets,
+        boundaries,
+        resourceEdges: mergedResourceEdges,
+        externalCss: input.externalCss,
+      });
+  const syntheticFrontends = syntheticSnapshot
+    ? buildLanguageFrontends({ snapshot: syntheticSnapshot })
+    : undefined;
   const sourceFrontendFacts =
     input.source ??
+    syntheticFrontends?.source ??
     buildSourceFrontendFactsFromSourceFiles(
       input.sourceFiles.map((sourceFile) => ({
         filePath: sourceFile.filePath,
@@ -125,13 +145,31 @@ export function analyzeProjectSourceTexts(input: {
         sourceText: sourceFile.sourceText,
       })),
     );
+  const cssFrontendFacts = input.css ?? syntheticFrontends?.css;
   const parsedFiles = sourceFrontendFacts.files.map((file) => file.legacy.parsedFile);
+  const factGraphStage: FactGraphResult =
+    input.factGraph ??
+    runAnalysisStage(progress, "fact-graph", "Building fact graph", () => {
+      const snapshot = syntheticSnapshot as ProjectSnapshot;
+      return buildFactGraph({
+        snapshot,
+        frontends: {
+          snapshot,
+          source: sourceFrontendFacts,
+          css: cssFrontendFacts ?? {
+            files: [],
+            filesByPath: new Map(),
+          },
+        },
+        includeTraces,
+      });
+    });
   const moduleFactsStage = runAnalysisStage(progress, "module-facts", "Building module facts", () =>
     runModuleFactsStage({
       source: sourceFrontendFacts,
-      stylesheetFilePaths: input.factGraph
-        ? graphToStylesheetFilePaths(input.factGraph.graph)
-        : (input.css?.files ?? input.selectorCssSources ?? [])
+      stylesheetFilePaths: factGraphStage
+        ? graphToStylesheetFilePaths(factGraphStage.graph)
+        : (cssFrontendFacts?.files ?? input.selectorCssSources ?? [])
             .map((stylesheet) => stylesheet.filePath)
             .filter((filePath): filePath is string => Boolean(filePath)),
       projectRoot: input.projectRoot,
@@ -150,46 +188,35 @@ export function analyzeProjectSourceTexts(input: {
         includeTraces,
       }),
   );
-  const renderModelStage = runAnalysisStage(progress, "render-model", "Building render model", () =>
-    runRenderModelStage({
-      parsedFiles,
-      factGraph: input.factGraph,
-      symbolResolution: symbolResolutionStage,
-      moduleFacts: moduleFactsStage.moduleFacts,
-      includeTraces,
-    }),
+  const symbolicEvaluationStage = runAnalysisStage(
+    progress,
+    "symbolic-evaluation",
+    "Evaluating symbolic class expressions",
+    () =>
+      runSymbolicEvaluationStage({
+        graph: factGraphStage.graph,
+        symbolResolution: symbolResolutionStage,
+        includeTraces,
+      }),
   );
-  const factGraphStage = input.factGraph;
-  const symbolicEvaluationStage = factGraphStage
-    ? runAnalysisStage(
-        progress,
-        "symbolic-evaluation",
-        "Evaluating symbolic class expressions",
-        () =>
-          runSymbolicEvaluationStage({
-            graph: factGraphStage.graph,
-            symbolResolution: symbolResolutionStage,
-            includeTraces,
-          }),
-      )
-    : undefined;
-  const renderStructureStage =
-    factGraphStage && symbolicEvaluationStage
-      ? runAnalysisStage(progress, "render-structure", "Building render structure", () =>
-          runRenderStructureStage({
-            factGraph: factGraphStage,
-            symbolicEvaluation: symbolicEvaluationStage,
-            parsedFiles,
-            moduleFacts: moduleFactsStage.moduleFacts,
-            symbolResolution: symbolResolutionStage,
-            includeTraces,
-          }),
-        )
-      : undefined;
+  const renderStructureStage = runAnalysisStage(
+    progress,
+    "render-structure",
+    "Building render structure",
+    () =>
+      runRenderStructureStage({
+        factGraph: factGraphStage,
+        symbolicEvaluation: symbolicEvaluationStage,
+        parsedFiles,
+        moduleFacts: moduleFactsStage.moduleFacts,
+        symbolResolution: symbolResolutionStage,
+        includeTraces,
+      }),
+  );
   const cssAnalysisStage = runAnalysisStage(progress, "css-analysis", "Analyzing CSS", () =>
     runCssAnalysisStage({
-      factGraph: input.factGraph,
-      css: input.css,
+      factGraph: factGraphStage,
+      css: cssFrontendFacts,
       selectorCssSources: input.selectorCssSources ?? [],
     }),
   );
@@ -210,11 +237,9 @@ export function analyzeProjectSourceTexts(input: {
     () =>
       runReachabilityStage({
         moduleFacts: moduleFactsStage.moduleFacts,
-        factGraph: input.factGraph,
-        renderGraph: renderModelStage.renderGraph,
-        renderSubtrees: renderModelStage.renderSubtrees,
-        renderModel: renderStructureStage?.renderModel,
-        css: input.css,
+        factGraph: factGraphStage,
+        renderModel: renderStructureStage.renderModel,
+        css: cssFrontendFacts,
         selectorCssSources: input.selectorCssSources ?? [],
         resourceEdges: mergedResourceEdges,
         externalCssSummary: externalCssStage.externalCssSummary,
@@ -228,13 +253,11 @@ export function analyzeProjectSourceTexts(input: {
     () =>
       runSelectorAnalysisStage({
         selectorQueries: input.selectorQueries ?? [],
-        factGraph: input.factGraph,
-        css: input.css,
+        factGraph: factGraphStage,
+        css: cssFrontendFacts,
         selectorCssSources: input.selectorCssSources ?? [],
-        renderSubtrees: renderModelStage.renderSubtrees,
-        renderModel: renderStructureStage?.renderModel,
+        renderModel: renderStructureStage.renderModel,
         reachabilitySummary: reachabilityStage.reachabilitySummary,
-        symbolicEvaluation: symbolicEvaluationStage,
         includeTraces,
       }),
   );
@@ -245,17 +268,14 @@ export function analyzeProjectSourceTexts(input: {
     () =>
       runProjectAnalysisStage({
         moduleFacts: moduleFactsStage.moduleFacts,
-        factGraph: input.factGraph,
+        factGraph: factGraphStage,
         cssFiles: cssAnalysisStage.cssFiles,
         stylesheets: input.stylesheets ?? cssFrontendStylesheets,
         symbolResolution: symbolResolutionStage,
         cssModuleLocalsConvention: input.cssModules?.localsConvention,
         externalCssSummary: externalCssStage.externalCssSummary,
         reachabilitySummary: reachabilityStage.reachabilitySummary,
-        renderGraph: renderModelStage.renderGraph,
-        renderSubtrees: renderModelStage.renderSubtrees,
-        renderModel: renderStructureStage?.renderModel,
-        unsupportedClassReferences: renderModelStage.unsupportedClassReferences,
+        renderModel: renderStructureStage.renderModel,
         symbolicEvaluation: symbolicEvaluationStage,
         selectorQueryResults: selectorAnalysisStage.selectorQueryResults,
         includeTraces,
@@ -266,6 +286,114 @@ export function analyzeProjectSourceTexts(input: {
     projectAnalysis: projectAnalysisStage.projectAnalysis,
     ...(symbolicEvaluationStage ? { symbolicEvaluation: symbolicEvaluationStage } : {}),
   };
+}
+
+function buildInlineProjectSnapshot(input: {
+  sourceFiles: Array<{
+    filePath: string;
+    sourceText: string;
+  }>;
+  projectRoot?: string;
+  css?: CssFrontendFacts;
+  selectorCssSources?: SelectorSourceInput[];
+  stylesheets?: ProjectAnalysisStylesheetInput[];
+  boundaries?: ProjectBoundary[];
+  resourceEdges?: ProjectResourceEdge[];
+  externalCss?: ExternalCssAnalysisInput;
+}): ProjectSnapshot {
+  const stylesheetMetadataByPath = new Map(
+    (input.stylesheets ?? []).flatMap((stylesheet) =>
+      stylesheet.filePath ? [[normalizeProjectPath(stylesheet.filePath), stylesheet]] : [],
+    ),
+  );
+  const stylesheetSources = input.css?.files ?? input.selectorCssSources ?? [];
+  const stylesheets = stylesheetSources.map((stylesheet, index) => {
+    const filePath = stylesheet.filePath ?? `<inline-stylesheet-${index}.css>`;
+    const metadata = stylesheetMetadataByPath.get(normalizeProjectPath(filePath));
+    const cssKind: ProjectStylesheetFile["cssKind"] =
+      "cssKind" in stylesheet &&
+      (stylesheet.cssKind === "global-css" || stylesheet.cssKind === "css-module")
+        ? stylesheet.cssKind
+        : (metadata?.cssKind ?? (isCssModulePath(filePath) ? "css-module" : "global-css"));
+    const origin: ProjectStylesheetFile["origin"] =
+      "origin" in stylesheet &&
+      (stylesheet.origin === "project" ||
+        stylesheet.origin === "html-linked" ||
+        stylesheet.origin === "package" ||
+        stylesheet.origin === "remote")
+        ? stylesheet.origin
+        : (metadata?.origin ?? "project");
+
+    return {
+      kind: "stylesheet" as const,
+      filePath,
+      absolutePath: filePath,
+      cssText: stylesheet.cssText,
+      cssKind,
+      origin,
+    };
+  });
+
+  return {
+    rootDir: input.projectRoot ?? ".",
+    config: {
+      ...DEFAULT_SCANNER_CONFIG,
+      rules: { ...DEFAULT_SCANNER_CONFIG.rules },
+      cssModules: { ...DEFAULT_SCANNER_CONFIG.cssModules },
+      externalCss: {
+        ...DEFAULT_SCANNER_CONFIG.externalCss,
+        fetchRemote:
+          input.externalCss?.fetchRemote ?? DEFAULT_SCANNER_CONFIG.externalCss.fetchRemote,
+        globals: input.externalCss?.globalProviders ?? DEFAULT_SCANNER_CONFIG.externalCss.globals,
+      },
+      ownership: { ...DEFAULT_SCANNER_CONFIG.ownership },
+      discovery: { ...DEFAULT_SCANNER_CONFIG.discovery },
+      ignore: { ...DEFAULT_SCANNER_CONFIG.ignore },
+      source: { kind: "default" as const },
+    },
+    files: {
+      sourceFiles: input.sourceFiles.map((sourceFile) => ({
+        kind: "source" as const,
+        filePath: sourceFile.filePath,
+        absolutePath: sourceFile.filePath,
+        sourceText: sourceFile.sourceText,
+      })),
+      stylesheets,
+      htmlFiles: [],
+      configFiles: [],
+    },
+    discoveredFiles: {
+      sourceFiles: input.sourceFiles.map((sourceFile) => ({
+        filePath: sourceFile.filePath,
+        absolutePath: sourceFile.filePath,
+      })),
+      cssFiles: stylesheets.map((stylesheet) => ({
+        filePath: stylesheet.filePath,
+        absolutePath: stylesheet.absolutePath ?? stylesheet.filePath,
+      })),
+      htmlFiles: [],
+    },
+    boundaries: input.boundaries ?? [
+      {
+        kind: "scan-root" as const,
+        rootDir: input.projectRoot ?? ".",
+      },
+    ],
+    edges: input.resourceEdges ?? [],
+    externalCss: {
+      fetchRemote: input.externalCss?.fetchRemote ?? false,
+      globalProviders: input.externalCss?.globalProviders ?? [],
+    },
+    diagnostics: [],
+  };
+}
+
+function normalizeProjectPath(filePath: string): string {
+  return filePath.replace(/\\/g, "/");
+}
+
+function isCssModulePath(filePath: string): boolean {
+  return /\.module\.css$/i.test(filePath);
 }
 
 function createAnalysisProgressReporter(onProgress?: AnalysisProgressCallback) {

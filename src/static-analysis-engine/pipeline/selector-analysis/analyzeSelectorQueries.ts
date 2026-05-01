@@ -1,72 +1,51 @@
 import type {
-  RenderNode,
-  RenderRegionPathSegment,
-  RenderSubtree,
-} from "../render-model/render-ir/types.js";
-import type { SourceAnchor } from "../../types/core.js";
-import type {
   ReachabilitySummary,
   StylesheetReachabilityContextRecord,
 } from "../reachability/types.js";
 import type {
   ParsedSelectorQuery,
-  SelectorRenderModelIndex,
   SelectorAnalysisTarget,
+  SelectorRenderModelIndex,
   SelectorQueryResult,
-  SelectorSymbolicClassExpressionIndex,
 } from "./types.js";
-import type { SymbolicEvaluationResult } from "../symbolic-evaluation/types.js";
-import type { RenderModel } from "../render-structure/types.js";
+import type { RenderModel, RenderPathSegment } from "../render-structure/types.js";
 import { buildSelectorQueryResult } from "./resultUtils.js";
 import { analyzeAncestorDescendantConstraint } from "./adapters/ancestorDescendant.js";
 import { analyzeParentChildConstraint } from "./adapters/parentChild.js";
 import { analyzeSameNodeClassConjunction } from "./adapters/sameNodeConjunction.js";
 import { analyzeSiblingConstraint } from "./adapters/sibling.js";
 
-type ReachableAnalysisSubtree = {
-  subtree: RenderSubtree;
-  availability: "definite" | "possible";
-  contexts: ReachabilitySummary["stylesheets"][number]["contexts"];
-};
-
 type AvailableContextRecord = StylesheetReachabilityContextRecord & {
   availability: "definite" | "possible";
 };
 
-type RenderRegionContextRecord = AvailableContextRecord & {
-  context: Extract<StylesheetReachabilityContextRecord["context"], { kind: "render-region" }>;
-};
+type RenderRegionContext = Extract<
+  StylesheetReachabilityContextRecord["context"],
+  { kind: "render-region" }
+>;
 
-type ReachabilityContextIndex = {
-  sourceFileContextsByFilePath: Map<string, AvailableContextRecord[]>;
-  componentContextsByComponentKey: Map<string, AvailableContextRecord[]>;
-  subtreeRootContextsByRootKey: Map<string, AvailableContextRecord[]>;
-  renderRegionContextsByComponentKey: Map<string, RenderRegionContextRecord[]>;
+type ProjectedRenderPathSegment = RenderRegionContext["path"][number];
+
+type ReachabilityTargetResolution = {
+  result?: SelectorQueryResult;
+  analysisTargets: SelectorAnalysisTarget[];
 };
 
 export function analyzeSelectorQueries(input: {
   selectorQueries: ParsedSelectorQuery[];
-  renderSubtrees: RenderSubtree[];
-  renderModel?: RenderModel;
+  renderModel: RenderModel;
   reachabilitySummary?: ReachabilitySummary;
-  symbolicEvaluation?: SymbolicEvaluationResult;
   includeTraces?: boolean;
 }): SelectorQueryResult[] {
   const includeTraces = input.includeTraces ?? true;
   const reachabilityTargetCache = new Map<string, SelectorAnalysisTarget[]>();
-  const symbolicClassExpressions = input.symbolicEvaluation
-    ? buildSelectorSymbolicClassExpressionIndex(input.symbolicEvaluation)
-    : undefined;
-  const renderModelIndex = input.renderModel
-    ? buildSelectorRenderModelIndex(input.renderModel)
-    : undefined;
+  const renderModelIndex = buildSelectorRenderModelIndex(input.renderModel);
+
   return input.selectorQueries.map((selectorQuery) =>
     analyzeSelectorQuery({
       selectorQuery,
-      renderSubtrees: input.renderSubtrees,
       renderModelIndex,
       reachabilitySummary: input.reachabilitySummary,
-      symbolicClassExpressions,
       reachabilityTargetCache,
       includeTraces,
     }),
@@ -75,19 +54,13 @@ export function analyzeSelectorQueries(input: {
 
 function analyzeSelectorQuery(input: {
   selectorQuery: ParsedSelectorQuery;
-  renderSubtrees: RenderSubtree[];
-  renderModelIndex?: SelectorRenderModelIndex;
+  renderModelIndex: SelectorRenderModelIndex;
   reachabilitySummary?: ReachabilitySummary;
-  symbolicClassExpressions?: SelectorSymbolicClassExpressionIndex;
   reachabilityTargetCache: Map<string, SelectorAnalysisTarget[]>;
   includeTraces: boolean;
 }): SelectorQueryResult {
   const { constraint } = input.selectorQuery;
-  let analysisTargets: SelectorAnalysisTarget[] = input.renderSubtrees.map((renderSubtree) => ({
-    renderSubtree,
-    reachabilityAvailability: "definite",
-    reachabilityContexts: [],
-  }));
+  let analysisTargets = buildWholeModelAnalysisTargets(input.renderModelIndex.renderModel);
 
   if (input.selectorQuery.source.kind === "css-source") {
     const reachabilityResolution = resolveQueryReachability(input);
@@ -138,7 +111,6 @@ function analyzeSelectorQuery(input: {
       constraint,
       analysisTargets,
       renderModelIndex: input.renderModelIndex,
-      symbolicClassExpressions: input.symbolicClassExpressions,
       includeTraces: input.includeTraces,
     });
   }
@@ -173,51 +145,32 @@ function analyzeSelectorQuery(input: {
 }
 
 function buildSelectorRenderModelIndex(renderModel: RenderModel): SelectorRenderModelIndex {
+  const componentKeyByNodeId = new Map(
+    renderModel.components
+      .filter((component) => component.componentNodeId)
+      .map((component) => [component.componentNodeId as string, component.componentKey]),
+  );
   return {
     renderModel,
-    componentKeyByNodeId: new Map(
+    componentKeyByNodeId,
+    componentNodeIdByComponentKey: new Map(
       renderModel.components
         .filter((component) => component.componentNodeId)
-        .map((component) => [component.componentNodeId as string, component.componentKey]),
-    ),
-  };
-}
-
-function buildSelectorSymbolicClassExpressionIndex(
-  result: SymbolicEvaluationResult,
-): SelectorSymbolicClassExpressionIndex {
-  return {
-    classExpressionByAnchorKey: new Map(
-      result.evaluatedExpressions.classExpressions.map((expression) => [
-        createAnchorKey(expression.location),
-        expression,
-      ]),
+        .map((component) => [component.componentKey, component.componentNodeId as string]),
     ),
   };
 }
 
 function resolveQueryReachability(input: {
   selectorQuery: ParsedSelectorQuery;
-  renderSubtrees: RenderSubtree[];
+  renderModelIndex: SelectorRenderModelIndex;
   reachabilitySummary?: ReachabilitySummary;
   reachabilityTargetCache: Map<string, SelectorAnalysisTarget[]>;
   includeTraces: boolean;
-}):
-  | {
-      result: SelectorQueryResult;
-      analysisTargets: SelectorAnalysisTarget[];
-    }
-  | {
-      result?: undefined;
-      analysisTargets: SelectorAnalysisTarget[];
-    } {
+}): ReachabilityTargetResolution {
   if (input.selectorQuery.source.kind !== "css-source") {
     return {
-      analysisTargets: input.renderSubtrees.map((renderSubtree) => ({
-        renderSubtree,
-        reachabilityAvailability: "definite",
-        reachabilityContexts: [],
-      })),
+      analysisTargets: buildWholeModelAnalysisTargets(input.renderModelIndex.renderModel),
     };
   }
 
@@ -352,14 +305,10 @@ function resolveQueryReachability(input: {
     };
   }
 
-  const reachabilityContextIndex = buildReachabilityContextIndex(reachabilityRecord.contexts);
-  const analysisTargets = input.renderSubtrees
-    .flatMap((subtree) => resolveReachableAnalysisSubtrees(subtree, reachabilityContextIndex))
-    .map((analysisSubtree) => ({
-      renderSubtree: analysisSubtree.subtree,
-      reachabilityAvailability: analysisSubtree.availability,
-      reachabilityContexts: analysisSubtree.contexts,
-    }));
+  const analysisTargets = buildReachabilityAnalysisTargets({
+    renderModelIndex: input.renderModelIndex,
+    contexts: reachabilityRecord.contexts,
+  });
 
   if (cacheKey) {
     input.reachabilityTargetCache.set(cacheKey, analysisTargets);
@@ -370,268 +319,230 @@ function resolveQueryReachability(input: {
   };
 }
 
-function resolveReachableAnalysisSubtrees(
-  subtree: RenderSubtree,
-  reachabilityContextIndex: ReachabilityContextIndex,
-): ReachableAnalysisSubtree[] {
-  const normalizedFilePath = subtree.sourceAnchor.filePath.replace(/\\/g, "/");
-  const componentKey = createComponentContextKey(
-    normalizedFilePath,
-    subtree.componentName,
-    subtree.componentKey,
+function buildWholeModelAnalysisTargets(renderModel: RenderModel): SelectorAnalysisTarget[] {
+  const elementIds = renderModel.elements.map((element) => element.id);
+  return elementIds.length > 0
+    ? [
+        {
+          targetId: "direct-query:whole-render-model",
+          elementIds,
+          reachabilityAvailability: "definite",
+          reachabilityContexts: [],
+        },
+      ]
+    : [];
+}
+
+function buildReachabilityAnalysisTargets(input: {
+  renderModelIndex: SelectorRenderModelIndex;
+  contexts: StylesheetReachabilityContextRecord[];
+}): SelectorAnalysisTarget[] {
+  const targetByKey = new Map<string, SelectorAnalysisTarget>();
+
+  for (const context of input.contexts) {
+    if (!isAvailableContextRecord(context)) {
+      continue;
+    }
+
+    const elementIds = resolveElementIdsForContext(input.renderModelIndex, context);
+    if (elementIds.length === 0) {
+      continue;
+    }
+
+    const key = elementIds.join(",");
+    const existing = targetByKey.get(key);
+    if (existing) {
+      existing.reachabilityContexts.push(context);
+      if (context.availability === "definite") {
+        existing.reachabilityAvailability = "definite";
+      }
+      continue;
+    }
+
+    targetByKey.set(key, {
+      targetId: `reachability:${targetByKey.size + 1}`,
+      elementIds,
+      reachabilityAvailability: context.availability,
+      reachabilityContexts: [context],
+    });
+  }
+
+  return [...targetByKey.values()].sort((left, right) =>
+    left.targetId.localeCompare(right.targetId),
   );
-  const matchingRenderRegionContexts =
-    reachabilityContextIndex.renderRegionContextsByComponentKey.get(componentKey) ?? [];
-  const sourceFileContexts =
-    reachabilityContextIndex.sourceFileContextsByFilePath.get(normalizedFilePath) ?? [];
-  const matchingSubtreeRootContexts =
-    reachabilityContextIndex.subtreeRootContextsByRootKey.get(
-      createSubtreeRootContextKey({
-        filePath: normalizedFilePath,
-        componentKey: subtree.componentKey,
-        componentName: subtree.componentName,
-        startLine: subtree.root.sourceAnchor.startLine,
-        startColumn: subtree.root.sourceAnchor.startColumn,
-        endLine: subtree.root.sourceAnchor.endLine,
-        endColumn: subtree.root.sourceAnchor.endColumn,
-      }),
-    ) ?? [];
-  const matchingComponentContexts =
-    reachabilityContextIndex.componentContextsByComponentKey.get(componentKey) ?? [];
-  const hasSourceFileContext = sourceFileContexts.length > 0;
-  const hasSubtreeRootContext = matchingSubtreeRootContexts.length > 0;
-  const hasComponentContext = matchingComponentContexts.length > 0;
-
-  const narrowedSubtrees: ReachableAnalysisSubtree[] = [];
-  for (const contextRecord of matchingRenderRegionContexts) {
-    const root = resolveRenderRegionNode({
-      root: subtree.root,
-      path: contextRecord.context.path,
-    });
-    if (!root) {
-      continue;
-    }
-
-    narrowedSubtrees.push({
-      subtree: {
-        ...subtree,
-        root,
-      },
-      availability: contextRecord.availability,
-      contexts: [contextRecord],
-    });
-  }
-
-  if (narrowedSubtrees.length > 0 && !hasSourceFileContext) {
-    return deduplicateAnalysisSubtrees(narrowedSubtrees);
-  }
-
-  if (hasSourceFileContext || hasSubtreeRootContext || hasComponentContext) {
-    const wholeSubtreeAvailability = hasSourceFileContext
-      ? "definite"
-      : [...matchingSubtreeRootContexts, ...matchingComponentContexts].some(
-            (contextRecord) => contextRecord.availability === "definite",
-          )
-        ? "definite"
-        : "possible";
-
-    return deduplicateAnalysisSubtrees([
-      {
-        subtree,
-        availability: wholeSubtreeAvailability,
-        contexts: hasSourceFileContext
-          ? sourceFileContexts
-          : [...matchingSubtreeRootContexts, ...matchingComponentContexts],
-      },
-      ...narrowedSubtrees,
-    ]);
-  }
-
-  return deduplicateAnalysisSubtrees(narrowedSubtrees);
 }
 
-function buildReachabilityContextIndex(
-  contextRecords: StylesheetReachabilityContextRecord[],
-): ReachabilityContextIndex {
-  const index: ReachabilityContextIndex = {
-    sourceFileContextsByFilePath: new Map(),
-    componentContextsByComponentKey: new Map(),
-    subtreeRootContextsByRootKey: new Map(),
-    renderRegionContextsByComponentKey: new Map(),
-  };
+function isAvailableContextRecord(
+  context: StylesheetReachabilityContextRecord,
+): context is AvailableContextRecord {
+  return context.availability === "definite" || context.availability === "possible";
+}
 
-  for (const contextRecord of contextRecords) {
-    if (contextRecord.availability !== "definite" && contextRecord.availability !== "possible") {
-      continue;
-    }
-
-    const availableContextRecord = contextRecord as AvailableContextRecord;
-    const context = contextRecord.context;
-    if (context.kind === "source-file") {
-      appendToMap(
-        index.sourceFileContextsByFilePath,
-        normalizeProjectPath(context.filePath),
-        availableContextRecord,
-      );
-      continue;
-    }
-
-    if (context.kind === "component") {
-      appendToMap(
-        index.componentContextsByComponentKey,
-        createComponentContextKey(context.filePath, context.componentName, context.componentKey),
-        availableContextRecord,
-      );
-      continue;
-    }
-
-    if (context.kind === "render-subtree-root") {
-      appendToMap(
-        index.subtreeRootContextsByRootKey,
-        createSubtreeRootContextKey({
-          filePath: context.filePath,
-          componentName: context.componentName,
-          componentKey: context.componentKey,
-          startLine: context.rootAnchor.startLine,
-          startColumn: context.rootAnchor.startColumn,
-          endLine: context.rootAnchor.endLine,
-          endColumn: context.rootAnchor.endColumn,
-        }),
-        availableContextRecord,
-      );
-      continue;
-    }
-
-    appendToMap(
-      index.renderRegionContextsByComponentKey,
-      createComponentContextKey(context.filePath, context.componentName, context.componentKey),
-      availableContextRecord as RenderRegionContextRecord,
-    );
+function resolveElementIdsForContext(
+  index: SelectorRenderModelIndex,
+  contextRecord: AvailableContextRecord,
+): string[] {
+  const context = contextRecord.context;
+  if (context.kind === "source-file") {
+    return getElementIdsForSourceFile(index, context.filePath);
   }
 
-  return index;
-}
-
-function appendToMap<TKey, TValue>(map: Map<TKey, TValue[]>, key: TKey, value: TValue): void {
-  const values = map.get(key);
-  if (values) {
-    values.push(value);
-    return;
+  if (context.kind === "component" || context.kind === "render-subtree-root") {
+    const componentKey = resolveComponentKey(index, context);
+    return componentKey ? getElementIdsForComponentKey(index, componentKey) : [];
   }
 
-  map.set(key, [value]);
+  const componentKey = resolveComponentKey(index, context);
+  if (!componentKey) {
+    return [];
+  }
+
+  const regionElementIds = getElementIdsForRenderRegion(index, componentKey, context.path);
+  return regionElementIds.length > 0
+    ? regionElementIds
+    : getElementIdsForComponentKey(index, componentKey);
 }
 
-function createComponentContextKey(
-  filePath: string,
-  componentName?: string,
-  componentKey?: string,
-): string {
-  return componentKey
-    ? componentKey
-    : [normalizeProjectPath(filePath), componentName ?? ""].join(":");
+function getElementIdsForSourceFile(index: SelectorRenderModelIndex, filePath: string): string[] {
+  const normalizedPath = normalizeProjectPath(filePath);
+  const componentKeys = index.renderModel.components
+    .filter((component) => normalizeProjectPath(component.filePath) === normalizedPath)
+    .map((component) => component.componentKey);
+  return deduplicateElementIds(
+    componentKeys.flatMap((componentKey) => getElementIdsForComponentKey(index, componentKey)),
+  );
 }
 
-function createSubtreeRootContextKey(input: {
-  filePath: string;
-  componentKey?: string;
-  componentName?: string;
-  startLine: number;
-  startColumn: number;
-  endLine?: number;
-  endColumn?: number;
-}): string {
-  return [
-    normalizeProjectPath(input.filePath),
-    input.componentKey ?? "",
-    input.componentName ?? "",
-    input.startLine,
-    input.startColumn,
-    input.endLine ?? 0,
-    input.endColumn ?? 0,
-  ].join(":");
+function getElementIdsForComponentKey(
+  index: SelectorRenderModelIndex,
+  componentKey: string,
+): string[] {
+  return deduplicateElementIds(
+    index.renderModel.elements
+      .filter((element) => elementBelongsToRootComponent(index, element.id, componentKey))
+      .map((element) => element.id),
+  );
 }
 
-function resolveRenderRegionNode(input: {
-  root: RenderNode;
-  path: RenderRegionPathSegment[];
-}): RenderNode | undefined {
-  let current: RenderNode | undefined = input.root;
+function getElementIdsForRenderRegion(
+  index: SelectorRenderModelIndex,
+  componentKey: string,
+  contextPath: RenderRegionContext["path"],
+): string[] {
+  return deduplicateElementIds(
+    index.renderModel.elements
+      .filter((element) => {
+        if (!elementBelongsToRootComponent(index, element.id, componentKey)) {
+          return false;
+        }
 
-  for (const [segmentIndex, segment] of input.path.entries()) {
-    if (segment.kind === "root") {
-      if (segmentIndex !== 0) {
-        return undefined;
-      }
+        const renderPath = index.renderModel.indexes.renderPathById.get(element.renderPathId);
+        if (!renderPath) {
+          return false;
+        }
+
+        return pathStartsWith(projectLegacyPath(renderPath.segments), contextPath);
+      })
+      .map((element) => element.id),
+  );
+}
+
+function elementBelongsToRootComponent(
+  index: SelectorRenderModelIndex,
+  elementId: string,
+  componentKey: string,
+): boolean {
+  const element = index.renderModel.indexes.elementById.get(elementId);
+  if (!element) {
+    return false;
+  }
+
+  const renderPath = index.renderModel.indexes.renderPathById.get(element.renderPathId);
+  const rootComponentKey = renderPath?.rootComponentNodeId
+    ? index.componentKeyByNodeId.get(renderPath.rootComponentNodeId)
+    : undefined;
+  if (rootComponentKey) {
+    return rootComponentKey === componentKey;
+  }
+
+  const placementComponentKey = element.placementComponentNodeId
+    ? index.componentKeyByNodeId.get(element.placementComponentNodeId)
+    : undefined;
+  if (placementComponentKey) {
+    return placementComponentKey === componentKey;
+  }
+
+  const emittingComponentKey = element.emittingComponentNodeId
+    ? index.componentKeyByNodeId.get(element.emittingComponentNodeId)
+    : undefined;
+  return emittingComponentKey === componentKey;
+}
+
+function resolveComponentKey(
+  index: SelectorRenderModelIndex,
+  context: Extract<
+    StylesheetReachabilityContextRecord["context"],
+    { kind: "component" | "render-subtree-root" | "render-region" }
+  >,
+): string | undefined {
+  if (context.componentKey) {
+    return context.componentKey;
+  }
+
+  const normalizedPath = normalizeProjectPath(context.filePath);
+  return index.renderModel.components.find(
+    (component) =>
+      normalizeProjectPath(component.filePath) === normalizedPath &&
+      component.componentName === context.componentName,
+  )?.componentKey;
+}
+
+function projectLegacyPath(segments: RenderPathSegment[]): ProjectedRenderPathSegment[] {
+  const result: ProjectedRenderPathSegment[] = [{ kind: "root" }];
+  for (const segment of segments) {
+    if (segment.kind === "child-index") {
+      result.push({ kind: "fragment-child", childIndex: segment.index });
       continue;
     }
-
-    if (!current) {
-      return undefined;
-    }
-
-    if (segment.kind === "fragment-child") {
-      if (current.kind !== "element" && current.kind !== "fragment") {
-        return undefined;
-      }
-
-      current = current.children[segment.childIndex];
-      continue;
-    }
-
     if (segment.kind === "conditional-branch") {
-      if (current.kind !== "conditional") {
-        return undefined;
-      }
-
-      current = segment.branch === "when-true" ? current.whenTrue : current.whenFalse;
+      result.push({ kind: "conditional-branch", branch: segment.branch });
       continue;
     }
-
-    if (current.kind !== "repeated-region") {
-      return undefined;
+    if (segment.kind === "repeated-template") {
+      result.push({ kind: "repeated-template" });
+      continue;
     }
-
-    current = current.template;
   }
-
-  return current;
+  return result;
 }
 
-function deduplicateAnalysisSubtrees(
-  analysisSubtrees: ReachableAnalysisSubtree[],
-): ReachableAnalysisSubtree[] {
-  const deduplicated = new Map<string, ReachableAnalysisSubtree>();
-
-  for (const analysisSubtree of analysisSubtrees) {
-    const key = [
-      analysisSubtree.subtree.sourceAnchor.filePath.replace(/\\/g, "/"),
-      analysisSubtree.subtree.componentName ?? "",
-      analysisSubtree.subtree.root.sourceAnchor.startLine,
-      analysisSubtree.subtree.root.sourceAnchor.startColumn,
-      analysisSubtree.subtree.root.sourceAnchor.endLine ?? "",
-      analysisSubtree.subtree.root.sourceAnchor.endColumn ?? "",
-    ].join(":");
-    const existing = deduplicated.get(key);
-
-    if (!existing || existing.availability === "possible") {
-      deduplicated.set(key, analysisSubtree);
-    }
+function pathStartsWith(
+  candidate: ProjectedRenderPathSegment[],
+  prefix: ProjectedRenderPathSegment[],
+): boolean {
+  if (prefix.length > candidate.length) {
+    return false;
   }
 
-  return [...deduplicated.values()];
+  return prefix.every(
+    (segment, index) => serializePathSegment(segment) === serializePathSegment(candidate[index]),
+  );
+}
+
+function serializePathSegment(segment: ProjectedRenderPathSegment): string {
+  if (segment.kind === "fragment-child") {
+    return `${segment.kind}:${segment.childIndex ?? ""}`;
+  }
+  if (segment.kind === "conditional-branch") {
+    return `${segment.kind}:${segment.branch ?? ""}`;
+  }
+  return segment.kind;
+}
+
+function deduplicateElementIds(elementIds: string[]): string[] {
+  return [...new Set(elementIds)].sort((left, right) => left.localeCompare(right));
 }
 
 function normalizeProjectPath(filePath: string): string {
   return filePath.replace(/\\/g, "/");
-}
-
-function createAnchorKey(anchor: SourceAnchor): string {
-  return [
-    normalizeProjectPath(anchor.filePath),
-    anchor.startLine,
-    anchor.startColumn,
-    anchor.endLine ?? "",
-    anchor.endColumn ?? "",
-  ].join(":");
 }

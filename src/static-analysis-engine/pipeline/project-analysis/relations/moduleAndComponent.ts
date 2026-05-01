@@ -1,4 +1,4 @@
-import type { RenderGraphEdge } from "../../render-model/render-graph/types.js";
+import type { RenderGraphProjectionEdge } from "../../render-structure/index.js";
 import { getAllResolvedModuleFacts } from "../../module-facts/index.js";
 import type {
   ComponentRenderRelation,
@@ -77,7 +77,7 @@ function buildModuleImportsFromFactGraph(
 }
 
 export function buildComponentRenders(
-  edges: RenderGraphEdge[],
+  edges: RenderGraphProjectionEdge[],
   indexes: ProjectAnalysisIndexes,
   includeTraces: boolean,
 ): ComponentRenderRelation[] {
@@ -106,7 +106,7 @@ export function buildComponentRenders(
       toComponentId,
       renderPath: edge.renderPath,
       resolution: edge.resolution,
-      location: normalizeAnchor(edge.sourceAnchor),
+      location: normalizeAnchor(edge.sourceLocation),
       traces: includeTraces ? [...edge.traces] : [],
     });
   }

@@ -1,12 +1,11 @@
 import type { ClassExpressionSummary } from "../../symbolic-evaluation/class-values/types.js";
 import { toClassExpressionSummary } from "../../symbolic-evaluation/adapters/classExpressionSummary.js";
-import type {
-  RenderNode,
-  RenderComponentReferenceNode,
-  RenderElementNode,
-} from "../../render-model/render-ir/types.js";
 import type { CanonicalClassExpression } from "../../symbolic-evaluation/types.js";
-import type { EmissionSite, RenderModel } from "../../render-structure/types.js";
+import type {
+  EmissionSite,
+  PlacementCondition,
+  RenderModel,
+} from "../../render-structure/types.js";
 import type { AnalysisTrace } from "../../../types/analysis.js";
 import type { SourceAnchor } from "../../../types/core.js";
 import type {
@@ -14,91 +13,61 @@ import type {
   ProjectAnalysisBuildInput,
   ProjectAnalysisId,
   ProjectAnalysisIndexes,
-  RenderSubtreeAnalysis,
   StaticallySkippedClassReferenceAnalysis,
-  RenderClassExpressionEntry,
-  SkippedRenderClassExpressionEntry,
 } from "../types.js";
 import {
   collectReferenceClassNames,
   collectSkippedReferenceClassNames,
   compareAnchors,
   compareById,
-  compareStringRecords,
   createAnchorId,
-  createComponentKey,
   createPathId,
   getReferenceConfidence,
   getReferenceExpressionKind,
   normalizeAnchor,
-  normalizeOptionalAnchor,
   normalizeProjectPath,
   pushMapValue,
   sortIndexValues,
 } from "../internal/shared.js";
 
+type StaticallySkippedPlacementCondition = PlacementCondition & {
+  kind: "statically-skipped-branch";
+  sourceLocation: SourceAnchor;
+  branch: "when-true" | "when-false";
+  reason: "condition-resolved-true" | "condition-resolved-false" | "expression-resolved-nullish";
+};
+
 export function buildClassReferences(input: {
-  renderSubtrees: RenderSubtreeAnalysis[];
-  renderModel?: RenderModel;
+  renderModel: RenderModel;
   symbolicEvaluation: ProjectAnalysisBuildInput["symbolicEvaluation"];
   factGraph: ProjectAnalysisBuildInput["factGraph"];
   indexes: ProjectAnalysisIndexes;
   includeTraces: boolean;
 }): ClassReferenceAnalysis[] {
-  const classExpressions = deduplicateRenderClassExpressions(
-    input.renderSubtrees.flatMap((renderSubtree) =>
-      collectRenderClassExpressions(renderSubtree, input.indexes),
-    ),
-  );
-
-  if (input.renderModel && input.symbolicEvaluation) {
-    const emissionReferences = buildClassReferencesFromEmissionSites({
-      renderModel: input.renderModel,
-      symbolicEvaluation: input.symbolicEvaluation,
-      factGraph: input.factGraph,
-      indexes: input.indexes,
-      includeTraces: input.includeTraces,
-    });
-    const fallbackEntries = classExpressions.filter(
-      (entry) => !hasEquivalentEmissionReference(entry, emissionReferences),
-    );
-    const fallbackReferences = fallbackEntries.map((entry, index) =>
-      buildRenderClassReference(input, entry, emissionReferences.length + index),
-    );
-    const references = [...emissionReferences, ...fallbackReferences].sort(compareById);
-
-    sortIndexValues(input.indexes.referencesBySourceFileId);
-    sortIndexValues(input.indexes.referencesByClassName);
-    return references;
+  if (!input.symbolicEvaluation) {
+    return [];
   }
 
-  const references = input.symbolicEvaluation
-    ? buildSymbolicClassReferences({
-        classExpressions: input.symbolicEvaluation.evaluatedExpressions.classExpressions,
-        renderEntries: classExpressions,
-        factGraph: input.factGraph,
-        indexes: input.indexes,
-        includeTraces: input.includeTraces,
-      })
-    : classExpressions.map((entry, index) => buildRenderClassReference(input, entry, index));
+  const references = buildClassReferencesFromEmissionSites({
+    renderModel: input.renderModel,
+    symbolicEvaluation: input.symbolicEvaluation,
+    factGraph: input.factGraph,
+    indexes: input.indexes,
+    includeTraces: input.includeTraces,
+  });
 
   sortIndexValues(input.indexes.referencesBySourceFileId);
   sortIndexValues(input.indexes.referencesByClassName);
-  return references.sort(compareById);
+  return references;
 }
 
-export function buildClassReferencesFromEmissionSites(input: {
-  renderModel?: RenderModel;
+function buildClassReferencesFromEmissionSites(input: {
+  renderModel: RenderModel;
   symbolicEvaluation: NonNullable<ProjectAnalysisBuildInput["symbolicEvaluation"]>;
   factGraph: ProjectAnalysisBuildInput["factGraph"];
   indexes: ProjectAnalysisIndexes;
   includeTraces: boolean;
 }): ClassReferenceAnalysis[] {
-  const renderModel = input.renderModel;
-  if (!renderModel) {
-    return [];
-  }
-
   const expressionsById = new Map(
     input.symbolicEvaluation.evaluatedExpressions.classExpressions.map((expression) => [
       expression.id,
@@ -108,7 +77,7 @@ export function buildClassReferencesFromEmissionSites(input: {
   const references: ClassReferenceAnalysis[] = [];
   const emittedReferenceKeys = new Set<string>();
 
-  for (const emissionSite of sortEmissionSites(renderModel.emissionSites)) {
+  for (const emissionSite of sortEmissionSites(input.renderModel.emissionSites)) {
     const expression = expressionsById.get(emissionSite.classExpressionId);
     if (!expression) {
       continue;
@@ -137,14 +106,25 @@ export function buildClassReferencesFromEmissionSites(input: {
   }
 
   const emittedExpressionIds = new Set(
-    renderModel.emissionSites.map((emissionSite) => emissionSite.classExpressionId),
+    input.renderModel.emissionSites.map((emissionSite) => emissionSite.classExpressionId),
   );
+  const emittedSiteNodeIds = new Set(
+    input.renderModel.emissionSites.map((emissionSite) => emissionSite.classExpressionSiteNodeId),
+  );
+  const skippedConditions = input.renderModel.placementConditions
+    .filter(isStaticallySkippedCondition)
+    .sort(comparePlacementConditions);
   for (const expression of input.symbolicEvaluation.evaluatedExpressions.classExpressions) {
     if (
-      expression.classExpressionSiteKind !== "runtime-dom-class" ||
       emittedExpressionIds.has(expression.id) ||
+      emittedSiteNodeIds.has(expression.classExpressionSiteNodeId) ||
+      isExpressionInsideSkippedCondition(expression, skippedConditions) ||
       !shouldProjectCanonicalClassExpression(expression)
     ) {
+      continue;
+    }
+
+    if (expression.classExpressionSiteKind !== "runtime-dom-class") {
       continue;
     }
 
@@ -152,6 +132,8 @@ export function buildClassReferencesFromEmissionSites(input: {
       buildSymbolicClassReference({
         expression,
         classExpression: toClassExpressionSummary(expression),
+        origin:
+          expression.classExpressionSiteKind === "runtime-dom-class" ? "runtime-dom" : "render-ir",
         factGraph: input.factGraph,
         indexes: input.indexes,
         includeTraces: input.includeTraces,
@@ -160,8 +142,6 @@ export function buildClassReferencesFromEmissionSites(input: {
     );
   }
 
-  sortIndexValues(input.indexes.referencesBySourceFileId);
-  sortIndexValues(input.indexes.referencesByClassName);
   return references.sort(compareById);
 }
 
@@ -173,27 +153,33 @@ function buildClassReferenceFromEmissionSite(input: {
   includeTraces: boolean;
   index: number;
 }): ClassReferenceAnalysis {
-  const classExpression = toClassExpressionSummary(input.expression);
+  const classExpression = toEmissionSiteClassExpressionSummary(
+    input.emissionSite,
+    input.expression,
+  );
   const site = input.factGraph?.graph.indexes.nodesById.get(
     input.expression.classExpressionSiteNodeId,
   );
-  const sourceLocation = normalizeAnchor(input.emissionSite.sourceLocation);
+  const sourceLocation = resolveReferenceSourceLocation(classExpression, input.emissionSite);
+  const sourceSite = findClassExpressionSiteAtLocation(input.factGraph, sourceLocation);
   const sourceFileId =
     input.indexes.sourceFileIdByPath.get(sourceLocation.filePath) ??
     createPathId("source", sourceLocation.filePath);
-  const suppliedByComponentId = projectComponentNodeId(
-    input.emissionSite.suppliedByComponentNodeId,
-    input,
-  );
   const emittedByComponentId = projectComponentNodeId(
     input.emissionSite.emittingComponentNodeId,
     input,
   );
+  const sourceComponentId =
+    projectComponentNodeId(sourceSite?.emittingComponentNodeId, input) ??
+    projectComponentAtLocation(sourceLocation, input);
+  const suppliedByComponentId =
+    sourceComponentId ??
+    projectComponentNodeId(input.emissionSite.suppliedByComponentNodeId, input);
   const id = createAnchorId("class-reference", sourceLocation, input.index);
   const reference: ClassReferenceAnalysis = {
     id,
     sourceFileId,
-    componentId: suppliedByComponentId ?? emittedByComponentId,
+    componentId: sourceComponentId ?? suppliedByComponentId ?? emittedByComponentId,
     suppliedByComponentId,
     emittedByComponentId,
     classNameComponentIds: buildEmissionClassNameComponentIds(input),
@@ -209,7 +195,7 @@ function buildClassReferenceFromEmissionSite(input: {
       ? { runtimeLibraryHint: site.runtimeDomLibraryHint }
       : {}),
     expressionKind: getReferenceExpressionKind(classExpression),
-    rawExpressionText: input.expression.rawExpressionText,
+    rawExpressionText: sourceSite?.rawExpressionText ?? input.expression.rawExpressionText,
     definiteClassNames: [...classExpression.classes.definite],
     possibleClassNames: [...classExpression.classes.possible],
     unknownDynamic: classExpression.classes.unknownDynamic,
@@ -224,12 +210,158 @@ function buildClassReferenceFromEmissionSite(input: {
     sourceSummary: classExpression,
   };
 
-  pushMapValue(input.indexes.referencesBySourceFileId, sourceFileId, id);
-  for (const className of collectReferenceClassNames(reference)) {
-    pushMapValue(input.indexes.referencesByClassName, className, id);
+  pushClassReferenceIndexes(input.indexes, reference);
+  return reference;
+}
+
+function buildSymbolicClassReference(input: {
+  expression: CanonicalClassExpression;
+  classExpression: ClassExpressionSummary;
+  origin: ClassReferenceAnalysis["origin"];
+  factGraph: ProjectAnalysisBuildInput["factGraph"];
+  indexes: ProjectAnalysisIndexes;
+  includeTraces: boolean;
+  index: number;
+}): ClassReferenceAnalysis {
+  const site = input.factGraph?.graph.indexes.nodesById.get(
+    input.expression.classExpressionSiteNodeId,
+  );
+  const filePath = normalizeProjectPath(input.expression.filePath);
+  const sourceFileId =
+    input.indexes.sourceFileIdByPath.get(filePath) ?? createPathId("source", filePath);
+  const idPrefix =
+    input.origin === "runtime-dom"
+      ? "runtime-dom-class-reference"
+      : "symbolic-render-class-reference";
+  const id = createAnchorId(idPrefix, input.expression.location, input.index);
+  const componentId = projectComponentNodeId(input.expression.emittingComponentNodeId, input);
+  const reference: ClassReferenceAnalysis = {
+    id,
+    sourceFileId,
+    componentId,
+    location: normalizeAnchor(input.expression.location),
+    origin: input.origin,
+    ...(site?.kind === "class-expression-site" && site.runtimeDomLibraryHint
+      ? { runtimeLibraryHint: site.runtimeDomLibraryHint }
+      : {}),
+    expressionKind: getReferenceExpressionKind(input.classExpression),
+    rawExpressionText: input.expression.rawExpressionText,
+    definiteClassNames: [...input.classExpression.classes.definite],
+    possibleClassNames: [...input.classExpression.classes.possible],
+    unknownDynamic: input.classExpression.classes.unknownDynamic,
+    confidence: getReferenceConfidence(input.classExpression),
+    traces: input.includeTraces
+      ? buildCanonicalClassReferenceTraces({
+          expression: input.expression,
+          classExpression: input.classExpression,
+          origin: input.origin,
+        })
+      : [],
+    sourceSummary: input.classExpression,
+  };
+
+  pushClassReferenceIndexes(input.indexes, reference);
+  return reference;
+}
+
+export function buildStaticallySkippedClassReferences(input: {
+  renderModel: RenderModel;
+  symbolicEvaluation: ProjectAnalysisBuildInput["symbolicEvaluation"];
+  factGraph: ProjectAnalysisBuildInput["factGraph"];
+  indexes: ProjectAnalysisIndexes;
+  includeTraces: boolean;
+}): StaticallySkippedClassReferenceAnalysis[] {
+  if (!input.symbolicEvaluation || !input.factGraph) {
+    return [];
   }
 
-  return reference;
+  const emittedSiteNodeIds = new Set(
+    input.renderModel.emissionSites.map((emissionSite) => emissionSite.classExpressionSiteNodeId),
+  );
+  const candidateExpressions = input.symbolicEvaluation.evaluatedExpressions.classExpressions
+    .filter(
+      (expression) =>
+        (expression.classExpressionSiteKind === "jsx-class" ||
+          expression.classExpressionSiteKind === "component-prop-class") &&
+        !emittedSiteNodeIds.has(expression.classExpressionSiteNodeId) &&
+        shouldProjectCanonicalClassExpression(expression),
+    )
+    .sort(compareCanonicalClassExpressions);
+  const skippedConditions = input.renderModel.placementConditions
+    .filter(isStaticallySkippedCondition)
+    .sort(comparePlacementConditions);
+
+  const references: StaticallySkippedClassReferenceAnalysis[] = [];
+  const seen = new Set<string>();
+  for (const condition of skippedConditions) {
+    for (const expression of candidateExpressions) {
+      if (
+        !condition.sourceLocation ||
+        !sourceAnchorContains(condition.sourceLocation, expression.location)
+      ) {
+        continue;
+      }
+
+      const key = `${condition.id}:${expression.id}`;
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+
+      const classExpression = toClassExpressionSummary(expression);
+      const filePath = normalizeProjectPath(expression.filePath);
+      const sourceFileId =
+        input.indexes.sourceFileIdByPath.get(filePath) ?? createPathId("source", filePath);
+      const id = createAnchorId(
+        "statically-skipped-class-reference",
+        expression.location,
+        references.length,
+      );
+      const componentId = projectComponentNodeId(expression.emittingComponentNodeId, input);
+      const reference: StaticallySkippedClassReferenceAnalysis = {
+        id,
+        sourceFileId,
+        componentId,
+        location: normalizeAnchor(expression.location),
+        branchLocation: normalizeAnchor(condition.sourceLocation),
+        conditionSourceText: condition.sourceText ?? "",
+        skippedBranch: condition.branch,
+        reason: condition.reason,
+        rawExpressionText: expression.rawExpressionText,
+        definiteClassNames: [...classExpression.classes.definite],
+        possibleClassNames: [...classExpression.classes.possible],
+        unknownDynamic: classExpression.classes.unknownDynamic,
+        confidence: getReferenceConfidence(classExpression),
+        traces: input.includeTraces
+          ? buildStaticallySkippedClassReferenceTraces({
+              condition,
+              expression,
+              classExpression,
+              componentId,
+            })
+          : [],
+        sourceSummary: classExpression,
+      };
+
+      for (const className of collectSkippedReferenceClassNames(reference)) {
+        pushMapValue(input.indexes.staticallySkippedReferencesByClassName, className, id);
+      }
+      references.push(reference);
+    }
+  }
+
+  sortIndexValues(input.indexes.staticallySkippedReferencesByClassName);
+  return references.sort(compareById);
+}
+
+function pushClassReferenceIndexes(
+  indexes: ProjectAnalysisIndexes,
+  reference: ClassReferenceAnalysis,
+): void {
+  pushMapValue(indexes.referencesBySourceFileId, reference.sourceFileId, reference.id);
+  for (const className of collectReferenceClassNames(reference)) {
+    pushMapValue(indexes.referencesByClassName, className, reference.id);
+  }
 }
 
 function createEmissionReferenceDedupeKey(input: {
@@ -238,7 +370,10 @@ function createEmissionReferenceDedupeKey(input: {
   factGraph: ProjectAnalysisBuildInput["factGraph"];
   indexes: ProjectAnalysisIndexes;
 }): string {
-  const classExpression = toClassExpressionSummary(input.expression);
+  const classExpression = toEmissionSiteClassExpressionSummary(
+    input.emissionSite,
+    input.expression,
+  );
   const suppliedByComponentId = projectComponentNodeId(
     input.emissionSite.suppliedByComponentNodeId,
     input,
@@ -264,685 +399,282 @@ function createEmissionReferenceDedupeKey(input: {
   ].join(":");
 }
 
-function hasEquivalentEmissionReference(
-  entry: RenderClassExpressionEntry,
-  emissionReferences: ClassReferenceAnalysis[],
-): boolean {
-  return emissionReferences.some(
-    (reference) =>
-      compareAnchors(reference.location, entry.classExpression.sourceAnchor) === 0 &&
-      compareOptionalAnchors(reference.emittedElementLocation, entry.emittedElementLocation) ===
-        0 &&
-      (reference.suppliedByComponentId ?? "") === (entry.suppliedByComponentId ?? "") &&
-      (reference.emittedByComponentId ?? "") === (entry.emittedByComponentId ?? "") &&
-      shouldUseSymbolicClassExpressionForRenderEntry(reference.sourceSummary, entry),
-  );
-}
-
-function compareOptionalAnchors(
-  left: SourceAnchor | undefined,
-  right: SourceAnchor | undefined,
-): number {
-  if (left && right) {
-    return compareAnchors(left, right);
-  }
-
-  if (left) {
-    return -1;
-  }
-
-  if (right) {
-    return 1;
-  }
-
-  return 0;
-}
-
-function buildRenderClassReference(
+function projectComponentNodeId(
+  componentNodeId: string | undefined,
   input: {
+    factGraph: ProjectAnalysisBuildInput["factGraph"];
     indexes: ProjectAnalysisIndexes;
-    includeTraces: boolean;
   },
-  entry: RenderClassExpressionEntry,
-  index: number,
-): ClassReferenceAnalysis {
-  const { classExpression, emittedElementLocation, placementLocation, renderSubtreeId } = entry;
-  const filePath = normalizeProjectPath(classExpression.sourceAnchor.filePath);
-  const sourceFileId =
-    input.indexes.sourceFileIdByPath.get(filePath) ?? createPathId("source", filePath);
-  const componentId = entry.suppliedByComponentId ?? entry.emittedByComponentId;
-  const id = createAnchorId("class-reference", classExpression.sourceAnchor, index);
-  const reference: ClassReferenceAnalysis = {
-    id,
-    sourceFileId,
-    componentId,
-    suppliedByComponentId: entry.suppliedByComponentId,
-    emittedByComponentId: entry.emittedByComponentId,
-    classNameComponentIds: entry.classNameComponentIds,
-    renderSubtreeId,
-    location: normalizeAnchor(classExpression.sourceAnchor),
-    emittedElementLocation,
-    placementLocation,
-    origin: "render-ir",
-    expressionKind: getReferenceExpressionKind(classExpression),
-    rawExpressionText: classExpression.sourceText,
-    definiteClassNames: [...classExpression.classes.definite],
-    possibleClassNames: [...classExpression.classes.possible],
-    unknownDynamic: classExpression.classes.unknownDynamic,
-    confidence: getReferenceConfidence(classExpression),
-    traces: input.includeTraces ? buildClassReferenceTraces(entry) : [],
-    sourceSummary: classExpression,
-  };
-
-  pushMapValue(input.indexes.referencesBySourceFileId, sourceFileId, id);
-  for (const className of collectReferenceClassNames(reference)) {
-    pushMapValue(input.indexes.referencesByClassName, className, id);
-  }
-
-  return reference;
-}
-
-function buildSymbolicClassReferences(input: {
-  classExpressions: CanonicalClassExpression[];
-  renderEntries: RenderClassExpressionEntry[];
-  factGraph: ProjectAnalysisBuildInput["factGraph"];
-  indexes: ProjectAnalysisIndexes;
-  includeTraces: boolean;
-}): ClassReferenceAnalysis[] {
-  const symbolicExpressionByAnchor = new Map(
-    input.classExpressions
-      .filter(
-        (expression) =>
-          expression.classExpressionSiteKind !== "runtime-dom-class" &&
-          shouldProjectCanonicalClassExpression(expression),
-      )
-      .map((expression) => [createAnchorKey(expression.location), expression]),
-  );
-  const references: ClassReferenceAnalysis[] = [];
-
-  for (const renderEntry of input.renderEntries) {
-    const symbolicExpression = symbolicExpressionByAnchor.get(
-      createClassExpressionAnchorKey(renderEntry.classExpression),
-    );
-    if (symbolicExpression) {
-      const symbolicClassExpression = toClassExpressionSummary(symbolicExpression);
-      if (!shouldUseSymbolicClassExpressionForRenderEntry(symbolicClassExpression, renderEntry)) {
-        references.push(buildRenderClassReference(input, renderEntry, references.length));
-        continue;
-      }
-
-      references.push(
-        buildSymbolicClassReference({
-          expression: symbolicExpression,
-          classExpression: symbolicClassExpression,
-          renderEntry,
-          factGraph: input.factGraph,
-          indexes: input.indexes,
-          includeTraces: input.includeTraces,
-          index: references.length,
-        }),
-      );
-      continue;
-    }
-
-    references.push(buildRenderClassReference(input, renderEntry, references.length));
-  }
-
-  for (const expression of input.classExpressions) {
-    if (
-      expression.classExpressionSiteKind !== "runtime-dom-class" ||
-      !shouldProjectCanonicalClassExpression(expression)
-    ) {
-      continue;
-    }
-
-    references.push(
-      buildSymbolicClassReference({
-        expression,
-        classExpression: toClassExpressionSummary(expression),
-        factGraph: input.factGraph,
-        indexes: input.indexes,
-        includeTraces: input.includeTraces,
-        index: references.length,
-      }),
-    );
-  }
-
-  return references;
-}
-
-function buildSymbolicClassReference(input: {
-  expression: CanonicalClassExpression;
-  classExpression: ClassExpressionSummary;
-  renderEntry?: RenderClassExpressionEntry;
-  factGraph: ProjectAnalysisBuildInput["factGraph"];
-  indexes: ProjectAnalysisIndexes;
-  includeTraces: boolean;
-  index: number;
-}): ClassReferenceAnalysis {
-  const site = input.factGraph?.graph.indexes.nodesById.get(
-    input.expression.classExpressionSiteNodeId,
-  );
-  const filePath = normalizeProjectPath(input.expression.filePath);
-  const sourceFileId =
-    input.indexes.sourceFileIdByPath.get(filePath) ?? createPathId("source", filePath);
-  const id = createAnchorId(
-    input.expression.classExpressionSiteKind === "runtime-dom-class"
-      ? "runtime-dom-class-reference"
-      : "class-reference",
-    input.expression.location,
-    input.index,
-  );
-  const reference: ClassReferenceAnalysis = {
-    id,
-    sourceFileId,
-    componentId:
-      input.renderEntry?.suppliedByComponentId ?? input.renderEntry?.emittedByComponentId,
-    suppliedByComponentId: input.renderEntry?.suppliedByComponentId,
-    emittedByComponentId: input.renderEntry?.emittedByComponentId,
-    classNameComponentIds: input.renderEntry?.classNameComponentIds,
-    renderSubtreeId: input.renderEntry?.renderSubtreeId,
-    location: normalizeAnchor(input.expression.location),
-    ...(input.renderEntry?.emittedElementLocation
-      ? { emittedElementLocation: input.renderEntry.emittedElementLocation }
-      : {}),
-    ...(input.renderEntry?.placementLocation
-      ? { placementLocation: input.renderEntry.placementLocation }
-      : {}),
-    origin:
-      input.expression.classExpressionSiteKind === "runtime-dom-class"
-        ? "runtime-dom"
-        : "render-ir",
-    ...(site?.kind === "class-expression-site" && site.runtimeDomLibraryHint
-      ? { runtimeLibraryHint: site.runtimeDomLibraryHint }
-      : {}),
-    expressionKind: getReferenceExpressionKind(input.classExpression),
-    rawExpressionText: input.expression.rawExpressionText,
-    definiteClassNames: [...input.classExpression.classes.definite],
-    possibleClassNames: [...input.classExpression.classes.possible],
-    unknownDynamic: input.classExpression.classes.unknownDynamic,
-    confidence: getReferenceConfidence(input.classExpression),
-    traces: input.includeTraces
-      ? buildCanonicalClassReferenceTraces({
-          expression: input.expression,
-          classExpression: input.classExpression,
-          renderEntry: input.renderEntry,
-        })
-      : [],
-    sourceSummary: input.classExpression,
-  };
-
-  pushMapValue(input.indexes.referencesBySourceFileId, sourceFileId, id);
-  for (const className of collectReferenceClassNames(reference)) {
-    pushMapValue(input.indexes.referencesByClassName, className, id);
-  }
-
-  return reference;
-}
-
-export function buildStaticallySkippedClassReferences(input: {
-  renderSubtrees: RenderSubtreeAnalysis[];
-  indexes: ProjectAnalysisIndexes;
-  includeTraces: boolean;
-}): StaticallySkippedClassReferenceAnalysis[] {
-  const entries = deduplicateSkippedRenderClassExpressions(
-    input.renderSubtrees.flatMap((renderSubtree) =>
-      collectStaticallySkippedRenderClassExpressions(renderSubtree, input.indexes),
-    ),
-  );
-
-  const references = entries.map((entry, index) => {
-    const { classExpression, skippedBranch, renderSubtreeId } = entry;
-    const filePath = normalizeProjectPath(classExpression.sourceAnchor.filePath);
-    const sourceFileId =
-      input.indexes.sourceFileIdByPath.get(filePath) ?? createPathId("source", filePath);
-    const id = createAnchorId(
-      "statically-skipped-class-reference",
-      classExpression.sourceAnchor,
-      index,
-    );
-    const reference: StaticallySkippedClassReferenceAnalysis = {
-      id,
-      sourceFileId,
-      componentId: entry.emittedByComponentId,
-      renderSubtreeId,
-      location: normalizeAnchor(classExpression.sourceAnchor),
-      branchLocation: normalizeAnchor(skippedBranch.sourceAnchor),
-      conditionSourceText: skippedBranch.conditionSourceText,
-      skippedBranch: skippedBranch.skippedBranch,
-      reason: skippedBranch.reason,
-      rawExpressionText: classExpression.sourceText,
-      definiteClassNames: [...classExpression.classes.definite],
-      possibleClassNames: [...classExpression.classes.possible],
-      unknownDynamic: classExpression.classes.unknownDynamic,
-      confidence: getReferenceConfidence(classExpression),
-      traces: input.includeTraces ? buildStaticallySkippedClassReferenceTraces(entry) : [],
-      sourceSummary: classExpression,
-    };
-
-    for (const className of collectSkippedReferenceClassNames(reference)) {
-      pushMapValue(input.indexes.staticallySkippedReferencesByClassName, className, id);
-    }
-
-    return reference;
-  });
-
-  sortIndexValues(input.indexes.staticallySkippedReferencesByClassName);
-  return references.sort(compareById);
-}
-
-export function collectRenderClassExpressions(
-  input: RenderSubtreeAnalysis,
-  indexes: ProjectAnalysisIndexes,
-): RenderClassExpressionEntry[] {
-  const entries: RenderClassExpressionEntry[] = [];
-
-  visitRenderNode(
-    input.sourceSubtree.root,
-    undefined,
-    undefined,
-    (node, inheritedPlacementLocation, inheritedExpansion) => {
-      if (!node.className) {
-        return;
-      }
-
-      const emittedByComponentId = resolveEffectiveComponentId({
-        renderSubtree: input,
-        inheritedExpansion,
-        indexes,
-      });
-
-      entries.push({
-        classExpression: node.className,
-        suppliedByComponentId: resolveSupplierComponentId({
-          renderSubtree: input,
-          inheritedExpansion,
-          classExpression: node.className,
-          emittedByComponentId,
-          indexes,
-        }),
-        emittedByComponentId,
-        classNameComponentIds: buildClassNameComponentIds({
-          renderSubtree: input,
-          inheritedExpansion,
-          classExpression: node.className,
-          emittedByComponentId,
-          indexes,
-        }),
-        renderSubtreeId: input.id,
-        emittedElementLocation: normalizeAnchor(node.sourceAnchor),
-        placementLocation: normalizeOptionalAnchor(
-          node.placementAnchor ?? inheritedPlacementLocation,
-        ),
-      });
-    },
-  );
-
-  return entries.sort((left, right) =>
-    `${left.classExpression.sourceAnchor.filePath}:${left.classExpression.sourceAnchor.startLine}:${left.classExpression.sourceAnchor.startColumn}`.localeCompare(
-      `${right.classExpression.sourceAnchor.filePath}:${right.classExpression.sourceAnchor.startLine}:${right.classExpression.sourceAnchor.startColumn}`,
-    ),
-  );
-}
-
-export function collectStaticallySkippedRenderClassExpressions(
-  input: RenderSubtreeAnalysis,
-  indexes: ProjectAnalysisIndexes,
-): SkippedRenderClassExpressionEntry[] {
-  const entries: SkippedRenderClassExpressionEntry[] = [];
-
-  visitStaticallySkippedBranches(
-    input.sourceSubtree.root,
-    undefined,
-    undefined,
-    (skippedBranch, inheritedPlacementLocation, inheritedExpansion) => {
-      for (const entry of collectRenderClassExpressionsFromNode({
-        node: skippedBranch.node,
-        renderSubtree: input,
-        indexes,
-        inheritedPlacementLocation,
-        inheritedExpansion,
-      })) {
-        entries.push({
-          ...entry,
-          skippedBranch,
-        });
-      }
-    },
-  );
-
-  return entries.sort(compareSkippedRenderClassExpressionEntries);
-}
-
-export function collectRenderClassExpressionsFromNode(input: {
-  node: RenderNode;
-  renderSubtree: RenderSubtreeAnalysis;
-  indexes: ProjectAnalysisIndexes;
-  inheritedPlacementLocation: SourceAnchor | undefined;
-  inheritedExpansion: NonNullable<RenderNode["expandedFromComponentReference"]> | undefined;
-}): RenderClassExpressionEntry[] {
-  const entries: RenderClassExpressionEntry[] = [];
-
-  visitRenderNode(
-    input.node,
-    input.inheritedPlacementLocation,
-    input.inheritedExpansion,
-    (node, inheritedPlacementLocation, inheritedExpansion) => {
-      if (!node.className) {
-        return;
-      }
-
-      const emittedByComponentId = resolveEffectiveComponentId({
-        renderSubtree: input.renderSubtree,
-        inheritedExpansion,
-        indexes: input.indexes,
-      });
-
-      entries.push({
-        classExpression: node.className,
-        suppliedByComponentId: resolveSupplierComponentId({
-          renderSubtree: input.renderSubtree,
-          inheritedExpansion,
-          classExpression: node.className,
-          emittedByComponentId,
-          indexes: input.indexes,
-        }),
-        emittedByComponentId,
-        classNameComponentIds: buildClassNameComponentIds({
-          renderSubtree: input.renderSubtree,
-          inheritedExpansion,
-          classExpression: node.className,
-          emittedByComponentId,
-          indexes: input.indexes,
-        }),
-        renderSubtreeId: input.renderSubtree.id,
-        emittedElementLocation: normalizeAnchor(node.sourceAnchor),
-        placementLocation: normalizeOptionalAnchor(
-          node.placementAnchor ?? inheritedPlacementLocation,
-        ),
-      });
-    },
-  );
-
-  return entries.sort(compareRenderClassExpressionEntries);
-}
-
-export function deduplicateRenderClassExpressions(
-  entries: RenderClassExpressionEntry[],
-): RenderClassExpressionEntry[] {
-  const entriesByKey = new Map<string, RenderClassExpressionEntry>();
-
-  for (const entry of entries) {
-    const key = createRenderClassExpressionDedupeKey(entry);
-    const existing = entriesByKey.get(key);
-    if (!existing || compareRenderClassExpressionEntries(entry, existing) < 0) {
-      entriesByKey.set(key, entry);
-    }
-  }
-
-  return [...entriesByKey.values()].sort(compareRenderClassExpressionEntries);
-}
-
-export function deduplicateSkippedRenderClassExpressions(
-  entries: SkippedRenderClassExpressionEntry[],
-): SkippedRenderClassExpressionEntry[] {
-  const entriesByKey = new Map<string, SkippedRenderClassExpressionEntry>();
-
-  for (const entry of entries) {
-    const key = [
-      createRenderClassExpressionDedupeKey(entry),
-      entry.skippedBranch.sourceAnchor.filePath,
-      entry.skippedBranch.sourceAnchor.startLine,
-      entry.skippedBranch.sourceAnchor.startColumn,
-      entry.skippedBranch.skippedBranch,
-      entry.skippedBranch.reason,
-    ].join(":");
-    const existing = entriesByKey.get(key);
-    if (!existing || compareSkippedRenderClassExpressionEntries(entry, existing) < 0) {
-      entriesByKey.set(key, entry);
-    }
-  }
-
-  return [...entriesByKey.values()].sort(compareSkippedRenderClassExpressionEntries);
-}
-
-export function createRenderClassExpressionDedupeKey(entry: RenderClassExpressionEntry): string {
-  const classExpression = entry.classExpression;
-  return [
-    normalizeProjectPath(classExpression.sourceAnchor.filePath),
-    classExpression.sourceAnchor.startLine,
-    classExpression.sourceAnchor.startColumn,
-    classExpression.sourceAnchor.endLine ?? "",
-    classExpression.sourceAnchor.endColumn ?? "",
-    classExpression.classes.definite.join(" "),
-    classExpression.classes.possible.join(" "),
-    classExpression.classes.unknownDynamic ? "dynamic" : "static",
-    entry.suppliedByComponentId ?? "",
-    entry.emittedByComponentId ?? "",
-    Object.entries(entry.classNameComponentIds ?? {})
-      .map(([className, componentId]) => `${className}=${componentId}`)
-      .join(","),
-  ].join(":");
-}
-
-export function compareRenderClassExpressionEntries(
-  left: RenderClassExpressionEntry,
-  right: RenderClassExpressionEntry,
-): number {
-  return (
-    compareAnchors(left.classExpression.sourceAnchor, right.classExpression.sourceAnchor) ||
-    compareAnchors(left.emittedElementLocation, right.emittedElementLocation) ||
-    (left.placementLocation && right.placementLocation
-      ? compareAnchors(left.placementLocation, right.placementLocation)
-      : left.placementLocation
-        ? -1
-        : right.placementLocation
-          ? 1
-          : 0) ||
-    (left.suppliedByComponentId ?? "").localeCompare(right.suppliedByComponentId ?? "") ||
-    (left.emittedByComponentId ?? "").localeCompare(right.emittedByComponentId ?? "") ||
-    compareStringRecords(left.classNameComponentIds, right.classNameComponentIds) ||
-    left.renderSubtreeId.localeCompare(right.renderSubtreeId)
-  );
-}
-
-export function compareSkippedRenderClassExpressionEntries(
-  left: SkippedRenderClassExpressionEntry,
-  right: SkippedRenderClassExpressionEntry,
-): number {
-  return (
-    compareRenderClassExpressionEntries(left, right) ||
-    compareAnchors(left.skippedBranch.sourceAnchor, right.skippedBranch.sourceAnchor) ||
-    left.skippedBranch.skippedBranch.localeCompare(right.skippedBranch.skippedBranch) ||
-    left.skippedBranch.reason.localeCompare(right.skippedBranch.reason)
-  );
-}
-
-export function resolveEffectiveComponentId(input: {
-  renderSubtree: RenderSubtreeAnalysis;
-  inheritedExpansion?: NonNullable<RenderNode["expandedFromComponentReference"]>;
-  indexes: ProjectAnalysisIndexes;
-}): ProjectAnalysisId | undefined {
-  if (!input.inheritedExpansion) {
-    return input.renderSubtree.componentId;
-  }
-
-  return (
-    (input.inheritedExpansion.componentKey
-      ? input.indexes.componentIdByComponentKey.get(input.inheritedExpansion.componentKey)
-      : input.indexes.componentIdByFilePathAndName.get(
-          createComponentKey(
-            normalizeProjectPath(input.inheritedExpansion.filePath),
-            input.inheritedExpansion.componentName,
-          ),
-        )) ?? input.renderSubtree.componentId
-  );
-}
-
-export function resolveSupplierComponentId(input: {
-  renderSubtree: RenderSubtreeAnalysis;
-  inheritedExpansion?: NonNullable<RenderNode["expandedFromComponentReference"]>;
-  classExpression: ClassExpressionSummary;
-  emittedByComponentId?: ProjectAnalysisId;
-  indexes: ProjectAnalysisIndexes;
-}): ProjectAnalysisId | undefined {
-  const sourceFilePath = normalizeProjectPath(input.classExpression.sourceAnchor.filePath);
-  if (sourceFilePath === input.renderSubtree.filePath) {
-    return input.renderSubtree.componentId;
-  }
-
-  if (
-    input.inheritedExpansion &&
-    sourceFilePath === normalizeProjectPath(input.inheritedExpansion.filePath)
-  ) {
-    return input.emittedByComponentId;
-  }
-
-  const componentIdsForSource = [...input.indexes.componentIdByFilePathAndName.entries()]
-    .filter(([key]) => key.startsWith(`${sourceFilePath}::`))
-    .map(([, componentId]) => componentId);
-
-  if (componentIdsForSource.length === 1) {
-    return componentIdsForSource[0];
-  }
-
-  return input.emittedByComponentId;
-}
-
-export function buildClassNameComponentIds(input: {
-  renderSubtree: RenderSubtreeAnalysis;
-  inheritedExpansion?: NonNullable<RenderNode["expandedFromComponentReference"]>;
-  classExpression: ClassExpressionSummary;
-  emittedByComponentId?: ProjectAnalysisId;
-  indexes: ProjectAnalysisIndexes;
-}): Record<string, ProjectAnalysisId> | undefined {
-  if (!input.classExpression.classNameSourceAnchors) {
+): ProjectAnalysisId | undefined {
+  if (!componentNodeId) {
     return undefined;
   }
 
+  const componentNode = input.factGraph?.graph.indexes.nodesById.get(componentNodeId);
+  if (componentNode?.kind === "component") {
+    return input.indexes.componentIdByComponentKey.get(componentNode.componentKey);
+  }
+
+  return undefined;
+}
+
+function buildEmissionClassNameComponentIds(input: {
+  emissionSite: EmissionSite;
+  factGraph: ProjectAnalysisBuildInput["factGraph"];
+  indexes: ProjectAnalysisIndexes;
+}): Record<string, ProjectAnalysisId> | undefined {
   const componentIdsByClassName: Record<string, ProjectAnalysisId> = {};
-  for (const [className, sourceAnchor] of Object.entries(
-    input.classExpression.classNameSourceAnchors,
-  )) {
-    const componentId = resolveSupplierComponentIdForSourceAnchor({
-      renderSubtree: input.renderSubtree,
-      inheritedExpansion: input.inheritedExpansion,
-      sourceAnchor,
-      emittedByComponentId: input.emittedByComponentId,
-      indexes: input.indexes,
-    });
+
+  for (const provenance of input.emissionSite.tokenProvenance) {
+    const sourceLocation = provenance.sourceLocation
+      ? normalizeAnchor(provenance.sourceLocation)
+      : undefined;
+    const sourceSite = sourceLocation
+      ? findClassExpressionSiteAtLocation(input.factGraph, sourceLocation)
+      : undefined;
+    const sourceLocationComponentId =
+      projectComponentNodeId(sourceSite?.emittingComponentNodeId, input) ??
+      (sourceLocation ? projectComponentAtLocation(sourceLocation, input) : undefined);
+    const componentId =
+      sourceLocationComponentId ??
+      projectComponentNodeId(
+        provenance.suppliedByComponentNodeId ??
+          provenance.emittedByComponentNodeId ??
+          (provenance.tokenKind === "external-class"
+            ? input.emissionSite.suppliedByComponentNodeId
+            : input.emissionSite.emittingComponentNodeId),
+        input,
+      );
     if (componentId) {
-      componentIdsByClassName[className] = componentId;
+      componentIdsByClassName[provenance.token] = componentId;
     }
   }
 
   return Object.keys(componentIdsByClassName).length > 0 ? componentIdsByClassName : undefined;
 }
 
-export function resolveSupplierComponentIdForSourceAnchor(input: {
-  renderSubtree: RenderSubtreeAnalysis;
-  inheritedExpansion?: NonNullable<RenderNode["expandedFromComponentReference"]>;
-  sourceAnchor: SourceAnchor;
-  emittedByComponentId?: ProjectAnalysisId;
-  indexes: ProjectAnalysisIndexes;
-}): ProjectAnalysisId | undefined {
-  const sourceFilePath = normalizeProjectPath(input.sourceAnchor.filePath);
-  if (sourceFilePath === input.renderSubtree.filePath) {
-    return input.renderSubtree.componentId;
-  }
+function resolveReferenceSourceLocation(
+  classExpression: ClassExpressionSummary,
+  emissionSite: EmissionSite,
+): SourceAnchor {
+  const classNames = uniqueSorted([
+    ...classExpression.classes.definite,
+    ...classExpression.classes.possible,
+  ]);
+  const sourceAnchors = classNames
+    .map((className) => classExpression.classNameSourceAnchors?.[className])
+    .filter((anchor): anchor is SourceAnchor => Boolean(anchor))
+    .map(normalizeAnchor);
 
   if (
-    input.inheritedExpansion &&
-    sourceFilePath === normalizeProjectPath(input.inheritedExpansion.filePath)
+    sourceAnchors.length > 0 &&
+    sourceAnchors.every((anchor) => anchorsEqual(anchor, sourceAnchors[0]))
   ) {
-    return input.emittedByComponentId;
+    return sourceAnchors[0];
   }
 
-  const componentIdsForSource = [...input.indexes.componentIdByFilePathAndName.entries()]
-    .filter(([key]) => key.startsWith(`${sourceFilePath}::`))
-    .map(([, componentId]) => componentId);
+  return normalizeAnchor(emissionSite.sourceLocation);
+}
 
-  if (componentIdsForSource.length === 1) {
-    return componentIdsForSource[0];
+function findClassExpressionSiteAtLocation(
+  factGraph: ProjectAnalysisBuildInput["factGraph"],
+  location: SourceAnchor,
+): { rawExpressionText: string; emittingComponentNodeId?: string } | undefined {
+  return factGraph?.graph.nodes.classExpressionSites
+    .filter((site) => {
+      const siteLocation = normalizeAnchor(site.location);
+      return (
+        anchorsEqual(siteLocation, location) ||
+        sourceAnchorContains(siteLocation, location) ||
+        sourceAnchorContains(location, siteLocation)
+      );
+    })
+    .sort((left, right) => anchorSpan(left.location) - anchorSpan(right.location))[0];
+}
+
+function projectComponentAtLocation(
+  location: SourceAnchor,
+  input: {
+    factGraph: ProjectAnalysisBuildInput["factGraph"];
+    indexes: ProjectAnalysisIndexes;
+  },
+): ProjectAnalysisId | undefined {
+  const component = input.factGraph?.graph.nodes.components
+    .filter((candidate) => sourceAnchorContains(candidate.location, location))
+    .sort((left, right) => anchorSpan(left.location) - anchorSpan(right.location))[0];
+  if (component) {
+    return input.indexes.componentIdByComponentKey.get(component.componentKey);
   }
 
-  return input.emittedByComponentId;
+  const sameFileComponents =
+    input.factGraph?.graph.nodes.components.filter(
+      (candidate) =>
+        normalizeProjectPath(candidate.filePath) === normalizeProjectPath(location.filePath),
+    ) ?? [];
+  return sameFileComponents.length === 1
+    ? input.indexes.componentIdByComponentKey.get(sameFileComponents[0].componentKey)
+    : undefined;
 }
 
-export function buildClassReferenceTraces(entry: RenderClassExpressionEntry): AnalysisTrace[] {
-  return [
-    {
-      traceId: `render-expansion:class-reference:${normalizeProjectPath(entry.classExpression.sourceAnchor.filePath)}:${entry.classExpression.sourceAnchor.startLine}:${entry.classExpression.sourceAnchor.startColumn}`,
-      category: "render-expansion",
-      summary: "class reference was collected from the render IR",
-      anchor: normalizeAnchor(entry.emittedElementLocation),
-      children: [...entry.classExpression.traces],
-      metadata: {
-        renderSubtreeId: entry.renderSubtreeId,
-        componentId: entry.suppliedByComponentId ?? entry.emittedByComponentId,
-        suppliedByComponentId: entry.suppliedByComponentId,
-        emittedByComponentId: entry.emittedByComponentId,
-        classNameComponentIds: entry.classNameComponentIds,
-        sourceFilePath: normalizeProjectPath(entry.classExpression.sourceAnchor.filePath),
-        emittedElementFilePath: normalizeProjectPath(entry.emittedElementLocation.filePath),
-        placementFilePath: entry.placementLocation
-          ? normalizeProjectPath(entry.placementLocation.filePath)
-          : undefined,
-      },
+function anchorsEqual(left: SourceAnchor, right: SourceAnchor): boolean {
+  return (
+    normalizeProjectPath(left.filePath) === normalizeProjectPath(right.filePath) &&
+    left.startLine === right.startLine &&
+    left.startColumn === right.startColumn &&
+    (left.endLine ?? 0) === (right.endLine ?? 0) &&
+    (left.endColumn ?? 0) === (right.endColumn ?? 0)
+  );
+}
+
+function anchorSpan(anchor: SourceAnchor): number {
+  return (
+    ((anchor.endLine ?? anchor.startLine) - anchor.startLine) * 100000 +
+    ((anchor.endColumn ?? anchor.startColumn) - anchor.startColumn)
+  );
+}
+
+function serializeClassNameComponentIds(record: Record<string, string> | undefined): string {
+  if (!record) {
+    return "";
+  }
+
+  return Object.entries(record)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([className, componentId]) => `${className}=${componentId}`)
+    .join(",");
+}
+
+function shouldProjectCanonicalClassExpression(expression: CanonicalClassExpression): boolean {
+  if (expression.classExpressionSiteKind === "css-module-member") {
+    return false;
+  }
+
+  return (
+    expression.tokens.some((token) => token.tokenKind !== "css-module-export") ||
+    expression.unsupported.some((reason) => reason.kind !== "unsupported-css-module-access")
+  );
+}
+
+function toEmissionSiteClassExpressionSummary(
+  emissionSite: EmissionSite,
+  expression: CanonicalClassExpression,
+): ClassExpressionSummary {
+  const globalTokens = emissionSite.tokens.filter(
+    (token) => token.tokenKind !== "css-module-export",
+  );
+  const definite = globalTokens
+    .filter((token) => token.presence === "always")
+    .map((token) => token.token);
+  const possible = [
+    ...globalTokens.filter((token) => token.presence !== "always").map((token) => token.token),
+    ...emissionSite.emissionVariants.flatMap((variant) => variant.tokens),
+  ].filter((token) => !definite.includes(token));
+  const mutuallyExclusiveGroups = collectMutuallyExclusiveGroups(globalTokens);
+  const unknownDynamic = emissionSite.unsupported.length > 0;
+
+  return {
+    sourceAnchor: normalizeAnchor(emissionSite.sourceLocation),
+    value: {
+      kind: "class-set",
+      definite: uniqueSorted(definite),
+      possible: uniqueSorted(possible),
+      ...(mutuallyExclusiveGroups.length > 0 ? { mutuallyExclusiveGroups } : {}),
+      unknownDynamic,
+      ...(unknownDynamic
+        ? { reason: "render structure emission site has partial class tokens" }
+        : {}),
     },
-  ];
-}
-
-export function buildStaticallySkippedClassReferenceTraces(
-  entry: SkippedRenderClassExpressionEntry,
-): AnalysisTrace[] {
-  return [
-    {
-      traceId: `render-expansion:statically-skipped-class-reference:${normalizeProjectPath(entry.classExpression.sourceAnchor.filePath)}:${entry.classExpression.sourceAnchor.startLine}:${entry.classExpression.sourceAnchor.startColumn}`,
-      category: "render-expansion",
-      summary: "class reference was collected from a render branch that static analysis skipped",
-      anchor: normalizeAnchor(entry.emittedElementLocation),
-      children: [...entry.classExpression.traces],
-      metadata: {
-        renderSubtreeId: entry.renderSubtreeId,
-        componentId: entry.suppliedByComponentId ?? entry.emittedByComponentId,
-        suppliedByComponentId: entry.suppliedByComponentId,
-        emittedByComponentId: entry.emittedByComponentId,
-        classNameComponentIds: entry.classNameComponentIds,
-        conditionSourceText: entry.skippedBranch.conditionSourceText,
-        skippedBranch: entry.skippedBranch.skippedBranch,
-        skippedReason: entry.skippedBranch.reason,
-      },
+    classes: {
+      definite: uniqueSorted(definite),
+      possible: uniqueSorted(possible),
+      mutuallyExclusiveGroups,
+      unknownDynamic,
+      derivedFrom: emissionSite.tokenProvenance.map((provenance) => ({
+        ...(provenance.sourceLocation
+          ? { sourceAnchor: normalizeAnchor(provenance.sourceLocation) }
+          : {}),
+        description: `class token "${provenance.token}" emitted by render structure`,
+      })),
     },
-  ];
+    classNameSourceAnchors: buildClassNameSourceAnchors(emissionSite),
+    sourceText: expression.rawExpressionText,
+    traces: [...emissionSite.traces, ...expression.traces],
+  };
 }
 
-export function buildCanonicalClassReferenceTraces(input: {
+function collectMutuallyExclusiveGroups(tokens: EmissionSite["tokens"]): string[][] {
+  const tokensByGroup = new Map<string, string[]>();
+  for (const token of tokens) {
+    if (!token.exclusiveGroupId) {
+      continue;
+    }
+    const groupTokens = tokensByGroup.get(token.exclusiveGroupId) ?? [];
+    groupTokens.push(token.token);
+    tokensByGroup.set(token.exclusiveGroupId, groupTokens);
+  }
+
+  return [...tokensByGroup.values()]
+    .map(uniqueSorted)
+    .filter((groupTokens) => groupTokens.length > 1)
+    .sort((left, right) => left.join("\0").localeCompare(right.join("\0")));
+}
+
+function buildClassNameSourceAnchors(
+  emissionSite: EmissionSite,
+): Record<string, SourceAnchor> | undefined {
+  const anchors: Record<string, SourceAnchor> = {};
+  for (const provenance of emissionSite.tokenProvenance) {
+    if (provenance.sourceLocation) {
+      anchors[provenance.token] = normalizeAnchor(provenance.sourceLocation);
+    }
+  }
+
+  return Object.keys(anchors).length > 0 ? anchors : undefined;
+}
+
+function uniqueSorted(values: string[]): string[] {
+  return [...new Set(values)].sort((left, right) => left.localeCompare(right));
+}
+
+function isExpressionInsideSkippedCondition(
+  expression: CanonicalClassExpression,
+  skippedConditions: StaticallySkippedPlacementCondition[],
+): boolean {
+  return skippedConditions.some((condition) =>
+    sourceAnchorContains(condition.sourceLocation, expression.location),
+  );
+}
+
+function isStaticallySkippedCondition(
+  condition: PlacementCondition,
+): condition is StaticallySkippedPlacementCondition {
+  return (
+    condition.kind === "statically-skipped-branch" &&
+    Boolean(condition.sourceLocation) &&
+    Boolean(condition.branch) &&
+    (condition.reason === "condition-resolved-true" ||
+      condition.reason === "condition-resolved-false" ||
+      condition.reason === "expression-resolved-nullish")
+  );
+}
+
+function buildCanonicalClassReferenceTraces(input: {
   expression: CanonicalClassExpression;
   classExpression: ClassExpressionSummary;
-  renderEntry?: RenderClassExpressionEntry;
+  origin: ClassReferenceAnalysis["origin"];
 }): AnalysisTrace[] {
-  const isRuntimeDom = input.expression.classExpressionSiteKind === "runtime-dom-class";
-  const anchor = normalizeAnchor(
-    input.renderEntry?.emittedElementLocation ?? input.expression.location,
-  );
-
+  const traceOrigin = input.origin === "runtime-dom" ? "runtime DOM" : "symbolic render";
   return [
     {
-      traceId: `${isRuntimeDom ? "runtime-dom" : "symbolic-evaluation"}:class-reference:${normalizeProjectPath(input.expression.location.filePath)}:${input.expression.location.startLine}:${input.expression.location.startColumn}`,
-      category: isRuntimeDom ? "value-evaluation" : "render-expansion",
-      summary: isRuntimeDom
-        ? "runtime DOM class reference was projected from symbolic evaluation"
-        : "class reference was projected from symbolic evaluation",
-      anchor,
+      traceId: `${input.origin}:class-reference:${normalizeProjectPath(input.expression.location.filePath)}:${input.expression.location.startLine}:${input.expression.location.startColumn}`,
+      category: "value-evaluation",
+      summary: `${traceOrigin} class reference was projected from symbolic evaluation`,
+      anchor: normalizeAnchor(input.expression.location),
       children: [...input.classExpression.traces],
       metadata: {
-        origin: isRuntimeDom ? "runtime-dom" : "render-ir",
+        origin: input.origin,
         expressionId: input.expression.id,
         classExpressionSiteNodeId: input.expression.classExpressionSiteNodeId,
-        renderSubtreeId: input.renderEntry?.renderSubtreeId,
-        componentId:
-          input.renderEntry?.suppliedByComponentId ?? input.renderEntry?.emittedByComponentId,
         sourceFilePath: normalizeProjectPath(input.expression.filePath),
       },
     },
@@ -982,6 +714,30 @@ function buildEmissionSiteClassReferenceTraces(input: {
   ];
 }
 
+function buildStaticallySkippedClassReferenceTraces(input: {
+  condition: PlacementCondition;
+  expression: CanonicalClassExpression;
+  classExpression: ClassExpressionSummary;
+  componentId?: ProjectAnalysisId;
+}): AnalysisTrace[] {
+  return [
+    {
+      traceId: `render-structure:statically-skipped-class-reference:${normalizeProjectPath(input.expression.location.filePath)}:${input.expression.location.startLine}:${input.expression.location.startColumn}`,
+      category: "render-expansion",
+      summary: "class reference was projected from a render branch that static analysis skipped",
+      anchor: normalizeAnchor(input.expression.location),
+      children: [...input.classExpression.traces],
+      metadata: {
+        conditionId: input.condition.id,
+        componentId: input.componentId,
+        conditionSourceText: input.condition.sourceText,
+        skippedBranch: input.condition.branch,
+        skippedReason: input.condition.reason,
+      },
+    },
+  ];
+}
+
 function sortEmissionSites(emissionSites: EmissionSite[]): EmissionSite[] {
   return [...emissionSites].sort(compareEmissionSites);
 }
@@ -997,188 +753,60 @@ function compareEmissionSites(left: EmissionSite, right: EmissionSite): number {
   );
 }
 
-function projectComponentNodeId(
-  componentNodeId: string | undefined,
-  input: {
-    factGraph: ProjectAnalysisBuildInput["factGraph"];
-    indexes: ProjectAnalysisIndexes;
-  },
-): ProjectAnalysisId | undefined {
-  if (!componentNodeId) {
-    return undefined;
-  }
-
-  const componentNode = input.factGraph?.graph.indexes.nodesById.get(componentNodeId);
-  if (componentNode?.kind === "component") {
-    return input.indexes.componentIdByComponentKey.get(componentNode.componentKey);
-  }
-
-  return undefined;
+function compareCanonicalClassExpressions(
+  left: CanonicalClassExpression,
+  right: CanonicalClassExpression,
+): number {
+  return compareAnchors(left.location, right.location) || left.id.localeCompare(right.id);
 }
 
-function buildEmissionClassNameComponentIds(input: {
-  emissionSite: EmissionSite;
-  factGraph: ProjectAnalysisBuildInput["factGraph"];
-  indexes: ProjectAnalysisIndexes;
-}): Record<string, ProjectAnalysisId> | undefined {
-  const componentIdsByClassName: Record<string, ProjectAnalysisId> = {};
-
-  for (const provenance of input.emissionSite.tokenProvenance) {
-    const componentId = projectComponentNodeId(provenance.suppliedByComponentNodeId, input);
-    if (componentId) {
-      componentIdsByClassName[provenance.token] = componentId;
-    }
-  }
-
-  return Object.keys(componentIdsByClassName).length > 0 ? componentIdsByClassName : undefined;
-}
-
-function serializeClassNameComponentIds(record: Record<string, string> | undefined): string {
-  if (!record) {
-    return "";
-  }
-
-  return Object.entries(record)
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([className, componentId]) => `${className}=${componentId}`)
-    .join(",");
-}
-
-function shouldProjectCanonicalClassExpression(expression: CanonicalClassExpression): boolean {
-  if (expression.classExpressionSiteKind === "css-module-member") {
-    return false;
-  }
-
+function comparePlacementConditions(left: PlacementCondition, right: PlacementCondition): number {
   return (
-    expression.tokens.some((token) => token.tokenKind !== "css-module-export") ||
-    expression.unsupported.some((reason) => reason.kind !== "unsupported-css-module-access")
+    compareOptionalAnchors(left.sourceLocation, right.sourceLocation) ||
+    left.id.localeCompare(right.id)
   );
 }
 
-function shouldUseSymbolicClassExpressionForRenderEntry(
-  symbolicClassExpression: ClassExpressionSummary,
-  renderEntry: RenderClassExpressionEntry,
-): boolean {
-  const symbolicClassNames = new Set([
-    ...symbolicClassExpression.classes.definite,
-    ...symbolicClassExpression.classes.possible,
-  ]);
-  const renderClassNames = [
-    ...renderEntry.classExpression.classes.definite,
-    ...renderEntry.classExpression.classes.possible,
-  ];
+function compareOptionalAnchors(
+  left: SourceAnchor | undefined,
+  right: SourceAnchor | undefined,
+): number {
+  if (left && right) {
+    return compareAnchors(left, right);
+  }
 
-  return renderClassNames.every((className) => symbolicClassNames.has(className));
+  if (left) {
+    return -1;
+  }
+
+  if (right) {
+    return 1;
+  }
+
+  return 0;
 }
 
-function createClassExpressionAnchorKey(classExpression: ClassExpressionSummary): string {
-  return createAnchorKey(classExpression.sourceAnchor);
+function sourceAnchorContains(containing: SourceAnchor, contained: SourceAnchor): boolean {
+  const containingPath = normalizeProjectPath(containing.filePath);
+  const containedPath = normalizeProjectPath(contained.filePath);
+  if (containingPath !== containedPath) {
+    return false;
+  }
+
+  const containingStart = toAnchorPositionValue(containing.startLine, containing.startColumn);
+  const containingEnd = toAnchorPositionValue(
+    containing.endLine ?? containing.startLine,
+    containing.endColumn ?? containing.startColumn,
+  );
+  const containedStart = toAnchorPositionValue(contained.startLine, contained.startColumn);
+  const containedEnd = toAnchorPositionValue(
+    contained.endLine ?? contained.startLine,
+    contained.endColumn ?? contained.startColumn,
+  );
+
+  return containingStart <= containedStart && containingEnd >= containedEnd;
 }
 
-function createAnchorKey(sourceAnchor: SourceAnchor): string {
-  const anchor = normalizeAnchor(sourceAnchor);
-  return [
-    anchor.filePath,
-    anchor.startLine,
-    anchor.startColumn,
-    anchor.endLine ?? "",
-    anchor.endColumn ?? "",
-  ].join(":");
-}
-
-export function visitRenderNode(
-  node: RenderNode,
-  inheritedPlacementLocation: SourceAnchor | undefined,
-  inheritedExpansion: NonNullable<RenderNode["expandedFromComponentReference"]> | undefined,
-  visitElement: (
-    node: RenderElementNode | RenderComponentReferenceNode,
-    inheritedPlacementLocation: SourceAnchor | undefined,
-    inheritedExpansion: NonNullable<RenderNode["expandedFromComponentReference"]> | undefined,
-  ) => void,
-): void {
-  const placementLocation = node.placementAnchor ?? inheritedPlacementLocation;
-  const expansion = node.expandedFromComponentReference ?? inheritedExpansion;
-
-  if (node.kind === "element") {
-    visitElement(node, inheritedPlacementLocation, expansion);
-    for (const child of node.children) {
-      visitRenderNode(child, placementLocation, expansion, visitElement);
-    }
-    return;
-  }
-
-  if (node.kind === "component-reference") {
-    visitElement(node, inheritedPlacementLocation, expansion);
-    return;
-  }
-
-  if (node.kind === "fragment") {
-    for (const child of node.children) {
-      visitRenderNode(child, placementLocation, expansion, visitElement);
-    }
-    return;
-  }
-
-  if (node.kind === "conditional") {
-    visitRenderNode(node.whenTrue, placementLocation, expansion, visitElement);
-    visitRenderNode(node.whenFalse, placementLocation, expansion, visitElement);
-    return;
-  }
-
-  if (node.kind === "repeated-region") {
-    visitRenderNode(node.template, placementLocation, expansion, visitElement);
-  }
-}
-
-export function visitStaticallySkippedBranches(
-  node: RenderNode,
-  inheritedPlacementLocation: SourceAnchor | undefined,
-  inheritedExpansion: NonNullable<RenderNode["expandedFromComponentReference"]> | undefined,
-  visitSkippedBranch: (
-    skippedBranch: NonNullable<RenderNode["staticallySkippedBranches"]>[number],
-    inheritedPlacementLocation: SourceAnchor | undefined,
-    inheritedExpansion: NonNullable<RenderNode["expandedFromComponentReference"]> | undefined,
-  ) => void,
-): void {
-  const placementLocation = node.placementAnchor ?? inheritedPlacementLocation;
-  const expansion = node.expandedFromComponentReference ?? inheritedExpansion;
-
-  for (const skippedBranch of node.staticallySkippedBranches ?? []) {
-    visitSkippedBranch(skippedBranch, placementLocation, expansion);
-    visitStaticallySkippedBranches(
-      skippedBranch.node,
-      placementLocation,
-      expansion,
-      visitSkippedBranch,
-    );
-  }
-
-  if (node.kind === "element") {
-    for (const child of node.children) {
-      visitStaticallySkippedBranches(child, placementLocation, expansion, visitSkippedBranch);
-    }
-    return;
-  }
-
-  if (node.kind === "fragment") {
-    for (const child of node.children) {
-      visitStaticallySkippedBranches(child, placementLocation, expansion, visitSkippedBranch);
-    }
-    return;
-  }
-
-  if (node.kind === "conditional") {
-    visitStaticallySkippedBranches(node.whenTrue, placementLocation, expansion, visitSkippedBranch);
-    visitStaticallySkippedBranches(
-      node.whenFalse,
-      placementLocation,
-      expansion,
-      visitSkippedBranch,
-    );
-    return;
-  }
-
-  if (node.kind === "repeated-region") {
-    visitStaticallySkippedBranches(node.template, placementLocation, expansion, visitSkippedBranch);
-  }
+function toAnchorPositionValue(line: number, column: number): number {
+  return line * 1_000_000 + column;
 }

@@ -1,5 +1,7 @@
 import { graphToReactRenderSyntaxInputs } from "../../fact-graph/index.js";
 import { buildLegacyRenderArtifacts } from "../../render-model/buildLegacyRenderArtifacts.js";
+import { conditionId, tokenAlternativeId } from "../../symbolic-evaluation/ids.js";
+import { tokenizeClassNames } from "../../symbolic-evaluation/class-values/classValueOperations.js";
 import {
   emissionSiteId,
   placementConditionId,
@@ -15,6 +17,7 @@ import type {
   RenderNode,
   RenderSubtree,
 } from "../../render-model/render-ir/index.js";
+import type { RenderModelClassExpressionSummaryRecord } from "../../render-model/render-ir/class-expressions/classExpressionSummaries.js";
 import type {
   RenderCertainty,
   EmissionSite,
@@ -53,6 +56,10 @@ type ProjectionAccumulator = {
   rootBoundaryIdByComponentKey: Map<string, string>;
   rootBoundaryIdBySubtreeKey: Map<string, string>;
   componentNodeIdByComponentKey: Map<string, string>;
+  legacyClassSummaryRecordBySummary: Map<
+    ClassExpressionSummary,
+    RenderModelClassExpressionSummaryRecord
+  >;
   symbolicExpressions: SymbolicExpressionLookup;
 };
 
@@ -69,6 +76,7 @@ type TraversalContext = {
 };
 
 type SymbolicExpressionLookup = {
+  all: CanonicalClassExpression[];
   byId: Map<string, CanonicalClassExpression>;
   bySiteNodeId: Map<string, CanonicalClassExpression>;
   byExpressionNodeId: Map<string, CanonicalClassExpression[]>;
@@ -113,6 +121,9 @@ export function projectLegacyRenderModel(input: RenderStructureInput): {
     rootBoundaryIdByComponentKey: new Map(),
     rootBoundaryIdBySubtreeKey: new Map(),
     componentNodeIdByComponentKey: input.graph.indexes.componentNodeIdByComponentKey,
+    legacyClassSummaryRecordBySummary: new Map(
+      legacyModel.classExpressionSummaries.map((record) => [record.summary, record]),
+    ),
     symbolicExpressions: buildSymbolicExpressionLookup(input),
   };
 
@@ -245,6 +256,8 @@ function projectNode(input: {
   accumulator: ProjectionAccumulator;
   context: TraversalContext;
 }): string[] {
+  projectStaticallySkippedBranches(input);
+
   if (input.node.expandedFromComponentReference) {
     return projectExpandedComponentBoundary(input);
   }
@@ -313,22 +326,6 @@ function projectNode(input: {
       confidence: "medium",
       traces: input.node.traces ?? [],
     });
-    for (const skippedBranch of input.node.staticallySkippedBranches ?? []) {
-      addPlacementCondition(input.accumulator, {
-        id: placementConditionId({
-          conditionKind: "statically-skipped-branch",
-          key: `${input.context.boundaryId}:${skippedBranch.skippedBranch}:${skippedBranch.reason}:${skippedBranch.conditionSourceText}:${anchorKey(skippedBranch.sourceAnchor)}`,
-        }),
-        kind: "statically-skipped-branch",
-        sourceText: skippedBranch.conditionSourceText,
-        sourceLocation: normalizeAnchor(skippedBranch.sourceAnchor),
-        branch: skippedBranch.skippedBranch,
-        reason: skippedBranch.reason,
-        certainty: "definite",
-        confidence: "high",
-        traces: [],
-      });
-    }
     return [
       ...projectNode({
         node: input.node.whenTrue,
@@ -471,6 +468,29 @@ function projectNode(input: {
   }
 
   return [];
+}
+
+function projectStaticallySkippedBranches(input: {
+  node: RenderNode;
+  accumulator: ProjectionAccumulator;
+  context: TraversalContext;
+}): void {
+  for (const skippedBranch of input.node.staticallySkippedBranches ?? []) {
+    addPlacementCondition(input.accumulator, {
+      id: placementConditionId({
+        conditionKind: "statically-skipped-branch",
+        key: `${input.context.boundaryId}:${skippedBranch.skippedBranch}:${skippedBranch.reason}:${skippedBranch.conditionSourceText}:${anchorKey(skippedBranch.sourceAnchor)}`,
+      }),
+      kind: "statically-skipped-branch",
+      sourceText: skippedBranch.conditionSourceText,
+      sourceLocation: normalizeAnchor(skippedBranch.sourceAnchor),
+      branch: skippedBranch.skippedBranch,
+      reason: skippedBranch.reason,
+      certainty: "definite",
+      confidence: "high",
+      traces: [],
+    });
+  }
 }
 
 function projectExpandedComponentBoundary(input: {
@@ -641,6 +661,7 @@ function projectUnresolvedComponentBoundary(input: {
       accumulator: input.accumulator,
       classExpression: input.node.className,
       boundaryId,
+      emittedElementLocation: input.node.sourceAnchor,
       placementLocation: input.node.placementAnchor,
       context: {
         ...input.context,
@@ -751,10 +772,19 @@ function projectEmissionSite(input: {
   context: TraversalContext;
   emissionKind: EmissionSite["emissionKind"];
 }): void {
-  const symbolicExpression = findSymbolicExpressionForClassSummary(
-    input.accumulator.symbolicExpressions,
+  const summaryRecord = input.accumulator.legacyClassSummaryRecordBySummary.get(
     input.classExpression,
   );
+  const classExpressionLocation = summaryRecord?.location ?? input.classExpression.sourceAnchor;
+  const symbolicExpression =
+    findSymbolicExpressionForClassSummaryLocation(
+      input.accumulator.symbolicExpressions,
+      classExpressionLocation,
+    ) ??
+    findSymbolicExpressionForClassSummaryTokenAnchors(
+      input.accumulator.symbolicExpressions,
+      input.classExpression,
+    );
   if (!symbolicExpression) {
     return;
   }
@@ -798,11 +828,13 @@ function projectEmissionSite(input: {
       : {}),
     ...(resolveSuppliedByComponentNodeId({
       symbolicExpression,
+      classExpression: input.classExpression,
       context: input.context,
     })
       ? {
           suppliedByComponentNodeId: resolveSuppliedByComponentNodeId({
             symbolicExpression,
+            classExpression: input.classExpression,
             context: input.context,
           }),
         }
@@ -812,37 +844,49 @@ function projectEmissionSite(input: {
       : {}),
     tokenProvenance: [],
     tokens: [],
-    emissionVariants: [...symbolicExpression.emissionVariants].sort((left, right) =>
-      left.id.localeCompare(right.id),
-    ),
+    emissionVariants: buildEmissionVariantsFromSummary({
+      classExpression: input.classExpression,
+      symbolicExpression,
+    }),
     externalContributions: [...symbolicExpression.externalContributions].sort((left, right) =>
       left.id.localeCompare(right.id),
     ),
     cssModuleContributions: [...symbolicExpression.cssModuleContributions].sort((left, right) =>
       left.id.localeCompare(right.id),
     ),
-    unsupported: [...symbolicExpression.unsupported].sort((left, right) =>
-      left.id.localeCompare(right.id),
-    ),
-    confidence: symbolicExpression.confidence,
+    unsupported: hasReliableClassSummary(input.classExpression)
+      ? []
+      : [...symbolicExpression.unsupported].sort((left, right) => left.id.localeCompare(right.id)),
+    confidence: getEmissionSiteConfidence(input.classExpression, symbolicExpression),
     renderPathId: path.id,
     placementConditionIds: input.context.placementConditionIds,
     traces: symbolicExpression.traces,
   };
   const suppliedByComponentNodeId = resolveSuppliedByComponentNodeId({
     symbolicExpression,
+    classExpression: input.classExpression,
     context: input.context,
+  });
+  const summaryTokens = buildSummaryTokenAlternatives({
+    classExpression: input.classExpression,
+    symbolicExpression,
+    lookup: input.accumulator.symbolicExpressions,
   });
   const instantiatedExternalTokens = instantiateExternalContributionTokens({
     symbolicExpression,
     summary: input.classExpression,
     suppliedByComponentNodeId,
   });
-  const tokens = sortTokens([...symbolicExpression.tokens, ...instantiatedExternalTokens]);
+  const tokens = mergeTokenAlternatives([
+    ...symbolicExpression.tokens,
+    ...summaryTokens,
+    ...instantiatedExternalTokens,
+  ]);
   emissionSite.tokens = tokens;
   emissionSite.tokenProvenance = buildTokenProvenanceFromTokens({
     tokens,
     expression: symbolicExpression,
+    lookup: input.accumulator.symbolicExpressions,
     emittedByComponentNodeId: input.context.emittingComponentNodeId,
     suppliedByComponentNodeId,
   });
@@ -862,16 +906,30 @@ function projectEmissionSite(input: {
 
 function resolveSuppliedByComponentNodeId(input: {
   symbolicExpression: CanonicalClassExpression;
+  classExpression: ClassExpressionSummary;
   context: TraversalContext;
 }): string | undefined {
   if (
-    input.symbolicExpression.externalContributions.length > 0 &&
-    input.context.externalSupplierComponentNodeId
+    input.context.externalSupplierComponentNodeId &&
+    (input.symbolicExpression.externalContributions.length > 0 ||
+      hasExternallyAnchoredSummaryToken(input.classExpression, input.symbolicExpression))
   ) {
     return input.context.externalSupplierComponentNodeId;
   }
 
   return input.symbolicExpression.emittingComponentNodeId;
+}
+
+function hasExternallyAnchoredSummaryToken(
+  classExpression: ClassExpressionSummary,
+  symbolicExpression: CanonicalClassExpression,
+): boolean {
+  const anchors = Object.values(classExpression.classNameSourceAnchors ?? {}).map(normalizeAnchor);
+  return anchors.some(
+    (anchor) =>
+      normalizeProjectPath(anchor.filePath) !== normalizeProjectPath(symbolicExpression.filePath) ||
+      !sourceAnchorContains(symbolicExpression.location, anchor),
+  );
 }
 
 function instantiateExternalContributionTokens(input: {
@@ -925,7 +983,211 @@ function instantiateExternalContributionTokens(input: {
   return instantiated;
 }
 
+function buildSummaryTokenAlternatives(input: {
+  classExpression: ClassExpressionSummary;
+  symbolicExpression: CanonicalClassExpression;
+  lookup: SymbolicExpressionLookup;
+}): TokenAlternative[] {
+  if (input.symbolicExpression.cssModuleContributions.length > 0) {
+    return [];
+  }
+
+  const existingTokens = new Set(input.symbolicExpression.tokens.map((token) => token.token));
+  const alwaysConditionId = conditionId({
+    expressionId: input.symbolicExpression.id,
+    conditionKey: "always",
+  });
+  const possibleConditionId = conditionId({
+    expressionId: input.symbolicExpression.id,
+    conditionKey: "possible",
+  });
+  const sourceAnchorByToken = input.classExpression.classNameSourceAnchors ?? {};
+  const tokens: TokenAlternative[] = [];
+  const pushSummaryToken = (token: string, presence: "always" | "possible") => {
+    if (existingTokens.has(token)) {
+      return;
+    }
+
+    existingTokens.add(token);
+    const sourceAnchor = sourceAnchorByToken[token] ?? input.classExpression.sourceAnchor;
+    const sourceExpression = findSymbolicExpressionByAnchor(input.lookup, sourceAnchor);
+    tokens.push({
+      id: tokenAlternativeId({
+        expressionId: input.symbolicExpression.id,
+        token,
+        index: input.symbolicExpression.tokens.length + tokens.length,
+      }),
+      token,
+      tokenKind:
+        sourceExpression && sourceExpression.id !== input.symbolicExpression.id
+          ? "external-class"
+          : "global-class",
+      presence,
+      conditionId: presence === "always" ? alwaysConditionId : possibleConditionId,
+      ...(findExclusiveGroupId(input.symbolicExpression.id, input.classExpression, token)
+        ? {
+            exclusiveGroupId: findExclusiveGroupId(
+              input.symbolicExpression.id,
+              input.classExpression,
+              token,
+            ),
+          }
+        : {}),
+      sourceAnchor: normalizeAnchor(sourceAnchor),
+      confidence: presence === "always" ? "high" : "medium",
+    });
+  };
+
+  for (const token of input.classExpression.classes.definite) {
+    pushSummaryToken(token, "always");
+  }
+
+  for (const token of input.classExpression.classes.possible) {
+    pushSummaryToken(token, "possible");
+  }
+
+  return sortTokens(tokens);
+}
+
+function buildEmissionVariantsFromSummary(input: {
+  classExpression: ClassExpressionSummary;
+  symbolicExpression: CanonicalClassExpression;
+}): EmissionSite["emissionVariants"] {
+  const symbolicVariants = [...input.symbolicExpression.emissionVariants].sort((left, right) =>
+    left.id.localeCompare(right.id),
+  );
+  const summaryVariants = buildSummaryEmissionVariants(input);
+  if (summaryVariants.length === 0) {
+    return symbolicVariants;
+  }
+
+  return [...symbolicVariants, ...summaryVariants].sort((left, right) =>
+    left.id.localeCompare(right.id),
+  );
+}
+
+function buildSummaryEmissionVariants(input: {
+  classExpression: ClassExpressionSummary;
+  symbolicExpression: CanonicalClassExpression;
+}): EmissionSite["emissionVariants"] {
+  const alwaysConditionId = conditionId({
+    expressionId: input.symbolicExpression.id,
+    conditionKey: "always",
+  });
+  const value = input.classExpression.value;
+  if (value.kind === "string-exact") {
+    return [
+      {
+        id: `${input.symbolicExpression.id}:summary-variant:0`,
+        conditionId: alwaysConditionId,
+        tokens: tokenizeClassNames(value.value),
+        completeness: "complete",
+        unknownDynamic: false,
+      },
+    ];
+  }
+
+  if (value.kind === "string-set") {
+    return value.values.map((candidate, index) => ({
+      id: `${input.symbolicExpression.id}:summary-variant:${index}`,
+      conditionId: alwaysConditionId,
+      tokens: tokenizeClassNames(candidate),
+      completeness: "complete",
+      unknownDynamic: false,
+    }));
+  }
+
+  if (value.kind !== "class-set") {
+    return [];
+  }
+
+  const tokens = uniqueSorted([...value.definite, ...value.possible]);
+  if (tokens.length === 0) {
+    return [];
+  }
+
+  return [
+    {
+      id: `${input.symbolicExpression.id}:summary-variant:0`,
+      conditionId: alwaysConditionId,
+      tokens,
+      completeness: value.possible.length === 0 && !value.unknownDynamic ? "complete" : "partial",
+      unknownDynamic: value.unknownDynamic || value.possible.length > 0,
+    },
+  ];
+}
+
+function mergeTokenAlternatives(tokens: TokenAlternative[]): TokenAlternative[] {
+  const mergedByToken = new Map<string, TokenAlternative>();
+  for (const token of tokens) {
+    const key = `${token.tokenKind}:${token.token}`;
+    const existing = mergedByToken.get(key);
+    if (!existing || comparePresence(token.presence, existing.presence) < 0) {
+      mergedByToken.set(key, token);
+    }
+  }
+
+  return sortTokens([...mergedByToken.values()]);
+}
+
+function comparePresence(
+  left: TokenAlternative["presence"],
+  right: TokenAlternative["presence"],
+): number {
+  return presenceRank(left) - presenceRank(right);
+}
+
+function presenceRank(presence: TokenAlternative["presence"]): number {
+  if (presence === "always") {
+    return 0;
+  }
+
+  if (presence === "conditional") {
+    return 1;
+  }
+
+  return 2;
+}
+
+function findExclusiveGroupId(
+  expressionId: string,
+  classExpression: ClassExpressionSummary,
+  token: string,
+): string | undefined {
+  const groupIndex = classExpression.classes.mutuallyExclusiveGroups.findIndex((group) =>
+    group.includes(token),
+  );
+  if (groupIndex < 0) {
+    return undefined;
+  }
+
+  return `${expressionId}:summary-exclusive-group:${groupIndex}`;
+}
+
+function hasReliableClassSummary(classExpression: ClassExpressionSummary): boolean {
+  return (
+    (classExpression.classes.definite.length > 0 || classExpression.classes.possible.length > 0) &&
+    !classExpression.classes.unknownDynamic
+  );
+}
+
+function getEmissionSiteConfidence(
+  classExpression: ClassExpressionSummary,
+  symbolicExpression: CanonicalClassExpression,
+): CanonicalClassExpression["confidence"] {
+  if (hasReliableClassSummary(classExpression)) {
+    return "high";
+  }
+
+  if (classExpression.classes.definite.length > 0 || classExpression.classes.possible.length > 0) {
+    return "medium";
+  }
+
+  return symbolicExpression.confidence;
+}
+
 function buildSymbolicExpressionLookup(input: RenderStructureInput): SymbolicExpressionLookup {
+  const all: CanonicalClassExpression[] = [];
   const byId = new Map<string, CanonicalClassExpression>();
   const bySiteNodeId = new Map<string, CanonicalClassExpression>();
   const byExpressionNodeId = new Map<string, CanonicalClassExpression[]>();
@@ -939,6 +1201,7 @@ function buildSymbolicExpressionLookup(input: RenderStructureInput): SymbolicExp
   }
 
   for (const expression of input.symbolicEvaluation.evaluatedExpressions.classExpressions) {
+    all.push(expression);
     byId.set(expression.id, expression);
     bySiteNodeId.set(expression.classExpressionSiteNodeId, expression);
     pushMapValue(byExpressionNodeId, expression.expressionNodeId, expression);
@@ -949,6 +1212,7 @@ function buildSymbolicExpressionLookup(input: RenderStructureInput): SymbolicExp
   sortLookupValues(byAnchor);
 
   return {
+    all: all.sort(compareCanonicalClassExpressions),
     byId,
     bySiteNodeId,
     byExpressionNodeId,
@@ -958,11 +1222,11 @@ function buildSymbolicExpressionLookup(input: RenderStructureInput): SymbolicExp
   };
 }
 
-function findSymbolicExpressionForClassSummary(
+function findSymbolicExpressionForClassSummaryLocation(
   lookup: SymbolicExpressionLookup,
-  classExpression: ClassExpressionSummary,
+  classExpressionLocation: SourceAnchor,
 ): CanonicalClassExpression | undefined {
-  const sourceAnchorKey = anchorKey(classExpression.sourceAnchor);
+  const sourceAnchorKey = anchorKey(classExpressionLocation);
   const siteNodeId = lookup.siteNodeIdByAnchor.get(sourceAnchorKey);
   if (siteNodeId) {
     const expression = lookup.bySiteNodeId.get(siteNodeId);
@@ -983,28 +1247,78 @@ function findSymbolicExpressionForClassSummary(
   return lookup.byAnchor.get(sourceAnchorKey)?.[0];
 }
 
+function findSymbolicExpressionForClassSummaryTokenAnchors(
+  lookup: SymbolicExpressionLookup,
+  classExpression: ClassExpressionSummary,
+): CanonicalClassExpression | undefined {
+  const tokenAnchors = Object.values(classExpression.classNameSourceAnchors ?? {}).sort(
+    compareAnchors,
+  );
+  const containingCandidates: CanonicalClassExpression[] = [];
+  const exactCandidates: CanonicalClassExpression[] = [];
+
+  for (const tokenAnchor of tokenAnchors) {
+    const exact = findSymbolicExpressionForClassSummaryLocation(lookup, tokenAnchor);
+    if (exact) {
+      exactCandidates.push(exact);
+    }
+
+    containingCandidates.push(
+      ...lookup.all.filter(
+        (expression) =>
+          !anchorsEqual(expression.location, tokenAnchor) &&
+          sourceAnchorContains(expression.location, tokenAnchor),
+      ),
+    );
+  }
+
+  return (
+    sortContainingExpressions(containingCandidates)[0] ??
+    exactCandidates.sort(compareCanonicalClassExpressions)[0]
+  );
+}
+
+function findSymbolicExpressionByAnchor(
+  lookup: SymbolicExpressionLookup,
+  anchor: SourceAnchor,
+): CanonicalClassExpression | undefined {
+  return lookup.byAnchor.get(anchorKey(anchor))?.[0];
+}
+
 function buildTokenProvenanceFromTokens(input: {
   tokens: TokenAlternative[];
   expression: CanonicalClassExpression;
+  lookup: SymbolicExpressionLookup;
   emittedByComponentNodeId?: string;
   suppliedByComponentNodeId?: string;
 }): EmissionTokenProvenance[] {
-  return sortTokens(input.tokens).map((token) => ({
-    token: token.token,
-    tokenKind: token.tokenKind,
-    presence: token.presence,
-    sourceExpressionId: input.expression.id,
-    sourceClassExpressionSiteNodeId: input.expression.classExpressionSiteNodeId,
-    ...(token.sourceAnchor ? { sourceLocation: normalizeAnchor(token.sourceAnchor) } : {}),
-    ...(input.suppliedByComponentNodeId
-      ? { suppliedByComponentNodeId: input.suppliedByComponentNodeId }
-      : {}),
-    ...(input.emittedByComponentNodeId
-      ? { emittedByComponentNodeId: input.emittedByComponentNodeId }
-      : {}),
-    conditionId: token.conditionId,
-    confidence: token.confidence,
-  }));
+  return sortTokens(input.tokens).map((token) => {
+    const sourceExpression = token.sourceAnchor
+      ? findSymbolicExpressionByAnchor(input.lookup, token.sourceAnchor)
+      : undefined;
+    const suppliedByComponentNodeId =
+      sourceExpression && sourceExpression.id !== input.expression.id
+        ? sourceExpression.emittingComponentNodeId
+        : token.tokenKind === "external-class"
+          ? input.suppliedByComponentNodeId
+          : undefined;
+
+    return {
+      token: token.token,
+      tokenKind: token.tokenKind,
+      presence: token.presence,
+      sourceExpressionId: sourceExpression?.id ?? input.expression.id,
+      sourceClassExpressionSiteNodeId:
+        sourceExpression?.classExpressionSiteNodeId ?? input.expression.classExpressionSiteNodeId,
+      ...(token.sourceAnchor ? { sourceLocation: normalizeAnchor(token.sourceAnchor) } : {}),
+      ...(suppliedByComponentNodeId ? { suppliedByComponentNodeId } : {}),
+      ...(input.emittedByComponentNodeId
+        ? { emittedByComponentNodeId: input.emittedByComponentNodeId }
+        : {}),
+      conditionId: token.conditionId,
+      confidence: token.confidence,
+    };
+  });
 }
 
 function sortTokens(tokens: TokenAlternative[]): TokenAlternative[] {
@@ -1034,6 +1348,27 @@ function sortLookupValues(map: Map<string, CanonicalClassExpression[]>): void {
       ),
     );
   }
+}
+
+function sortContainingExpressions(
+  expressions: CanonicalClassExpression[],
+): CanonicalClassExpression[] {
+  return [...new Map(expressions.map((expression) => [expression.id, expression])).values()].sort(
+    (left, right) =>
+      anchorSpan(left.location) - anchorSpan(right.location) ||
+      compareCanonicalClassExpressions(left, right),
+  );
+}
+
+function compareCanonicalClassExpressions(
+  left: CanonicalClassExpression,
+  right: CanonicalClassExpression,
+): number {
+  return (
+    compareAnchors(left.location, right.location) ||
+    left.id.localeCompare(right.id) ||
+    left.rawExpressionText.localeCompare(right.rawExpressionText)
+  );
 }
 
 function projectComponentsFromBoundaries(input: {
@@ -1320,6 +1655,42 @@ function compareAnchors(left: SourceAnchor, right: SourceAnchor): number {
     (left.endLine ?? 0) - (right.endLine ?? 0) ||
     (left.endColumn ?? 0) - (right.endColumn ?? 0)
   );
+}
+
+function anchorsEqual(left: SourceAnchor, right: SourceAnchor): boolean {
+  return compareAnchors(left, right) === 0;
+}
+
+function sourceAnchorContains(containing: SourceAnchor, contained: SourceAnchor): boolean {
+  const containingPath = normalizeProjectPath(containing.filePath);
+  const containedPath = normalizeProjectPath(contained.filePath);
+  if (containingPath !== containedPath) {
+    return false;
+  }
+
+  const containingStart = anchorPosition(containing.startLine, containing.startColumn);
+  const containingEnd = anchorPosition(
+    containing.endLine ?? containing.startLine,
+    containing.endColumn ?? containing.startColumn,
+  );
+  const containedStart = anchorPosition(contained.startLine, contained.startColumn);
+  const containedEnd = anchorPosition(
+    contained.endLine ?? contained.startLine,
+    contained.endColumn ?? contained.startColumn,
+  );
+
+  return containingStart <= containedStart && containingEnd >= containedEnd;
+}
+
+function anchorSpan(anchor: SourceAnchor): number {
+  return (
+    anchorPosition(anchor.endLine ?? anchor.startLine, anchor.endColumn ?? anchor.startColumn) -
+    anchorPosition(anchor.startLine, anchor.startColumn)
+  );
+}
+
+function anchorPosition(line: number, column: number): number {
+  return line * 1_000_000 + column;
 }
 
 function createSubtreeKey(subtree: RenderSubtree, index: number): string {
