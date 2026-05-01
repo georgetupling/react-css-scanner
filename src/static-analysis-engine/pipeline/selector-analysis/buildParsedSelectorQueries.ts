@@ -1,5 +1,10 @@
 import type { ExtractedSelectorQuery, ParsedSelectorQuery } from "./types.js";
 import type { AnalysisTrace } from "../../types/analysis.js";
+import type {
+  SelectorBranchRequirement,
+  SelectorReachabilityResult,
+} from "../selector-reachability/index.js";
+import { selectorBranchSourceKey } from "../selector-reachability/index.js";
 import {
   buildSelectorParseNotes,
   parseSelectorBranches,
@@ -12,11 +17,34 @@ const UNSUPPORTED_SELECTOR_REASON =
 
 export function buildParsedSelectorQueries(
   selectorQueries: ExtractedSelectorQuery[],
-  options: { includeTraces?: boolean } = {},
+  options: { includeTraces?: boolean; selectorReachability?: SelectorReachabilityResult } = {},
 ): ParsedSelectorQuery[] {
   const includeTraces = options.includeTraces ?? true;
   return selectorQueries.map((selectorQuery) => {
     const normalizedSelectorText = selectorQuery.selectorText.trim().replace(/\s+/g, " ");
+    const stageRequirement = getSelectorReachabilityRequirement({
+      selectorQuery,
+      normalizedSelectorText,
+      selectorReachability: options.selectorReachability,
+    });
+    if (stageRequirement) {
+      const normalizedSelector = normalizedSelectorFromRequirement(stageRequirement);
+      const constraint = selectorConstraintFromRequirement(stageRequirement, includeTraces);
+      const parseTraces = includeTraces
+        ? collectSelectorParseTraces(normalizedSelector, constraint)
+        : [];
+
+      return {
+        selectorText: selectorQuery.selectorText,
+        source: selectorQuery.source,
+        normalizedSelectorText,
+        normalizedSelector,
+        parseNotes: stageRequirement.parseNotes,
+        parseTraces,
+        constraint,
+      };
+    }
+
     const parsedBranches = parseSelectorBranches(normalizedSelectorText);
     const normalizedSelector =
       parsedBranches.length === 1
@@ -54,6 +82,91 @@ export function buildParsedSelectorQueries(
       constraint,
     };
   });
+}
+
+function getSelectorReachabilityRequirement(input: {
+  selectorQuery: ExtractedSelectorQuery;
+  normalizedSelectorText: string;
+  selectorReachability?: SelectorReachabilityResult;
+}): SelectorBranchRequirement | undefined {
+  if (!input.selectorReachability || input.selectorQuery.source.kind !== "css-source") {
+    return undefined;
+  }
+
+  return input.selectorReachability.indexes.branchReachabilityBySourceKey.get(
+    selectorBranchSourceKey({
+      ruleKey: input.selectorQuery.source.ruleKey,
+      branchIndex: input.selectorQuery.source.branchIndex,
+      selectorText: input.normalizedSelectorText,
+      location: input.selectorQuery.source.selectorAnchor,
+    }),
+  )?.requirement;
+}
+
+function normalizedSelectorFromRequirement(
+  requirement: SelectorBranchRequirement,
+): ParsedSelectorQuery["normalizedSelector"] {
+  if (requirement.kind === "unsupported") {
+    return {
+      kind: "unsupported",
+      reason: requirement.reason,
+      traces: requirement.traces,
+    };
+  }
+
+  return {
+    kind: "selector-chain",
+    steps: requirement.normalizedSteps.map((step) => ({
+      combinatorFromPrevious: step.combinatorFromPrevious,
+      selector: {
+        kind: "class-only",
+        requiredClasses: step.requiredClasses,
+      },
+    })),
+  };
+}
+
+function selectorConstraintFromRequirement(
+  requirement: SelectorBranchRequirement,
+  includeTraces: boolean,
+): ParsedSelectorQuery["constraint"] {
+  if (requirement.kind === "unsupported") {
+    return {
+      kind: "unsupported",
+      reason: requirement.reason,
+      traces: includeTraces ? requirement.traces : [],
+    };
+  }
+
+  if (requirement.kind === "same-node-class-conjunction") {
+    return {
+      kind: "same-node-class-conjunction",
+      classNames: requirement.classNames,
+    };
+  }
+
+  if (requirement.kind === "ancestor-descendant") {
+    return {
+      kind: "ancestor-descendant",
+      ancestorClassName: requirement.ancestorClassName,
+      subjectClassName: requirement.subjectClassName,
+    };
+  }
+
+  if (requirement.kind === "parent-child") {
+    return {
+      kind: "parent-child",
+      parentClassName: requirement.parentClassName,
+      childClassName: requirement.childClassName,
+    };
+  }
+
+  return {
+    kind: "sibling",
+    relation: requirement.relation,
+    leftClassName: requirement.leftClassName,
+    rightClassName: requirement.rightClassName,
+  };
 }
 
 function collectSelectorParseTraces(

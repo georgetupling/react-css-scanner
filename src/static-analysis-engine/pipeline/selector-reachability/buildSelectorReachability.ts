@@ -1,15 +1,19 @@
-import { parseSelectorBranch } from "../../libraries/selector-parsing/index.js";
+import { parseSelectorBranch } from "../../libraries/selector-parsing/parseSelectorBranch.js";
 import type { RenderStructureResult } from "../render-structure/index.js";
 import { getBranchConfidence, getBranchStatus } from "./branchStatus.js";
 import { buildDiagnostics } from "./diagnostics.js";
 import { buildIndexes, compareSelectorBranches } from "./indexes.js";
 import { buildSelectorRenderMatchIndexes } from "./renderMatchIndexes.js";
+import { projectSelectorBranchRequirement } from "./selectorRequirements.js";
 import {
   buildElementMatchesForClassNames,
   buildSubjectBranchMatches,
   getCandidateElementIds,
 } from "./subjectMatches.js";
-import { buildStructuralMatches, projectStructuralConstraint } from "./structuralMatches.js";
+import {
+  buildStructuralMatches,
+  projectStructuralConstraintFromRequirement,
+} from "./structuralMatches.js";
 import type {
   SelectorBranchMatch,
   SelectorBranchReachability,
@@ -30,13 +34,12 @@ export function buildSelectorReachability(
 
   for (const branch of [...input.graph.nodes.selectorBranches].sort(compareSelectorBranches)) {
     const parsedBranch = parseSelectorBranch(branch.selectorText);
-    const structuralConstraint = parsedBranch
-      ? projectStructuralConstraint(parsedBranch)
-      : undefined;
+    const requirement = projectSelectorBranchRequirement(parsedBranch, { includeTraces: true });
+    const structuralConstraint = projectStructuralConstraintFromRequirement(requirement);
     const branchDiagnostics = buildDiagnostics({
       branch,
       parsedBranch,
-      structuralConstraint,
+      requirement,
     });
     diagnostics.push(...branchDiagnostics);
 
@@ -89,6 +92,7 @@ export function buildSelectorReachability(
       branchIndex: branch.branchIndex,
       branchCount: branch.branchCount,
       ruleKey: branch.ruleKey,
+      requirement,
       subject: {
         requiredClassNames: uniqueSorted(branch.subjectClassNames),
         unsupportedParts: branchDiagnostics.map((diagnostic) => ({

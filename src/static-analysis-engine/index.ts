@@ -290,9 +290,12 @@ export type {
 } from "./pipeline/selector-analysis/index.js";
 export type {
   SelectorBranchMatch,
+  SelectorBranchRequirement,
   SelectorBranchReachability,
   SelectorElementMatch,
   SelectorMatchCertainty,
+  SelectorRequirementCombinator,
+  SelectorRequirementStep,
   SelectorReachabilityDiagnostic,
   SelectorReachabilityResult,
   SelectorReachabilityStatus,

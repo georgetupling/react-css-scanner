@@ -1,13 +1,12 @@
 import type { ParsedSelectorBranch } from "../../libraries/selector-parsing/index.js";
 import type { SelectorBranchNode } from "../fact-graph/index.js";
 import { selectorReachabilityDiagnosticId } from "./ids.js";
-import type { StructuralConstraint } from "./structuralMatches.js";
-import type { SelectorReachabilityDiagnostic } from "./types.js";
+import type { SelectorBranchRequirement, SelectorReachabilityDiagnostic } from "./types.js";
 
 export function buildDiagnostics(input: {
   branch: SelectorBranchNode;
   parsedBranch: ParsedSelectorBranch | undefined;
-  structuralConstraint: StructuralConstraint | undefined;
+  requirement: SelectorBranchRequirement;
 }): SelectorReachabilityDiagnostic[] {
   const unsupportedReason = getUnsupportedSelectorReason(input);
   if (!unsupportedReason) {
@@ -33,8 +32,12 @@ export function buildDiagnostics(input: {
 function getUnsupportedSelectorReason(input: {
   branch: SelectorBranchNode;
   parsedBranch: ParsedSelectorBranch | undefined;
-  structuralConstraint: StructuralConstraint | undefined;
+  requirement: SelectorBranchRequirement;
 }): string | undefined {
+  if (input.requirement.kind === "unsupported") {
+    return input.requirement.reason;
+  }
+
   const parsedBranch = input.parsedBranch;
   if (!parsedBranch) {
     return "selector branch could not be parsed for bounded selector reachability";
@@ -58,10 +61,6 @@ function getUnsupportedSelectorReason(input: {
 
   if (parsedBranch.steps.length !== 2) {
     return "selector branch has more structural steps than bounded selector reachability supports";
-  }
-
-  if (!input.structuralConstraint) {
-    return "selector branch has a structural shape outside bounded selector reachability";
   }
 
   return undefined;

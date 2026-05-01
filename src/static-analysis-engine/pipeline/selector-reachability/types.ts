@@ -48,6 +48,7 @@ export type SelectorBranchReachability = {
   branchIndex: number;
   branchCount: number;
   ruleKey: string;
+  requirement: SelectorBranchRequirement;
   subject: SelectorSubjectRequirement;
   status: SelectorReachabilityStatus;
   confidence: AnalysisConfidence;
@@ -55,6 +56,59 @@ export type SelectorBranchReachability = {
   diagnosticIds: SelectorReachabilityDiagnosticId[];
   location?: SourceAnchor;
   traces: AnalysisTrace[];
+};
+
+export type SelectorBranchRequirement =
+  | {
+      kind: "same-node-class-conjunction";
+      classNames: string[];
+      normalizedSteps: SelectorRequirementStep[];
+      parseNotes: string[];
+      traces: AnalysisTrace[];
+    }
+  | {
+      kind: "ancestor-descendant";
+      ancestorClassName: string;
+      subjectClassName: string;
+      normalizedSteps: SelectorRequirementStep[];
+      parseNotes: string[];
+      traces: AnalysisTrace[];
+    }
+  | {
+      kind: "parent-child";
+      parentClassName: string;
+      childClassName: string;
+      normalizedSteps: SelectorRequirementStep[];
+      parseNotes: string[];
+      traces: AnalysisTrace[];
+    }
+  | {
+      kind: "sibling";
+      relation: "adjacent" | "general";
+      leftClassName: string;
+      rightClassName: string;
+      normalizedSteps: SelectorRequirementStep[];
+      parseNotes: string[];
+      traces: AnalysisTrace[];
+    }
+  | {
+      kind: "unsupported";
+      reason: string;
+      parseNotes: string[];
+      traces: AnalysisTrace[];
+    };
+
+export type SelectorRequirementCombinator =
+  | "descendant"
+  | "child"
+  | "adjacent-sibling"
+  | "general-sibling"
+  | "same-node"
+  | null;
+
+export type SelectorRequirementStep = {
+  combinatorFromPrevious: SelectorRequirementCombinator;
+  requiredClasses: string[];
 };
 
 export type SelectorSubjectRequirement = {

@@ -44,6 +44,19 @@ test("selector reachability matches same-element compound class selectors", asyn
   const branch = findBranch(result, ".button.button--primary");
 
   assert.equal(branch.status, "definitely-matchable");
+  assert.deepEqual(branch.requirement, {
+    kind: "same-node-class-conjunction",
+    classNames: ["button", "button--primary"],
+    normalizedSteps: [
+      { combinatorFromPrevious: null, requiredClasses: ["button"] },
+      { combinatorFromPrevious: "same-node", requiredClasses: ["button--primary"] },
+    ],
+    parseNotes: [
+      "normalized selector into a same-node class conjunction",
+      "required classes: button, button--primary",
+    ],
+    traces: [],
+  });
   assert.equal(branch.matchIds.length, 1);
 
   const match = result.indexes.matchById.get(branch.matchIds[0]);
@@ -95,6 +108,11 @@ test("selector reachability matches descendant selectors across nested elements"
   const branch = findBranch(result, ".card .title");
 
   assert.equal(branch.status, "definitely-matchable");
+  assert.equal(branch.requirement.kind, "ancestor-descendant");
+  assert.deepEqual(branch.requirement.normalizedSteps, [
+    { combinatorFromPrevious: null, requiredClasses: ["card"] },
+    { combinatorFromPrevious: "descendant", requiredClasses: ["title"] },
+  ]);
   assert.equal(branch.matchIds.length, 1);
 
   const match = result.indexes.matchById.get(branch.matchIds[0]);
@@ -155,6 +173,7 @@ test("selector reachability marks type-qualified selector branches unsupported",
   const branch = findBranch(result, "h2.title");
 
   assert.equal(branch.status, "unsupported");
+  assert.equal(branch.requirement.kind, "unsupported");
   assert.deepEqual(branch.matchIds, []);
   assert.equal(branch.diagnosticIds.length, 1);
 });

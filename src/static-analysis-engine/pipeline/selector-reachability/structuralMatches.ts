@@ -1,7 +1,3 @@
-import type {
-  ParsedSelectorBranch,
-  SelectorStepCombinator,
-} from "../../libraries/selector-parsing/index.js";
 import type { SelectorBranchNode } from "../fact-graph/index.js";
 import type { RenderStructureResult } from "../render-structure/index.js";
 import { selectorBranchMatchId } from "./ids.js";
@@ -10,44 +6,46 @@ import {
   getCandidateElementIds,
   type SelectorRenderMatchIndexes,
 } from "./subjectMatches.js";
-import type { SelectorBranchMatch, SelectorElementMatch } from "./types.js";
+import type {
+  SelectorBranchMatch,
+  SelectorBranchRequirement,
+  SelectorElementMatch,
+} from "./types.js";
 import { uniqueSorted } from "./utils.js";
 
 export type StructuralConstraint = {
-  combinator: Exclude<SelectorStepCombinator, null>;
+  combinator: "descendant" | "child" | "adjacent-sibling" | "general-sibling";
   leftClassName: string;
   rightClassName: string;
 };
 
-export function projectStructuralConstraint(
-  parsedBranch: ParsedSelectorBranch,
+export function projectStructuralConstraintFromRequirement(
+  requirement: SelectorBranchRequirement,
 ): StructuralConstraint | undefined {
-  if (parsedBranch.steps.length !== 2) {
-    return undefined;
+  if (requirement.kind === "ancestor-descendant") {
+    return {
+      combinator: "descendant",
+      leftClassName: requirement.ancestorClassName,
+      rightClassName: requirement.subjectClassName,
+    };
   }
 
-  const [leftStep, rightStep] = parsedBranch.steps;
-  const combinator = rightStep.combinatorFromPrevious;
-  if (
-    combinator !== "descendant" &&
-    combinator !== "child" &&
-    combinator !== "adjacent-sibling" &&
-    combinator !== "general-sibling"
-  ) {
-    return undefined;
+  if (requirement.kind === "parent-child") {
+    return {
+      combinator: "child",
+      leftClassName: requirement.parentClassName,
+      rightClassName: requirement.childClassName,
+    };
   }
 
-  if (
-    leftStep.selector.requiredClasses.length !== 1 ||
-    rightStep.selector.requiredClasses.length !== 1
-  ) {
+  if (requirement.kind !== "sibling") {
     return undefined;
   }
 
   return {
-    combinator,
-    leftClassName: leftStep.selector.requiredClasses[0],
-    rightClassName: rightStep.selector.requiredClasses[0],
+    combinator: requirement.relation === "adjacent" ? "adjacent-sibling" : "general-sibling",
+    leftClassName: requirement.leftClassName,
+    rightClassName: requirement.rightClassName,
   };
 }
 

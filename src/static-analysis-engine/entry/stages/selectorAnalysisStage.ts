@@ -31,6 +31,7 @@ export function runSelectorAnalysisStage(input: {
     }),
     {
       includeTraces: input.includeTraces,
+      selectorReachability: input.selectorReachability,
     },
   );
 
