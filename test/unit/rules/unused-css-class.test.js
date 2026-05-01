@@ -715,52 +715,46 @@ test("unused-css-class preserves local class aliases declared inside mapped rend
   }
 });
 
-test(
-  "unused-css-class should scan JSX literals passed into side-effect setters",
-  {
-    skip: "known gap: render extraction currently starts at returned JSX and render props/children",
-  },
-  async () => {
-    const project = await new TestProjectBuilder()
-      .withSourceFile(
-        "src/WorldLayout.tsx",
-        [
-          'import "./WorldLayout.css";',
-          "function useAppChrome() { return { setTopBar(_node) {} }; }",
-          "export function WorldLayout() {",
-          "  const { setTopBar } = useAppChrome();",
-          "  setTopBar(",
-          '    <section className="world-layout__subnav-shell">',
-          '      <div className="world-layout__subnav-shell-inner" />',
-          "    </section>,",
-          "  );",
-          "  return null;",
-          "}",
-          "",
-        ].join("\n"),
-      )
-      .withCssFile(
-        "src/WorldLayout.css",
-        [
-          ".world-layout__subnav-shell { display: block; }",
-          ".world-layout__subnav-shell-inner { max-width: 80rem; }",
-          "",
-        ].join("\n"),
-      )
-      .build();
+test("unused-css-class should scan JSX literals passed into side-effect setters", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/WorldLayout.tsx",
+      [
+        'import "./WorldLayout.css";',
+        "function useAppChrome() { return { setTopBar(_node) {} }; }",
+        "export function WorldLayout() {",
+        "  const { setTopBar } = useAppChrome();",
+        "  setTopBar(",
+        '    <section className="world-layout__subnav-shell">',
+        '      <div className="world-layout__subnav-shell-inner" />',
+        "    </section>,",
+        "  );",
+        "  return null;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile(
+      "src/WorldLayout.css",
+      [
+        ".world-layout__subnav-shell { display: block; }",
+        ".world-layout__subnav-shell-inner { max-width: 80rem; }",
+        "",
+      ].join("\n"),
+    )
+    .build();
 
-    try {
-      const result = await scanProject({ rootDir: project.rootDir });
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
 
-      assertNoClassFindings(result, "unused-css-class", [
-        "world-layout__subnav-shell",
-        "world-layout__subnav-shell-inner",
-      ]);
-    } finally {
-      await project.cleanup();
-    }
-  },
-);
+    assertNoClassFindings(result, "unused-css-class", [
+      "world-layout__subnav-shell",
+      "world-layout__subnav-shell-inner",
+    ]);
+  } finally {
+    await project.cleanup();
+  }
+});
 
 test("unused-css-class treats finite template literal variants through helpers as used", async () => {
   const project = await new TestProjectBuilder()

@@ -61,6 +61,21 @@ export function buildNativeRenderStructure(
   const componentById = new Map(
     input.graph.nodes.components.map((node) => [node.id, node] as const),
   );
+  const componentNodesByName = new Map<
+    string,
+    Array<RenderStructureInput["graph"]["nodes"]["components"][number]>
+  >();
+  for (const componentNode of input.graph.nodes.components) {
+    const existing = componentNodesByName.get(componentNode.componentName) ?? [];
+    existing.push(componentNode);
+    componentNodesByName.set(componentNode.componentName, existing);
+  }
+  for (const [componentName, componentNodes] of componentNodesByName.entries()) {
+    componentNodesByName.set(
+      componentName,
+      [...componentNodes].sort((left, right) => left.id.localeCompare(right.id)),
+    );
+  }
   const boundaryById = new Map<string, RenderedComponentBoundary>();
   const renderSitesById = new Map(
     input.graph.nodes.renderSites.map((site) => [site.id, site] as const),
@@ -142,6 +157,7 @@ export function buildNativeRenderStructure(
   const expansionState: ExpansionState = {
     input,
     componentById,
+    componentNodesByName,
     boundaryById,
     renderSitesById,
     templatesByRenderSiteId,

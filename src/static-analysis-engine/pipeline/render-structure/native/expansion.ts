@@ -38,6 +38,10 @@ export type ExpandContext = {
 export type ExpansionState = {
   input: RenderStructureInput;
   componentById: Map<string, RenderStructureInput["graph"]["nodes"]["components"][number]>;
+  componentNodesByName: Map<
+    string,
+    Array<RenderStructureInput["graph"]["nodes"]["components"][number]>
+  >;
   boundaryById: Map<string, RenderedComponentBoundary>;
   renderSitesById: Map<string, RenderStructureInput["graph"]["nodes"]["renderSites"][number]>;
   templatesByRenderSiteId: Map<string, RenderStructureInput["graph"]["nodes"]["elementTemplates"]>;
@@ -457,13 +461,14 @@ function projectComponentTemplate(
   ];
   const fromComponentNodeId = context.renderSite.emittingComponentNodeId ?? context.componentNodeId;
   const targetName = template.name.split(".").at(-1) ?? template.name;
-  const target =
+  let target =
     (template.resolvedComponentNodeId
       ? state.componentById.get(template.resolvedComponentNodeId)
       : undefined) ??
     (state.renderEdgesByFromComponentNodeId.get(fromComponentNodeId) ?? [])
       .map((edge) => state.componentById.get(edge.to))
       .find((candidate) => candidate?.componentName === targetName);
+  let resolvedHeuristically = false;
 
   const createBoundary = (
     kind: "expanded-component-reference" | "unresolved-component-reference",
@@ -548,6 +553,27 @@ function projectComponentTemplate(
   };
 
   if (!target) {
+    const heuristicTarget = resolveHeuristicComponentTarget({
+      state,
+      targetName,
+      sourceFilePath: template.filePath,
+    });
+    if (heuristicTarget) {
+      target = heuristicTarget;
+      resolvedHeuristically = true;
+      state.diagnostics.push(
+        buildDiagnostic({
+          code: "heuristic-component-reference-match",
+          message: `heuristically matched unresolved component reference "${targetName}" to "${heuristicTarget.componentName}" by unique name`,
+          filePath: template.filePath,
+          location: template.location,
+          renderSiteNodeId: context.renderSite.id,
+        }),
+      );
+    }
+  }
+
+  if (!target) {
     const boundary = createBoundary(
       "unresolved-component-reference",
       { status: "unresolved", reason: `unresolved component reference: ${targetName}` },
@@ -629,12 +655,18 @@ function projectComponentTemplate(
     return { rendersSuppliedChildren: false, renderedPropNames: [] };
   }
 
+  const boundaryCertainty = resolvedHeuristically ? "unknown" : "definite";
   const boundary = createBoundary(
     "expanded-component-reference",
-    { status: "expanded", reason: "fact-graph render edge expansion" },
-    "definite",
+    {
+      status: "expanded",
+      reason: resolvedHeuristically
+        ? "heuristic unique-name expansion"
+        : "fact-graph render edge expansion",
+    },
+    boundaryCertainty,
   );
-  pushEdge("resolved", "definite", target.componentName, { toComponent: target });
+  pushEdge("resolved", boundaryCertainty, target.componentName, { toComponent: target });
 
   const rootSites = state.rootRenderSitesByComponentNodeId.get(target.id) ?? [];
   const rootElementIds: string[] = [];
@@ -657,7 +689,7 @@ function projectComponentTemplate(
       renderExpressionDepth: context.renderExpressionDepth + 1,
       rootElementIds,
       placementConditionIds: context.placementConditionIds,
-      certainty: context.certainty,
+      certainty: boundaryCertainty === "unknown" ? "unknown" : context.certainty,
     });
   }
   boundary.rootElementIds = uniqueSorted(rootElementIds);
@@ -665,6 +697,45 @@ function projectComponentTemplate(
     rendersSuppliedChildren: target.rendersChildrenProp === true,
     renderedPropNames: [...(target.renderedPropNames ?? [])].sort(),
   };
+}
+
+function resolveHeuristicComponentTarget(input: {
+  state: ExpansionState;
+  targetName: string;
+  sourceFilePath: string;
+}): RenderStructureInput["graph"]["nodes"]["components"][number] | undefined {
+  const candidates = input.state.componentNodesByName.get(input.targetName) ?? [];
+  if (candidates.length === 0) {
+    return undefined;
+  }
+  if (candidates.length === 1) {
+    return candidates[0];
+  }
+
+  const sourceSegments = normalizeProjectPath(input.sourceFilePath).split("/");
+  const scoredCandidates = candidates.map((candidate) => ({
+    candidate,
+    score: countCommonPathPrefixSegments(sourceSegments, candidate.filePath.split("/")),
+  }));
+  const maxScore = Math.max(...scoredCandidates.map((entry) => entry.score));
+  const topCandidates = scoredCandidates
+    .filter((entry) => entry.score === maxScore)
+    .map((entry) => entry.candidate)
+    .sort((left, right) => left.id.localeCompare(right.id));
+
+  return topCandidates.length === 1 ? topCandidates[0] : undefined;
+}
+
+function countCommonPathPrefixSegments(left: string[], right: string[]): number {
+  const maxLength = Math.min(left.length, right.length);
+  let count = 0;
+  for (let index = 0; index < maxLength; index += 1) {
+    if (left[index] !== right[index]) {
+      break;
+    }
+    count += 1;
+  }
+  return count;
 }
 
 function createRenderedElementId(input: {

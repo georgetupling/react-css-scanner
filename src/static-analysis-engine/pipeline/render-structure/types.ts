@@ -285,6 +285,7 @@ export type RenderStructureDiagnostic = {
     | "unmodeled-class-expression-site"
     | "unconsumed-component-class-prop"
     | "unresolved-component-reference"
+    | "heuristic-component-reference-match"
     | "component-expansion-cycle"
     | "component-expansion-budget-exceeded"
     | "unsupported-component-props"

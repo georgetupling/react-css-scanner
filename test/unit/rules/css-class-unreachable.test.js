@@ -143,6 +143,85 @@ test("css-class-unreachable treats app-entry imported CSS as reachable from rout
   }
 });
 
+test("css-class-unreachable treats wrapper CSS as reachable from slotted children", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import { Field } from "./Field";',
+        "export function App() {",
+        "  return (",
+        "    <Field>",
+        '      <input className="field__input app__name-input" />',
+        "    </Field>",
+        "  );",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/Field.tsx",
+      [
+        'import "./Field.css";',
+        "export function Field({ children }) {",
+        '  return <label className="field">{children}</label>;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile(
+      "src/Field.css",
+      [".field { display: block; }", ".field__input { display: block; }", ""].join("\n"),
+    )
+    .withCssFile("src/App.css", ".app__name-input { inline-size: 100%; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "css-class-unreachable", ["field__input"]);
+    assertNoClassFindings(result, "missing-css-class", ["field__input"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("css-class-unreachable treats wrapper CSS as reachable from named slot props", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import { Panel } from "./Panel";',
+        "export function App() {",
+        '  return <Panel body={<div className="panel__body app__panel-body" />} />;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/Panel.tsx",
+      [
+        'import "./Panel.css";',
+        "export function Panel({ body }) {",
+        '  return <section className="panel">{body}</section>;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/Panel.css", ".panel__body { padding: 1rem; }\n")
+    .withCssFile("src/App.css", ".app__panel-body { color: rebeccapurple; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "css-class-unreachable", ["panel__body"]);
+    assertNoClassFindings(result, "missing-css-class", ["panel__body"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("css-class-unreachable does not report when one matching definition is reachable", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(

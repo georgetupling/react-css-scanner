@@ -288,19 +288,28 @@ function expandSourceContextsThroughImports(input: {
 }): string[] {
   const expanded = new Set<string>(input.sourceFilePaths);
   const queue = [...input.sourceFilePaths];
+  const importerSourcePathsByImportedSourcePath = new Map<string, string[]>();
+  for (const [importerPath, importedPaths] of input.importedSourcePathsBySourcePath.entries()) {
+    for (const importedPath of importedPaths) {
+      pushMapValue(importerSourcePathsByImportedSourcePath, importedPath, importerPath);
+    }
+  }
 
   while (queue.length > 0) {
     const sourceFilePath = queue.shift();
     if (!sourceFilePath) {
       continue;
     }
-    for (const importedSourcePath of input.importedSourcePathsBySourcePath.get(sourceFilePath) ??
-      []) {
-      if (expanded.has(importedSourcePath)) {
+    const connectedSourcePaths = [
+      ...(input.importedSourcePathsBySourcePath.get(sourceFilePath) ?? []),
+      ...(importerSourcePathsByImportedSourcePath.get(sourceFilePath) ?? []),
+    ].sort((left, right) => left.localeCompare(right));
+    for (const connectedSourcePath of connectedSourcePaths) {
+      if (expanded.has(connectedSourcePath)) {
         continue;
       }
-      expanded.add(importedSourcePath);
-      queue.push(importedSourcePath);
+      expanded.add(connectedSourcePath);
+      queue.push(connectedSourcePath);
     }
   }
 

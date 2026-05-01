@@ -255,7 +255,9 @@ through CSS `@import` is also resolved under `node_modules`, parsed, and treated
 the importing stylesheet. Local CSS `@import` chains also inherit reachability from their importing
 stylesheet. HTML module scripts such as `<script type="module" src="/src/main.tsx">` mark CSS
 imported by that entry source, and local CSS imported from it, as project-wide reachable inside the
-nearest app boundary inferred from the HTML file and script path. Package CSS resolution searches
+nearest app boundary inferred from the HTML file and script path. Local CSS imported by a source file
+is treated as reachable across source modules connected by static imports, so wrapper component CSS
+remains available to callers that render slotted children through that wrapper. Package CSS resolution searches
 upward from the importing file for usable `node_modules` directories, so subdirectory scans can still
 resolve workspace-level packages.
 Remote stylesheet links are fetched only when `externalCss.fetchRemote` is `true`; fetched CSS is
