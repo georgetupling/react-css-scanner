@@ -2574,3 +2574,46 @@ test("unused-css-class treats nested ThemeConsumer/ProductConsumer ternary class
     await project.cleanup();
   }
 });
+
+test("unused-css-class treats function-valued className props as used", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.js",
+      [
+        "import React from 'react';",
+        "import './App.css';",
+        "import { NavLink } from './NavLink';",
+        "export default function App() {",
+        "  return (",
+        "    <NavLink className={({ isActive }) => (isActive ? 'text-primary' : 'text-white hover')}>",
+        "      Products",
+        "    </NavLink>",
+        "  );",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/NavLink.js",
+      [
+        "import React from 'react';",
+        "export function NavLink({ className, children }) {",
+        "  const resolvedClassName = typeof className === 'function' ? className({ isActive: false }) : className;",
+        "  return <a className={resolvedClassName}>{children}</a>;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile(
+      "src/App.css",
+      [".hover:hover { color: #009ffd; }", ".text-primary { color: #009ffd; }", ""].join("\n"),
+    )
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+    assertNoClassFindings(result, "unused-css-class", ["hover"]);
+  } finally {
+    await project.cleanup();
+  }
+});

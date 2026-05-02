@@ -61,7 +61,10 @@ export function createJsxClassExpressionSites(input: {
       continue;
     }
     const expression = unwrapJsxAttributeInitializer(initializer);
-    const anchorNode = expression ?? initializer;
+    const anchorNode =
+      !intrinsicTag && expression
+        ? (unwrapFunctionReturnedExpression(expression) ?? expression)
+        : (expression ?? initializer);
     const location = toSourceAnchor(anchorNode, input.sourceFile, input.filePath);
     const expressionSyntax = collectExpressionSyntaxForNode({
       node: anchorNode,
@@ -92,6 +95,24 @@ export function createJsxClassExpressionSites(input: {
   }
 
   return sites;
+}
+
+function unwrapFunctionReturnedExpression(expression: ts.Expression): ts.Expression | undefined {
+  if (!ts.isArrowFunction(expression) && !ts.isFunctionExpression(expression)) {
+    return undefined;
+  }
+
+  if (!ts.isBlock(expression.body)) {
+    return expression.body;
+  }
+
+  for (const statement of expression.body.statements) {
+    if (ts.isReturnStatement(statement) && statement.expression) {
+      return statement.expression;
+    }
+  }
+
+  return undefined;
 }
 
 export function tryCreateCssModuleClassExpressionSite(input: {
