@@ -76,6 +76,8 @@ function detectClassDeclarationComponent(input: {
     return [];
   }
 
+  const renderMethodNode = getClassRenderMethod(input.statement);
+
   return [
     {
       componentName: input.statement.name!.text,
@@ -84,8 +86,27 @@ function detectClassDeclarationComponent(input: {
       sourceAnchor: toSourceAnchor(input.statement.name!, input.parsedSourceFile, input.filePath),
       evidence: "class-component",
       declarationKind: "class",
+      ...(renderMethodNode ? { renderMethodNode } : {}),
     },
   ];
+}
+
+function getClassRenderMethod(
+  declaration: ts.ClassDeclaration,
+): (ts.MethodDeclaration & { body: ts.Block }) | undefined {
+  for (const member of declaration.members) {
+    if (
+      ts.isMethodDeclaration(member) &&
+      member.name &&
+      ts.isIdentifier(member.name) &&
+      member.name.text === "render" &&
+      member.body
+    ) {
+      return member as ts.MethodDeclaration & { body: ts.Block };
+    }
+  }
+
+  return undefined;
 }
 
 function detectVariableDeclarationComponents(input: {

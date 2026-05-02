@@ -2481,3 +2481,96 @@ test("unused-css-class treats ThemeConsumer ternary class strings as used", asyn
     await project.cleanup();
   }
 });
+
+test("unused-css-class treats nested ThemeConsumer/ProductConsumer ternary classes as used", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/ProductList.js",
+      [
+        "import React from 'react';",
+        "import Product from './Product';",
+        "import Title from './Title';",
+        "import { ProductConsumer } from '../context';",
+        "import { ThemeConsumer } from './context/ThemeContexts';",
+        "class ProductList extends React.Component {",
+        "  render() {",
+        "    return (",
+        "      <ThemeConsumer>",
+        "        {({ theme }) => (",
+        "          <ProductConsumer>",
+        "            {(value) => (",
+        "              value.products.length > 0 ?",
+        "                <div className={theme ? 'py-5 bg-slate-900' : 'py-5 bg-slate-200'}>",
+        '                  <div className="container">',
+        "                    <div>",
+        '                      <Title className="text-light" name="our" title="products" />',
+        '                      <div className="row">',
+        "                        {value.products.map((product) => {",
+        "                          return <Product key={product.id} product={product} />;",
+        "                        })}",
+        "                      </div>",
+        "                    </div>",
+        "                  </div>",
+        "                </div>",
+        "                :",
+        "                <div className={theme ? 'py-5 bg-slate-900' : 'py-5 bg-slate-200'}>",
+        '                  <div className="row">',
+        '                    <div className="col-10 mx-auto text-center text-title text-primary">',
+        "                      <text style={{ color: 'red' }}>Sorry, no results found!</text>",
+        "                    </div>",
+        '                    <div className="col-10 mx-auto text-center text-title text-primary">',
+        "                      <text style={{ color: 'balck' }}>",
+        "                        Please check the spelling or try searching for something else",
+        "                      </text>",
+        "                    </div>",
+        "                  </div>",
+        "                </div>",
+        "            )}",
+        "          </ProductConsumer>",
+        "        )}",
+        "      </ThemeConsumer>",
+        "    );",
+        "  }",
+        "}",
+        "export default ProductList;",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/context/ThemeContexts.js",
+      [
+        "import React from 'react';",
+        "export const ThemeConsumer = ({ children }) => children({ theme: true });",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "context/index.js",
+      [
+        "import React from 'react';",
+        "export const ProductConsumer = ({ children }) => children({ products: [] });",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile("src/Product.js", "export default function Product() { return null; }\n")
+    .withSourceFile("src/Title.js", "export default function Title() { return null; }\n")
+    .withCssFile(
+      "src/App.css",
+      [
+        ".py-5 { padding-top: 3rem; padding-bottom: 3rem; }",
+        ".bg-slate-900 { background-color: #1F2937; }",
+        ".bg-slate-200 { background-color: #e2e8f0; }",
+        "",
+      ].join("\n"),
+    )
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", ["bg-slate-200", "bg-slate-900"]);
+    assertNoClassFindings(result, "missing-css-class", ["bg-slate-200", "bg-slate-900"]);
+  } finally {
+    await project.cleanup();
+  }
+});

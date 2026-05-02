@@ -19,5 +19,6 @@ export type ComponentLikeDefinition = {
     | (ts.FunctionDeclaration & { body: ts.Block })
     | ts.ArrowFunction
     | ts.FunctionExpression;
+  renderMethodNode?: ts.MethodDeclaration & { body: ts.Block };
   referencedComponentName?: string;
 };

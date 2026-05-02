@@ -23,10 +23,15 @@ export function collectReactComponents(input: { filePath: string; sourceFile: ts
     if (definition.functionLikeNode) {
       componentKeyByFunction.set(definition.functionLikeNode, componentKey);
     }
+    if (definition.renderMethodNode) {
+      componentKeyByFunction.set(definition.renderMethodNode, componentKey);
+    }
 
     const renderedPropNames = definition.functionLikeNode
       ? collectRenderedPropNames(definition.functionLikeNode)
-      : [];
+      : definition.renderMethodNode
+        ? collectRenderedPropNames(definition.renderMethodNode)
+        : [];
 
     return {
       componentKey,
@@ -50,7 +55,11 @@ type PropBinding = {
 };
 
 function collectRenderedPropNames(
-  functionLikeNode: ts.FunctionDeclaration | ts.ArrowFunction | ts.FunctionExpression,
+  functionLikeNode:
+    | ts.FunctionDeclaration
+    | ts.ArrowFunction
+    | ts.FunctionExpression
+    | (ts.MethodDeclaration & { body: ts.Block }),
 ): string[] {
   const binding = getPropBinding(functionLikeNode);
   if (!binding || (binding.localNamesByPropName.size === 0 && !binding.propsIdentifier)) {
@@ -73,7 +82,7 @@ function collectRenderedPropNames(
     }
 
     const propName = getReferencedPropName({ node, binding, shadowedNames });
-    if (propName && isRenderPropConsumption({ node, rootBody })) {
+    if (propName && isRenderPropConsumption({ node, propName, rootBody })) {
       renderedPropNames.add(propName);
     }
 
@@ -85,7 +94,11 @@ function collectRenderedPropNames(
 }
 
 function getPropBinding(
-  functionLikeNode: ts.FunctionDeclaration | ts.ArrowFunction | ts.FunctionExpression,
+  functionLikeNode:
+    | ts.FunctionDeclaration
+    | ts.ArrowFunction
+    | ts.FunctionExpression
+    | (ts.MethodDeclaration & { body: ts.Block }),
 ): PropBinding | undefined {
   const [propsParameter] = functionLikeNode.parameters;
   if (!propsParameter) {
@@ -150,7 +163,11 @@ function collectBindingNames(name: ts.BindingName): string[] {
 
 function isNestedFunctionLike(
   node: ts.Node,
-  root: ts.FunctionDeclaration | ts.ArrowFunction | ts.FunctionExpression,
+  root:
+    | ts.FunctionDeclaration
+    | ts.ArrowFunction
+    | ts.FunctionExpression
+    | (ts.MethodDeclaration & { body: ts.Block }),
 ): node is ts.FunctionDeclaration | ts.ArrowFunction | ts.FunctionExpression {
   return (
     node !== root &&
@@ -267,7 +284,14 @@ function isIdentifierInNonReferencePosition(identifier: ts.Identifier): boolean 
   );
 }
 
-function isRenderPropConsumption(input: { node: ts.Node; rootBody: ts.ConciseBody }): boolean {
+function isRenderPropConsumption(input: {
+  node: ts.Node;
+  propName: string;
+  rootBody: ts.ConciseBody;
+}): boolean {
+  if (input.propName === "children" && isDirectChildrenRenderPropCall(input.node)) {
+    return true;
+  }
   if (isWithinKnownChildrenRenderCall(input.node)) {
     return true;
   }
@@ -278,6 +302,11 @@ function isRenderPropConsumption(input: { node: ts.Node; rootBody: ts.ConciseBod
     return true;
   }
   return false;
+}
+
+function isDirectChildrenRenderPropCall(node: ts.Node): boolean {
+  const parent = node.parent;
+  return ts.isCallExpression(parent) && parent.expression === node;
 }
 
 function isWithinJsxChildExpression(node: ts.Node): boolean {
