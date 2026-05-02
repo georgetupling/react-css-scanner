@@ -15,6 +15,8 @@ export type OwnershipInferenceInput = {
 
 export type OwnershipInferenceOptions = {
   sharedCssPatterns?: string[];
+  sharingPolicy?: "strict" | "balanced" | "permissive";
+  rootHtmlEntryLinkedStylesheetPaths?: string[];
   includeTraces?: boolean;
 };
 

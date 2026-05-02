@@ -593,6 +593,29 @@ test("scanProject accepts ownership shared CSS config", async () => {
 
     assert.equal(result.failed, false);
     assert.deepEqual(result.config.ownership.sharedCss, ["src/styles/**/*.css", "src/**/Card.css"]);
+    assert.equal(result.config.ownership.sharingPolicy, "balanced");
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("scanProject accepts ownership sharing policy config", async () => {
+  const project = await new TestProjectBuilder()
+    .withConfig({
+      ownership: {
+        sharingPolicy: "strict",
+      },
+    })
+    .withSourceFile("src/App.tsx", "export function App() { return null; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+    });
+
+    assert.equal(result.failed, false);
+    assert.equal(result.config.ownership.sharingPolicy, "strict");
   } finally {
     await project.cleanup();
   }
@@ -639,6 +662,32 @@ test("scanProject fails on invalid ownership shared CSS config", async () => {
     assert.equal(result.failed, true);
     assert.equal(result.diagnostics[0].code, "config.invalid-ownership-shared-css");
     assert.match(result.diagnostics[0].message, /ownership\.sharedCss must be an array/);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("scanProject fails on invalid ownership sharing policy config", async () => {
+  const project = await new TestProjectBuilder()
+    .withConfig({
+      ownership: {
+        sharingPolicy: "loose",
+      },
+    })
+    .withSourceFile("src/App.tsx", "export function App() { return null; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+    });
+
+    assert.equal(result.failed, true);
+    assert.equal(result.diagnostics[0].code, "config.invalid-ownership-sharing-policy");
+    assert.match(
+      result.diagnostics[0].message,
+      /ownership\.sharingPolicy must be "strict", "balanced", or "permissive"/,
+    );
   } finally {
     await project.cleanup();
   }

@@ -23,6 +23,7 @@ export type ExternalCssConfig = {
 
 export type OwnershipConfig = {
   sharedCss: string[];
+  sharingPolicy: "strict" | "balanced" | "permissive";
 };
 
 export type DiscoveryConfig = {

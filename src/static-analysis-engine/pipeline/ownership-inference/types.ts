@@ -137,6 +137,28 @@ export type OwnershipCandidateReason =
   | "multi-consumer"
   | "unknown";
 
+export type IntentionalSharedEvidenceKind =
+  | "configured-shared-css"
+  | "broad-stylesheet-segment"
+  | "html-entry-linked"
+  | "consumer-same-directory"
+  | "consumer-ancestor-directory"
+  | "generic-family-stylesheet";
+
+export type StylesheetConsumerDirectoryRelation = {
+  stylesheetId: ProjectEvidenceId;
+  consumerComponentId: ProjectEvidenceId;
+  relation:
+    | "same-directory"
+    | "ancestor-directory"
+    | "descendant-directory"
+    | "sibling-directory"
+    | "cousin-directory"
+    | "unknown";
+  stylesheetDirectoryPath?: string;
+  consumerDirectoryPath?: string;
+};
+
 export type StylesheetOwnershipEvidence = {
   id: OwnershipEvidenceId;
   stylesheetId: ProjectEvidenceId;
@@ -145,6 +167,11 @@ export type StylesheetOwnershipEvidence = {
   ownerCandidateIds: OwnershipCandidateId[];
   broadness: StylesheetOwnershipBroadness;
   configuredShared: boolean;
+  sharingPolicy: "strict" | "balanced" | "permissive";
+  intentionalSharedEvidenceKinds: IntentionalSharedEvidenceKind[];
+  consumerDirectoryRelations: StylesheetConsumerDirectoryRelation[];
+  isHtmlEntryLinked: boolean;
+  isIntentionallySharedByPolicy: boolean;
   confidence: AnalysisConfidence;
   traces: AnalysisTrace[];
 };
@@ -215,6 +242,19 @@ export type OwnershipInferenceIndexes = {
   ownerCandidateIdsByStylesheetId: Map<ProjectEvidenceId, OwnershipCandidateId[]>;
   stylesheetOwnershipById: Map<OwnershipEvidenceId, StylesheetOwnershipEvidence>;
   stylesheetOwnershipByStylesheetId: Map<ProjectEvidenceId, StylesheetOwnershipEvidence>;
+  stylesheetIntentionalSharedKindsByStylesheetId: Map<
+    ProjectEvidenceId,
+    IntentionalSharedEvidenceKind[]
+  >;
+  consumerDirectoryRelationsByStylesheetId: Map<
+    ProjectEvidenceId,
+    StylesheetConsumerDirectoryRelation[]
+  >;
+  consumerDirectoryRelationsByComponentId: Map<
+    ProjectEvidenceId,
+    StylesheetConsumerDirectoryRelation[]
+  >;
+  intentionallySharedStylesheetIds: Set<ProjectEvidenceId>;
   classificationById: Map<OwnershipClassificationId, StyleClassificationEvidence>;
   classificationIdsByTargetId: Map<ProjectEvidenceId | FactNodeId, OwnershipClassificationId[]>;
   diagnosticById: Map<OwnershipInferenceDiagnosticId, OwnershipInferenceDiagnostic>;

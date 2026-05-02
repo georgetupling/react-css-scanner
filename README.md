@@ -92,17 +92,26 @@ Important rules:
 - unknown top-level keys are errors
 - unknown rule ids are errors
 
-Current top-level keys:
+### Config reference
 
-- `failOnSeverity`
-- `rules`
-- `cssModules.localsConvention`
-- `externalCss`
-- `ownership.sharedCss`
-- `discovery.sourceRoots`
-- `discovery.exclude`
-- `ignore.classNames`
-- `ignore.filePaths`
+| Key                                     | Allowed values                          | Default            | Notes                                                                  |
+| --------------------------------------- | --------------------------------------- | ------------------ | ---------------------------------------------------------------------- |
+| `failOnSeverity`                        | `debug \| info \| warn \| error`        | `error`            | Findings at or above this severity fail the scan.                      |
+| `rules.<ruleId>`                        | `off \| debug \| info \| warn \| error` | per rule catalogue | Override severity for a specific rule id. Unknown rule ids are errors. |
+| `cssModules.localsConvention`           | `asIs \| camelCase \| camelCaseOnly`    | `camelCase`        | Controls CSS Module export-name normalization.                         |
+| `externalCss.fetchRemote`               | `true \| false`                         | `false`            | Enables fetching remote CSS from HTML links.                           |
+| `externalCss.remoteTimeoutMs`           | positive number                         | `5000`             | Timeout used when `fetchRemote` is enabled.                            |
+| `externalCss.globals[]`                 | array of provider objects               | built-in providers | Optional custom external CSS providers (appended to built-ins).        |
+| `externalCss.globals[].provider`        | non-empty string                        | `n/a`              | Provider label.                                                        |
+| `externalCss.globals[].match[]`         | string globs                            | `[]`               | Stylesheet path/url match patterns for provider activation.            |
+| `externalCss.globals[].classPrefixes[]` | strings                                 | `[]`               | Prefixes this provider satisfies (for example `fa-`).                  |
+| `externalCss.globals[].classNames[]`    | strings                                 | `[]`               | Exact class names this provider satisfies.                             |
+| `ownership.sharedCss[]`                 | non-empty string globs                  | `[]`               | Marks project stylesheet paths as intentionally shared.                |
+| `ownership.sharingPolicy`               | `strict \| balanced \| permissive`      | `balanced`         | Policy for intentional-sharing suppression in ownership checks.        |
+| `discovery.sourceRoots[]`               | non-empty directory paths               | `[]`               | Restricts source discovery to listed project-relative roots.           |
+| `discovery.exclude[]`                   | non-empty glob patterns                 | `[]`               | Additional source discovery exclusions.                                |
+| `ignore.classNames[]`                   | non-empty class names/globs             | `[]`               | Suppresses matching findings after analysis.                           |
+| `ignore.filePaths[]`                    | non-empty project-relative path globs   | `[]`               | Suppresses findings involving matching files.                          |
 
 Minimal example:
 
@@ -115,6 +124,10 @@ Minimal example:
   },
   "cssModules": {
     "localsConvention": "camelCase"
+  },
+  "ownership": {
+    "sharingPolicy": "balanced",
+    "sharedCss": ["src/styles/**/*.css"]
   }
 }
 ```

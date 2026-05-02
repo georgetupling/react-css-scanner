@@ -8,7 +8,7 @@ import type { RuleContext, RuleDefinition, UnresolvedFinding } from "../types.js
 import {
   getClassOwnershipEvidence,
   hasPrivateComponentOwnerEvidence,
-  isIntentionallySharedStylesheetForConsumers,
+  isStylesheetIntentionallySharedByPolicy,
   type RuleClassOwnershipEvidence,
 } from "./ownershipRuleUtils.js";
 
@@ -46,13 +46,7 @@ function runStyleSharedWithoutSharedOwnerRule(context: RuleContext): UnresolvedF
       continue;
     }
 
-    if (
-      isIntentionallySharedStylesheetForConsumers({
-        stylesheetFilePath: stylesheet.filePath,
-        consumerComponentNames: consumerComponents.map((component) => component.componentName),
-        sharedCssPatterns: context.config.ownership.sharedCss,
-      })
-    ) {
+    if (isStylesheetIntentionallySharedByPolicy({ context, stylesheetId: stylesheet.id })) {
       continue;
     }
 

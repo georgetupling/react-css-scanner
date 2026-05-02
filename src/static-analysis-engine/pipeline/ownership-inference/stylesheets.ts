@@ -6,10 +6,12 @@ import {
 import type { ProjectEvidenceAssemblyResult } from "../project-evidence/index.js";
 import type { OwnershipInferenceOptions } from "./buildOwnershipInference.js";
 import type {
+  IntentionalSharedEvidenceKind,
   OwnershipCandidateReason,
   OwnershipInferenceResult,
   StyleClassificationEvidence,
   StyleOwnerCandidate,
+  StylesheetConsumerDirectoryRelation,
   StylesheetOwnershipBroadness,
   StylesheetOwnershipEvidence,
 } from "./types.js";
@@ -42,6 +44,12 @@ export function buildStylesheetOwnership(input: {
   const classifications: StyleClassificationEvidence[] = [];
   const includeTraces = input.options?.includeTraces ?? true;
   const sharedCssPatterns = input.options?.sharedCssPatterns ?? [];
+  const sharingPolicy = input.options?.sharingPolicy ?? "balanced";
+  const rootHtmlEntryLinkedStylesheetPaths = new Set(
+    (input.options?.rootHtmlEntryLinkedStylesheetPaths ?? []).map((filePath) =>
+      normalizeProjectPath(filePath),
+    ),
+  );
 
   for (const stylesheet of input.projectEvidence.entities.stylesheets) {
     const importer = importerEvidence.get(stylesheet.id) ?? {
@@ -99,6 +107,35 @@ export function buildStylesheetOwnership(input: {
     });
     classifications.push(classification);
 
+    const consumerDirectoryRelations = buildConsumerDirectoryRelations({
+      stylesheetId: stylesheet.id,
+      stylesheetFilePath: stylesheet.filePath,
+      importerComponentIds: importer.componentIds,
+      projectEvidence: input.projectEvidence,
+    });
+    const intentionalSharedEvidenceKinds = getIntentionalSharedEvidenceKinds({
+      configuredShared,
+      broadPath,
+      rootHtmlEntryLinkedStylesheetPaths,
+      stylesheetFilePath: stylesheet.filePath,
+      consumerDirectoryRelations,
+      consumerComponentNames: importer.componentIds
+        .map(
+          (componentId) =>
+            input.projectEvidence.indexes.componentsById.get(componentId)?.componentName,
+        )
+        .filter((componentName): componentName is string => Boolean(componentName)),
+    });
+    const isHtmlEntryLinked =
+      stylesheet.filePath !== undefined &&
+      rootHtmlEntryLinkedStylesheetPaths.has(normalizeProjectPath(stylesheet.filePath));
+    const isIntentionallySharedByPolicy = evaluateIntentionallySharedByPolicy({
+      sharingPolicy,
+      intentionalSharedEvidenceKinds,
+      importerComponentCount: importer.componentIds.length,
+      consumerDirectoryRelations,
+    });
+
     stylesheetOwnership.push({
       id: stylesheetOwnershipEvidenceId({ stylesheetId: stylesheet.id }),
       stylesheetId: stylesheet.id,
@@ -109,6 +146,11 @@ export function buildStylesheetOwnership(input: {
       ),
       broadness,
       configuredShared,
+      sharingPolicy,
+      intentionalSharedEvidenceKinds,
+      consumerDirectoryRelations,
+      isHtmlEntryLinked,
+      isIntentionallySharedByPolicy,
       confidence:
         configuredShared || broadPath || importer.componentIds.length === 1 ? "high" : "low",
       traces: includeTraces
@@ -126,6 +168,11 @@ export function buildStylesheetOwnership(input: {
                 broadness,
                 configuredShared,
                 reasons,
+                sharingPolicy,
+                intentionalSharedEvidenceKinds,
+                consumerDirectoryRelations,
+                isHtmlEntryLinked,
+                isIntentionallySharedByPolicy,
               },
             },
           ]
@@ -393,6 +440,149 @@ function getStylesheetClassification(input: {
   }
 }
 
+function buildConsumerDirectoryRelations(input: {
+  stylesheetId: string;
+  stylesheetFilePath: string | undefined;
+  importerComponentIds: string[];
+  projectEvidence: ProjectEvidenceAssemblyResult;
+}): StylesheetConsumerDirectoryRelation[] {
+  if (!input.stylesheetFilePath) {
+    return [];
+  }
+
+  const stylesheetDirectoryPath = getDirectoryPath(input.stylesheetFilePath);
+  const relations: StylesheetConsumerDirectoryRelation[] = [];
+
+  for (const componentId of input.importerComponentIds) {
+    const component = input.projectEvidence.indexes.componentsById.get(componentId);
+    const consumerDirectoryPath = component?.filePath
+      ? getDirectoryPath(component.filePath)
+      : undefined;
+    relations.push({
+      stylesheetId: input.stylesheetId,
+      consumerComponentId: componentId,
+      relation: getDirectoryRelation({
+        stylesheetDirectoryPath,
+        consumerDirectoryPath,
+      }),
+      stylesheetDirectoryPath,
+      consumerDirectoryPath,
+    });
+  }
+
+  return relations.sort((left, right) =>
+    `${left.stylesheetId}:${left.consumerComponentId}:${left.relation}:${left.stylesheetDirectoryPath ?? ""}:${left.consumerDirectoryPath ?? ""}`.localeCompare(
+      `${right.stylesheetId}:${right.consumerComponentId}:${right.relation}:${right.stylesheetDirectoryPath ?? ""}:${right.consumerDirectoryPath ?? ""}`,
+    ),
+  );
+}
+
+function getIntentionalSharedEvidenceKinds(input: {
+  configuredShared: boolean;
+  broadPath: boolean;
+  rootHtmlEntryLinkedStylesheetPaths: Set<string>;
+  stylesheetFilePath: string | undefined;
+  consumerDirectoryRelations: StylesheetConsumerDirectoryRelation[];
+  consumerComponentNames: string[];
+}): IntentionalSharedEvidenceKind[] {
+  const kinds = new Set<IntentionalSharedEvidenceKind>();
+  if (input.configuredShared) {
+    kinds.add("configured-shared-css");
+  }
+  if (input.broadPath) {
+    kinds.add("broad-stylesheet-segment");
+  }
+  if (
+    input.stylesheetFilePath &&
+    input.rootHtmlEntryLinkedStylesheetPaths.has(normalizeProjectPath(input.stylesheetFilePath))
+  ) {
+    kinds.add("html-entry-linked");
+  }
+  if (input.consumerDirectoryRelations.some((relation) => relation.relation === "same-directory")) {
+    kinds.add("consumer-same-directory");
+  }
+  if (
+    input.consumerDirectoryRelations.some((relation) => relation.relation === "ancestor-directory")
+  ) {
+    kinds.add("consumer-ancestor-directory");
+  }
+  if (
+    isGenericFamilyStylesheetForConsumers({
+      stylesheetFilePath: input.stylesheetFilePath,
+      consumerComponentNames: input.consumerComponentNames,
+    })
+  ) {
+    kinds.add("generic-family-stylesheet");
+  }
+  return [...kinds].sort((left, right) => left.localeCompare(right));
+}
+
+function evaluateIntentionallySharedByPolicy(input: {
+  sharingPolicy: "strict" | "balanced" | "permissive";
+  intentionalSharedEvidenceKinds: IntentionalSharedEvidenceKind[];
+  importerComponentCount: number;
+  consumerDirectoryRelations: StylesheetConsumerDirectoryRelation[];
+}): boolean {
+  const evidenceKinds = new Set(input.intentionalSharedEvidenceKinds);
+
+  if (input.sharingPolicy === "permissive") {
+    return input.importerComponentCount !== 1;
+  }
+
+  if (input.sharingPolicy === "strict") {
+    return evidenceKinds.has("configured-shared-css") || evidenceKinds.has("html-entry-linked");
+  }
+
+  const hasDirectoryEvidence =
+    evidenceKinds.has("consumer-same-directory") ||
+    evidenceKinds.has("consumer-ancestor-directory");
+  const allConsumersInAllowedDirectoryScope =
+    input.consumerDirectoryRelations.length > 0 &&
+    input.consumerDirectoryRelations.every(
+      (relation) =>
+        relation.relation === "same-directory" || relation.relation === "ancestor-directory",
+    );
+
+  return (
+    evidenceKinds.has("configured-shared-css") ||
+    evidenceKinds.has("broad-stylesheet-segment") ||
+    evidenceKinds.has("generic-family-stylesheet") ||
+    (hasDirectoryEvidence && allConsumersInAllowedDirectoryScope)
+  );
+}
+
+function getDirectoryRelation(input: {
+  stylesheetDirectoryPath: string | undefined;
+  consumerDirectoryPath: string | undefined;
+}):
+  | "same-directory"
+  | "ancestor-directory"
+  | "descendant-directory"
+  | "sibling-directory"
+  | "cousin-directory"
+  | "unknown" {
+  if (!input.stylesheetDirectoryPath || !input.consumerDirectoryPath) {
+    return "unknown";
+  }
+  const stylesheetPath = normalizeProjectPath(input.stylesheetDirectoryPath);
+  const consumerPath = normalizeProjectPath(input.consumerDirectoryPath);
+  if (stylesheetPath === consumerPath) {
+    return "same-directory";
+  }
+  if (consumerPath.startsWith(`${stylesheetPath}/`)) {
+    return "ancestor-directory";
+  }
+  if (stylesheetPath.startsWith(`${consumerPath}/`)) {
+    return "descendant-directory";
+  }
+  const stylesheetParentPath = getDirectoryPath(stylesheetPath);
+  const consumerParentPath = getDirectoryPath(consumerPath);
+  if (stylesheetParentPath && stylesheetParentPath === consumerParentPath) {
+    return "sibling-directory";
+  }
+  return "cousin-directory";
+}
+
 function isConfiguredSharedStylesheetPath(input: {
   filePath: string | undefined;
   sharedCssPatterns: string[];
@@ -435,6 +625,48 @@ function stylesheetPathHasSegment(filePath: string | undefined, segments: Set<st
 
 function normalizeProjectPath(filePath: string): string {
   return filePath.replace(/\\/g, "/").replace(/\/+/g, "/").replace(/^\.\//, "");
+}
+
+function getDirectoryPath(filePath: string): string {
+  const normalized = normalizeProjectPath(filePath);
+  const parts = normalized.split("/").filter(Boolean);
+  parts.pop();
+  return parts.join("/");
+}
+
+function isGenericFamilyStylesheetForConsumers(input: {
+  stylesheetFilePath: string | undefined;
+  consumerComponentNames: string[];
+}): boolean {
+  if (!input.stylesheetFilePath || input.consumerComponentNames.length < 2) {
+    return false;
+  }
+  const stylesheetBaseName = normalizeName(getBaseNameWithoutExtension(input.stylesheetFilePath));
+  if (!stylesheetBaseName) {
+    return false;
+  }
+  const consumerNames = input.consumerComponentNames.map(normalizeName).filter(Boolean);
+  if (consumerNames.length < 2) {
+    return false;
+  }
+  return (
+    consumerNames.every((consumerName) => consumerName.endsWith(stylesheetBaseName)) &&
+    consumerNames.some((consumerName) => consumerName !== stylesheetBaseName)
+  );
+}
+
+function getBaseNameWithoutExtension(filePath: string): string {
+  const normalized = normalizeProjectPath(filePath);
+  const fileName = normalized.split("/").at(-1) ?? normalized;
+  return fileName.replace(/\.[^.]+$/, "");
+}
+
+function normalizeName(name: string): string {
+  return name
+    .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
+    .replace(/[^a-zA-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase();
 }
 
 function normalizeSegments(segments: string[]): string {

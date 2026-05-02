@@ -4,6 +4,7 @@ import type { RuleSeverity } from "../rules/types.js";
 import type {
   CssModuleLocalsConvention,
   ExternalCssGlobalProviderConfig,
+  OwnershipConfig,
   RuleConfigSeverity,
   ScannerConfig,
 } from "./types.js";
@@ -26,7 +27,12 @@ const TOP_LEVEL_CONFIG_KEYS = new Set([
 ]);
 const CSS_MODULES_CONFIG_KEYS = new Set(["localsConvention"]);
 const EXTERNAL_CSS_CONFIG_KEYS = new Set(["fetchRemote", "globals", "remoteTimeoutMs"]);
-const OWNERSHIP_CONFIG_KEYS = new Set(["sharedCss"]);
+const OWNERSHIP_CONFIG_KEYS = new Set(["sharedCss", "sharingPolicy"]);
+const OWNERSHIP_SHARING_POLICIES = new Set<OwnershipConfig["sharingPolicy"]>([
+  "strict",
+  "balanced",
+  "permissive",
+]);
 const DISCOVERY_CONFIG_KEYS = new Set(["sourceRoots", "exclude"]);
 const IGNORE_CONFIG_KEYS = new Set(["classNames", "filePaths"]);
 const EXTERNAL_CSS_GLOBAL_CONFIG_KEYS = new Set([
@@ -122,6 +128,7 @@ export const DEFAULT_SCANNER_CONFIG: ScannerConfig = {
   },
   ownership: {
     sharedCss: [],
+    sharingPolicy: "balanced",
   },
   discovery: {
     sourceRoots: [],
@@ -413,7 +420,40 @@ function parseOwnership(
       message: "ownership.sharedCss must be an array of non-empty strings",
       requireNonEmpty: true,
     }),
+    sharingPolicy: parseOwnershipSharingPolicy({
+      value: value.sharingPolicy,
+      fallback: DEFAULT_SCANNER_CONFIG.ownership.sharingPolicy,
+      filePath,
+      diagnostics,
+    }),
   };
+}
+
+function parseOwnershipSharingPolicy(input: {
+  value: unknown;
+  fallback: OwnershipConfig["sharingPolicy"];
+  filePath: string;
+  diagnostics: ScanDiagnostic[];
+}): OwnershipConfig["sharingPolicy"] {
+  if (input.value === undefined) {
+    return input.fallback;
+  }
+
+  if (
+    typeof input.value === "string" &&
+    OWNERSHIP_SHARING_POLICIES.has(input.value as OwnershipConfig["sharingPolicy"])
+  ) {
+    return input.value as OwnershipConfig["sharingPolicy"];
+  }
+
+  input.diagnostics.push({
+    code: "config.invalid-ownership-sharing-policy",
+    severity: "error",
+    phase: "config",
+    filePath: input.filePath,
+    message: 'ownership.sharingPolicy must be "strict", "balanced", or "permissive"',
+  });
+  return input.fallback;
 }
 
 function parseIgnore(
@@ -763,6 +803,7 @@ function cloneExternalCssConfig(
 function cloneOwnershipConfig(config: ScannerConfig["ownership"]): ScannerConfig["ownership"] {
   return {
     sharedCss: [...config.sharedCss],
+    sharingPolicy: config.sharingPolicy,
   };
 }
 

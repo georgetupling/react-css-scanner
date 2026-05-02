@@ -44,6 +44,10 @@ test("ownership inference returns deterministic empty facts from Stage 7A and St
   assert.equal(result.indexes.ownerCandidateIdsByStylesheetId.size, 0);
   assert.equal(result.indexes.stylesheetOwnershipById.size, 0);
   assert.equal(result.indexes.stylesheetOwnershipByStylesheetId.size, 0);
+  assert.equal(result.indexes.stylesheetIntentionalSharedKindsByStylesheetId.size, 0);
+  assert.equal(result.indexes.consumerDirectoryRelationsByStylesheetId.size, 0);
+  assert.equal(result.indexes.consumerDirectoryRelationsByComponentId.size, 0);
+  assert.equal(result.indexes.intentionallySharedStylesheetIds.size, 0);
   assert.equal(result.indexes.classificationById.size, 0);
   assert.equal(result.indexes.classificationIdsByTargetId.size, 0);
   assert.equal(result.indexes.diagnosticById.size, 0);

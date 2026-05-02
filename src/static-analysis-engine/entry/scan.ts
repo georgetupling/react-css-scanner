@@ -97,7 +97,9 @@ export async function runAnalysisPipeline(input: {
         selectorReachability: selectorReachabilityStage.selectorReachability,
         options: {
           includeTraces,
-          sharedCssPatterns: [],
+          sharedCssPatterns: snapshot.config.ownership.sharedCss,
+          sharingPolicy: snapshot.config.ownership.sharingPolicy,
+          rootHtmlEntryLinkedStylesheetPaths: collectRootHtmlEntryLinkedStylesheetPaths(snapshot),
         },
       }),
     }),
@@ -114,6 +116,40 @@ export async function runAnalysisPipeline(input: {
 }
 
 export const analyzeProjectScanInput = runAnalysisPipeline;
+
+function collectRootHtmlEntryLinkedStylesheetPaths(
+  snapshot: StaticAnalysisEngineProjectResult["snapshot"],
+): string[] {
+  const rootHtmlFiles = new Set(
+    snapshot.files.htmlFiles
+      .map((file) => normalizeProjectPath(file.filePath))
+      .filter((filePath) => isProjectRootHtmlFile(filePath)),
+  );
+
+  return [
+    ...new Set(
+      snapshot.edges
+        .filter((edge) => edge.kind === "html-stylesheet")
+        .filter((edge) => rootHtmlFiles.has(normalizeProjectPath(edge.fromHtmlFilePath)))
+        .map((edge) => edge.resolvedFilePath)
+        .filter((filePath): filePath is string => Boolean(filePath))
+        .map((filePath) => normalizeProjectPath(filePath)),
+    ),
+  ].sort((left, right) => left.localeCompare(right));
+}
+
+function normalizeProjectPath(filePath: string): string {
+  return filePath
+    .split("\\")
+    .join("/")
+    .replace(/\/+/g, "/")
+    .replace(/^\.\//, "")
+    .replace(/\/+$/, "");
+}
+
+function isProjectRootHtmlFile(filePath: string): boolean {
+  return !normalizeProjectPath(filePath).includes("/");
+}
 
 function createAnalysisProgressReporter(onProgress?: AnalysisProgressCallback) {
   return (

@@ -16,6 +16,7 @@ export type {
   ClassOwnershipCompatibilityEvidenceKind,
   ClassDefinitionConsumerEvidence,
   ClassOwnershipEvidence,
+  IntentionalSharedEvidenceKind,
   OwnershipCandidateId,
   OwnershipCandidateOwnerKind,
   OwnershipCandidateReason,
@@ -36,6 +37,7 @@ export type {
   OwnershipInferenceResult,
   StyleClassificationEvidence,
   StyleOwnerCandidate,
+  StylesheetConsumerDirectoryRelation,
   StylesheetOwnershipBroadness,
   StylesheetOwnershipEvidence,
 } from "./types.js";

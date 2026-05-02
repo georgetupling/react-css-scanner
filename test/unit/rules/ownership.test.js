@@ -993,6 +993,123 @@ test("style-shared-without-shared-owner does not report configured shared CSS gl
   }
 });
 
+test("style-shared-without-shared-owner does not report when all consumers are in stylesheet directory descendants (balanced)", async () => {
+  const project = await new TestProjectBuilder()
+    .withConfig({
+      ownership: {
+        sharingPolicy: "balanced",
+      },
+    })
+    .withSourceFile(
+      "src/features/catalog/cards/BigCard.tsx",
+      [
+        'import "../Card.css";',
+        'export function BigCard() { return <article className="card-surface">Big</article>; }',
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/features/catalog/cards/compact/SmallCard.tsx",
+      [
+        'import "../../Card.css";',
+        'export function SmallCard() { return <article className="card-surface">Small</article>; }',
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/features/catalog/Card.css", ".card-surface { display: block; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+    assert.deepEqual(
+      result.findings.filter((finding) => finding.ruleId === "style-shared-without-shared-owner"),
+      [],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("style-shared-without-shared-owner still reports when sharing crosses sibling directories (balanced)", async () => {
+  const project = await new TestProjectBuilder()
+    .withConfig({
+      ownership: {
+        sharingPolicy: "balanced",
+      },
+    })
+    .withSourceFile(
+      "src/features/catalog/cards/BigCard.tsx",
+      [
+        'import "../Card.css";',
+        'export function BigCard() { return <article className="card-surface">Big</article>; }',
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/features/catalog/tiles/SmallTile.tsx",
+      [
+        'import "../cards/Card.css";',
+        'export function SmallTile() { return <article className="card-surface">Small</article>; }',
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/features/catalog/cards/Card.css", ".card-surface { display: block; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+    const findings = result.findings.filter(
+      (finding) => finding.ruleId === "style-shared-without-shared-owner",
+    );
+    assert.equal(findings.length, 1);
+    assert.equal(findings[0].data?.className, "card-surface");
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("style-shared-without-shared-owner strict mode treats root index.html linked CSS as intentionally shared", async () => {
+  const project = await new TestProjectBuilder()
+    .withConfig({
+      ownership: {
+        sharingPolicy: "strict",
+      },
+    })
+    .withFile(
+      "index.html",
+      [
+        "<!doctype html>",
+        "<html>",
+        "<head>",
+        '  <link rel="stylesheet" href="/src/styles/root-shared.css" />',
+        "</head>",
+        "<body></body>",
+        "</html>",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/components/Button.tsx",
+      'export function Button() { return <button className="root-shell">Save</button>; }\n',
+    )
+    .withSourceFile(
+      "src/components/Card.tsx",
+      'export function Card() { return <article className="root-shell">Again</article>; }\n',
+    )
+    .withCssFile("src/styles/root-shared.css", ".root-shell { display: block; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+    assert.deepEqual(
+      result.findings.filter((finding) => finding.ruleId === "style-shared-without-shared-owner"),
+      [],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("single-component-style-not-colocated does not report configured shared CSS", async () => {
   const project = await new TestProjectBuilder()
     .withConfig({

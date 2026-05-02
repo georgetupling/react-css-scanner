@@ -1,4 +1,5 @@
 import { getClassOwnershipEvidence as queryClassOwnershipEvidence } from "../analysisQueries.js";
+import { getStylesheetOwnershipByStylesheetId as queryStylesheetOwnershipByStylesheetId } from "../analysisQueries.js";
 import type { RuleContext } from "../types.js";
 
 const BROAD_STYLESHEET_SEGMENTS = new Set([
@@ -35,6 +36,16 @@ type OwnerCandidateLike = {
 
 export function getClassOwnershipEvidence(context: RuleContext): RuleClassOwnershipEvidence[] {
   return queryClassOwnershipEvidence(context.analysisEvidence);
+}
+
+export function isStylesheetIntentionallySharedByPolicy(input: {
+  context: RuleContext;
+  stylesheetId: string;
+}): boolean {
+  return queryStylesheetOwnershipByStylesheetId(input.context.analysisEvidence, input.stylesheetId)
+    ?.isIntentionallySharedByPolicy
+    ? true
+    : false;
 }
 
 export function isIntentionallyBroadStylesheetPath(filePath: string | undefined): boolean {

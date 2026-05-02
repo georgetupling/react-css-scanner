@@ -372,6 +372,13 @@ export function getOwnerCandidateById(
   return analysis.ownershipInference.indexes.ownerCandidateById.get(id);
 }
 
+export function getStylesheetOwnershipByStylesheetId(
+  analysis: AnalysisEvidence,
+  stylesheetId: string,
+) {
+  return analysis.ownershipInference.indexes.stylesheetOwnershipByStylesheetId.get(stylesheetId);
+}
+
 function resolveIds<TValue>(ids: string[] | undefined, valuesById: Map<string, TValue>): TValue[] {
   return (ids ?? [])
     .map((id) => valuesById.get(id))
