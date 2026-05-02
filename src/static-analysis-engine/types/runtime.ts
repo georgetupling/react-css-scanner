@@ -6,7 +6,7 @@ import type { ProjectSnapshot } from "../pipeline/workspace-discovery/index.js";
 export type AnalysisEvidence = {
   projectEvidence: ProjectEvidenceAssemblyResult;
   selectorReachability: SelectorReachabilityResult;
-  ownershipInference: OwnershipInferenceResult;
+  ownershipInference?: OwnershipInferenceResult;
 };
 
 export type StaticAnalysisEngineResult = {

@@ -5,7 +5,10 @@ import { buildProjectEvidenceAssembly } from "../pipeline/project-evidence/index
 import { buildRenderStructure } from "../pipeline/render-structure/index.js";
 import { buildSelectorReachability } from "../pipeline/selector-reachability/index.js";
 import { evaluateSymbolicExpressions } from "../pipeline/symbolic-evaluation/index.js";
-import { buildProjectSnapshot } from "../pipeline/workspace-discovery/index.js";
+import {
+  buildProjectSnapshot,
+  type ProjectSnapshot,
+} from "../pipeline/workspace-discovery/index.js";
 import type {
   AnalysisProgressCallback,
   StaticAnalysisEngineProjectResult,
@@ -87,30 +90,27 @@ export async function runAnalysisPipeline(input: {
       }),
     }),
   );
-  const ownershipInferenceStage = runAnalysisStage(
-    progress,
-    "ownership-inference",
-    "Building ownership inference",
-    () => ({
-      ownershipInference: buildOwnershipInference({
-        projectEvidence: projectEvidenceStage.projectEvidence,
-        selectorReachability: selectorReachabilityStage.selectorReachability,
-        snapshot,
-        options: {
-          includeTraces,
-          sharedCssPatterns: snapshot.config.ownership.sharedCss,
-          sharingPolicy: snapshot.config.ownership.sharingPolicy,
-        },
-      }),
-    }),
-  );
+  const ownershipInferenceStage = oneOrMoreOwnershipRulesEnabled(snapshot)
+    ? runAnalysisStage(progress, "ownership-inference", "Building ownership inference", () => ({
+        ownershipInference: buildOwnershipInference({
+          projectEvidence: projectEvidenceStage.projectEvidence,
+          selectorReachability: selectorReachabilityStage.selectorReachability,
+          snapshot,
+          options: {
+            includeTraces,
+            sharedCssPatterns: snapshot.config.ownership.sharedCss,
+            sharingPolicy: snapshot.config.ownership.sharingPolicy,
+          },
+        }),
+      }))
+    : undefined;
 
   return {
     snapshot,
     analysisEvidence: {
       projectEvidence: projectEvidenceStage.projectEvidence,
       selectorReachability: selectorReachabilityStage.selectorReachability,
-      ownershipInference: ownershipInferenceStage.ownershipInference,
+      ownershipInference: ownershipInferenceStage?.ownershipInference,
     },
   };
 }
@@ -157,4 +157,14 @@ async function runAsyncAnalysisStage<T>(
   const result = await run();
   progress(stage, "completed", message, performance.now() - startedAt);
   return result;
+}
+
+function oneOrMoreOwnershipRulesEnabled(snapshot: ProjectSnapshot) {
+  // We can skip ownership-inference if no ownership rules are enabled
+  const rules = snapshot.config.rules;
+  return (
+    rules["single-component-style-not-colocated"] !== "off" ||
+    rules["style-used-outside-owner"] !== "off" ||
+    rules["style-shared-without-shared-owner"] !== "off"
+  );
 }

@@ -41,9 +41,9 @@ export const DEFAULT_RULE_SEVERITIES: Record<RuleId, RuleSeverity> = {
   "compound-selector-never-matched": "warn",
   "unused-compound-selector-branch": "warn",
   "selector-only-matches-in-unknown-contexts": "debug",
-  "single-component-style-not-colocated": "info",
-  "style-used-outside-owner": "warn",
-  "style-shared-without-shared-owner": "info",
+  "single-component-style-not-colocated": "off",
+  "style-used-outside-owner": "off",
+  "style-shared-without-shared-owner": "off",
   "dynamic-class-reference": "debug",
   "unsupported-syntax-affecting-analysis": "debug",
 };

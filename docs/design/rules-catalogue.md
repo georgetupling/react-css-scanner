@@ -57,23 +57,6 @@ Config:
 - should respect CSS Module and external CSS configuration when those systems exist
 - selector context mentions, such as ancestor classes in `.shell .button`, satisfy this rule but are not treated as normal CSS class definitions for `unused-css-class`
 
-#### `conditionally-missing-css-class`
-
-Default severity: `warn`
-
-Triggers when a class reference is only missing in some statically known conditional branches.
-
-Meaning:
-
-- at least one possible class value has a reachable definition
-- at least one other possible class value does not
-- this often points to an incomplete variant or conditional state
-
-Config:
-
-- may support ignore patterns for variant prefixes
-- should share dynamic-analysis budget settings with class expression analysis
-
 #### `unused-css-class`
 
 Default severity: `warn`
@@ -142,23 +125,6 @@ Config:
 - uses configured `cssModules.localsConvention`
 - may support ignore patterns for classes consumed by tests, stories, or generated code
 
-#### `missing-external-css-class`
-
-Default severity: `error`
-
-Triggers when a class appears intended to come from external CSS, but no imported external stylesheet or declared provider can satisfy it.
-
-Meaning:
-
-- the source file has external CSS in scope
-- a referenced class is not defined by imported external CSS and does not match any declared provider
-
-Config:
-
-- requires external CSS modeling to be enabled
-- should support declared providers with class names and class prefixes
-- may later support fetched remote stylesheet contents
-
 ### Ownership And Architecture
 
 Ownership rules should be convention-aware and conservative by default.
@@ -172,7 +138,7 @@ The product should prefer relational ownership over the old fixed bucket model. 
 
 #### `single-component-style-not-colocated`
 
-Default severity: `info`
+Default severity: `off`
 
 Triggers when a class is only used by one component, but its definition is not colocated with that component according to configured or inferred conventions.
 
@@ -194,7 +160,7 @@ Config:
 
 #### `style-used-outside-owner`
 
-Default severity: `warn`
+Default severity: `off`
 
 Triggers when a stylesheet class has high-confidence private component ownership evidence and is
 used by one or more components outside that owner.
@@ -221,7 +187,7 @@ Config:
 
 #### `style-shared-without-shared-owner`
 
-Default severity: `info`
+Default severity: `off`
 
 Triggers when a class is used by multiple components, has no private component owner, and is not
 defined in a path or stylesheet family that looks intentionally broad/shared.
@@ -242,22 +208,6 @@ Config:
   intentionally shared
 - strong private component owner evidence takes precedence over broad/shared path signals
 - may later support feature-boundary grouping
-
-#### `global-style-only-used-locally`
-
-Default severity: `info`
-
-Triggers when a global stylesheet class is only used by one component or one narrow owner.
-
-Meaning:
-
-- the class may not need to be global
-- it may be a candidate for localization into the consuming component or feature
-
-Config:
-
-- requires global stylesheet conventions or explicit global CSS configuration
-- may support a minimum age or stability threshold later
 
 ### Selector Semantics
 
@@ -311,7 +261,7 @@ Config:
 
 #### `selector-only-matches-in-unknown-contexts`
 
-Default severity: `info`
+Default severity: `debug`
 
 Triggers when a selector could only match through unresolved render paths, unknown dynamic class values, or unsupported syntax.
 
@@ -366,6 +316,12 @@ Config:
 ## Future Rule Backlog
 
 These rules are plausible, but should not drive the first implementation wave.
+
+These are currently documented but not yet implemented:
+
+- `global-style-only-used-locally`
+- `conditionally-missing-css-class`
+- `missing-external-css-class`
 
 ### Definition And Usage
 

@@ -3,8 +3,19 @@ import test from "node:test";
 import { scanProject } from "../../../dist/index.js";
 import { TestProjectBuilder } from "../../support/TestProjectBuilder.js";
 
+const OWNERSHIP_RULES_ON = {
+  rules: {
+    "single-component-style-not-colocated": "info",
+    "style-used-outside-owner": "info",
+    "style-shared-without-shared-owner": "info",
+  },
+};
+
 test("single-component-style-not-colocated reports one-component styles outside supported colocation", async () => {
   const project = await new TestProjectBuilder()
+    .withConfig({
+      ...OWNERSHIP_RULES_ON,
+    })
     .withSourceFile(
       "src/components/Button.tsx",
       [
@@ -40,6 +51,9 @@ test("single-component-style-not-colocated reports one-component styles outside 
 
 test("single-component-style-not-colocated consolidates repeated definitions", async () => {
   const project = await new TestProjectBuilder()
+    .withConfig({
+      ...OWNERSHIP_RULES_ON,
+    })
     .withSourceFile(
       "src/components/Button.tsx",
       [
@@ -82,6 +96,9 @@ test("single-component-style-not-colocated consolidates repeated definitions", a
 
 test("single-component-style-not-colocated does not report colocated sibling styles", async () => {
   const project = await new TestProjectBuilder()
+    .withConfig({
+      ...OWNERSHIP_RULES_ON,
+    })
     .withSourceFile(
       "src/components/Button.tsx",
       [
@@ -113,6 +130,9 @@ test("single-component-style-not-colocated does not report colocated sibling sty
 
 test("style-used-outside-owner reports classes consumed outside a private component stylesheet", async () => {
   const project = await new TestProjectBuilder()
+    .withConfig({
+      ...OWNERSHIP_RULES_ON,
+    })
     .withSourceFile(
       "src/components/Button/Button.tsx",
       [
@@ -143,7 +163,7 @@ test("style-used-outside-owner reports classes consumed outside a private compon
       (finding) => finding.ruleId === "style-used-outside-owner",
     );
     assert.equal(findings.length, 1);
-    assert.equal(findings[0].severity, "warn");
+    assert.equal(findings[0].severity, "info");
     assert.equal(findings[0].confidence, "high");
     assert.equal(findings[0].subject.kind, "class-definition");
     assert.equal(findings[0].data?.className, "button");
@@ -156,6 +176,9 @@ test("style-used-outside-owner reports classes consumed outside a private compon
 
 test("style-used-outside-owner still reports leaked private BEM-like classes", async () => {
   const project = await new TestProjectBuilder()
+    .withConfig({
+      ...OWNERSHIP_RULES_ON,
+    })
     .withSourceFile(
       "src/components/Button/Button.tsx",
       [
@@ -196,6 +219,9 @@ test("style-used-outside-owner still reports leaked private BEM-like classes", a
 
 test("style-used-outside-owner still reports contextual classes from the owner block", async () => {
   const project = await new TestProjectBuilder()
+    .withConfig({
+      ...OWNERSHIP_RULES_ON,
+    })
     .withSourceFile(
       "src/components/SiteHeader/SiteHeader.tsx",
       [
@@ -245,6 +271,9 @@ test("style-used-outside-owner still reports contextual classes from the owner b
 
 test("style-used-outside-owner does not treat single importer alone as private ownership", async () => {
   const project = await new TestProjectBuilder()
+    .withConfig({
+      ...OWNERSHIP_RULES_ON,
+    })
     .withSourceFile(
       "src/components/Button.tsx",
       [
@@ -282,6 +311,9 @@ test("style-used-outside-owner does not treat single importer alone as private o
 
 test("style-used-outside-owner attributes child component classes to the child, not the parent render root", async () => {
   const project = await new TestProjectBuilder()
+    .withConfig({
+      ...OWNERSHIP_RULES_ON,
+    })
     .withSourceFile(
       "src/pages/HomePage.tsx",
       [
@@ -325,6 +357,9 @@ test("style-used-outside-owner attributes child component classes to the child, 
 
 test("style-used-outside-owner attributes forwarded class props to the supplying component", async () => {
   const project = await new TestProjectBuilder()
+    .withConfig({
+      ...OWNERSHIP_RULES_ON,
+    })
     .withSourceFile(
       "src/pages/MembersPage.tsx",
       [
@@ -363,6 +398,9 @@ test("style-used-outside-owner attributes forwarded class props to the supplying
 
 test("style-used-outside-owner attributes custom forwarded class props to the supplying component", async () => {
   const project = await new TestProjectBuilder()
+    .withConfig({
+      ...OWNERSHIP_RULES_ON,
+    })
     .withSourceFile(
       "src/pages/GalleryPage.tsx",
       [
@@ -397,6 +435,9 @@ test("style-used-outside-owner attributes custom forwarded class props to the su
 
 test("style-used-outside-owner attributes merged forwarded class props to the supplying component", async () => {
   const project = await new TestProjectBuilder()
+    .withConfig({
+      ...OWNERSHIP_RULES_ON,
+    })
     .withSourceFile(
       "src/pages/MembersPage.tsx",
       [
@@ -440,6 +481,9 @@ test("style-used-outside-owner attributes merged forwarded class props to the su
 
 test("style-used-outside-owner attributes helper-merged forwarded class props to the supplying component", async () => {
   const project = await new TestProjectBuilder()
+    .withConfig({
+      ...OWNERSHIP_RULES_ON,
+    })
     .withSourceFile(
       "src/pages/MembersPage.tsx",
       [
@@ -484,6 +528,9 @@ test("style-used-outside-owner attributes helper-merged forwarded class props to
 
 test("style-used-outside-owner does not report without a single importing component owner", async () => {
   const project = await new TestProjectBuilder()
+    .withConfig({
+      ...OWNERSHIP_RULES_ON,
+    })
     .withSourceFile(
       "src/components/Button.tsx",
       [
@@ -521,6 +568,9 @@ test("style-used-outside-owner does not report without a single importing compon
 
 test("style-used-outside-owner does not report intentionally broad stylesheets", async () => {
   const project = await new TestProjectBuilder()
+    .withConfig({
+      ...OWNERSHIP_RULES_ON,
+    })
     .withSourceFile(
       "src/App.tsx",
       [
@@ -555,6 +605,9 @@ test("style-used-outside-owner does not report intentionally broad stylesheets",
 
 test("style-used-outside-owner ignores same-family sibling skeleton components", async () => {
   const project = await new TestProjectBuilder()
+    .withConfig({
+      ...OWNERSHIP_RULES_ON,
+    })
     .withSourceFile(
       "src/features/navigation/components/SiteHeader/SiteHeader.tsx",
       [
@@ -599,6 +652,9 @@ test("style-used-outside-owner ignores same-family sibling skeleton components",
 
 test("style-used-outside-owner ignores scoped primitive override classes", async () => {
   const project = await new TestProjectBuilder()
+    .withConfig({
+      ...OWNERSHIP_RULES_ON,
+    })
     .withSourceFile(
       "src/features/navigation/components/SiteHeader/SiteHeader.tsx",
       [
@@ -640,6 +696,9 @@ test("style-used-outside-owner ignores scoped primitive override classes", async
 
 test("style-used-outside-owner ignores generic state class tokens", async () => {
   const project = await new TestProjectBuilder()
+    .withConfig({
+      ...OWNERSHIP_RULES_ON,
+    })
     .withSourceFile(
       "src/features/home/HomepageFeed/HomepageFeed.tsx",
       [
@@ -689,6 +748,9 @@ test("style-used-outside-owner ignores generic state class tokens", async () => 
 
 test("style-used-outside-owner reports private owner leaks even when the path looks broad", async () => {
   const project = await new TestProjectBuilder()
+    .withConfig({
+      ...OWNERSHIP_RULES_ON,
+    })
     .withSourceFile(
       "src/components/Layout/Layout.tsx",
       [
@@ -726,6 +788,9 @@ test("style-used-outside-owner reports private owner leaks even when the path lo
 
 test("style-used-outside-owner consolidates outside consumers and repeated definitions", async () => {
   const project = await new TestProjectBuilder()
+    .withConfig({
+      ...OWNERSHIP_RULES_ON,
+    })
     .withSourceFile(
       "src/components/Button/Button.tsx",
       [
@@ -790,6 +855,9 @@ test("style-used-outside-owner consolidates outside consumers and repeated defin
 
 test("style-shared-without-shared-owner reports multi-component styles without broad owner evidence", async () => {
   const project = await new TestProjectBuilder()
+    .withConfig({
+      ...OWNERSHIP_RULES_ON,
+    })
     .withSourceFile(
       "src/components/Button/Button.tsx",
       [
@@ -832,6 +900,9 @@ test("style-shared-without-shared-owner reports multi-component styles without b
 
 test("style-shared-without-shared-owner consolidates repeated definitions", async () => {
   const project = await new TestProjectBuilder()
+    .withConfig({
+      ...OWNERSHIP_RULES_ON,
+    })
     .withSourceFile(
       "src/components/Button.tsx",
       [
@@ -883,6 +954,9 @@ test("style-shared-without-shared-owner consolidates repeated definitions", asyn
 
 test("style-shared-without-shared-owner does not report intentionally broad stylesheets", async () => {
   const project = await new TestProjectBuilder()
+    .withConfig({
+      ...OWNERSHIP_RULES_ON,
+    })
     .withSourceFile(
       "src/components/Button.tsx",
       [
@@ -920,6 +994,9 @@ test("style-shared-without-shared-owner does not report intentionally broad styl
 
 test("style-shared-without-shared-owner treats layouts stylesheets as broad", async () => {
   const project = await new TestProjectBuilder()
+    .withConfig({
+      ...OWNERSHIP_RULES_ON,
+    })
     .withSourceFile(
       "src/components/Button.tsx",
       [
@@ -956,6 +1033,7 @@ test("style-shared-without-shared-owner treats layouts stylesheets as broad", as
 test("style-shared-without-shared-owner does not report configured shared CSS globs", async () => {
   const project = await new TestProjectBuilder()
     .withConfig({
+      ...OWNERSHIP_RULES_ON,
       ownership: {
         sharedCss: ["src/styles/**/*.css"],
       },
@@ -996,6 +1074,7 @@ test("style-shared-without-shared-owner does not report configured shared CSS gl
 test("style-shared-without-shared-owner does not report when all consumers are in stylesheet directory descendants (balanced)", async () => {
   const project = await new TestProjectBuilder()
     .withConfig({
+      ...OWNERSHIP_RULES_ON,
       ownership: {
         sharingPolicy: "balanced",
       },
@@ -1033,6 +1112,7 @@ test("style-shared-without-shared-owner does not report when all consumers are i
 test("style-shared-without-shared-owner still reports when sharing crosses sibling directories (balanced)", async () => {
   const project = await new TestProjectBuilder()
     .withConfig({
+      ...OWNERSHIP_RULES_ON,
       ownership: {
         sharingPolicy: "balanced",
       },
@@ -1071,6 +1151,7 @@ test("style-shared-without-shared-owner still reports when sharing crosses sibli
 test("style-shared-without-shared-owner strict mode treats root index.html linked CSS as intentionally shared", async () => {
   const project = await new TestProjectBuilder()
     .withConfig({
+      ...OWNERSHIP_RULES_ON,
       ownership: {
         sharingPolicy: "strict",
       },
@@ -1113,6 +1194,7 @@ test("style-shared-without-shared-owner strict mode treats root index.html linke
 test("style-shared-without-shared-owner strict mode treats transitive root index.html linked CSS as intentionally shared", async () => {
   const project = await new TestProjectBuilder()
     .withConfig({
+      ...OWNERSHIP_RULES_ON,
       ownership: {
         sharingPolicy: "strict",
       },
@@ -1156,6 +1238,7 @@ test("style-shared-without-shared-owner strict mode treats transitive root index
 test("style-shared-without-shared-owner strict mode treats CSS imported from root HTML module entry as intentionally shared", async () => {
   const project = await new TestProjectBuilder()
     .withConfig({
+      ...OWNERSHIP_RULES_ON,
       ownership: {
         sharingPolicy: "strict",
       },
@@ -1204,6 +1287,9 @@ test("style-shared-without-shared-owner strict mode treats CSS imported from roo
 
 test("style-shared-without-shared-owner balanced mode treats CSS imported from root HTML module entry as intentionally shared", async () => {
   const project = await new TestProjectBuilder()
+    .withConfig({
+      ...OWNERSHIP_RULES_ON,
+    })
     .withFile(
       "index.html",
       [
@@ -1249,6 +1335,7 @@ test("style-shared-without-shared-owner balanced mode treats CSS imported from r
 test("style-shared-without-shared-owner strict mode uses the only HTML file as entry", async () => {
   const project = await new TestProjectBuilder()
     .withConfig({
+      ...OWNERSHIP_RULES_ON,
       ownership: {
         sharingPolicy: "strict",
       },
@@ -1291,6 +1378,7 @@ test("style-shared-without-shared-owner strict mode uses the only HTML file as e
 test("style-shared-without-shared-owner strict mode ignores HTML-linked CSS when multiple HTML files have no obvious entry name", async () => {
   const project = await new TestProjectBuilder()
     .withConfig({
+      ...OWNERSHIP_RULES_ON,
       ownership: {
         sharingPolicy: "strict",
       },
@@ -1338,6 +1426,7 @@ test("style-shared-without-shared-owner strict mode ignores HTML-linked CSS when
 test("single-component-style-not-colocated does not report configured shared CSS", async () => {
   const project = await new TestProjectBuilder()
     .withConfig({
+      ...OWNERSHIP_RULES_ON,
       ownership: {
         sharedCss: ["src/styles/**/*.css"],
       },
@@ -1371,6 +1460,9 @@ test("single-component-style-not-colocated does not report configured shared CSS
 
 test("single-component-style-not-colocated treats layout stylesheets as broad after colocation checks", async () => {
   const project = await new TestProjectBuilder()
+    .withConfig({
+      ...OWNERSHIP_RULES_ON,
+    })
     .withSourceFile(
       "src/components/Button.tsx",
       [
@@ -1400,6 +1492,9 @@ test("single-component-style-not-colocated treats layout stylesheets as broad af
 
 test("style-shared-without-shared-owner does not report generic family stylesheets shared by matching components", async () => {
   const project = await new TestProjectBuilder()
+    .withConfig({
+      ...OWNERSHIP_RULES_ON,
+    })
     .withSourceFile(
       "src/features/article/components/ArticleCard/ArticleCard.tsx",
       [
@@ -1443,6 +1538,9 @@ test("style-shared-without-shared-owner does not report generic family styleshee
 
 test("style-shared-without-shared-owner ignores intentional cross-feature family stylesheet imports", async () => {
   const project = await new TestProjectBuilder()
+    .withConfig({
+      ...OWNERSHIP_RULES_ON,
+    })
     .withSourceFile(
       "src/features/article/components/ArticleCard/ArticleCard.tsx",
       [
