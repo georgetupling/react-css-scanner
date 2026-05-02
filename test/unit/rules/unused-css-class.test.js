@@ -2424,3 +2424,60 @@ test("unused-css-class lowers confidence when dynamic class references exist", a
     await project.cleanup();
   }
 });
+
+test("unused-css-class treats ThemeConsumer ternary class strings as used", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.js",
+      [
+        "import React from 'react';",
+        "import './App.css';",
+        'import { ThemeConsumer } from "./components/context/ThemeContexts";',
+        "function App() {",
+        "  return (",
+        "    <ThemeConsumer>",
+        "      {({ theme }) => (",
+        "        <React.Fragment>",
+        "          <div className={theme ? 'h-fit bg-slate-900' : 'h-fit'}>",
+        "            Hello",
+        "          </div>",
+        "        </React.Fragment>",
+        "      )}",
+        "    </ThemeConsumer>",
+        "  );",
+        "}",
+        "export default App;",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/components/context/ThemeContexts.js",
+      [
+        "import React from 'react';",
+        "export const ThemeConsumer = ({ children }) => children({ theme: true });",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile(
+      "src/App.css",
+      [
+        ".h-fit {",
+        "  height: fit-content;",
+        "}",
+        ".bg-slate-900 {",
+        "  background-color: #1F2937;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", ["h-fit", "bg-slate-900"]);
+    assertNoClassFindings(result, "missing-css-class", ["h-fit", "bg-slate-900"]);
+  } finally {
+    await project.cleanup();
+  }
+});

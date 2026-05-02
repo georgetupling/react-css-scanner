@@ -1,4 +1,8 @@
-import type { AnalysisTrace, SelectorQueryAnalysis } from "../../static-analysis-engine/index.js";
+import type {
+  AnalysisTrace,
+  SelectorBranchReachability,
+  SelectorQueryAnalysis,
+} from "../../static-analysis-engine/index.js";
 import { isProjectLocalStylesheetBranch } from "../analysisQueries.js";
 import type { RuleContext, RuleDefinition, UnresolvedFinding } from "../types.js";
 import {

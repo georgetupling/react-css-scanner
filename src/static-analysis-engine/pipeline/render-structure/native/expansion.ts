@@ -595,7 +595,7 @@ function projectComponentTemplate(
       }),
     );
     pushEdge("unresolved", "unknown", targetName);
-    return { rendersSuppliedChildren: false, renderedPropNames: [] };
+    return { rendersSuppliedChildren: true, renderedPropNames: [] };
   }
 
   const maxComponentExpansionDepth = state.input.options?.maxComponentExpansionDepth;
