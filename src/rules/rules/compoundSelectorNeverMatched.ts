@@ -1,9 +1,5 @@
-import type {
-  AnalysisTrace,
-  SelectorBranchReachability,
-  SelectorQueryAnalysis,
-} from "../../static-analysis-engine/index.js";
-import { getStylesheetById } from "../analysisQueries.js";
+import type { AnalysisTrace, SelectorQueryAnalysis } from "../../static-analysis-engine/index.js";
+import { isProjectLocalStylesheetBranch } from "../analysisQueries.js";
 import type { RuleContext, RuleDefinition, UnresolvedFinding } from "../types.js";
 import {
   buildReachabilitySelectorEvidence,
@@ -21,7 +17,7 @@ export const compoundSelectorNeverMatchedRule: RuleDefinition = {
 function runCompoundSelectorNeverMatchedRule(context: RuleContext): UnresolvedFinding[] {
   return getSelectorReachabilityBranches(context)
     .filter((branch) => branch.status === "not-matchable")
-    .filter((branch) => isProjectLocalStylesheetBranch(context, branch))
+    .filter((branch) => isProjectLocalStylesheetBranch(context.analysisEvidence, branch))
     .filter(
       (branch) =>
         branch.branchCount === 1 &&
@@ -62,24 +58,6 @@ function runCompoundSelectorNeverMatchedRule(context: RuleContext): UnresolvedFi
       };
     })
     .sort((left, right) => left.id.localeCompare(right.id));
-}
-
-function isProjectLocalStylesheetBranch(
-  context: RuleContext,
-  branch: SelectorBranchReachability,
-): boolean {
-  const query = getProjectSelectorQueryForReachability(context, branch);
-  const stylesheetId = query?.stylesheetId;
-  if (!stylesheetId) {
-    return false;
-  }
-
-  const stylesheet = getStylesheetById(context.analysisEvidence, stylesheetId);
-  if (!stylesheet) {
-    return false;
-  }
-
-  return stylesheet.origin === "project-css" || stylesheet.origin === "css-module";
 }
 
 function buildCompoundSelectorTraces(input: {

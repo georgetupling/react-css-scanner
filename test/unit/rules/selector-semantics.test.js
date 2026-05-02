@@ -74,6 +74,36 @@ test("unsatisfiable-selector does not report selectors with bounded render match
   }
 });
 
+test("unsatisfiable-selector does not report non-local package CSS selectors", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "library/styles.css";',
+        "export function App() {",
+        '  return <main className="card"><span className="title">Hello</span></main>;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withFile("node_modules/library/styles.css", ".card > .missing { color: red; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
+    });
+
+    assert.deepEqual(
+      result.findings.filter((finding) => finding.ruleId === "unsatisfiable-selector"),
+      [],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("selector-only-matches-in-unknown-contexts reports debug uncertainty for dynamic selector contexts", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(
@@ -174,6 +204,36 @@ test("compound-selector-never-matched does not report matched same-node class co
       rootDir: project.rootDir,
       sourceFilePaths: ["src/App.tsx"],
       cssFilePaths: ["src/App.css"],
+    });
+
+    assert.deepEqual(
+      result.findings.filter((finding) => finding.ruleId === "compound-selector-never-matched"),
+      [],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("compound-selector-never-matched does not report non-local package CSS selectors", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "library/styles.css";',
+        "export function App() {",
+        '  return <button className="button">Save</button>;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withFile("node_modules/library/styles.css", ".button.primary { color: red; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
     });
 
     assert.deepEqual(

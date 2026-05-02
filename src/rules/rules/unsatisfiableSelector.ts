@@ -3,6 +3,7 @@ import type {
   SelectorBranchReachability,
   SelectorQueryAnalysis,
 } from "../../static-analysis-engine/index.js";
+import { isProjectLocalStylesheetBranch } from "../analysisQueries.js";
 import type { RuleContext, RuleDefinition, UnresolvedFinding } from "../types.js";
 import {
   buildReachabilitySelectorEvidence,
@@ -20,6 +21,7 @@ export const unsatisfiableSelectorRule: RuleDefinition = {
 function runUnsatisfiableSelectorRule(context: RuleContext): UnresolvedFinding[] {
   return getSelectorReachabilityBranches(context)
     .filter((branch) => branch.status === "not-matchable")
+    .filter((branch) => isProjectLocalStylesheetBranch(context.analysisEvidence, branch))
     .filter((branch) => branch.requirement.kind !== "unsupported")
     .filter((branch) => branch.requirement.kind !== "same-node-class-conjunction")
     .filter((branch) => branch.branchCount === 1)

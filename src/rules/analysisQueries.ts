@@ -281,6 +281,24 @@ export function getProjectSelectorQueryForReachability(
   return projectBranch ? getSelectorQueryById(analysis, projectBranch.selectorQueryId) : undefined;
 }
 
+export function isProjectLocalStylesheetBranch(
+  analysis: AnalysisEvidence,
+  branch: SelectorBranchReachability,
+): boolean {
+  const query = getProjectSelectorQueryForReachability(analysis, branch);
+  const stylesheetId = query?.stylesheetId;
+  if (!stylesheetId) {
+    return false;
+  }
+
+  const stylesheet = getStylesheetById(analysis, stylesheetId);
+  if (!stylesheet) {
+    return false;
+  }
+
+  return stylesheet.origin === "project-css" || stylesheet.origin === "css-module";
+}
+
 export function getCssModuleImportById(
   analysis: AnalysisEvidence,
   id: ProjectEvidenceId,
