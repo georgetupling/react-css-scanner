@@ -1,3 +1,5 @@
+import path from "node:path";
+import { loadScannerConfig } from "../config/index.js";
 import { scanProject, type ScanProjectResult } from "../project/index.js";
 import { parseArgs, printHelp } from "./args.js";
 import { applyFocusFilter } from "./focus.js";
@@ -20,9 +22,9 @@ export async function runCli(rawArgs: string[]): Promise<void> {
     useColor: shouldUseColor(process.stderr),
   });
 
+  const configTraceEnabled = await loadConfigTraceSetting(args);
   let result: ScanProjectResult;
   try {
-    const includeTraces = true;
     result = await scanProject({
       rootDir: args.rootDir,
       configBaseDir: process.cwd(),
@@ -33,7 +35,7 @@ export async function runCli(rawArgs: string[]): Promise<void> {
       },
       onProgress: progressRenderer.onProgress,
       collectPerformance: args.timings,
-      includeTraces,
+      includeTraces: args.trace || configTraceEnabled,
       includeDebugRuntimeCss: args.debugRuntimeCss,
     });
   } finally {
@@ -69,6 +71,16 @@ export async function runCli(rawArgs: string[]): Promise<void> {
   }
 
   process.exit(focusedResult.failed ? 1 : 0);
+}
+
+async function loadConfigTraceSetting(args: CliArgs): Promise<boolean> {
+  const config = await loadScannerConfig({
+    rootDir: path.resolve(process.cwd(), args.rootDir ?? "."),
+    configBaseDir: process.cwd(),
+    configPath: args.configPath,
+    diagnostics: [],
+  });
+  return config.reporting.trace;
 }
 
 function parseCliArgs(rawArgs: string[]): CliArgs {

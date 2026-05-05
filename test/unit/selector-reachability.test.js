@@ -430,13 +430,17 @@ async function buildRenderStructureFixture(input) {
       graph: factGraph.graph,
     });
 
-    return buildRenderStructure({
+    const renderStructure = buildRenderStructure({
       graph: factGraph.graph,
       symbolicEvaluation,
       options: {
         includeTraces: true,
       },
     });
+    return {
+      renderModel: renderStructure.renderModel,
+      selectorBranches: factGraph.graph.nodes.selectorBranches,
+    };
   } finally {
     await project.cleanup();
   }

@@ -43,8 +43,6 @@ export function buildRenderStructure(input: RenderStructureInput): RenderStructu
   ]);
 
   return {
-    graph: input.graph,
-    symbolicEvaluation: input.symbolicEvaluation,
     renderModel: {
       meta: {
         generatedAtStage: "render-structure",

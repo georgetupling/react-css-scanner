@@ -1,5 +1,6 @@
 import { parseSelectorBranch } from "../../libraries/selector-parsing/parseSelectorBranch.js";
-import type { RenderStructureResult } from "../render-structure/index.js";
+import type { SelectorBranchNode } from "../fact-graph/index.js";
+import type { RenderModel } from "../render-structure/index.js";
 import { getBranchConfidence, getBranchStatus } from "./branchStatus.js";
 import { buildDiagnostics } from "./diagnostics.js";
 import { buildIndexes, compareSelectorBranches } from "./indexes.js";
@@ -26,6 +27,11 @@ import type {
 } from "./types.js";
 import { uniqueSorted } from "./utils.js";
 
+export type SelectorReachabilityInput = {
+  renderModel: RenderModel;
+  selectorBranches: SelectorBranchNode[];
+};
+
 type SelectorReachabilityProfiler = {
   enabled: boolean;
   totals: Map<string, number>;
@@ -35,8 +41,10 @@ type SelectorReachabilityProfiler = {
 };
 
 export function buildSelectorReachability(
-  input: RenderStructureResult,
+  input: SelectorReachabilityInput,
+  options: { includeTraces?: boolean } = {},
 ): SelectorReachabilityResult {
+  const includeTraces = options.includeTraces ?? true;
   const profiler = createSelectorReachabilityProfiler(
     process.env.SCAN_REACT_CSS_PROFILE_SELECTOR_REACHABILITY === "1",
   );
@@ -49,19 +57,19 @@ export function buildSelectorReachability(
   const diagnostics: SelectorReachabilityDiagnostic[] = [];
   const structuralRelationIndexes = profiler.time(
     "selectorReachability.buildStructuralRelationIndexes",
-    () => buildStructuralRelationIndexes(input),
+    () => buildStructuralRelationIndexes(input.renderModel),
   );
   const structuralMatchContext = createStructuralMatchContext();
 
   const sortedBranches = profiler.time("selectorReachability.sortSelectorBranches", () =>
-    [...input.graph.nodes.selectorBranches].sort(compareSelectorBranches),
+    [...input.selectorBranches].sort(compareSelectorBranches),
   );
   for (const branch of sortedBranches) {
     const parsedBranch = profiler.time("selectorReachability.parseSelectorBranch", () =>
       parseSelectorBranch(branch.selectorText),
     );
     const requirement = profiler.time("selectorReachability.projectRequirement", () =>
-      projectSelectorBranchRequirement(parsedBranch, { includeTraces: true }),
+      projectSelectorBranchRequirement(parsedBranch, { includeTraces }),
     );
     const structuralConstraint = profiler.time(
       "selectorReachability.projectStructuralConstraint",
@@ -100,7 +108,7 @@ export function buildSelectorReachability(
           buildStructuralMatches({
             branch,
             constraint: structuralConstraint,
-            renderStructure: input,
+            renderModel: input.renderModel,
             renderIndexes,
             structuralRelationIndexes,
             context: structuralMatchContext,
@@ -116,7 +124,7 @@ export function buildSelectorReachability(
       profiler.time("selectorReachability.buildSubjectBranchMatches", () =>
         buildSubjectBranchMatches({
           branch,
-          renderStructure: input,
+          renderModel: input.renderModel,
           elementMatches: branchElementMatches,
         }),
       );

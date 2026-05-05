@@ -16,8 +16,6 @@ test("render structure returns an empty render model for an empty graph", () => 
     symbolicEvaluation,
   });
 
-  assert.equal(result.graph, graph);
-  assert.equal(result.symbolicEvaluation, symbolicEvaluation);
   assert.deepEqual(result.renderModel.meta, {
     generatedAtStage: "render-structure",
     componentCount: 0,

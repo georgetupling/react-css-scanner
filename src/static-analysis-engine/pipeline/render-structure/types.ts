@@ -34,8 +34,6 @@ export type RenderStructureInput = {
 };
 
 export type RenderStructureResult = {
-  graph: FactGraph;
-  symbolicEvaluation: SymbolicEvaluationResult;
   renderModel: RenderModel;
 };
 

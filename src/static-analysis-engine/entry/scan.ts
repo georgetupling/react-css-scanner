@@ -69,7 +69,15 @@ export async function runAnalysisPipeline(input: {
     progress,
     "selector-reachability",
     "Building selector reachability evidence",
-    () => ({ selectorReachability: buildSelectorReachability(renderStructureStage) }),
+    () => ({
+      selectorReachability: buildSelectorReachability(
+        {
+          renderModel: renderStructureStage.renderModel,
+          selectorBranches: factGraph.graph.nodes.selectorBranches,
+        },
+        { includeTraces },
+      ),
+    }),
   );
   const runtimeCssLoadingStage = runAnalysisStage(
     progress,

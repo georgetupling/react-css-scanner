@@ -1,5 +1,5 @@
 import type { SelectorBranchNode } from "../fact-graph/index.js";
-import type { RenderStructureResult } from "../render-structure/index.js";
+import type { RenderModel } from "../render-structure/index.js";
 import { matchElementClassRequirement } from "./elementRequirementMatcher.js";
 import { selectorBranchMatchId, selectorElementMatchId } from "./ids.js";
 import { buildSelectorRenderMatchIndexes } from "./renderMatchIndexes.js";
@@ -7,6 +7,8 @@ import type { SelectorBranchMatch, SelectorElementMatch } from "./types.js";
 import { uniqueSorted } from "./utils.js";
 
 export type SelectorRenderMatchIndexes = ReturnType<typeof buildSelectorRenderMatchIndexes>;
+
+const MAX_UNKNOWN_CLASS_FALLBACK_ELEMENT_IDS = 128;
 
 export function buildElementMatchesForClassNames(input: {
   branch: SelectorBranchNode;
@@ -48,13 +50,11 @@ export function buildElementMatchesForClassNames(input: {
 
 export function buildSubjectBranchMatches(input: {
   branch: SelectorBranchNode;
-  renderStructure: RenderStructureResult;
+  renderModel: RenderModel;
   elementMatches: SelectorElementMatch[];
 }): SelectorBranchMatch[] {
   return input.elementMatches.flatMap((elementMatch) => {
-    const element = input.renderStructure.renderModel.indexes.elementById.get(
-      elementMatch.elementId,
-    );
+    const element = input.renderModel.indexes.elementById.get(elementMatch.elementId);
     if (!element) {
       return [];
     }
@@ -92,7 +92,10 @@ export function getCandidateElementIds(input: {
   }
 
   const [firstClassName, ...restClassNames] = classNames;
-  const unknownElementIds = input.renderIndexes.unknownClassElementIds;
+  const unknownElementIds = input.renderIndexes.unknownClassElementIds.slice(
+    0,
+    MAX_UNKNOWN_CLASS_FALLBACK_ELEMENT_IDS,
+  );
   let candidates = sortedUnion(
     input.elementIdsByClassName.get(firstClassName) ?? [],
     unknownElementIds,

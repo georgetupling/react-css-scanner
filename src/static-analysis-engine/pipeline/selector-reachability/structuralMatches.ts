@@ -1,5 +1,5 @@
 import type { SelectorBranchNode } from "../fact-graph/index.js";
-import type { RenderStructureResult } from "../render-structure/index.js";
+import type { RenderModel } from "../render-structure/index.js";
 import { matchElementClassRequirement } from "./elementRequirementMatcher.js";
 import { selectorBranchMatchId, selectorElementMatchId } from "./ids.js";
 import { getCandidateElementIds, type SelectorRenderMatchIndexes } from "./subjectMatches.js";
@@ -82,13 +82,13 @@ export function projectStructuralConstraintFromRequirement(
 export function buildStructuralMatches(input: {
   branch: SelectorBranchNode;
   constraint: StructuralConstraint;
-  renderStructure: RenderStructureResult;
+  renderModel: RenderModel;
   renderIndexes: SelectorRenderMatchIndexes;
   structuralRelationIndexes?: StructuralRelationIndexes;
   context?: StructuralMatchContext;
 }): { elementMatches: SelectorElementMatch[]; branchMatches: SelectorBranchMatch[] } {
   const structuralRelationIndexes =
-    input.structuralRelationIndexes ?? buildStructuralRelationIndexes(input.renderStructure);
+    input.structuralRelationIndexes ?? buildStructuralRelationIndexes(input.renderModel);
   const context = input.context ?? createStructuralMatchContext();
 
   const requiredClassNames = uniqueSorted([
@@ -117,16 +117,14 @@ export function buildStructuralMatches(input: {
     constraint: input.constraint,
     leftMatches,
     rightMatches,
-    renderStructure: input.renderStructure,
+    renderModel: input.renderModel,
     structuralRelationIndexes,
     context,
   });
 
   const branchMatches: SelectorBranchMatch[] = [];
   for (const rightMatch of rightMatches) {
-    const rightElement = input.renderStructure.renderModel.indexes.elementById.get(
-      rightMatch.elementId,
-    );
+    const rightElement = input.renderModel.indexes.elementById.get(rightMatch.elementId);
     if (!rightElement) {
       continue;
     }
@@ -137,7 +135,7 @@ export function buildStructuralMatches(input: {
         continue;
       }
 
-      const leftElement = input.renderStructure.renderModel.indexes.elementById.get(leftElementId);
+      const leftElement = input.renderModel.indexes.elementById.get(leftElementId);
       if (!leftElement) {
         continue;
       }
@@ -251,7 +249,7 @@ function getConstraintJoinMap(input: {
   constraint: StructuralConstraint;
   leftMatches: SelectorElementMatch[];
   rightMatches: SelectorElementMatch[];
-  renderStructure: RenderStructureResult;
+  renderModel: RenderModel;
   structuralRelationIndexes: StructuralRelationIndexes;
   context: StructuralMatchContext;
 }): Map<string, string[]> {
@@ -271,7 +269,7 @@ function getConstraintJoinMap(input: {
     relationByRightElementId.set(
       rightElementId,
       getRelatedLeftElementIds({
-        renderStructure: input.renderStructure,
+        renderModel: input.renderModel,
         rightElementId,
         combinator: input.constraint.combinator,
         structuralRelationIndexes: input.structuralRelationIndexes,
@@ -286,7 +284,7 @@ function getConstraintJoinMap(input: {
 }
 
 function getRelatedLeftElementIds(input: {
-  renderStructure: RenderStructureResult;
+  renderModel: RenderModel;
   rightElementId: string;
   combinator: StructuralConstraint["combinator"];
   structuralRelationIndexes: StructuralRelationIndexes;
@@ -294,7 +292,7 @@ function getRelatedLeftElementIds(input: {
   leftBits: Uint32Array;
 }): string[] {
   if (input.combinator === "child") {
-    const element = input.renderStructure.renderModel.indexes.elementById.get(input.rightElementId);
+    const element = input.renderModel.indexes.elementById.get(input.rightElementId);
     return element?.parentElementId && input.leftIdSet.has(element.parentElementId)
       ? [element.parentElementId]
       : [];
@@ -310,9 +308,7 @@ function getRelatedLeftElementIds(input: {
 
   const relationIds =
     input.combinator === "descendant"
-      ? (input.renderStructure.renderModel.indexes.ancestorElementIdsByElementId.get(
-          input.rightElementId,
-        ) ?? [])
+      ? (input.renderModel.indexes.ancestorElementIdsByElementId.get(input.rightElementId) ?? [])
       : (input.structuralRelationIndexes.precedingSiblingIdsByElementId.get(input.rightElementId) ??
         []);
 
@@ -331,10 +327,10 @@ function getRelatedLeftElementIds(input: {
   );
 }
 
-function buildChildIndexByElementId(renderStructure: RenderStructureResult): Map<string, number> {
+function buildChildIndexByElementId(renderModel: RenderModel): Map<string, number> {
   const childIndexByElementId = new Map<string, number>();
-  for (const element of renderStructure.renderModel.elements) {
-    const path = renderStructure.renderModel.indexes.renderPathById.get(element.renderPathId);
+  for (const element of renderModel.elements) {
+    const path = renderModel.indexes.renderPathById.get(element.renderPathId);
     if (!path) {
       continue;
     }
@@ -353,13 +349,13 @@ function buildChildIndexByElementId(renderStructure: RenderStructureResult): Map
 }
 
 export function buildStructuralRelationIndexes(
-  renderStructure: RenderStructureResult,
+  renderModel: RenderModel,
 ): StructuralRelationIndexes {
-  const childIndexByElementId = buildChildIndexByElementId(renderStructure);
+  const childIndexByElementId = buildChildIndexByElementId(renderModel);
   const adjacentLeftSiblingIdByElementId = new Map<string, string>();
   const precedingSiblingIdsByElementId = new Map<string, string[]>();
 
-  const elementIdByIndex = renderStructure.renderModel.elements.map((element) => element.id);
+  const elementIdByIndex = renderModel.elements.map((element) => element.id);
   const indexByElementId = new Map<string, number>(
     elementIdByIndex.map((elementId, index) => [elementId, index]),
   );
@@ -368,8 +364,7 @@ export function buildStructuralRelationIndexes(
   const ancestorBitsByElementId = new Map<string, Uint32Array>();
   const precedingSiblingBitsByElementId = new Map<string, Uint32Array>();
 
-  for (const [elementId, siblingIds] of renderStructure.renderModel.indexes
-    .siblingElementIdsByElementId) {
+  for (const [elementId, siblingIds] of renderModel.indexes.siblingElementIdsByElementId) {
     const elementChildIndex = childIndexByElementId.get(elementId);
     if (elementChildIndex === undefined || siblingIds.length === 0) {
       continue;
@@ -398,8 +393,7 @@ export function buildStructuralRelationIndexes(
     }
   }
 
-  for (const [elementId, ancestorElementIds] of renderStructure.renderModel.indexes
-    .ancestorElementIdsByElementId) {
+  for (const [elementId, ancestorElementIds] of renderModel.indexes.ancestorElementIdsByElementId) {
     ancestorBitsByElementId.set(
       elementId,
       buildElementBitset(ancestorElementIds, elementBitsetIndex),
