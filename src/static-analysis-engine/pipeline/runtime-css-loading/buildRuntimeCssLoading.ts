@@ -1,3 +1,5 @@
+import ts from "typescript";
+
 import type { FactGraphResult } from "../fact-graph/index.js";
 import type { ProjectResourceEdge } from "../workspace-discovery/index.js";
 import type {
@@ -80,12 +82,14 @@ export function buildRuntimeCssLoading(input: {
     }
   }
 
-  const appEntries = collectAppEntries({
-    snapshotEdges: input.factGraph.snapshot.edges,
-    moduleFilePaths,
-  });
   const bundlerProfiles = detectRuntimeCssBundlerProfiles({
     bundlerConfigFiles: input.factGraph.snapshot.files.bundlerConfigFiles,
+    packageJsonFiles: input.factGraph.snapshot.files.packageJsonFiles,
+  });
+  const appEntries = collectAppEntries({
+    snapshotEdges: input.factGraph.snapshot.edges,
+    bundlerConfigFiles: input.factGraph.snapshot.files.bundlerConfigFiles,
+    moduleFilePaths,
   });
   const selectedBundlerProfile = selectRuntimeCssBundlerProfile(bundlerProfiles);
   const runtimeCssMode = selectedBundlerProfile.cssLoading;
@@ -305,6 +309,7 @@ export function buildRuntimeCssLoading(input: {
 
 function collectAppEntries(input: {
   snapshotEdges: ProjectResourceEdge[];
+  bundlerConfigFiles: FactGraphResult["snapshot"]["files"]["bundlerConfigFiles"];
   moduleFilePaths: string[];
 }): Array<{
   kind: RuntimeCssEntry["kind"];
@@ -335,6 +340,15 @@ function collectAppEntries(input: {
         left.entrySourceFilePath.localeCompare(right.entrySourceFilePath),
     );
   const moduleFilePathSet = new Set(input.moduleFilePaths);
+  const viteInputEntries = collectViteInputEntries({
+    bundlerConfigFiles: input.bundlerConfigFiles,
+    htmlEntries: htmlEntryEdges,
+    moduleFilePathSet,
+  });
+  if (viteInputEntries.length > 0) {
+    return viteInputEntries;
+  }
+
   const validHtmlEntryEdges = htmlEntryEdges.filter((entry) =>
     moduleFilePathSet.has(entry.entrySourceFilePath),
   );
@@ -348,11 +362,179 @@ function collectAppEntries(input: {
       }));
 }
 
+function collectViteInputEntries(input: {
+  bundlerConfigFiles: FactGraphResult["snapshot"]["files"]["bundlerConfigFiles"];
+  htmlEntries: Array<{
+    kind: "html-entry";
+    htmlFilePath: string;
+    entrySourceFilePath: string;
+    confidence: "high";
+    reason: string;
+  }>;
+  moduleFilePathSet: ReadonlySet<string>;
+}): Array<{
+  kind: RuntimeCssEntry["kind"];
+  entrySourceFilePath: string;
+  htmlFilePath?: string;
+  confidence: RuntimeCssEntry["confidence"];
+  reason: string;
+}> {
+  const entries: Array<{
+    kind: RuntimeCssEntry["kind"];
+    entrySourceFilePath: string;
+    htmlFilePath?: string;
+    confidence: RuntimeCssEntry["confidence"];
+    reason: string;
+  }> = [];
+  const entryKeys = new Set<string>();
+
+  for (const configFile of input.bundlerConfigFiles) {
+    if (configFile.bundler !== "vite") {
+      continue;
+    }
+    for (const inputPath of extractViteRollupInputPaths(configFile.sourceText)) {
+      const normalizedInputPath = normalizeProjectPath(inputPath);
+      const htmlEntry = input.htmlEntries.find(
+        (entry) => entry.htmlFilePath === normalizedInputPath,
+      );
+      if (htmlEntry && input.moduleFilePathSet.has(htmlEntry.entrySourceFilePath)) {
+        const key = `html:${htmlEntry.htmlFilePath}:${htmlEntry.entrySourceFilePath}`;
+        if (!entryKeys.has(key)) {
+          entryKeys.add(key);
+          entries.push({
+            ...htmlEntry,
+            reason: `Vite rollupOptions.input ${normalizedInputPath} resolved through HTML module script`,
+          });
+        }
+        continue;
+      }
+
+      if (input.moduleFilePathSet.has(normalizedInputPath)) {
+        const key = `source:${normalizedInputPath}`;
+        if (!entryKeys.has(key)) {
+          entryKeys.add(key);
+          entries.push({
+            kind: "vite-input-entry",
+            entrySourceFilePath: normalizedInputPath,
+            confidence: "high",
+            reason: `Vite rollupOptions.input ${normalizedInputPath} resolved to an analyzed source entry`,
+          });
+        }
+      }
+    }
+  }
+
+  return entries.sort(
+    (left, right) =>
+      (left.htmlFilePath ?? "").localeCompare(right.htmlFilePath ?? "") ||
+      left.entrySourceFilePath.localeCompare(right.entrySourceFilePath),
+  );
+}
+
 function collectConventionalEntrySourceFilePaths(moduleFilePaths: string[]): string[] {
   const entryFileNames = new Set(["main.jsx", "main.js", "main.ts", "main.tsx"]);
   return moduleFilePaths
     .filter((filePath) => entryFileNames.has(getBaseName(filePath).toLowerCase()))
     .sort((left, right) => left.localeCompare(right));
+}
+
+function extractViteRollupInputPaths(sourceText: string): string[] {
+  const sourceFile = ts.createSourceFile(
+    "vite.config.ts",
+    sourceText,
+    ts.ScriptTarget.Latest,
+    false,
+    ts.ScriptKind.TS,
+  );
+  const inputPaths = new Set<string>();
+
+  const visit = (node: ts.Node): void => {
+    if (ts.isPropertyAssignment(node) && getPropertyNameText(node.name) === "rollupOptions") {
+      collectInputPathsFromRollupOptions(node.initializer, inputPaths);
+    }
+    ts.forEachChild(node, visit);
+  };
+  ts.forEachChild(sourceFile, visit);
+
+  return [...inputPaths].sort((left, right) => left.localeCompare(right));
+}
+
+function collectInputPathsFromRollupOptions(node: ts.Expression, inputPaths: Set<string>): void {
+  const expression = unwrapExpression(node);
+  if (!ts.isObjectLiteralExpression(expression)) {
+    return;
+  }
+
+  for (const property of expression.properties) {
+    if (!ts.isPropertyAssignment(property) || getPropertyNameText(property.name) !== "input") {
+      continue;
+    }
+    for (const inputPath of readStaticInputExpressionPaths(property.initializer)) {
+      inputPaths.add(inputPath);
+    }
+  }
+}
+
+function readStaticInputExpressionPaths(node: ts.Expression): string[] {
+  const expression = unwrapExpression(node);
+  const stringPath = readStaticPathExpression(expression);
+  if (stringPath) {
+    return [stringPath];
+  }
+
+  if (ts.isArrayLiteralExpression(expression)) {
+    return expression.elements.flatMap((element) => readStaticInputExpressionPaths(element));
+  }
+
+  if (ts.isObjectLiteralExpression(expression)) {
+    return expression.properties.flatMap((property) => {
+      if (!ts.isPropertyAssignment(property)) {
+        return [];
+      }
+      return readStaticInputExpressionPaths(property.initializer);
+    });
+  }
+
+  return [];
+}
+
+function readStaticPathExpression(node: ts.Expression): string | undefined {
+  const expression = unwrapExpression(node);
+  if (ts.isStringLiteralLike(expression)) {
+    return normalizeViteInputPath(expression.text);
+  }
+  if (ts.isCallExpression(expression)) {
+    const stringArguments = expression.arguments
+      .filter(ts.isStringLiteralLike)
+      .map((argument) => normalizeViteInputPath(argument.text))
+      .filter(Boolean);
+    return stringArguments.at(-1);
+  }
+  return undefined;
+}
+
+function unwrapExpression(node: ts.Expression): ts.Expression {
+  let current = node;
+  while (
+    ts.isAsExpression(current) ||
+    ts.isSatisfiesExpression(current) ||
+    ts.isTypeAssertionExpression(current) ||
+    ts.isParenthesizedExpression(current)
+  ) {
+    current = current.expression;
+  }
+  return current;
+}
+
+function getPropertyNameText(name: ts.PropertyName): string | undefined {
+  if (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNumericLiteral(name)) {
+    return name.text;
+  }
+  return undefined;
+}
+
+function normalizeViteInputPath(inputPath: string): string {
+  return normalizeProjectPath(inputPath.replace(/^\.\//, "").replace(/^\/+/, ""));
 }
 
 function collectReachableSourceFilePaths(input: {
@@ -765,6 +947,7 @@ function compareRuntimeCssAvailability(
 
 function detectRuntimeCssBundlerProfiles(input: {
   bundlerConfigFiles: FactGraphResult["snapshot"]["files"]["bundlerConfigFiles"];
+  packageJsonFiles: FactGraphResult["snapshot"]["files"]["packageJsonFiles"];
 }): RuntimeCssBundlerProfile[] {
   const profiles: RuntimeCssBundlerProfile[] = [];
   for (const configFile of input.bundlerConfigFiles) {
@@ -789,6 +972,21 @@ function detectRuntimeCssBundlerProfiles(input: {
     return profiles.sort(compareRuntimeCssBundlerProfiles);
   }
 
+  const vitePackageFile = input.packageJsonFiles.find(hasVitePackageDependency);
+  if (vitePackageFile) {
+    return [
+      {
+        id: `runtime-css-bundler:vite-package:${normalizeProjectPath(vitePackageFile.filePath)}`,
+        bundler: "vite",
+        cssLoading: "split-by-runtime-chunk",
+        confidence: "medium",
+        evidence: [normalizeProjectPath(vitePackageFile.filePath)],
+        reason:
+          "Vite dependency detected in package metadata; assuming Vite default CSS code splitting",
+      },
+    ];
+  }
+
   return [
     {
       id: "runtime-css-bundler:unknown",
@@ -799,6 +997,16 @@ function detectRuntimeCssBundlerProfiles(input: {
       reason: "No supported bundler config detected; using generic ESM runtime chunk semantics",
     },
   ];
+}
+
+function hasVitePackageDependency(
+  packageJsonFile: FactGraphResult["snapshot"]["files"]["packageJsonFiles"][number],
+): boolean {
+  return Boolean(
+    packageJsonFile.dependencies.vite ??
+    packageJsonFile.devDependencies.vite ??
+    packageJsonFile.peerDependencies.vite,
+  );
 }
 
 function selectRuntimeCssBundlerProfile(

@@ -9,7 +9,7 @@ export type RuntimeCssBundlerProfile = {
 
 export type RuntimeCssEntry = {
   id: string;
-  kind: "html-entry" | "conventional-entry";
+  kind: "html-entry" | "vite-input-entry" | "conventional-entry";
   entrySourceFilePath: string;
   htmlFilePath?: string;
   confidence: "high" | "medium";

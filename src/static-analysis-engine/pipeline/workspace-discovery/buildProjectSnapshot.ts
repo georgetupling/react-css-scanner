@@ -16,7 +16,12 @@ import { loadPackageCssImports } from "./packages/loadPackageCssImports.js";
 import { fetchRemoteCssSources } from "./remote/fetchRemoteCssSources.js";
 import { collectSourceImports } from "./source/collectSourceImports.js";
 import { collectStylesheetImports } from "./stylesheets/collectStylesheetImports.js";
-import type { ProjectBundlerConfigFile, ProjectConfigFile, ProjectSnapshot } from "./types.js";
+import type {
+  ProjectBundlerConfigFile,
+  ProjectConfigFile,
+  ProjectPackageJsonFile,
+  ProjectSnapshot,
+} from "./types.js";
 
 export async function buildProjectSnapshot(input: {
   scanInput: ScanProjectInput;
@@ -45,6 +50,12 @@ export async function buildProjectSnapshot(input: {
   const bundlerConfigFiles = hasRootDiscoveryError(discovered.diagnostics)
     ? []
     : await collectRootBundlerConfigFiles({
+        rootDir: discovered.rootDir,
+        diagnostics,
+      });
+  const packageJsonFiles = hasRootDiscoveryError(discovered.diagnostics)
+    ? []
+    : await collectRootPackageJsonFiles({
         rootDir: discovered.rootDir,
         diagnostics,
       });
@@ -100,6 +111,7 @@ export async function buildProjectSnapshot(input: {
       htmlFiles,
       configFiles: collectConfigFiles(config),
       bundlerConfigFiles,
+      packageJsonFiles,
     },
     discoveredFiles: {
       sourceFiles: discovered.sourceFiles,
@@ -125,6 +137,63 @@ export async function buildProjectSnapshot(input: {
     },
     diagnostics,
   };
+}
+
+async function collectRootPackageJsonFiles(input: {
+  rootDir: string;
+  diagnostics: ScanDiagnostic[];
+}): Promise<ProjectPackageJsonFile[]> {
+  const filePath = "package.json";
+  const absolutePath = path.join(input.rootDir, filePath);
+  let sourceText: string;
+  try {
+    sourceText = await readFile(absolutePath, "utf8");
+  } catch (error) {
+    if (isNodeErrorWithCode(error, "ENOENT")) {
+      return [];
+    }
+    input.diagnostics.push({
+      code: "loading.package-json-read-failed",
+      severity: "warning",
+      phase: "loading",
+      filePath,
+      message: `failed to read package.json: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    });
+    return [];
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(sourceText);
+  } catch (error) {
+    input.diagnostics.push({
+      code: "loading.package-json-parse-failed",
+      severity: "warning",
+      phase: "loading",
+      filePath,
+      message: `failed to parse package.json: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    });
+    return [];
+  }
+
+  const packageJson = isRecord(parsed) ? parsed : {};
+  return [
+    {
+      kind: "package-json",
+      filePath,
+      absolutePath,
+      ...(typeof packageJson.name === "string" ? { packageName: packageJson.name } : {}),
+      dependencies: readStringRecord(packageJson.dependencies),
+      devDependencies: readStringRecord(packageJson.devDependencies),
+      peerDependencies: readStringRecord(packageJson.peerDependencies),
+      scripts: readStringRecord(packageJson.scripts),
+      sourceText,
+    },
+  ];
 }
 
 async function collectRootBundlerConfigFiles(input: {
@@ -182,6 +251,30 @@ async function collectRootBundlerConfigFiles(input: {
 
 function isRootBundlerConfigFileName(fileName: string): boolean {
   return /^vite\.config\.[cm]?[jt]s$/.test(fileName);
+}
+
+function readStringRecord(value: unknown): Record<string, string> {
+  if (!isRecord(value)) {
+    return {};
+  }
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter((entry): entry is [string, string] => typeof entry[1] === "string")
+      .sort((left, right) => left[0].localeCompare(right[0])),
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isNodeErrorWithCode(error: unknown, code: string): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code === code
+  );
 }
 
 function hasRootDiscoveryError(diagnostics: ScanDiagnostic[]): boolean {

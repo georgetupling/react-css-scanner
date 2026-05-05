@@ -279,6 +279,168 @@ test("runtime CSS loading treats Vite cssCodeSplit false CSS as initial", async 
   }
 });
 
+test("runtime CSS loading detects Vite from package metadata when config is absent", async () => {
+  const project = await new TestProjectBuilder()
+    .withFile(
+      "package.json",
+      '{ "name": "vite-package-app", "devDependencies": { "vite": "^5.0.0" } }\n',
+    )
+    .withFile("index.html", '<script type="module" src="/src/main.tsx"></script>\n')
+    .withSourceFile("src/main.tsx", 'export const loadRoute = () => import("./LazyRoute");\n')
+    .withSourceFile("src/LazyRoute.tsx", 'import "./LazyRoute.css";\n')
+    .withCssFile("src/LazyRoute.css", ".lazy-global {}\n")
+    .build();
+
+  try {
+    const result = await buildRuntimeCssLoadingForProject(project, {
+      sourceFilePaths: ["src/main.tsx", "src/LazyRoute.tsx"],
+      cssFilePaths: ["src/LazyRoute.css"],
+      htmlFilePaths: ["index.html"],
+    });
+
+    assert.deepEqual(
+      result.bundlerProfiles.map((profile) => ({
+        bundler: profile.bundler,
+        cssLoading: profile.cssLoading,
+        confidence: profile.confidence,
+        evidence: profile.evidence,
+      })),
+      [
+        {
+          bundler: "vite",
+          cssLoading: "split-by-runtime-chunk",
+          confidence: "medium",
+          evidence: ["package.json"],
+        },
+      ],
+    );
+    assert.equal(
+      result.availability.some(
+        (availability) =>
+          availability.stylesheetFilePath === "src/LazyRoute.css" &&
+          availability.sourceFilePath === "src/main.tsx",
+      ),
+      false,
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("runtime CSS loading uses Vite rollupOptions input to select multi-page HTML entries", async () => {
+  const project = await new TestProjectBuilder()
+    .withFile("admin.html", '<script type="module" src="/src/admin.tsx"></script>\n')
+    .withFile("web.html", '<script type="module" src="/src/web.tsx"></script>\n')
+    .withFile("ignored.html", '<script type="module" src="/src/ignored.tsx"></script>\n')
+    .withSourceFile(
+      "vite.config.ts",
+      [
+        'import { defineConfig } from "vite";',
+        'import { resolve } from "node:path";',
+        "export default defineConfig({",
+        "  build: {",
+        "    rollupOptions: {",
+        "      input: {",
+        '        admin: resolve(__dirname, "admin.html"),',
+        '        web: "./web.html",',
+        "      },",
+        "    },",
+        "  },",
+        "});",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile("src/admin.tsx", 'import "./admin.css";\n')
+    .withSourceFile("src/web.tsx", 'import "./web.css";\n')
+    .withSourceFile("src/ignored.tsx", 'import "./ignored.css";\n')
+    .withCssFile("src/admin.css", ".admin-only {}\n")
+    .withCssFile("src/web.css", ".web-only {}\n")
+    .withCssFile("src/ignored.css", ".ignored-only {}\n")
+    .build();
+
+  try {
+    const result = await buildRuntimeCssLoadingForProject(project, {
+      sourceFilePaths: ["src/admin.tsx", "src/web.tsx", "src/ignored.tsx"],
+      cssFilePaths: ["src/admin.css", "src/web.css", "src/ignored.css"],
+      htmlFilePaths: ["admin.html", "web.html", "ignored.html"],
+    });
+
+    assert.deepEqual(
+      result.entries.map((entry) => ({
+        kind: entry.kind,
+        htmlFilePath: entry.htmlFilePath,
+        entrySourceFilePath: entry.entrySourceFilePath,
+        reason: entry.reason,
+      })),
+      [
+        {
+          kind: "html-entry",
+          htmlFilePath: "admin.html",
+          entrySourceFilePath: "src/admin.tsx",
+          reason: "Vite rollupOptions.input admin.html resolved through HTML module script",
+        },
+        {
+          kind: "html-entry",
+          htmlFilePath: "web.html",
+          entrySourceFilePath: "src/web.tsx",
+          reason: "Vite rollupOptions.input web.html resolved through HTML module script",
+        },
+      ],
+    );
+    assert.equal(
+      result.entries.some((entry) => entry.entrySourceFilePath === "src/ignored.tsx"),
+      false,
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("runtime CSS loading accepts Vite rollupOptions input array and source entries", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "vite.config.ts",
+      [
+        'import { defineConfig } from "vite";',
+        "export default defineConfig({",
+        "  build: {",
+        "    rollupOptions: {",
+        '      input: ["src/client.tsx"],',
+        "    },",
+        "  },",
+        "});",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile("src/client.tsx", 'import "./client.css";\n')
+    .withCssFile("src/client.css", ".client-only {}\n")
+    .build();
+
+  try {
+    const result = await buildRuntimeCssLoadingForProject(project, {
+      sourceFilePaths: ["src/client.tsx"],
+      cssFilePaths: ["src/client.css"],
+    });
+
+    assert.deepEqual(
+      result.entries.map((entry) => ({
+        kind: entry.kind,
+        entrySourceFilePath: entry.entrySourceFilePath,
+        reason: entry.reason,
+      })),
+      [
+        {
+          kind: "vite-input-entry",
+          entrySourceFilePath: "src/client.tsx",
+          reason: "Vite rollupOptions.input src/client.tsx resolved to an analyzed source entry",
+        },
+      ],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
 async function buildRuntimeCssLoadingForProject(project, scanInput) {
   const snapshot = await buildProjectSnapshot({
     scanInput: {

@@ -150,6 +150,55 @@ test("buildProjectSnapshot inventories root bundler config files outside source 
   }
 });
 
+test("buildProjectSnapshot inventories root package metadata outside source roots", async () => {
+  const project = await new TestProjectBuilder()
+    .withFile(
+      "package.json",
+      '{ "name": "vite-app", "devDependencies": { "vite": "^5.0.0" }, "scripts": { "build": "vite build" } }\n',
+    )
+    .withSourceFile("src/App.tsx", "export function App() { return null; }\n")
+    .withConfig({
+      discovery: {
+        sourceRoots: ["src"],
+      },
+    })
+    .build();
+
+  try {
+    const snapshot = await buildProjectSnapshot({
+      scanInput: {
+        rootDir: project.rootDir,
+      },
+      runStage: async (_stage, _message, run) => run(),
+    });
+
+    assert.deepEqual(
+      snapshot.files.packageJsonFiles.map((file) => ({
+        kind: file.kind,
+        filePath: file.filePath,
+        packageName: file.packageName,
+        devDependencies: file.devDependencies,
+        scripts: file.scripts,
+      })),
+      [
+        {
+          kind: "package-json",
+          filePath: "package.json",
+          packageName: "vite-app",
+          devDependencies: {
+            vite: "^5.0.0",
+          },
+          scripts: {
+            build: "vite build",
+          },
+        },
+      ],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("discoverProjectFileRecords reports file roots without traversing them", async () => {
   const project = await new TestProjectBuilder().build();
 

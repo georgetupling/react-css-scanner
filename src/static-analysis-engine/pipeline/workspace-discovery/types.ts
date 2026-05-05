@@ -30,6 +30,7 @@ export type ProjectSnapshotFiles = {
   htmlFiles: ProjectHtmlFile[];
   configFiles: ProjectConfigFile[];
   bundlerConfigFiles: ProjectBundlerConfigFile[];
+  packageJsonFiles: ProjectPackageJsonFile[];
 };
 
 export type ProjectSourceFile = {
@@ -111,6 +112,18 @@ export type ProjectBundlerConfigFile = {
   bundler: "vite";
   filePath: string;
   absolutePath: string;
+  sourceText: string;
+};
+
+export type ProjectPackageJsonFile = {
+  kind: "package-json";
+  filePath: string;
+  absolutePath: string;
+  packageName?: string;
+  dependencies: Record<string, string>;
+  devDependencies: Record<string, string>;
+  peerDependencies: Record<string, string>;
+  scripts: Record<string, string>;
   sourceText: string;
 };
 
