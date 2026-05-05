@@ -143,6 +143,56 @@ test("css-class-unreachable treats app-entry imported CSS as reachable from rout
   }
 });
 
+test("css-class-unreachable does not leak component CSS through shared dependencies", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/FeatureA.tsx",
+      [
+        'import { Button } from "./ui/Button";',
+        'import "./FeatureA.css";',
+        "export function FeatureA() {",
+        '  return <Button className="feature-a__button" />;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/FeatureB.tsx",
+      [
+        'import { Button } from "./ui/Button";',
+        "export function FeatureB() {",
+        '  return <Button className="feature-a__button" />;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/ui/Button.tsx",
+      "export function Button({ className }) { return <button className={className}>Click</button>; }\n",
+    )
+    .withCssFile("src/FeatureA.css", ".feature-a__button { color: red; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/FeatureA.tsx", "src/FeatureB.tsx", "src/ui/Button.tsx"],
+      cssFilePaths: ["src/FeatureA.css"],
+    });
+
+    const finding = result.findings.find(
+      (candidate) =>
+        candidate.ruleId === "css-class-unreachable" &&
+        candidate.location?.filePath === "src/FeatureB.tsx" &&
+        candidate.data?.className === "feature-a__button",
+    );
+
+    assert.ok(finding);
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("css-class-unreachable treats wrapper CSS as reachable from slotted children", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(

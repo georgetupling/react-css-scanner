@@ -12,7 +12,8 @@ import { unusedCssClassRule } from "./rules/unusedCssClass.js";
 import { unusedCssModuleClassRule } from "./rules/unusedCssModuleClass.js";
 import { unusedCompoundSelectorBranchRule } from "./rules/unusedCompoundSelectorBranch.js";
 import { unsatisfiableSelectorRule } from "./rules/unsatisfiableSelector.js";
-import type { RuleDefinition, RuleId, RuleSeverity } from "./types.js";
+import type { RuleConfigSeverity } from "../config/index.js";
+import type { RuleDefinition, RuleId } from "./types.js";
 
 export const RULE_DEFINITIONS: RuleDefinition[] = [
   missingCssClassRule,
@@ -31,7 +32,7 @@ export const RULE_DEFINITIONS: RuleDefinition[] = [
   unsupportedSyntaxAffectingAnalysisRule,
 ];
 
-export const DEFAULT_RULE_SEVERITIES: Record<RuleId, RuleSeverity> = {
+export const DEFAULT_RULE_SEVERITIES: Record<RuleId, RuleConfigSeverity> = {
   "missing-css-class": "error",
   "css-class-unreachable": "error",
   "unused-css-class": "warn",

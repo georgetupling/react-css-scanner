@@ -169,8 +169,7 @@ function formatFindingSections(
       const severity = colorSeverity(finding.severity, useColor);
       const location = formatFindingLocation(finding, rootDir);
       const target = location && finding.location?.filePath !== heading ? ` at ${location}` : "";
-      lines.push(`  [${severity}] ${finding.ruleId}${target}`);
-      lines.push(`          ${finding.message}`);
+      lines.push(`  [${severity}] ${finding.ruleId}${target} ${finding.message}`);
       const hint = getFindingHint(finding);
       if (hint) {
         lines.push(`          hint: ${hint}`);

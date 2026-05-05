@@ -353,13 +353,16 @@ export function getCssModuleMemberMatchesByReferenceId(
 export function getClassOwnershipEvidence(
   analysis: AnalysisEvidence,
 ): HydratedClassOwnershipEvidence[] {
-  return analysis.ownershipInference.classOwnership
+  const ownershipInference = analysis.ownershipInference;
+  if (!ownershipInference) {
+    return [];
+  }
+
+  return ownershipInference.classOwnership
     .map((ownership) => ({
       ...ownership,
       ownerCandidates: ownership.ownerCandidateIds
-        .map((candidateId) =>
-          analysis.ownershipInference.indexes.ownerCandidateById.get(candidateId),
-        )
+        .map((candidateId) => ownershipInference.indexes.ownerCandidateById.get(candidateId))
         .filter((candidate): candidate is StyleOwnerCandidate => Boolean(candidate)),
     }))
     .sort((left, right) => left.id.localeCompare(right.id));
@@ -369,15 +372,18 @@ export function getClassOwnershipEvidenceByDefinitionId(
   analysis: AnalysisEvidence,
   definitionId: ProjectEvidenceId,
 ): HydratedClassOwnershipEvidence[] {
+  const ownershipInference = analysis.ownershipInference;
+  if (!ownershipInference) {
+    return [];
+  }
+
   const ownershipIds =
-    analysis.ownershipInference.indexes.classOwnershipIdsByClassDefinitionId.get(definitionId);
-  return resolveIds(ownershipIds, analysis.ownershipInference.indexes.classOwnershipById).map(
+    ownershipInference.indexes.classOwnershipIdsByClassDefinitionId.get(definitionId);
+  return resolveIds(ownershipIds, ownershipInference.indexes.classOwnershipById).map(
     (ownership) => ({
       ...ownership,
       ownerCandidates: ownership.ownerCandidateIds
-        .map((candidateId) =>
-          analysis.ownershipInference.indexes.ownerCandidateById.get(candidateId),
-        )
+        .map((candidateId) => ownershipInference.indexes.ownerCandidateById.get(candidateId))
         .filter((candidate): candidate is StyleOwnerCandidate => Boolean(candidate)),
     }),
   );
@@ -387,14 +393,14 @@ export function getOwnerCandidateById(
   analysis: AnalysisEvidence,
   id: string,
 ): StyleOwnerCandidate | undefined {
-  return analysis.ownershipInference.indexes.ownerCandidateById.get(id);
+  return analysis.ownershipInference?.indexes.ownerCandidateById.get(id);
 }
 
 export function getStylesheetOwnershipByStylesheetId(
   analysis: AnalysisEvidence,
   stylesheetId: string,
 ) {
-  return analysis.ownershipInference.indexes.stylesheetOwnershipByStylesheetId.get(stylesheetId);
+  return analysis.ownershipInference?.indexes.stylesheetOwnershipByStylesheetId.get(stylesheetId);
 }
 
 function resolveIds<TValue>(ids: string[] | undefined, valuesById: Map<string, TValue>): TValue[] {

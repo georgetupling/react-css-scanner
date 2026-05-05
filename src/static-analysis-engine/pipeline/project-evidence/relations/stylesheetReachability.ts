@@ -287,7 +287,6 @@ function expandSourceContextsThroughImports(input: {
   importedSourcePathsBySourcePath: Map<string, string[]>;
 }): string[] {
   const expanded = new Set<string>(input.sourceFilePaths);
-  const queue = [...input.sourceFilePaths];
   const importerSourcePathsByImportedSourcePath = new Map<string, string[]>();
   for (const [importerPath, importedPaths] of input.importedSourcePathsBySourcePath.entries()) {
     for (const importedPath of importedPaths) {
@@ -295,25 +294,48 @@ function expandSourceContextsThroughImports(input: {
     }
   }
 
+  expandSourceContexts({
+    expanded,
+    sourceFilePaths: input.sourceFilePaths,
+    connectedSourcePathsBySourcePath: input.importedSourcePathsBySourcePath,
+  });
+  expandSourceContexts({
+    expanded,
+    sourceFilePaths: input.sourceFilePaths,
+    connectedSourcePathsBySourcePath: importerSourcePathsByImportedSourcePath,
+  });
+
+  return [...expanded].sort((left, right) => left.localeCompare(right));
+}
+
+function expandSourceContexts(input: {
+  expanded: Set<string>;
+  sourceFilePaths: string[];
+  connectedSourcePathsBySourcePath: Map<string, string[]>;
+}): void {
+  const queue = [...input.sourceFilePaths];
+  const queued = new Set(queue);
+
   while (queue.length > 0) {
     const sourceFilePath = queue.shift();
     if (!sourceFilePath) {
       continue;
     }
-    const connectedSourcePaths = [
-      ...(input.importedSourcePathsBySourcePath.get(sourceFilePath) ?? []),
-      ...(importerSourcePathsByImportedSourcePath.get(sourceFilePath) ?? []),
-    ].sort((left, right) => left.localeCompare(right));
+    queued.delete(sourceFilePath);
+    const connectedSourcePaths = (input.connectedSourcePathsBySourcePath.get(sourceFilePath) ?? [])
+      .slice()
+      .sort((left, right) => left.localeCompare(right));
     for (const connectedSourcePath of connectedSourcePaths) {
-      if (expanded.has(connectedSourcePath)) {
+      if (input.expanded.has(connectedSourcePath)) {
         continue;
       }
-      expanded.add(connectedSourcePath);
-      queue.push(connectedSourcePath);
+      input.expanded.add(connectedSourcePath);
+      if (!queued.has(connectedSourcePath)) {
+        queue.push(connectedSourcePath);
+        queued.add(connectedSourcePath);
+      }
     }
   }
-
-  return [...expanded].sort((left, right) => left.localeCompare(right));
 }
 
 function collectSelectorDerivedStylesheetContexts(input: ProjectEvidenceBuildInput): Map<

@@ -8,7 +8,7 @@ import type {
 import type { PackageCssImportFact } from "../static-analysis-engine/pipeline/workspace-discovery/index.js";
 import type { ScannerConfig } from "../config/index.js";
 
-export type RuleSeverity = "debug" | "info" | "warn" | "error" | "off";
+export type RuleSeverity = "debug" | "info" | "warn" | "error";
 
 export type RuleId =
   | "missing-css-class"
