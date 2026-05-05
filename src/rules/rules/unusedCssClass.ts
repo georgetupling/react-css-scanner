@@ -43,6 +43,13 @@ function runUnusedCssClassRule(context: RuleContext): UnresolvedFinding[] {
       continue;
     }
     if (
+      definition.sourceFilePath &&
+      stylesheet.filePath &&
+      !sameAnalysisPath(definition.sourceFilePath, stylesheet.filePath)
+    ) {
+      continue;
+    }
+    if (
       getProviderBackedStylesheetRelationsByStylesheetId(
         context.analysisEvidence,
         definition.stylesheetId,

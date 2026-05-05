@@ -22,6 +22,7 @@ test("CSS Module rules do not report used module classes", async () => {
     assert.deepEqual(
       result.findings.filter(
         (finding) =>
+          finding.ruleId === "unused-css-class" ||
           finding.ruleId === "missing-css-module-class" ||
           finding.ruleId === "unused-css-module-class",
       ),

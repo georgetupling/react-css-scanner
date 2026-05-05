@@ -12,7 +12,6 @@ import type {
 import { buildCssModuleAliases } from "../../language-frontends/source/css-module-syntax/analyzeCssModuleAliases.js";
 import { getCssModuleDestructuring } from "../../language-frontends/source/css-module-syntax/analyzeCssModuleDestructuring.js";
 import { getCssModuleMemberAccess } from "../../language-frontends/source/css-module-syntax/analyzeCssModuleMemberAccess.js";
-import { isCssModulePath } from "../../../libraries/stylesheets/cssModulePaths.js";
 import {
   compareById,
   createCssModuleAliasId,
@@ -34,7 +33,7 @@ export function buildCssModuleImports(
 
   for (const sourceFile of input.factGraph.frontends.source.files) {
     for (const importSyntax of sourceFile.moduleSyntax.imports) {
-      if (importSyntax.importKind !== "css" || !isCssModuleSpecifier(importSyntax.specifier)) {
+      if (importSyntax.importKind !== "css") {
         continue;
       }
       const stylesheetFilePath = findResolvedStylesheetImportPath({
@@ -42,7 +41,7 @@ export function buildCssModuleImports(
         specifier: importSyntax.specifier,
         input,
       });
-      if (!stylesheetFilePath) {
+      if (!stylesheetFilePath || !isCssModuleStylesheet(stylesheetFilePath, input)) {
         continue;
       }
 
@@ -89,8 +88,16 @@ function findResolvedStylesheetImportPath(input: {
   )?.resolvedFilePath;
 }
 
-function isCssModuleSpecifier(specifier: string): boolean {
-  return isCssModulePath(specifier);
+function isCssModuleStylesheet(
+  stylesheetFilePath: string,
+  input: ProjectEvidenceBuildInput,
+): boolean {
+  return (
+    input.factGraph.snapshot.files.stylesheets.find(
+      (stylesheet) =>
+        normalizeProjectPath(stylesheet.filePath) === normalizeProjectPath(stylesheetFilePath),
+    )?.cssKind === "css-module"
+  );
 }
 
 export function buildCssModuleMemberReferences(input: {

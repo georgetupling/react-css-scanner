@@ -15,7 +15,7 @@ export function collectWebpackEntries(input: {
     if (configFile.bundler !== "webpack") {
       continue;
     }
-    for (const entryPath of extractWebpackEntryPaths(configFile.sourceText)) {
+    for (const entryPath of extractWebpackEntryPaths(configFile.sourceText, configFile.filePath)) {
       const normalizedEntryPath = normalizeProjectPath(entryPath);
       if (
         !input.moduleFilePathSet.has(normalizedEntryPath) ||

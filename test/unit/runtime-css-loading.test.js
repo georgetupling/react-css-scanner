@@ -506,6 +506,51 @@ test("runtime CSS loading reads common Webpack entry config and CSS extraction e
   }
 });
 
+test("runtime CSS loading resolves nested Webpack entries relative to __dirname", async () => {
+  const project = await new TestProjectBuilder()
+    .withFile(
+      "src/shell/webpack.config.js",
+      [
+        'const path = require("path");',
+        "module.exports = {",
+        "  entry: {",
+        '    main: path.resolve(__dirname, "./index.js"),',
+        '    activePreview: path.resolve(__dirname, "../apps/active-preview/index.js"),',
+        "  },",
+        "};",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile("src/shell/index.js", 'import "./shell.css";\n')
+    .withSourceFile("src/apps/active-preview/index.js", 'import "./preview.css";\n')
+    .withCssFile("src/shell/shell.css", ".shell {}\n")
+    .withCssFile("src/apps/active-preview/preview.css", ".preview {}\n")
+    .build();
+
+  try {
+    const result = await buildRuntimeCssLoadingForProject(project);
+
+    assert.deepEqual(
+      result.entries.map((entry) => ({
+        kind: entry.kind,
+        entrySourceFilePath: entry.entrySourceFilePath,
+      })),
+      [
+        {
+          kind: "webpack-entry",
+          entrySourceFilePath: "src/apps/active-preview/index.js",
+        },
+        {
+          kind: "webpack-entry",
+          entrySourceFilePath: "src/shell/index.js",
+        },
+      ],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("runtime CSS loading treats Next root app layout CSS as route-wide", async () => {
   const project = await new TestProjectBuilder()
     .withFile("package.json", '{ "name": "next-app", "dependencies": { "next": "^15.0.0" } }\n')

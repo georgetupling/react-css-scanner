@@ -68,13 +68,13 @@ test("realistic manager UI keeps webpack shell, app CSS, package CSS, and lazy C
       includeDebugRuntimeCss: true,
     });
 
-    assert.equal(result.summary.sourceFileCount, 38);
+    assert.equal(result.summary.sourceFileCount, 37);
     assert.equal(result.summary.cssFileCount, 6);
     assert.equal(result.summary.findingsByRule["css-class-unreachable"], 0);
     assert.equal(result.summary.findingsByRule["missing-css-class"], 0);
-    assert.equal(result.summary.findingsByRule["unused-css-class"], 4);
-    assert.equal(result.summary.findingsByRule["unused-css-module-class"], 1);
-    assert.equal(result.summary.findingsByRule["dynamic-class-reference"], 9);
+    assert.equal(result.summary.findingsByRule["unused-css-class"], 3);
+    assert.equal(result.summary.findingsByRule["unused-css-module-class"], 2);
+    assert.equal(result.summary.findingsByRule["dynamic-class-reference"], 14);
     assert.equal(result.summary.findingsByRule["unsupported-syntax-affecting-analysis"], 4);
     assert.deepEqual(
       result.diagnostics.filter((diagnostic) => diagnostic.severity !== "debug"),
@@ -82,7 +82,7 @@ test("realistic manager UI keeps webpack shell, app CSS, package CSS, and lazy C
     );
 
     assertFinding(result, {
-      ruleId: "unused-css-class",
+      ruleId: "unused-css-module-class",
       className: "stale-preview-helper",
       filePath: "src/apps/active-preview/Preview.less",
     });

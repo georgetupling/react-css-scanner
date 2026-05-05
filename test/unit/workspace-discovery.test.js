@@ -378,12 +378,16 @@ test("buildProjectSnapshot falls back to raw Less text when Less compilation fai
   }
 });
 
-test("buildProjectSnapshot inventories root bundler config files outside source roots", async () => {
+test("buildProjectSnapshot inventories bundler config files outside source roots", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile("src/App.tsx", "export function App() { return null; }\n")
     .withSourceFile(
       "vite.config.ts",
       'import { defineConfig } from "vite";\nexport default defineConfig({ build: { cssCodeSplit: false } });\n',
+    )
+    .withFile(
+      "src/shell/webpack.config.js",
+      "module.exports = { entry: { manager: path.resolve(__dirname, './index.js') } };\n",
     )
     .withConfig({
       discovery: {
@@ -412,6 +416,13 @@ test("buildProjectSnapshot inventories root bundler config files outside source 
         sourceText: file.sourceText,
       })),
       [
+        {
+          kind: "bundler-config",
+          bundler: "webpack",
+          filePath: "src/shell/webpack.config.js",
+          sourceText:
+            "module.exports = { entry: { manager: path.resolve(__dirname, './index.js') } };\n",
+        },
         {
           kind: "bundler-config",
           bundler: "vite",

@@ -1,11 +1,16 @@
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
+import ts from "typescript";
 
 import type { ResolvedScannerConfig } from "../../../config/index.js";
 import type { DiscoveryConfig } from "../../../config/index.js";
 import { loadScannerConfig } from "../../../config/index.js";
 import { normalizeProjectPath, resolveRootDir } from "../../../project/pathUtils.js";
-import type { ScanDiagnostic, ScanProjectInput } from "../../../project/types.js";
+import type {
+  ProjectFileRecord,
+  ScanDiagnostic,
+  ScanProjectInput,
+} from "../../../project/types.js";
 import { collectProjectBoundaries } from "./boundaries/collectProjectBoundaries.js";
 import { collectProjectResourceEdges } from "./edges/collectResourceEdges.js";
 import { discoverProjectFileRecords } from "./files/discoverProjectFileRecords.js";
@@ -23,6 +28,14 @@ import type {
   ProjectPackageJsonFile,
   ProjectSnapshot,
 } from "./types.js";
+
+const IGNORED_DISCOVERY_DIRECTORIES = new Set([
+  ".git",
+  "build",
+  "coverage",
+  "dist",
+  "node_modules",
+]);
 
 export async function buildProjectSnapshot(input: {
   scanInput: ScanProjectInput;
@@ -62,7 +75,7 @@ export async function buildProjectSnapshot(input: {
   ]);
   const bundlerConfigFiles = hasRootDiscoveryError(discovered.diagnostics)
     ? []
-    : await collectRootBundlerConfigFiles({
+    : await collectBundlerConfigFiles({
         rootDir: discovered.rootDir,
         diagnostics,
       });
@@ -109,12 +122,15 @@ export async function buildProjectSnapshot(input: {
       })
     : [];
   const remoteStylesheets = toStylesheetFiles(remoteCssSources, "remote");
-  const stylesheets = mergeStylesheets([
-    ...cssFiles,
-    ...linkedCssFiles,
-    ...packageStylesheets,
-    ...remoteStylesheets,
-  ]);
+  const stylesheets = applyBundlerCssModuleConventions({
+    stylesheets: mergeStylesheets([
+      ...cssFiles,
+      ...linkedCssFiles,
+      ...packageStylesheets,
+      ...remoteStylesheets,
+    ]),
+    bundlerConfigFiles,
+  });
   const stylesheetImports = collectStylesheetImports({
     stylesheets,
     discovery,
@@ -160,6 +176,81 @@ export async function buildProjectSnapshot(input: {
     },
     diagnostics,
   };
+}
+
+function applyBundlerCssModuleConventions(input: {
+  stylesheets: ProjectSnapshot["files"]["stylesheets"];
+  bundlerConfigFiles: ProjectBundlerConfigFile[];
+}): ProjectSnapshot["files"]["stylesheets"] {
+  const cssModuleExtensions = inferWebpackCssModuleExtensions(input.bundlerConfigFiles);
+  if (cssModuleExtensions.size === 0) {
+    return input.stylesheets;
+  }
+
+  return input.stylesheets.map((stylesheet) =>
+    cssModuleExtensions.has(path.extname(stylesheet.filePath).toLowerCase())
+      ? { ...stylesheet, cssKind: "css-module" }
+      : stylesheet,
+  );
+}
+
+function inferWebpackCssModuleExtensions(
+  bundlerConfigFiles: ProjectBundlerConfigFile[],
+): Set<string> {
+  const extensions = new Set<string>();
+  for (const configFile of bundlerConfigFiles) {
+    if (configFile.bundler !== "webpack") {
+      continue;
+    }
+    collectWebpackCssModuleRuleExtensions(configFile).forEach((extension) =>
+      extensions.add(extension),
+    );
+  }
+  return extensions;
+}
+
+function collectWebpackCssModuleRuleExtensions(configFile: ProjectBundlerConfigFile): string[] {
+  const sourceFile = ts.createSourceFile(
+    configFile.filePath,
+    configFile.sourceText,
+    ts.ScriptTarget.Latest,
+    false,
+    ts.ScriptKind.JS,
+  );
+  const extensions = new Set<string>();
+
+  const visit = (node: ts.Node): void => {
+    if (ts.isObjectLiteralExpression(node) && hasDirectProperty(node, "test")) {
+      const ruleText = node.getText(sourceFile);
+      if (/modules\s*:|modules\s*[,}]/.test(ruleText)) {
+        for (const extension of [".css", ".less", ".scss", ".sass"]) {
+          const escapedExtension = extension.replace(".", "\\.");
+          const extensionPattern = new RegExp(`\\\\${escapedExtension}\\b`);
+          if (extensionPattern.test(ruleText)) {
+            extensions.add(extension);
+          }
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+
+  ts.forEachChild(sourceFile, visit);
+  return [...extensions].sort((left, right) => left.localeCompare(right));
+}
+
+function hasDirectProperty(node: ts.ObjectLiteralExpression, propertyName: string): boolean {
+  return node.properties.some(
+    (property) =>
+      ts.isPropertyAssignment(property) && getPropertyNameText(property.name) === propertyName,
+  );
+}
+
+function getPropertyNameText(name: ts.PropertyName): string | undefined {
+  if (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNumericLiteral(name)) {
+    return name.text;
+  }
+  return undefined;
 }
 
 async function buildEffectiveDiscoveryConfig(input: {
@@ -323,29 +414,16 @@ async function collectRootPackageJsonFiles(input: {
   ];
 }
 
-async function collectRootBundlerConfigFiles(input: {
+async function collectBundlerConfigFiles(input: {
   rootDir: string;
   diagnostics: ScanDiagnostic[];
 }): Promise<ProjectBundlerConfigFile[]> {
-  let entries: string[];
-  try {
-    entries = await readdir(input.rootDir);
-  } catch (error) {
-    input.diagnostics.push({
-      code: "discovery.bundler-config-read-failed",
-      severity: "warning",
-      phase: "discovery",
-      filePath: ".",
-      message: `failed to inspect root bundler config files: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    });
-    return [];
-  }
-
-  const configFilePaths = entries
-    .filter(isRootBundlerConfigFileName)
-    .map((fileName) => normalizeProjectPath(fileName))
+  const configFiles = await discoverBundlerConfigFileRecords({
+    rootDir: input.rootDir,
+    diagnostics: input.diagnostics,
+  });
+  const configFilePaths = configFiles
+    .map((file) => file.filePath)
     .sort((left, right) => left.localeCompare(right));
   const loadedConfigFiles = await Promise.all(
     configFilePaths.map(async (filePath) => {
@@ -380,26 +458,75 @@ async function collectRootBundlerConfigFiles(input: {
   return loadedConfigFiles.filter((file): file is ProjectBundlerConfigFile => Boolean(file));
 }
 
-function isRootBundlerConfigFileName(fileName: string): boolean {
+async function discoverBundlerConfigFileRecords(input: {
+  rootDir: string;
+  diagnostics: ScanDiagnostic[];
+}): Promise<ProjectFileRecord[]> {
+  const files: ProjectFileRecord[] = [];
+  try {
+    await walkBundlerConfigFiles(input.rootDir, input.rootDir, files);
+  } catch (error) {
+    input.diagnostics.push({
+      code: "discovery.bundler-config-read-failed",
+      severity: "warning",
+      phase: "discovery",
+      filePath: ".",
+      message: `failed to inspect bundler config files: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    });
+  }
+  return files.sort((left, right) => left.filePath.localeCompare(right.filePath));
+}
+
+async function walkBundlerConfigFiles(
+  rootDir: string,
+  currentDir: string,
+  files: ProjectFileRecord[],
+): Promise<void> {
+  const entries = await readdir(currentDir, { withFileTypes: true });
+
+  for (const entry of entries) {
+    if (entry.isDirectory()) {
+      if (!IGNORED_DISCOVERY_DIRECTORIES.has(entry.name)) {
+        await walkBundlerConfigFiles(rootDir, path.join(currentDir, entry.name), files);
+      }
+      continue;
+    }
+
+    if (!entry.isFile() || !isBundlerConfigFileName(entry.name)) {
+      continue;
+    }
+
+    const absolutePath = path.join(currentDir, entry.name);
+    files.push({
+      filePath: normalizeProjectPath(path.relative(rootDir, absolutePath)),
+      absolutePath,
+    });
+  }
+}
+
+function isBundlerConfigFileName(fileName: string): boolean {
   return Boolean(getRootBundlerConfigKind(fileName));
 }
 
 function getRootBundlerConfigKind(
   fileName: string,
 ): ProjectBundlerConfigFile["bundler"] | undefined {
-  if (/^vite\.config\.[cm]?[jt]s$/.test(fileName)) {
+  const baseName = path.basename(fileName);
+  if (/^vite\.config\.[cm]?[jt]s$/.test(baseName)) {
     return "vite";
   }
-  if (/^webpack\.config\.[cm]?[jt]s$/.test(fileName)) {
+  if (/^webpack\.config\.[cm]?[jt]s$/.test(baseName)) {
     return "webpack";
   }
-  if (/^next\.config\.[cm]?[jt]s$/.test(fileName)) {
+  if (/^next\.config\.[cm]?[jt]s$/.test(baseName)) {
     return "next";
   }
-  if (/^remix\.config\.[cm]?[jt]s$/.test(fileName)) {
+  if (/^remix\.config\.[cm]?[jt]s$/.test(baseName)) {
     return "remix";
   }
-  if (/^astro\.config\.[cm]?[jt]s$/.test(fileName)) {
+  if (/^astro\.config\.[cm]?[jt]s$/.test(baseName)) {
     return "astro";
   }
   return undefined;

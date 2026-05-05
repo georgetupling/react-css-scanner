@@ -91,7 +91,9 @@ async function discoverSourceFiles(input: {
   ].map(globToRegExp);
   const sourceRoots = input.discovery?.sourceRoots ?? [];
   const predicate = (filePath: string): boolean =>
-    isSourceFilePath(filePath) && !excludePatterns.some((pattern) => pattern.test(filePath));
+    isSourceFilePath(filePath) &&
+    !isBundlerConfigFilePath(filePath) &&
+    !excludePatterns.some((pattern) => pattern.test(filePath));
 
   if (sourceRoots.length === 0) {
     return discoverFilesByPredicate(input.rootDir, predicate);
@@ -201,6 +203,12 @@ function normalizeExplicitFiles(rootDir: string, filePaths: string[]): ProjectFi
 
 function isSourceFilePath(filePath: string): boolean {
   return SOURCE_EXTENSIONS.has(path.extname(filePath)) && !filePath.endsWith(".d.ts");
+}
+
+function isBundlerConfigFilePath(filePath: string): boolean {
+  return /(?:^|\/)(?:vite|webpack|next|remix|astro)\.config\.[cm]?[jt]s$/.test(
+    normalizeProjectPath(filePath),
+  );
 }
 
 function isStylesheetFilePath(

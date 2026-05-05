@@ -1,3 +1,4 @@
+import path from "node:path";
 import ts from "typescript";
 
 import { normalizeProjectPath } from "./pathUtils.js";
@@ -23,9 +24,12 @@ export function extractViteRollupInputPaths(sourceText: string): string[] {
   return [...inputPaths].sort((left, right) => left.localeCompare(right));
 }
 
-export function extractWebpackEntryPaths(sourceText: string): string[] {
+export function extractWebpackEntryPaths(
+  sourceText: string,
+  configFilePath = "webpack.config.js",
+): string[] {
   const sourceFile = ts.createSourceFile(
-    "webpack.config.js",
+    configFilePath,
     sourceText,
     ts.ScriptTarget.Latest,
     false,
@@ -35,7 +39,7 @@ export function extractWebpackEntryPaths(sourceText: string): string[] {
 
   const visit = (node: ts.Node): void => {
     if (ts.isPropertyAssignment(node) && getPropertyNameText(node.name) === "entry") {
-      for (const entryPath of readStaticInputExpressionPaths(node.initializer)) {
+      for (const entryPath of readStaticInputExpressionPaths(node.initializer, configFilePath)) {
         entryPaths.add(entryPath);
       }
     }
@@ -62,15 +66,17 @@ function collectInputPathsFromRollupOptions(node: ts.Expression, inputPaths: Set
   }
 }
 
-function readStaticInputExpressionPaths(node: ts.Expression): string[] {
+function readStaticInputExpressionPaths(node: ts.Expression, configFilePath = "."): string[] {
   const expression = unwrapExpression(node);
-  const stringPath = readStaticPathExpression(expression);
+  const stringPath = readStaticPathExpression(expression, configFilePath);
   if (stringPath) {
     return [stringPath];
   }
 
   if (ts.isArrayLiteralExpression(expression)) {
-    return expression.elements.flatMap((element) => readStaticInputExpressionPaths(element));
+    return expression.elements.flatMap((element) =>
+      readStaticInputExpressionPaths(element, configFilePath),
+    );
   }
 
   if (ts.isObjectLiteralExpression(expression)) {
@@ -78,19 +84,24 @@ function readStaticInputExpressionPaths(node: ts.Expression): string[] {
       if (!ts.isPropertyAssignment(property)) {
         return [];
       }
-      return readStaticInputExpressionPaths(property.initializer);
+      return readStaticInputExpressionPaths(property.initializer, configFilePath);
     });
   }
 
   return [];
 }
 
-function readStaticPathExpression(node: ts.Expression): string | undefined {
+function readStaticPathExpression(node: ts.Expression, configFilePath: string): string | undefined {
   const expression = unwrapExpression(node);
   if (ts.isStringLiteralLike(expression)) {
     return normalizeStaticInputPath(expression.text);
   }
   if (ts.isCallExpression(expression)) {
+    const dirnameRelativePath = readDirnameRelativeCallPath(expression, configFilePath);
+    if (dirnameRelativePath) {
+      return dirnameRelativePath;
+    }
+
     const stringArguments = expression.arguments
       .filter(ts.isStringLiteralLike)
       .map((argument) => normalizeStaticInputPath(argument.text))
@@ -98,6 +109,28 @@ function readStaticPathExpression(node: ts.Expression): string | undefined {
     return stringArguments.at(-1);
   }
   return undefined;
+}
+
+function readDirnameRelativeCallPath(
+  expression: ts.CallExpression,
+  configFilePath: string,
+): string | undefined {
+  const dirnameArgumentIndex = expression.arguments.findIndex(
+    (argument) => ts.isIdentifier(argument) && argument.text === "__dirname",
+  );
+  if (dirnameArgumentIndex < 0) {
+    return undefined;
+  }
+
+  const parts = expression.arguments
+    .slice(dirnameArgumentIndex + 1)
+    .filter(ts.isStringLiteralLike)
+    .map((argument) => argument.text);
+  if (parts.length === 0) {
+    return getProjectDirectory(configFilePath);
+  }
+
+  return normalizeProjectPath(path.posix.join(getProjectDirectory(configFilePath), ...parts));
 }
 
 function unwrapExpression(node: ts.Expression): ts.Expression {
@@ -122,4 +155,10 @@ function getPropertyNameText(name: ts.PropertyName): string | undefined {
 
 function normalizeStaticInputPath(inputPath: string): string {
   return normalizeProjectPath(inputPath.replace(/^\.\//, "").replace(/^\/+/, ""));
+}
+
+function getProjectDirectory(filePath: string): string {
+  const normalized = normalizeProjectPath(filePath);
+  const index = normalized.lastIndexOf("/");
+  return index < 0 ? "." : normalized.slice(0, index);
 }
