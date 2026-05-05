@@ -441,6 +441,168 @@ test("runtime CSS loading accepts Vite rollupOptions input array and source entr
   }
 });
 
+test("runtime CSS loading reads common Webpack entry config and CSS extraction evidence", async () => {
+  const project = await new TestProjectBuilder()
+    .withFile(
+      "webpack.config.js",
+      [
+        'const MiniCssExtractPlugin = require("mini-css-extract-plugin");',
+        "module.exports = {",
+        "  entry: {",
+        '    admin: "./src/admin.tsx",',
+        '    web: ["./src/web.tsx"],',
+        "  },",
+        "  plugins: [new MiniCssExtractPlugin()],",
+        "};",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile("src/admin.tsx", 'import "./admin.css";\n')
+    .withSourceFile("src/web.tsx", 'import "./web.css";\n')
+    .withCssFile("src/admin.css", ".admin-only {}\n")
+    .withCssFile("src/web.css", ".web-only {}\n")
+    .build();
+
+  try {
+    const result = await buildRuntimeCssLoadingForProject(project, {
+      sourceFilePaths: ["src/admin.tsx", "src/web.tsx"],
+      cssFilePaths: ["src/admin.css", "src/web.css"],
+    });
+
+    assert.deepEqual(
+      result.bundlerProfiles.map((profile) => ({
+        bundler: profile.bundler,
+        cssLoading: profile.cssLoading,
+        confidence: profile.confidence,
+        evidence: profile.evidence,
+      })),
+      [
+        {
+          bundler: "webpack",
+          cssLoading: "split-by-runtime-chunk",
+          confidence: "high",
+          evidence: ["webpack.config.js"],
+        },
+      ],
+    );
+    assert.deepEqual(
+      result.entries.map((entry) => ({
+        kind: entry.kind,
+        entrySourceFilePath: entry.entrySourceFilePath,
+      })),
+      [
+        {
+          kind: "webpack-entry",
+          entrySourceFilePath: "src/admin.tsx",
+        },
+        {
+          kind: "webpack-entry",
+          entrySourceFilePath: "src/web.tsx",
+        },
+      ],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("runtime CSS loading treats Next root app layout CSS as route-wide", async () => {
+  const project = await new TestProjectBuilder()
+    .withFile("package.json", '{ "name": "next-app", "dependencies": { "next": "^15.0.0" } }\n')
+    .withSourceFile(
+      "src/app/layout.tsx",
+      'import "./globals.css";\nexport default function RootLayout({ children }) { return children; }\n',
+    )
+    .withSourceFile(
+      "src/app/page.tsx",
+      'export default function Page() { return <main className="app-shell">Home</main>; }\n',
+    )
+    .withSourceFile(
+      "src/app/admin/page.tsx",
+      'export default function AdminPage() { return <main className="app-shell">Admin</main>; }\n',
+    )
+    .withSourceFile(
+      "src/app/admin/Card.tsx",
+      'export function Card() { return <div className="app-shell" />; }\n',
+    )
+    .withCssFile("src/app/globals.css", ".app-shell {}\n")
+    .build();
+
+  try {
+    const result = await buildRuntimeCssLoadingForProject(project, {
+      sourceFilePaths: [
+        "src/app/layout.tsx",
+        "src/app/page.tsx",
+        "src/app/admin/page.tsx",
+        "src/app/admin/Card.tsx",
+      ],
+      cssFilePaths: ["src/app/globals.css"],
+    });
+
+    assert.deepEqual(
+      result.entries.map((entry) => ({
+        kind: entry.kind,
+        entrySourceFilePath: entry.entrySourceFilePath,
+      })),
+      [
+        {
+          kind: "next-app-entry",
+          entrySourceFilePath: "src/app/layout.tsx",
+        },
+      ],
+    );
+    assert.ok(
+      result.availability.some(
+        (availability) =>
+          availability.stylesheetFilePath === "src/app/globals.css" &&
+          availability.sourceFilePath === "src/app/admin/page.tsx" &&
+          availability.availability === "definite",
+      ),
+    );
+    assert.equal(
+      result.availability.some(
+        (availability) =>
+          availability.stylesheetFilePath === "src/app/globals.css" &&
+          availability.sourceFilePath === "src/app/admin/Card.tsx",
+      ),
+      false,
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("runtime CSS loading detects Remix and Astro conservatively from package metadata", async () => {
+  const remixProject = await new TestProjectBuilder()
+    .withFile(
+      "package.json",
+      '{ "name": "remix-app", "dependencies": { "@remix-run/react": "^2.0.0" } }\n',
+    )
+    .withSourceFile("src/main.tsx", "export const app = true;\n")
+    .build();
+  const astroProject = await new TestProjectBuilder()
+    .withFile("package.json", '{ "name": "astro-app", "dependencies": { "astro": "^5.0.0" } }\n')
+    .withSourceFile("src/main.tsx", "export const app = true;\n")
+    .build();
+
+  try {
+    const remixResult = await buildRuntimeCssLoadingForProject(remixProject, {
+      sourceFilePaths: ["src/main.tsx"],
+    });
+    const astroResult = await buildRuntimeCssLoadingForProject(astroProject, {
+      sourceFilePaths: ["src/main.tsx"],
+    });
+
+    assert.equal(remixResult.bundlerProfiles[0].bundler, "remix");
+    assert.equal(remixResult.bundlerProfiles[0].cssLoading, "generic-esm-chunks");
+    assert.equal(astroResult.bundlerProfiles[0].bundler, "astro");
+    assert.equal(astroResult.bundlerProfiles[0].cssLoading, "generic-esm-chunks");
+  } finally {
+    await remixProject.cleanup();
+    await astroProject.cleanup();
+  }
+});
+
 async function buildRuntimeCssLoadingForProject(project, scanInput) {
   const snapshot = await buildProjectSnapshot({
     scanInput: {

@@ -223,10 +223,14 @@ async function collectRootBundlerConfigFiles(input: {
   const loadedConfigFiles = await Promise.all(
     configFilePaths.map(async (filePath) => {
       const absolutePath = path.join(input.rootDir, filePath);
+      const bundler = getRootBundlerConfigKind(filePath);
+      if (!bundler) {
+        return undefined;
+      }
       try {
         return {
           kind: "bundler-config" as const,
-          bundler: "vite" as const,
+          bundler,
           filePath,
           absolutePath,
           sourceText: await readFile(absolutePath, "utf8"),
@@ -250,7 +254,28 @@ async function collectRootBundlerConfigFiles(input: {
 }
 
 function isRootBundlerConfigFileName(fileName: string): boolean {
-  return /^vite\.config\.[cm]?[jt]s$/.test(fileName);
+  return Boolean(getRootBundlerConfigKind(fileName));
+}
+
+function getRootBundlerConfigKind(
+  fileName: string,
+): ProjectBundlerConfigFile["bundler"] | undefined {
+  if (/^vite\.config\.[cm]?[jt]s$/.test(fileName)) {
+    return "vite";
+  }
+  if (/^webpack\.config\.[cm]?[jt]s$/.test(fileName)) {
+    return "webpack";
+  }
+  if (/^next\.config\.[cm]?[jt]s$/.test(fileName)) {
+    return "next";
+  }
+  if (/^remix\.config\.[cm]?[jt]s$/.test(fileName)) {
+    return "remix";
+  }
+  if (/^astro\.config\.[cm]?[jt]s$/.test(fileName)) {
+    return "astro";
+  }
+  return undefined;
 }
 
 function readStringRecord(value: unknown): Record<string, string> {

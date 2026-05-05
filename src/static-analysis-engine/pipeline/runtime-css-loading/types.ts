@@ -1,6 +1,6 @@
 export type RuntimeCssBundlerProfile = {
   id: string;
-  bundler: "vite" | "unknown";
+  bundler: "vite" | "webpack" | "next" | "remix" | "astro" | "unknown";
   cssLoading: "split-by-runtime-chunk" | "single-initial-stylesheet" | "generic-esm-chunks";
   confidence: "high" | "medium";
   evidence: string[];
@@ -9,7 +9,13 @@ export type RuntimeCssBundlerProfile = {
 
 export type RuntimeCssEntry = {
   id: string;
-  kind: "html-entry" | "vite-input-entry" | "conventional-entry";
+  kind:
+    | "html-entry"
+    | "vite-input-entry"
+    | "webpack-entry"
+    | "next-app-entry"
+    | "next-pages-entry"
+    | "conventional-entry";
   entrySourceFilePath: string;
   htmlFilePath?: string;
   confidence: "high" | "medium";

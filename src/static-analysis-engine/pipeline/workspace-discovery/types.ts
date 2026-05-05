@@ -109,7 +109,7 @@ export type ProjectConfigFile = {
 
 export type ProjectBundlerConfigFile = {
   kind: "bundler-config";
-  bundler: "vite";
+  bundler: "vite" | "webpack" | "next" | "remix" | "astro";
   filePath: string;
   absolutePath: string;
   sourceText: string;
