@@ -19,6 +19,7 @@ export {
   buildSelectorReachability,
   selectorBranchSourceKey,
 } from "./pipeline/selector-reachability/index.js";
+export { buildRuntimeCssLoading } from "./pipeline/runtime-css-loading/index.js";
 export {
   buildOwnershipInference,
   classDefinitionConsumerEvidenceId,
@@ -205,6 +206,12 @@ export type {
   SelectorReachabilityStatus,
   SelectorSubjectRequirement,
 } from "./pipeline/selector-reachability/index.js";
+export type {
+  RuntimeCssAvailability,
+  RuntimeCssChunk,
+  RuntimeCssEntry,
+  RuntimeCssLoadingResult,
+} from "./pipeline/runtime-css-loading/index.js";
 export type {
   ClassConsumerSummary,
   ClassOwnershipCompatibilityEvidenceKind,

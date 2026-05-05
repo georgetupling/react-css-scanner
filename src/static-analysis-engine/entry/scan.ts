@@ -3,6 +3,7 @@ import { buildLanguageFrontends } from "../pipeline/language-frontends/index.js"
 import { buildOwnershipInference } from "../pipeline/ownership-inference/index.js";
 import { buildProjectEvidenceAssembly } from "../pipeline/project-evidence/index.js";
 import { buildRenderStructure } from "../pipeline/render-structure/index.js";
+import { buildRuntimeCssLoading } from "../pipeline/runtime-css-loading/index.js";
 import { buildSelectorReachability } from "../pipeline/selector-reachability/index.js";
 import { evaluateSymbolicExpressions } from "../pipeline/symbolic-evaluation/index.js";
 import {
@@ -70,6 +71,12 @@ export async function runAnalysisPipeline(input: {
     "Building selector reachability evidence",
     () => ({ selectorReachability: buildSelectorReachability(renderStructureStage) }),
   );
+  const runtimeCssLoadingStage = runAnalysisStage(
+    progress,
+    "runtime-css-loading",
+    "Building runtime CSS loading model",
+    () => ({ runtimeCssLoading: buildRuntimeCssLoading({ factGraph }) }),
+  );
   const projectEvidenceStage = runAnalysisStage(
     progress,
     "project-evidence",
@@ -82,6 +89,7 @@ export async function runAnalysisPipeline(input: {
           renderModel: renderStructureStage.renderModel,
           symbolicEvaluation: symbolicEvaluationStage,
           selectorReachability: selectorReachabilityStage.selectorReachability,
+          runtimeCssLoading: runtimeCssLoadingStage.runtimeCssLoading,
         },
         options: {
           includeTraces,
@@ -109,6 +117,7 @@ export async function runAnalysisPipeline(input: {
     snapshot,
     analysisEvidence: {
       projectEvidence: projectEvidenceStage.projectEvidence,
+      runtimeCssLoading: runtimeCssLoadingStage.runtimeCssLoading,
       selectorReachability: selectorReachabilityStage.selectorReachability,
       ownershipInference: ownershipInferenceStage?.ownershipInference,
     },

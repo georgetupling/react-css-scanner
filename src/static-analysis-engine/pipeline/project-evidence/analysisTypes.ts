@@ -9,6 +9,7 @@ import type {
   SelectorReachabilityResult,
   SelectorReachabilityStatus,
 } from "../selector-reachability/index.js";
+import type { RuntimeCssLoadingResult } from "../runtime-css-loading/index.js";
 import type { FactGraphResult } from "../fact-graph/types.js";
 import type { SymbolicEvaluationResult } from "../symbolic-evaluation/types.js";
 import type { AnalysisConfidence, AnalysisTrace } from "../../types/analysis.js";
@@ -467,6 +468,7 @@ export type ProjectEvidenceBuildInput = {
   unsupportedClassReferences?: UnsupportedClassReferenceDiagnostic[];
   symbolicEvaluation?: SymbolicEvaluationResult;
   selectorReachability?: SelectorReachabilityResult;
+  runtimeCssLoading?: RuntimeCssLoadingResult;
   includeTraces?: boolean;
 };
 

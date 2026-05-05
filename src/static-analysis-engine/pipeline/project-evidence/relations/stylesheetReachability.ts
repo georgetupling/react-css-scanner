@@ -18,7 +18,6 @@ import {
 } from "../internal/shared.js";
 import type { AnalysisTrace } from "../../../types/analysis.js";
 import type { SelectorBranchMatch } from "../../selector-reachability/types.js";
-import type { ProjectResourceEdge } from "../../workspace-discovery/index.js";
 
 export function buildStylesheetReachability(
   input: ProjectEvidenceBuildInput,
@@ -167,14 +166,7 @@ function collectStylesheetReachabilityEvidence(input: ProjectEvidenceBuildInput)
     importedSourcePathsBySourcePath,
   });
   const entryBundleContextsByStylesheetPath = buildEntryBundleContextsByStylesheetPath({
-    snapshotEdges: input.factGraph?.snapshot.edges ?? [],
-    moduleFilePaths: graph.nodes.modules
-      .map((moduleNode) => normalizeProjectPath(moduleNode.filePath))
-      .sort((left, right) => left.localeCompare(right)),
-    importedSourcePathsBySourcePath,
-    directlyImportedByStylesheetPath,
-    packageImportedByStylesheetPath,
-    stylesheetImportersByStylesheetPath,
+    runtimeCssLoading: input.runtimeCssLoading,
   });
   const selectorDerivedByStylesheetPath = collectSelectorDerivedStylesheetContexts(input);
 
@@ -357,199 +349,36 @@ function expandSourceContexts(input: {
 }
 
 function buildEntryBundleContextsByStylesheetPath(input: {
-  snapshotEdges: ProjectResourceEdge[];
-  moduleFilePaths: string[];
-  importedSourcePathsBySourcePath: Map<string, string[]>;
-  directlyImportedByStylesheetPath: Map<string, string[]>;
-  packageImportedByStylesheetPath: Map<string, string[]>;
-  stylesheetImportersByStylesheetPath: Map<string, string[]>;
+  runtimeCssLoading: ProjectEvidenceBuildInput["runtimeCssLoading"];
 }): Map<string, StylesheetReachabilityContextRecord[]> {
-  const sourceImportedStylesheetsBySourcePath = new Map<string, string[]>();
-  for (const [stylesheetPath, sourceFilePaths] of input.directlyImportedByStylesheetPath) {
-    for (const sourceFilePath of sourceFilePaths) {
-      pushMapValue(sourceImportedStylesheetsBySourcePath, sourceFilePath, stylesheetPath);
-    }
-  }
-  for (const [stylesheetPath, sourceFilePaths] of input.packageImportedByStylesheetPath) {
-    for (const sourceFilePath of sourceFilePaths) {
-      pushMapValue(sourceImportedStylesheetsBySourcePath, sourceFilePath, stylesheetPath);
-    }
-  }
-
-  const importedStylesheetPathsByStylesheetPath = new Map<string, string[]>();
-  for (const [
-    importedStylesheetPath,
-    importerStylesheetPaths,
-  ] of input.stylesheetImportersByStylesheetPath) {
-    for (const importerStylesheetPath of importerStylesheetPaths) {
-      pushMapValue(
-        importedStylesheetPathsByStylesheetPath,
-        importerStylesheetPath,
-        importedStylesheetPath,
-      );
-    }
-  }
-
   const contextsByStylesheetPath = new Map<string, StylesheetReachabilityContextRecord[]>();
   const contextKeysByStylesheetPath = new Map<string, Set<string>>();
-  const htmlEntryEdges = input.snapshotEdges
-    .filter(
-      (
-        edge,
-      ): edge is ProjectResourceEdge & {
-        kind: "html-script";
-        resolvedFilePath: string;
-      } => edge.kind === "html-script" && Boolean(edge.resolvedFilePath),
-    )
-    .map((edge) => ({
-      htmlFilePath: normalizeProjectPath(edge.fromHtmlFilePath),
-      entrySourceFilePath: normalizeProjectPath(edge.resolvedFilePath),
-    }))
-    .sort(
-      (left, right) =>
-        left.htmlFilePath.localeCompare(right.htmlFilePath) ||
-        left.entrySourceFilePath.localeCompare(right.entrySourceFilePath),
+
+  for (const availability of input.runtimeCssLoading?.availability ?? []) {
+    pushUniqueContext(
+      contextsByStylesheetPath,
+      contextKeysByStylesheetPath,
+      normalizeProjectPath(availability.stylesheetFilePath),
+      {
+        context: {
+          kind: "source-file",
+          filePath: normalizeProjectPath(availability.sourceFilePath),
+        },
+        availability: availability.availability,
+        reasons: [availability.reason],
+        derivations: [
+          {
+            kind: "source-file-entry-bundle",
+            entrySourceFilePath: availability.entrySourceFilePath,
+            ...(availability.htmlFilePath ? { htmlFilePath: availability.htmlFilePath } : {}),
+          },
+        ],
+        traces: [],
+      },
     );
-  const moduleFilePathSet = new Set(input.moduleFilePaths);
-  const validHtmlEntryEdges = htmlEntryEdges.filter((entry) =>
-    moduleFilePathSet.has(entry.entrySourceFilePath),
-  );
-  const appEntries: Array<{ entrySourceFilePath: string; htmlFilePath?: string }> =
-    validHtmlEntryEdges.length > 0
-      ? validHtmlEntryEdges
-      : collectConventionalEntrySourceFilePaths(input.moduleFilePaths).map(
-          (entrySourceFilePath) => ({
-            entrySourceFilePath,
-          }),
-        );
-
-  for (const entry of appEntries) {
-    const bundleSourceFilePaths = collectReachableSourceFilePaths({
-      entrySourceFilePath: entry.entrySourceFilePath,
-      importedSourcePathsBySourcePath: input.importedSourcePathsBySourcePath,
-      moduleFilePaths: input.moduleFilePaths,
-    });
-    const bundleStylesheetPaths = collectBundleStylesheetPaths({
-      sourceFilePaths: bundleSourceFilePaths,
-      sourceImportedStylesheetsBySourcePath,
-      importedStylesheetPathsByStylesheetPath,
-    });
-
-    for (const stylesheetPath of bundleStylesheetPaths) {
-      for (const sourceFilePath of bundleSourceFilePaths) {
-        pushUniqueContext(contextsByStylesheetPath, contextKeysByStylesheetPath, stylesheetPath, {
-          context: { kind: "source-file", filePath: sourceFilePath },
-          availability: "definite",
-          reasons: ["stylesheet is loaded by the same HTML app entry bundle"],
-          derivations: [
-            {
-              kind: "source-file-entry-bundle",
-              entrySourceFilePath: entry.entrySourceFilePath,
-              ...(entry.htmlFilePath ? { htmlFilePath: entry.htmlFilePath } : {}),
-            },
-          ],
-          traces: [],
-        });
-      }
-    }
   }
 
   return contextsByStylesheetPath;
-}
-
-function collectConventionalEntrySourceFilePaths(moduleFilePaths: string[]): string[] {
-  const entryFileNames = new Set(["main.jsx", "main.js", "main.ts", "main.tsx"]);
-  return moduleFilePaths
-    .filter((filePath) => entryFileNames.has(getBaseName(filePath).toLowerCase()))
-    .sort((left, right) => left.localeCompare(right));
-}
-
-function getBaseName(filePath: string): string {
-  return normalizeProjectPath(filePath).split("/").at(-1) ?? filePath;
-}
-
-function collectReachableSourceFilePaths(input: {
-  entrySourceFilePath: string;
-  importedSourcePathsBySourcePath: Map<string, string[]>;
-  moduleFilePaths: string[];
-}): string[] {
-  const moduleFilePaths = new Set(input.moduleFilePaths);
-  const reachable = new Set<string>();
-  const queue = [input.entrySourceFilePath];
-  const queued = new Set(queue);
-
-  while (queue.length > 0) {
-    const sourceFilePath = queue.shift();
-    if (!sourceFilePath) {
-      continue;
-    }
-    queued.delete(sourceFilePath);
-    if (!moduleFilePaths.has(sourceFilePath) || reachable.has(sourceFilePath)) {
-      continue;
-    }
-    reachable.add(sourceFilePath);
-
-    const importedSourcePaths = (input.importedSourcePathsBySourcePath.get(sourceFilePath) ?? [])
-      .slice()
-      .sort((left, right) => left.localeCompare(right));
-    for (const importedSourcePath of importedSourcePaths) {
-      if (reachable.has(importedSourcePath) || queued.has(importedSourcePath)) {
-        continue;
-      }
-      queue.push(importedSourcePath);
-      queued.add(importedSourcePath);
-    }
-  }
-
-  return [...reachable].sort((left, right) => left.localeCompare(right));
-}
-
-function collectBundleStylesheetPaths(input: {
-  sourceFilePaths: string[];
-  sourceImportedStylesheetsBySourcePath: Map<string, string[]>;
-  importedStylesheetPathsByStylesheetPath: Map<string, string[]>;
-}): string[] {
-  const stylesheetPaths = new Set<string>();
-  const queue: string[] = [];
-  const queued = new Set<string>();
-
-  for (const sourceFilePath of input.sourceFilePaths) {
-    for (const stylesheetPath of input.sourceImportedStylesheetsBySourcePath.get(sourceFilePath) ??
-      []) {
-      if (stylesheetPaths.has(stylesheetPath) || queued.has(stylesheetPath)) {
-        continue;
-      }
-      queue.push(stylesheetPath);
-      queued.add(stylesheetPath);
-    }
-  }
-
-  while (queue.length > 0) {
-    const stylesheetPath = queue.shift();
-    if (!stylesheetPath) {
-      continue;
-    }
-    queued.delete(stylesheetPath);
-    if (stylesheetPaths.has(stylesheetPath)) {
-      continue;
-    }
-    stylesheetPaths.add(stylesheetPath);
-
-    const importedStylesheetPaths = (
-      input.importedStylesheetPathsByStylesheetPath.get(stylesheetPath) ?? []
-    )
-      .slice()
-      .sort((left, right) => left.localeCompare(right));
-    for (const importedStylesheetPath of importedStylesheetPaths) {
-      if (stylesheetPaths.has(importedStylesheetPath) || queued.has(importedStylesheetPath)) {
-        continue;
-      }
-      queue.push(importedStylesheetPath);
-      queued.add(importedStylesheetPath);
-    }
-  }
-
-  return [...stylesheetPaths].sort((left, right) => left.localeCompare(right));
 }
 
 function collectSelectorDerivedStylesheetContexts(input: ProjectEvidenceBuildInput): Map<

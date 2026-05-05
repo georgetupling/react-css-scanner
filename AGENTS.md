@@ -42,9 +42,10 @@ Execution order:
 4. `symbolic-evaluation`
 5. `render-structure`
 6. `selector-reachability`
-7. `project-evidence`
-8. `ownership-inference`
-9. `run-rules` (outside engine, in `scanProject.ts`)
+7. `runtime-css-loading`
+8. `project-evidence`
+9. `ownership-inference`
+10. `run-rules` (outside engine, in `scanProject.ts`)
 
 The phase names above are not cosmetic: tests and outputs depend on this staged flow and deterministic ordering.
 
@@ -56,6 +57,7 @@ The phase names above are not cosmetic: tests and outputs depend on this staged 
 - `symbolic-evaluation`: evaluate class expressions into canonical class-expression facts + conditions + diagnostics.
 - `render-structure`: project render model (components/elements/emissions/paths/regions/conditions/render graph).
 - `selector-reachability`: compute selector branch/query reachability and element/branch matches against render structure.
+- `runtime-css-loading`: infer app-entry runtime CSS loading availability from static/dynamic import boundaries.
 - `project-evidence`: assemble rule-facing entities and relations (references, definitions, selectors, css-module facts, reachability/match relations).
 - `ownership-inference`: infer ownership candidates/classifications and class/stylesheet ownership evidence.
 - `run-rules`: generate final findings from evidence and config.

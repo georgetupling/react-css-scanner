@@ -15,6 +15,7 @@ Authoritative execution path:
 1. `scanProject()` builds a workspace snapshot and runs the static-analysis engine pipeline.
 2. Engine returns analysis evidence:
    - `projectEvidence`
+   - `runtimeCssLoading`
    - `selectorReachability`
    - `ownershipInference`
 3. `runRules()` converts evidence + config into findings.
@@ -160,7 +161,25 @@ Primary output:
 
 - `SelectorReachabilityResult` containing branch/query reachability, matches, diagnostics, indexes.
 
-### 7. Project Evidence Assembly
+### 7. Runtime CSS Loading
+
+Module:
+
+- `pipeline/runtime-css-loading/buildRuntimeCssLoading.ts`
+
+Responsibilities:
+
+- infer app-entry CSS loading surfaces from valid HTML script entries
+- fall back to conventional `main.*` source entries when HTML entries are absent or unresolved
+- walk static source import closures while treating dynamic imports as lazy boundaries
+- collect global CSS imports and stylesheet import closures for each runtime entry
+- emit source-file stylesheet availability records for project evidence
+
+Primary output:
+
+- `RuntimeCssLoadingResult` containing sorted runtime CSS availability records.
+
+### 8. Project Evidence Assembly
 
 Modules:
 
@@ -190,7 +209,7 @@ Primary output:
 
 - `ProjectEvidenceAssemblyResult`.
 
-### 8. Ownership Inference
+### 9. Ownership Inference
 
 Module:
 
@@ -208,7 +227,7 @@ Primary output:
 
 - `OwnershipInferenceResult` with class ownership, stylesheet ownership, candidates, classifications.
 
-### 9. Rule Execution (Post-Pipeline)
+### 10. Rule Execution (Post-Pipeline)
 
 Module:
 
