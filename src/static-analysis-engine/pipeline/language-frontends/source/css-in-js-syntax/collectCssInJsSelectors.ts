@@ -8,6 +8,11 @@ import {
   extractParsedSelectorEntriesFromSelectorPrelude,
   projectToCssSelectorBranchFact,
 } from "../../../../libraries/selector-parsing/index.js";
+import {
+  readCssIdentifier,
+  skipBalancedSection,
+} from "../../../../libraries/selector-parsing/readCssIdentifier.js";
+import type { CssSelectorBranchFact } from "../../../../types/css.js";
 import type { CssInJsSelectorFact, CssInJsSelectorHostKind } from "../../types.js";
 import type { SourceModuleSyntaxFacts } from "../module-syntax/index.js";
 
@@ -172,6 +177,21 @@ function collectFromStyleExpression(input: {
       : [];
   }
 
+  if (ts.isConditionalExpression(expression)) {
+    return [
+      ...collectFromStyleExpression({
+        ...input,
+        expression: expression.whenTrue,
+        confidence: lowerConfidence(input.confidence),
+      }),
+      ...collectFromStyleExpression({
+        ...input,
+        expression: expression.whenFalse,
+        confidence: lowerConfidence(input.confidence),
+      }),
+    ];
+  }
+
   const objectLiteral = resolveStyleObjectExpression(expression, input.moduleSyntax);
   if (!objectLiteral) {
     return [];
@@ -236,10 +256,42 @@ function createSelectorFacts(input: {
     filePath: input.filePath,
   });
   if (entries.length === 0) {
-    return [];
+    const mentionBranch = createSelectorMentionBranch(selectorText, []);
+    if (!mentionBranch) {
+      return [];
+    }
+
+    return [
+      {
+        factId: [
+          "css-in-js-selector",
+          input.filePath,
+          toSourceAnchor(input.keyNode, input.sourceFile, input.filePath).startLine,
+          toSourceAnchor(input.keyNode, input.sourceFile, input.filePath).startColumn,
+          stableHash(selectorText),
+        ].join(":"),
+        filePath: input.filePath,
+        location: toSourceAnchor(input.keyNode, input.sourceFile, input.filePath),
+        selectorText,
+        hostKind: input.hostKind,
+        confidence: lowerConfidence(input.confidence),
+        selectorBranches: [mentionBranch],
+        trace: {
+          summary: `extracted CSS-in-JS selector class mentions from "${selectorText}" in ${input.hostKind}`,
+        },
+      },
+    ];
   }
 
   const location = toSourceAnchor(input.keyNode, input.sourceFile, input.filePath);
+  const selectorBranches = entries.map((entry) =>
+    projectToCssSelectorBranchFact(entry.parsedBranch),
+  );
+  const mentionBranch = createSelectorMentionBranch(selectorText, selectorBranches);
+  if (mentionBranch) {
+    selectorBranches.push(mentionBranch);
+  }
+
   return [
     {
       factId: [
@@ -253,13 +305,77 @@ function createSelectorFacts(input: {
       location,
       selectorText,
       hostKind: input.hostKind,
-      confidence: input.confidence,
-      selectorBranches: entries.map((entry) => projectToCssSelectorBranchFact(entry.parsedBranch)),
+      confidence: mentionBranch ? lowerConfidence(input.confidence) : input.confidence,
+      selectorBranches,
       trace: {
         summary: `extracted CSS-in-JS selector "${selectorText}" from ${input.hostKind}`,
       },
     },
   ];
+}
+
+function createSelectorMentionBranch(
+  selectorText: string,
+  parsedBranches: CssSelectorBranchFact[],
+): CssSelectorBranchFact | undefined {
+  const parsedClassNames = new Set<string>();
+  for (const branch of parsedBranches) {
+    for (const className of [
+      ...branch.subjectClassNames,
+      ...branch.requiredClassNames,
+      ...branch.contextClassNames,
+    ]) {
+      parsedClassNames.add(className);
+    }
+  }
+
+  const mentionClassNames = extractClassMentionsFromSelectorText(selectorText).filter(
+    (className) => !parsedClassNames.has(className),
+  );
+  if (mentionClassNames.length === 0) {
+    return undefined;
+  }
+
+  return {
+    raw: selectorText,
+    matchKind: "complex",
+    subjectClassNames: [],
+    requiredClassNames: [],
+    contextClassNames: uniqueSortedStrings(mentionClassNames),
+    negativeClassNames: [],
+    hasCombinators: true,
+    hasSubjectModifiers: true,
+    hasUnknownSemantics: true,
+  };
+}
+
+function extractClassMentionsFromSelectorText(selectorText: string): string[] {
+  const classNames: string[] = [];
+  let index = 0;
+
+  while (index < selectorText.length) {
+    const character = selectorText[index];
+    if (character === "[") {
+      index = skipBalancedSection(selectorText, index, "[", "]");
+      continue;
+    }
+
+    if (character !== ".") {
+      index += 1;
+      continue;
+    }
+
+    const identifier = readCssIdentifier(selectorText, index + 1);
+    if (!identifier) {
+      index += 1;
+      continue;
+    }
+
+    classNames.push(identifier.value);
+    index = identifier.nextIndex;
+  }
+
+  return uniqueSortedStrings(classNames);
 }
 
 function resolveStyleObjectExpression(
@@ -345,6 +461,16 @@ function looksLikeSelectorKey(value: string): boolean {
     /(^|,)\s*&(?:[.#:[\s>+~]|$)/.test(trimmed) ||
     /(^|,)\s*\.[_a-zA-Z-][-_a-zA-Z0-9]*(?:[\s.#:[>+~]|$)/.test(trimmed)
   );
+}
+
+function lowerConfidence(
+  confidence: CssInJsSelectorFact["confidence"],
+): CssInJsSelectorFact["confidence"] {
+  return confidence === "high" ? "medium" : confidence;
+}
+
+function uniqueSortedStrings(values: string[]): string[] {
+  return [...new Set(values)].sort((left, right) => left.localeCompare(right));
 }
 
 function isStyledCallee(expression: ts.Expression): boolean {

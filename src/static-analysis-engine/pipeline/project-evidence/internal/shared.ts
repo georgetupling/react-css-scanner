@@ -2,6 +2,7 @@ import type { ClassExpressionSummary } from "../../symbolic-evaluation/class-val
 import type { ReachabilityAvailability } from "../analysisTypes.js";
 import type { AnalysisTrace } from "../../../types/analysis.js";
 import type { SourceAnchor } from "../../../types/core.js";
+import { isCssModulePath } from "../../../libraries/stylesheets/cssModulePaths.js";
 import type {
   ClassDefinitionAnalysis,
   ClassDefinitionSelectorKind,
@@ -476,7 +477,7 @@ export function createCssModuleImportLookupKey(input: {
 }
 
 export function isCssModuleStylesheet(filePath: string | undefined): boolean {
-  return Boolean(filePath?.match(/\.module\.[cm]?css$/i));
+  return Boolean(filePath && isCssModulePath(filePath));
 }
 
 export function normalizeProjectPath(filePath: string): string {

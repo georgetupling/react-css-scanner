@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import type { DiscoveryConfig } from "../../../../config/index.js";
 import type { ProjectFileRecord, ScanDiagnostic } from "../../../../project/types.js";
+import { isCssModulePath } from "../../../libraries/stylesheets/cssModulePaths.js";
 import type { ProjectHtmlFile, ProjectSourceFile, ProjectStylesheetFile } from "../types.js";
 import { compileStylesheetSource } from "../stylesheets/compileStylesheetSource.js";
 
@@ -90,7 +91,7 @@ export async function readHtmlFiles(
 }
 
 function getCssKind(filePath: string): ProjectStylesheetFile["cssKind"] {
-  return /\.module\.(?:[cm]?css|less|sass|scss)$/i.test(filePath) ? "css-module" : "global-css";
+  return isCssModulePath(filePath) ? "css-module" : "global-css";
 }
 
 async function readProjectFile(

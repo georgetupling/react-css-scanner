@@ -1,4 +1,5 @@
 import type { ParsedCssSelectorEntry } from "../libraries/selector-parsing/index.js";
+import type { SourceAnchor } from "./core.js";
 
 export type CssSelectorMatchKind = "standalone" | "compound" | "contextual" | "complex";
 
@@ -37,6 +38,7 @@ export type CssClassDefinitionFact = {
   className: string;
   selector: string;
   selectorBranch: CssSelectorBranchFact;
+  sourceAnchor?: SourceAnchor;
   declarations: string[];
   declarationDetails: CssDeclarationFact[];
   line: number;

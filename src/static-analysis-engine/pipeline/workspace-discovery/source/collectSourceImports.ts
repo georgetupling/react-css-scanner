@@ -7,6 +7,7 @@ import type {
   SourceImportFact,
   SourceImportKind,
 } from "../types.js";
+import { isStylesheetPath } from "../../../libraries/stylesheets/cssModulePaths.js";
 import { resolveWorkspaceSpecifier } from "../resolution/index.js";
 
 export function collectSourceImports(input: {
@@ -237,7 +238,7 @@ function getScriptKind(filePath: string): ts.ScriptKind {
 }
 
 function isStylesheetSpecifier(specifier: string): boolean {
-  return /\.(?:css|less|scss|sass)(?:[?#].*)?$/i.test(specifier);
+  return isStylesheetPath(specifier);
 }
 
 function compareSourceImportFacts(left: SourceImportFact, right: SourceImportFact): number {

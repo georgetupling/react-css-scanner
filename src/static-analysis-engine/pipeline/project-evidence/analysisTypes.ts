@@ -187,6 +187,7 @@ export type ClassDefinitionAnalysis = {
   declarationProperties: string[];
   declarationSignature: string;
   isCssModule: boolean;
+  sourceFilePath?: string;
   sourceDefinition: CssClassDefinitionFact;
 };
 

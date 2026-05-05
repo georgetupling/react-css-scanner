@@ -176,6 +176,71 @@ test("missing-css-class accepts classes mentioned in JSX sx selector contexts", 
   }
 });
 
+test("missing-css-class accepts classes mentioned in JSX sx selectors with non-class subjects", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        "export function App() {",
+        "  return (",
+        '    <Box className="tab-item more-menu-tab" sx={{',
+        '      "& .tab-item:nth-of-type(1) > div": { color: "red" },',
+        '      "& .tab-item[data-active=true] + .more-menu-tab > span": { color: "blue" },',
+        "    }} />",
+        "  );",
+        "}",
+      ].join("\n"),
+    )
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
+      cssFilePaths: [],
+    });
+
+    assert.deepEqual(
+      result.findings.filter((finding) => finding.ruleId === "missing-css-class"),
+      [],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("missing-css-class accepts classes mentioned in conditional JSX sx objects", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        "const darkTheme = {",
+        '  "& .app-sidebar-header-container .app-sidebar-header": { color: "white" },',
+        '  "& .nav-tree-header > span": { color: "white" },',
+        "};",
+        "export function App({ mode }) {",
+        '  return <Box className="app-sidebar-header-container app-sidebar-header nav-tree-header" sx={mode === "dark" ? darkTheme : {}} />;',
+        "}",
+      ].join("\n"),
+    )
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
+      cssFilePaths: [],
+    });
+
+    assert.deepEqual(
+      result.findings.filter((finding) => finding.ruleId === "missing-css-class"),
+      [],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("missing-css-class accepts classes mentioned in MUI styled selector contexts", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(

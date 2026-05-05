@@ -123,6 +123,97 @@ test("CSS Module rules support string-literal element access", async () => {
   }
 });
 
+test("CSS Module rules support Less module imports", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/MenuBar.tsx",
+      [
+        'import classes from "./MenuBar.module.less";',
+        "export function MenuBar() {",
+        '  return <div className={classes.bar}><span className={classes["dropdown-menu"]}>Menu</span></div>;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile(
+      "src/MenuBar.module.less",
+      ".bar { display: flex; }\n.dropdown-menu { display: none; }\n",
+    )
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/MenuBar.tsx"],
+      cssFilePaths: ["src/MenuBar.module.less"],
+    });
+
+    assert.deepEqual(
+      result.findings.filter(
+        (finding) =>
+          finding.ruleId === "missing-css-module-class" ||
+          finding.ruleId === "unused-css-module-class",
+      ),
+      [],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("CSS Module rules ignore classes from imported Less partials", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/MenuBar.tsx",
+      [
+        'import classes from "./MenuBar.module.less";',
+        "export function MenuBar() {",
+        "  return <div className={classes.bar}>Menu</div>;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile(
+      "src/MenuBar.module.less",
+      '@import "theme/tokens.less";\n.bar { display: flex; }\n',
+    )
+    .withCssFile("src/theme/tokens.less", ".utility { color: red; }\n")
+    .withFile(
+      "tsconfig.json",
+      JSON.stringify(
+        {
+          compilerOptions: {
+            paths: {
+              "theme/*": ["./src/theme/*"],
+            },
+          },
+        },
+        null,
+        2,
+      ),
+    )
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/MenuBar.tsx"],
+      cssFilePaths: ["src/MenuBar.module.less", "src/theme/tokens.less"],
+    });
+
+    assert.deepEqual(
+      result.findings.filter(
+        (finding) =>
+          finding.ruleId === "missing-css-module-class" ||
+          finding.ruleId === "unused-css-module-class",
+      ),
+      [],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("CSS Module rules treat destructured bindings as module member usage", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(
@@ -135,6 +226,73 @@ test("CSS Module rules treat destructured bindings as module member usage", asyn
       ].join("\n"),
     )
     .withCssFile("src/Button.module.css", ".root { display: block; }\n.button { color: red; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/Button.tsx"],
+      cssFilePaths: ["src/Button.module.css"],
+    });
+
+    assert.deepEqual(
+      result.findings.filter(
+        (finding) =>
+          finding.ruleId === "missing-css-module-class" ||
+          finding.ruleId === "unused-css-module-class",
+      ),
+      [],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unused-css-module-class reports each unused module class once", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/Button.tsx",
+      'import styles from "./Button.module.css";\nexport function Button() { return <button className={styles.root}>Button</button>; }\n',
+    )
+    .withCssFile(
+      "src/Button.module.css",
+      ".root { display: block; }\n.unused { color: red; }\n.unused:hover { color: blue; }\n.unused.active { color: green; }\n",
+    )
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/Button.tsx"],
+      cssFilePaths: ["src/Button.module.css"],
+    });
+    const unusedFindings = result.findings.filter(
+      (finding) =>
+        finding.ruleId === "unused-css-module-class" && finding.data?.className === "unused",
+    );
+
+    assert.equal(unusedFindings.length, 1);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unused-css-module-class treats any member reference as using all selectors for that export", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/Button.tsx",
+      'import styles from "./Button.module.css";\nexport function Button() { return <button className={styles.button}>Button</button>; }\n',
+    )
+    .withCssFile(
+      "src/Button.module.css",
+      [
+        ".button { display: inline-flex; }",
+        ".button:hover { color: blue; }",
+        ".button[data-active='true'] { color: green; }",
+        ".toolbar .button { gap: 4px; }",
+        "",
+      ].join("\n"),
+    )
     .build();
 
   try {

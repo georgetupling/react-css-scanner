@@ -134,7 +134,7 @@ test("unused-css-class aggregates repeated definitions for the same class", asyn
       },
       {
         filePath: "src/Tag.css",
-        startLine: 3,
+        startLine: 4,
         selectorText: "button.tag",
       },
       {
@@ -144,7 +144,7 @@ test("unused-css-class aggregates repeated definitions for the same class", asyn
       },
       {
         filePath: "src/Tag.css",
-        startLine: 5,
+        startLine: 6,
         selectorText: "button.tag:focus-visible",
       },
     ]);

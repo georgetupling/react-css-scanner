@@ -31,6 +31,7 @@ import {
   getStylesheetOriginFromInventory,
   isCssModuleStylesheetFromInventory,
   normalizeAnchor,
+  normalizeOptionalAnchor,
   normalizeOptionalProjectPath,
   normalizeProjectPath,
   pushMapValue,
@@ -199,20 +200,31 @@ export function buildClassDefinitions(
       continue;
     }
 
-    for (const branch of rule.sourceRule.selectorBranches) {
+    for (const [branchIndex, branch] of rule.sourceRule.selectorBranches.entries()) {
+      const sourceAnchor = normalizeOptionalAnchor(
+        rule.sourceRule.selectorEntries[branchIndex]?.selectorAnchor,
+      );
       for (const className of branch.subjectClassNames) {
         const definition = {
           className,
           selector: branch.raw,
           selectorBranch: branch,
+          ...(sourceAnchor ? { sourceAnchor } : {}),
           declarations: [...new Set(rule.sourceRule.declarations.map((decl) => decl.property))],
           declarationDetails: [...rule.sourceRule.declarations],
-          line: rule.sourceRule.line,
+          line: sourceAnchor?.startLine ?? rule.sourceRule.line,
           atRuleContext: [...rule.sourceRule.atRuleContext],
         };
         const stylesheetInput = stylesheet.filePath
           ? stylesheetInputsByPath.get(stylesheet.filePath)
           : undefined;
+        const sourceFilePath = sourceAnchor
+          ? normalizeProjectPath(sourceAnchor.filePath)
+          : undefined;
+        const isCssModuleStylesheet = isCssModuleStylesheetFromInventory(
+          stylesheetInput,
+          stylesheet.filePath,
+        );
         const id = createClassDefinitionId(stylesheet.id, definition);
         const analysis: ClassDefinitionAnalysis = {
           id,
@@ -224,7 +236,12 @@ export function buildClassDefinitions(
           atRuleContext: [...definition.atRuleContext],
           declarationProperties: [...definition.declarations],
           declarationSignature: getDeclarationSignature(definition.declarationDetails),
-          isCssModule: isCssModuleStylesheetFromInventory(stylesheetInput, stylesheet.filePath),
+          isCssModule:
+            isCssModuleStylesheet &&
+            (!stylesheet.filePath ||
+              !sourceFilePath ||
+              sourceFilePath === normalizeProjectPath(stylesheet.filePath)),
+          ...(sourceFilePath ? { sourceFilePath } : {}),
           sourceDefinition: definition,
         };
 

@@ -1,4 +1,5 @@
 import type { ProjectStylesheetFile } from "../types.js";
+import { isCssModulePath } from "../../../libraries/stylesheets/cssModulePaths.js";
 
 export function mergeStylesheets(stylesheets: ProjectStylesheetFile[]): ProjectStylesheetFile[] {
   const stylesheetsByPath = new Map<string, ProjectStylesheetFile>();
@@ -35,5 +36,5 @@ export function toStylesheetFiles(
 }
 
 function getCssKind(filePath: string): ProjectStylesheetFile["cssKind"] {
-  return /\.module\.[cm]?css$/i.test(filePath) ? "css-module" : "global-css";
+  return isCssModulePath(filePath) ? "css-module" : "global-css";
 }

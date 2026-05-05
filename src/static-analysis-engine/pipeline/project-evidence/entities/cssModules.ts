@@ -12,6 +12,7 @@ import type {
 import { buildCssModuleAliases } from "../../language-frontends/source/css-module-syntax/analyzeCssModuleAliases.js";
 import { getCssModuleDestructuring } from "../../language-frontends/source/css-module-syntax/analyzeCssModuleDestructuring.js";
 import { getCssModuleMemberAccess } from "../../language-frontends/source/css-module-syntax/analyzeCssModuleMemberAccess.js";
+import { isCssModulePath } from "../../../libraries/stylesheets/cssModulePaths.js";
 import {
   compareById,
   createCssModuleAliasId,
@@ -89,7 +90,7 @@ function findResolvedStylesheetImportPath(input: {
 }
 
 function isCssModuleSpecifier(specifier: string): boolean {
-  return /\.module\.[cm]?css$/i.test(specifier);
+  return isCssModulePath(specifier);
 }
 
 export function buildCssModuleMemberReferences(input: {

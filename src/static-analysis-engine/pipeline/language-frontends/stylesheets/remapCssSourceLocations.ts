@@ -113,19 +113,27 @@ function resolveMappedSourcePath(input: {
     return input.stylesheet.filePath;
   }
 
-  if (/^[a-z][a-z0-9+.-]*:/i.test(source) && !source.startsWith("file://")) {
+  if (
+    /^[a-z][a-z0-9+.-]*:/i.test(source) &&
+    !source.startsWith("file://") &&
+    !isWindowsAbsolutePath(source)
+  ) {
     return undefined;
   }
 
-  const sourcePath = source.startsWith("file://") ? new URL(source).pathname : source;
-  const candidateAbsolutePath = path.isAbsolute(sourcePath)
-    ? sourcePath
-    : path.resolve(
-        path.dirname(
-          input.stylesheet.absolutePath ?? path.resolve(input.rootDir, input.stylesheet.filePath),
-        ),
-        sourcePath,
-      );
+  const sourcePath = source.startsWith("file://")
+    ? normalizeFileUrlPath(new URL(source).pathname)
+    : source;
+  const candidateAbsolutePath = isWindowsAbsolutePath(sourcePath)
+    ? path.win32.normalize(sourcePath)
+    : path.isAbsolute(sourcePath)
+      ? sourcePath
+      : path.resolve(
+          path.dirname(
+            input.stylesheet.absolutePath ?? path.resolve(input.rootDir, input.stylesheet.filePath),
+          ),
+          sourcePath,
+        );
   if (!isPathInsideRoot(input.rootDir, candidateAbsolutePath)) {
     return input.stylesheet.filePath;
   }
@@ -136,6 +144,14 @@ function resolveMappedSourcePath(input: {
 function isPathInsideRoot(rootDir: string, absolutePath: string): boolean {
   const relativePath = path.relative(rootDir, absolutePath);
   return relativePath === "" || (!relativePath.startsWith("..") && !path.isAbsolute(relativePath));
+}
+
+function isWindowsAbsolutePath(filePath: string): boolean {
+  return /^[a-z]:\//i.test(filePath);
+}
+
+function normalizeFileUrlPath(filePath: string): string {
+  return /^\/[a-z]:\//i.test(filePath) ? filePath.slice(1) : filePath;
 }
 
 function normalizeProjectPath(filePath: string): string {

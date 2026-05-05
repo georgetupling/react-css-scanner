@@ -5,6 +5,7 @@ import type {
   SourceImportSyntaxName,
   SourceImportSyntaxRecord,
 } from "./types.js";
+import { isStylesheetPath } from "../../../../libraries/stylesheets/cssModulePaths.js";
 import { compareImportNames } from "./shared.js";
 
 export function collectImports(
@@ -105,7 +106,7 @@ function classifyImportKind(
     return "type-only";
   }
 
-  if (specifier.endsWith(".css")) {
+  if (isStylesheetPath(specifier)) {
     return "css";
   }
 
