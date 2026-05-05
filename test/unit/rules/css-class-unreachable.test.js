@@ -459,6 +459,51 @@ test("css-class-unreachable does not expand local CSS through shared dependency 
   }
 });
 
+test("css-class-unreachable does not use static importer fallback when runtime entries are known", async () => {
+  const project = await new TestProjectBuilder()
+    .withFile("index.html", '<script type="module" src="/src/main.tsx"></script>\n')
+    .withSourceFile("src/main.tsx", "export function App() { return <main>App</main>; }\n")
+    .withSourceFile(
+      "src/Preview.tsx",
+      [
+        'import { Field } from "./Field";',
+        "export function Preview() {",
+        '  return <Field><input className="field__input" /></Field>;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/Field.tsx",
+      [
+        'import "./Field.css";',
+        "export function Field({ children }) {",
+        '  return <label className="field">{children}</label>;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile(
+      "src/Field.css",
+      [".field { display: block; }", ".field__input { display: block; }", ""].join("\n"),
+    )
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+    const finding = result.findings.find(
+      (candidate) =>
+        candidate.ruleId === "css-class-unreachable" &&
+        candidate.location?.filePath === "src/Preview.tsx" &&
+        candidate.data?.className === "field__input",
+    );
+
+    assert.ok(finding);
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("css-class-unreachable treats wrapper CSS as reachable from slotted children", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(

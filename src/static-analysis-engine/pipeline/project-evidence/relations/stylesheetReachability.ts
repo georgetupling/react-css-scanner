@@ -164,6 +164,7 @@ function collectStylesheetReachabilityEvidence(input: ProjectEvidenceBuildInput)
     stylesheetImportersByStylesheetPath,
     packageImportedByStylesheetPath,
     importedSourcePathsBySourcePath,
+    expandToStaticSourceImporters: (input.runtimeCssLoading?.entries.length ?? 0) === 0,
   });
   const entryBundleContextsByStylesheetPath = buildEntryBundleContextsByStylesheetPath({
     runtimeCssLoading: input.runtimeCssLoading,
@@ -234,6 +235,7 @@ function buildTransitiveSourceContextsByStylesheetPath(input: {
   stylesheetImportersByStylesheetPath: Map<string, string[]>;
   packageImportedByStylesheetPath: Map<string, string[]>;
   importedSourcePathsBySourcePath: Map<string, string[]>;
+  expandToStaticSourceImporters: boolean;
 }): Map<string, string[]> {
   const sourcesByStylesheetPath = new Map<string, Set<string>>();
   for (const [stylesheetPath, sourceFilePaths] of input.directlyImportedByStylesheetPath) {
@@ -284,10 +286,12 @@ function buildTransitiveSourceContextsByStylesheetPath(input: {
   return new Map(
     [...sourcesByStylesheetPath.entries()].map(([stylesheetPath, sourceFilePaths]) => [
       stylesheetPath,
-      expandSourceContextsToStaticImporters({
-        sourceFilePaths: [...sourceFilePaths],
-        importedSourcePathsBySourcePath: input.importedSourcePathsBySourcePath,
-      }),
+      input.expandToStaticSourceImporters
+        ? expandSourceContextsToStaticImporters({
+            sourceFilePaths: [...sourceFilePaths],
+            importedSourcePathsBySourcePath: input.importedSourcePathsBySourcePath,
+          })
+        : [...sourceFilePaths].sort((left, right) => left.localeCompare(right)),
     ]),
   );
 }
