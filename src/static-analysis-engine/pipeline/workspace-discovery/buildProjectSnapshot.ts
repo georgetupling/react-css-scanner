@@ -1,6 +1,9 @@
+import { readdir, readFile } from "node:fs/promises";
+import path from "node:path";
+
 import type { ResolvedScannerConfig } from "../../../config/index.js";
 import { loadScannerConfig } from "../../../config/index.js";
-import { resolveRootDir } from "../../../project/pathUtils.js";
+import { normalizeProjectPath, resolveRootDir } from "../../../project/pathUtils.js";
 import type { ScanDiagnostic, ScanProjectInput } from "../../../project/types.js";
 import { collectProjectBoundaries } from "./boundaries/collectProjectBoundaries.js";
 import { collectProjectResourceEdges } from "./edges/collectResourceEdges.js";
@@ -13,7 +16,7 @@ import { loadPackageCssImports } from "./packages/loadPackageCssImports.js";
 import { fetchRemoteCssSources } from "./remote/fetchRemoteCssSources.js";
 import { collectSourceImports } from "./source/collectSourceImports.js";
 import { collectStylesheetImports } from "./stylesheets/collectStylesheetImports.js";
-import type { ProjectConfigFile, ProjectSnapshot } from "./types.js";
+import type { ProjectBundlerConfigFile, ProjectConfigFile, ProjectSnapshot } from "./types.js";
 
 export async function buildProjectSnapshot(input: {
   scanInput: ScanProjectInput;
@@ -39,6 +42,12 @@ export async function buildProjectSnapshot(input: {
     readCssFiles(discovered.cssFiles, diagnostics, "project"),
     readHtmlFiles(discovered.htmlFiles, diagnostics),
   ]);
+  const bundlerConfigFiles = hasRootDiscoveryError(discovered.diagnostics)
+    ? []
+    : await collectRootBundlerConfigFiles({
+        rootDir: discovered.rootDir,
+        diagnostics,
+      });
   const { htmlStylesheetLinks, htmlScriptSources } = collectHtmlResources({
     rootDir: discovered.rootDir,
     htmlFiles,
@@ -90,6 +99,7 @@ export async function buildProjectSnapshot(input: {
       stylesheets,
       htmlFiles,
       configFiles: collectConfigFiles(config),
+      bundlerConfigFiles,
     },
     discoveredFiles: {
       sourceFiles: discovered.sourceFiles,
@@ -115,6 +125,70 @@ export async function buildProjectSnapshot(input: {
     },
     diagnostics,
   };
+}
+
+async function collectRootBundlerConfigFiles(input: {
+  rootDir: string;
+  diagnostics: ScanDiagnostic[];
+}): Promise<ProjectBundlerConfigFile[]> {
+  let entries: string[];
+  try {
+    entries = await readdir(input.rootDir);
+  } catch (error) {
+    input.diagnostics.push({
+      code: "discovery.bundler-config-read-failed",
+      severity: "warning",
+      phase: "discovery",
+      filePath: ".",
+      message: `failed to inspect root bundler config files: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    });
+    return [];
+  }
+
+  const configFilePaths = entries
+    .filter(isRootBundlerConfigFileName)
+    .map((fileName) => normalizeProjectPath(fileName))
+    .sort((left, right) => left.localeCompare(right));
+  const loadedConfigFiles = await Promise.all(
+    configFilePaths.map(async (filePath) => {
+      const absolutePath = path.join(input.rootDir, filePath);
+      try {
+        return {
+          kind: "bundler-config" as const,
+          bundler: "vite" as const,
+          filePath,
+          absolutePath,
+          sourceText: await readFile(absolutePath, "utf8"),
+        };
+      } catch (error) {
+        input.diagnostics.push({
+          code: "loading.bundler-config-read-failed",
+          severity: "warning",
+          phase: "loading",
+          filePath,
+          message: `failed to read bundler config ${filePath}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        });
+        return undefined;
+      }
+    }),
+  );
+
+  return loadedConfigFiles.filter((file): file is ProjectBundlerConfigFile => Boolean(file));
+}
+
+function isRootBundlerConfigFileName(fileName: string): boolean {
+  return /^vite\.config\.[cm]?[jt]s$/.test(fileName);
+}
+
+function hasRootDiscoveryError(diagnostics: ScanDiagnostic[]): boolean {
+  return diagnostics.some(
+    (diagnostic) =>
+      diagnostic.severity === "error" && diagnostic.code.startsWith("discovery.root-"),
+  );
 }
 
 function collectConfigFiles(config: ResolvedScannerConfig): ProjectConfigFile[] {

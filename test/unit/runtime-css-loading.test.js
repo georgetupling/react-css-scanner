@@ -128,6 +128,58 @@ test("runtime CSS loading scopes dynamic route CSS to lazy chunks", async () => 
   }
 });
 
+test("runtime CSS loading treats Vite cssCodeSplit false CSS as initial", async () => {
+  const project = await new TestProjectBuilder()
+    .withFile("index.html", '<script type="module" src="/src/main.tsx"></script>\n')
+    .withSourceFile(
+      "vite.config.ts",
+      'import { defineConfig } from "vite";\nexport default defineConfig({ build: { cssCodeSplit: false } });\n',
+    )
+    .withSourceFile("src/main.tsx", 'export const loadRoutes = () => import("./lazy/LazyRoute");\n')
+    .withSourceFile("src/lazy/LazyRoute.tsx", 'import "./LazyRoute.css";\n')
+    .withCssFile("src/lazy/LazyRoute.css", ".lazy-global {}\n")
+    .build();
+
+  try {
+    const result = await buildRuntimeCssLoadingForProject(project, {
+      sourceFilePaths: ["src/main.tsx", "src/lazy/LazyRoute.tsx"],
+      cssFilePaths: ["src/lazy/LazyRoute.css"],
+      htmlFilePaths: ["index.html"],
+    });
+
+    assert.deepEqual(
+      result.bundlerProfiles.map((profile) => ({
+        bundler: profile.bundler,
+        cssLoading: profile.cssLoading,
+        confidence: profile.confidence,
+        evidence: profile.evidence,
+      })),
+      [
+        {
+          bundler: "vite",
+          cssLoading: "single-initial-stylesheet",
+          confidence: "high",
+          evidence: ["vite.config.ts"],
+        },
+      ],
+    );
+    assert.equal(result.chunks.length, 1);
+    assert.equal(result.chunks[0].loading, "initial");
+    assert.deepEqual(result.chunks[0].sourceFilePaths, ["src/lazy/LazyRoute.tsx", "src/main.tsx"]);
+    assert.deepEqual(result.chunks[0].stylesheetFilePaths, ["src/lazy/LazyRoute.css"]);
+    assert.ok(
+      result.availability.some(
+        (availability) =>
+          availability.stylesheetFilePath === "src/lazy/LazyRoute.css" &&
+          availability.sourceFilePath === "src/main.tsx" &&
+          availability.reason === "stylesheet is loaded by the same HTML app entry bundle",
+      ),
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
 async function buildRuntimeCssLoadingForProject(project, scanInput) {
   const snapshot = await buildProjectSnapshot({
     scanInput: {

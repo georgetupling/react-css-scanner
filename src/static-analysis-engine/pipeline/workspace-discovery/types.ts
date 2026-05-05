@@ -29,6 +29,7 @@ export type ProjectSnapshotFiles = {
   stylesheets: ProjectStylesheetFile[];
   htmlFiles: ProjectHtmlFile[];
   configFiles: ProjectConfigFile[];
+  bundlerConfigFiles: ProjectBundlerConfigFile[];
 };
 
 export type ProjectSourceFile = {
@@ -103,6 +104,14 @@ export type ProjectConfigFile = {
   kind: "config";
   source: ResolvedScannerConfig["source"];
   filePath?: string;
+};
+
+export type ProjectBundlerConfigFile = {
+  kind: "bundler-config";
+  bundler: "vite";
+  filePath: string;
+  absolutePath: string;
+  sourceText: string;
 };
 
 export type ProjectBoundary =

@@ -2,6 +2,7 @@ import type { FactGraphResult } from "../fact-graph/index.js";
 import type { ProjectResourceEdge } from "../workspace-discovery/index.js";
 import type {
   RuntimeCssAvailability,
+  RuntimeCssBundlerProfile,
   RuntimeCssChunk,
   RuntimeCssEntry,
   RuntimeCssLoadingResult,
@@ -65,6 +66,10 @@ export function buildRuntimeCssLoading(input: {
     snapshotEdges: input.factGraph.snapshot.edges,
     moduleFilePaths,
   });
+  const bundlerProfiles = detectRuntimeCssBundlerProfiles({
+    bundlerConfigFiles: input.factGraph.snapshot.files.bundlerConfigFiles,
+  });
+  const runtimeCssMode = selectRuntimeCssMode(bundlerProfiles);
   const entries = appEntries.map(createRuntimeCssEntry).sort(compareRuntimeCssEntries);
   const chunks: RuntimeCssChunk[] = [];
   const chunkKeys = new Set<string>();
@@ -97,6 +102,37 @@ export function buildRuntimeCssLoading(input: {
       chunk: initialChunk,
       reason: "stylesheet is loaded by the same HTML app entry bundle",
     });
+
+    if (runtimeCssMode === "single-initial-stylesheet") {
+      const runtimeSourceFilePaths = collectReachableRuntimeSourceFilePaths({
+        entrySourceFilePath: entry.entrySourceFilePath,
+        staticImportedSourcePathsBySourcePath: importedSourcePathsBySourcePath,
+        dynamicallyImportedSourcePathsBySourcePath,
+        moduleFilePaths,
+      });
+      const runtimeStylesheetPaths = collectBundleStylesheetPaths({
+        sourceFilePaths: runtimeSourceFilePaths,
+        sourceImportedStylesheetsBySourcePath,
+        importedStylesheetPathsByStylesheetPath,
+      });
+      const expandedInitialChunk = createRuntimeCssChunk({
+        entry,
+        loading: "initial",
+        rootSourceFilePath: entry.entrySourceFilePath,
+        sourceFilePaths: runtimeSourceFilePaths,
+        stylesheetFilePaths: runtimeStylesheetPaths,
+        reason: "all runtime CSS is extracted into the initial stylesheet by bundler configuration",
+      });
+      replaceChunk(chunks, chunkKeys, expandedInitialChunk);
+      pushAvailabilityRecords({
+        availability,
+        availabilityKeys,
+        entry,
+        chunk: expandedInitialChunk,
+        reason: "stylesheet is loaded by the same HTML app entry bundle",
+      });
+      continue;
+    }
 
     const initialSourceFilePathSet = new Set(initialSourceFilePaths);
     const lazyRootQueue: string[] = [];
@@ -165,6 +201,7 @@ export function buildRuntimeCssLoading(input: {
   }
 
   return {
+    bundlerProfiles,
     entries,
     chunks: chunks.sort(compareRuntimeCssChunks),
     availability: availability.sort(compareRuntimeCssAvailability),
@@ -257,6 +294,34 @@ function collectReachableSourceFilePaths(input: {
   }
 
   return [...reachable].sort((left, right) => left.localeCompare(right));
+}
+
+function collectReachableRuntimeSourceFilePaths(input: {
+  entrySourceFilePath: string;
+  staticImportedSourcePathsBySourcePath: Map<string, string[]>;
+  dynamicallyImportedSourcePathsBySourcePath: Map<string, string[]>;
+  moduleFilePaths: string[];
+}): string[] {
+  const mergedImportedSourcePathsBySourcePath = new Map<string, string[]>();
+  for (const [sourceFilePath, importedSourcePaths] of input.staticImportedSourcePathsBySourcePath) {
+    for (const importedSourcePath of importedSourcePaths) {
+      pushMapValue(mergedImportedSourcePathsBySourcePath, sourceFilePath, importedSourcePath);
+    }
+  }
+  for (const [
+    sourceFilePath,
+    importedSourcePaths,
+  ] of input.dynamicallyImportedSourcePathsBySourcePath) {
+    for (const importedSourcePath of importedSourcePaths) {
+      pushMapValue(mergedImportedSourcePathsBySourcePath, sourceFilePath, importedSourcePath);
+    }
+  }
+
+  return collectReachableSourceFilePaths({
+    entrySourceFilePath: input.entrySourceFilePath,
+    importedSourcePathsBySourcePath: mergedImportedSourcePathsBySourcePath,
+    moduleFilePaths: input.moduleFilePaths,
+  });
 }
 
 function collectBundleStylesheetPaths(input: {
@@ -365,6 +430,7 @@ function createRuntimeCssChunk(input: {
   rootSourceFilePath: string;
   sourceFilePaths: string[];
   stylesheetFilePaths: string[];
+  reason?: string;
 }): RuntimeCssChunk {
   return {
     id: runtimeCssChunkId({
@@ -378,9 +444,10 @@ function createRuntimeCssChunk(input: {
     sourceFilePaths: input.sourceFilePaths,
     stylesheetFilePaths: input.stylesheetFilePaths,
     reason:
-      input.loading === "initial"
+      input.reason ??
+      (input.loading === "initial"
         ? "static imports reachable from runtime CSS entry"
-        : "static imports reachable from dynamic import chunk root",
+        : "static imports reachable from dynamic import chunk root"),
   };
 }
 
@@ -394,6 +461,20 @@ function pushUniqueChunk(
   }
   chunkKeys.add(chunk.id);
   chunks.push(chunk);
+}
+
+function replaceChunk(
+  chunks: RuntimeCssChunk[],
+  chunkKeys: Set<string>,
+  chunk: RuntimeCssChunk,
+): void {
+  const index = chunks.findIndex((candidate) => candidate.id === chunk.id);
+  if (index >= 0) {
+    chunks[index] = chunk;
+    chunkKeys.add(chunk.id);
+    return;
+  }
+  pushUniqueChunk(chunks, chunkKeys, chunk);
 }
 
 function pushAvailabilityRecords(input: {
@@ -450,6 +531,63 @@ function compareRuntimeCssAvailability(
     left.entrySourceFilePath.localeCompare(right.entrySourceFilePath) ||
     (left.htmlFilePath ?? "").localeCompare(right.htmlFilePath ?? "")
   );
+}
+
+function detectRuntimeCssBundlerProfiles(input: {
+  bundlerConfigFiles: FactGraphResult["snapshot"]["files"]["bundlerConfigFiles"];
+}): RuntimeCssBundlerProfile[] {
+  const profiles: RuntimeCssBundlerProfile[] = [];
+  for (const configFile of input.bundlerConfigFiles) {
+    if (configFile.bundler !== "vite") {
+      continue;
+    }
+
+    const cssCodeSplitFalse = /\bcssCodeSplit\s*:\s*false\b/.test(configFile.sourceText);
+    profiles.push({
+      id: `runtime-css-bundler:vite:${normalizeProjectPath(configFile.filePath)}`,
+      bundler: "vite",
+      cssLoading: cssCodeSplitFalse ? "single-initial-stylesheet" : "split-by-runtime-chunk",
+      confidence: cssCodeSplitFalse ? "high" : "medium",
+      evidence: [normalizeProjectPath(configFile.filePath)],
+      reason: cssCodeSplitFalse
+        ? "Vite config sets build.cssCodeSplit to false"
+        : "Vite config detected; assuming Vite default CSS code splitting",
+    });
+  }
+
+  if (profiles.length > 0) {
+    return profiles.sort(compareRuntimeCssBundlerProfiles);
+  }
+
+  return [
+    {
+      id: "runtime-css-bundler:unknown",
+      bundler: "unknown",
+      cssLoading: "generic-esm-chunks",
+      confidence: "medium",
+      evidence: [],
+      reason: "No supported bundler config detected; using generic ESM runtime chunk semantics",
+    },
+  ];
+}
+
+function selectRuntimeCssMode(
+  profiles: RuntimeCssBundlerProfile[],
+): RuntimeCssBundlerProfile["cssLoading"] {
+  if (profiles.some((profile) => profile.cssLoading === "single-initial-stylesheet")) {
+    return "single-initial-stylesheet";
+  }
+  if (profiles.some((profile) => profile.cssLoading === "split-by-runtime-chunk")) {
+    return "split-by-runtime-chunk";
+  }
+  return "generic-esm-chunks";
+}
+
+function compareRuntimeCssBundlerProfiles(
+  left: RuntimeCssBundlerProfile,
+  right: RuntimeCssBundlerProfile,
+): number {
+  return left.id.localeCompare(right.id);
 }
 
 function runtimeCssEntryId(input: {

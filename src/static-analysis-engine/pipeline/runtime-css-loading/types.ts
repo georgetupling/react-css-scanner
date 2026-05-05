@@ -1,3 +1,12 @@
+export type RuntimeCssBundlerProfile = {
+  id: string;
+  bundler: "vite" | "unknown";
+  cssLoading: "split-by-runtime-chunk" | "single-initial-stylesheet" | "generic-esm-chunks";
+  confidence: "high" | "medium";
+  evidence: string[];
+  reason: string;
+};
+
 export type RuntimeCssEntry = {
   id: string;
   kind: "html-entry" | "conventional-entry";
@@ -31,6 +40,7 @@ export type RuntimeCssAvailability = {
 };
 
 export type RuntimeCssLoadingResult = {
+  bundlerProfiles: RuntimeCssBundlerProfile[];
   entries: RuntimeCssEntry[];
   chunks: RuntimeCssChunk[];
   availability: RuntimeCssAvailability[];

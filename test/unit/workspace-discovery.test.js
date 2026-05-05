@@ -102,6 +102,54 @@ test("discoverProjectFileRecords supports configured source roots and excludes",
   }
 });
 
+test("buildProjectSnapshot inventories root bundler config files outside source roots", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile("src/App.tsx", "export function App() { return null; }\n")
+    .withSourceFile(
+      "vite.config.ts",
+      'import { defineConfig } from "vite";\nexport default defineConfig({ build: { cssCodeSplit: false } });\n',
+    )
+    .withConfig({
+      discovery: {
+        sourceRoots: ["src"],
+      },
+    })
+    .build();
+
+  try {
+    const snapshot = await buildProjectSnapshot({
+      scanInput: {
+        rootDir: project.rootDir,
+      },
+      runStage: async (_stage, _message, run) => run(),
+    });
+
+    assert.deepEqual(
+      snapshot.files.sourceFiles.map((file) => file.filePath),
+      ["src/App.tsx"],
+    );
+    assert.deepEqual(
+      snapshot.files.bundlerConfigFiles.map((file) => ({
+        kind: file.kind,
+        bundler: file.bundler,
+        filePath: file.filePath,
+        sourceText: file.sourceText,
+      })),
+      [
+        {
+          kind: "bundler-config",
+          bundler: "vite",
+          filePath: "vite.config.ts",
+          sourceText:
+            'import { defineConfig } from "vite";\nexport default defineConfig({ build: { cssCodeSplit: false } });\n',
+        },
+      ],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("discoverProjectFileRecords reports file roots without traversing them", async () => {
   const project = await new TestProjectBuilder().build();
 

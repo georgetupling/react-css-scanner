@@ -208,6 +208,7 @@ export type {
 } from "./pipeline/selector-reachability/index.js";
 export type {
   RuntimeCssAvailability,
+  RuntimeCssBundlerProfile,
   RuntimeCssChunk,
   RuntimeCssEntry,
   RuntimeCssLoadingResult,

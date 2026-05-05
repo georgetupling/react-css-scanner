@@ -11,6 +11,7 @@ export type {
   PackageCssImportEdge,
   PackageCssImportFact,
   PackageCssImportInput,
+  ProjectBundlerConfigFile,
   ProjectBoundary,
   ProjectConfigFile,
   ProjectExternalCssSurface,
@@ -24,6 +25,7 @@ export type {
   SourceImportEdge,
   SourceImportFact,
   SourceImportKind,
+  SourceImportLoading,
   StylesheetImportEdge,
   StylesheetImportFact,
 } from "./types.js";
