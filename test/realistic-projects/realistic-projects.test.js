@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { scanProject } from "../../dist/index.js";
 import { createCraStorefrontProject } from "../support/realisticProjects/createCraStorefrontProject.js";
+import { createManagerUiProject } from "../support/realisticProjects/createManagerUiProject.js";
 
 test("realistic CRA storefront keeps entry CSS reachable through nested app and barrel imports", async () => {
   const project = await createCraStorefrontProject();
@@ -58,6 +59,72 @@ test("realistic CRA storefront keeps entry CSS reachable through nested app and 
   }
 });
 
+test("realistic manager UI keeps webpack shell, app CSS, package CSS, and lazy CSS chunks reachable", async () => {
+  const project = await createManagerUiProject();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      includeDebugRuntimeCss: true,
+    });
+
+    assert.equal(result.summary.sourceFileCount, 38);
+    assert.equal(result.summary.cssFileCount, 6);
+    assert.equal(result.summary.findingsByRule["css-class-unreachable"], 0);
+    assert.equal(result.summary.findingsByRule["missing-css-class"], 0);
+    assert.equal(result.summary.findingsByRule["unused-css-class"], 4);
+    assert.equal(result.summary.findingsByRule["unused-css-module-class"], 1);
+    assert.equal(result.summary.findingsByRule["dynamic-class-reference"], 9);
+    assert.equal(result.summary.findingsByRule["unsupported-syntax-affecting-analysis"], 4);
+    assert.deepEqual(
+      result.diagnostics.filter((diagnostic) => diagnostic.severity !== "debug"),
+      [],
+    );
+
+    assertFinding(result, {
+      ruleId: "unused-css-class",
+      className: "stale-preview-helper",
+      filePath: "src/apps/active-preview/Preview.less",
+    });
+    assertFinding(result, {
+      ruleId: "unused-css-class",
+      className: "orphan-manager-utility",
+      filePath: "src/shell/styles/global.css",
+    });
+    assertFinding(result, {
+      ruleId: "unused-css-class",
+      className: "stale-block-helper",
+      filePath: "src/apps/blocks/styles/blocks.css",
+    });
+    assertFinding(result, {
+      ruleId: "unused-css-class",
+      className: "legacy-content-spacer",
+      filePath: "src/apps/content/styles/content.css",
+    });
+    assertFinding(result, {
+      ruleId: "unused-css-module-class",
+      className: "unusedAuditToken",
+      filePath: "src/apps/audit/styles/AuditPanel.module.css",
+    });
+
+    assertRuntimeCssEntry(result, "src/shell/index.tsx");
+    assertRuntimeStylesheet(result, "initial", "src/shell/styles/global.css");
+    assertRuntimeStylesheet(result, "initial", "src/apps/blocks/styles/blocks.css");
+    assertRuntimeStylesheet(result, "initial", "src/apps/content/styles/content.css");
+    assertRuntimeStylesheet(result, "initial", "node_modules/@zesty-io/material/dist/styles.css");
+    assertRuntimeStylesheet(result, "lazy", "src/apps/active-preview/Preview.less");
+    assertRuntimeStylesheet(result, "lazy", "src/apps/audit/styles/AuditPanel.module.css");
+    assertRuntimeSource(result, "initial", "src/shell/components/AppShell.tsx");
+    assertRuntimeSource(result, "initial", "src/apps/blocks/views/AllBlocks.tsx");
+    assertRuntimeSource(result, "initial", "src/apps/content/views/ContentList.tsx");
+    assertRuntimeSource(result, "lazy", "src/apps/active-preview/Preview.tsx");
+    assertRuntimeSource(result, "lazy", "src/apps/audit/AuditPanel.tsx");
+    assertRuntimeSource(result, "lazy", "src/apps/audit/components/AuditRow.tsx");
+  } finally {
+    await project.cleanup();
+  }
+});
+
 function assertFinding(result, expected) {
   assert.ok(
     result.findings.some(
@@ -80,20 +147,28 @@ function assertRuntimeCssEntry(result, entrySourceFilePath) {
 }
 
 function assertInitialRuntimeStylesheet(result, stylesheetFilePath) {
-  assert.ok(
-    result.debug?.runtimeCss?.chunks.some(
-      (chunk) =>
-        chunk.loading === "initial" && chunk.stylesheetFilePaths.includes(stylesheetFilePath),
-    ),
-    `expected initial runtime stylesheet ${stylesheetFilePath}`,
-  );
+  assertRuntimeStylesheet(result, "initial", stylesheetFilePath);
 }
 
 function assertInitialRuntimeSource(result, sourceFilePath) {
+  assertRuntimeSource(result, "initial", sourceFilePath);
+}
+
+function assertRuntimeStylesheet(result, loading, stylesheetFilePath) {
   assert.ok(
     result.debug?.runtimeCss?.chunks.some(
-      (chunk) => chunk.loading === "initial" && chunk.sourceFilePaths.includes(sourceFilePath),
+      (chunk) =>
+        chunk.loading === loading && chunk.stylesheetFilePaths.includes(stylesheetFilePath),
     ),
-    `expected initial runtime source ${sourceFilePath}`,
+    `expected ${loading} runtime stylesheet ${stylesheetFilePath}`,
+  );
+}
+
+function assertRuntimeSource(result, loading, sourceFilePath) {
+  assert.ok(
+    result.debug?.runtimeCss?.chunks.some(
+      (chunk) => chunk.loading === loading && chunk.sourceFilePaths.includes(sourceFilePath),
+    ),
+    `expected ${loading} runtime source ${sourceFilePath}`,
   );
 }
