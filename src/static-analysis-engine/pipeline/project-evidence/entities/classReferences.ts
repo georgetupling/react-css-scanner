@@ -484,11 +484,23 @@ function inferTemplatePatternClassNames(
   }
 
   const tokens = templateText.split(/\s+/).filter(Boolean);
+  const staticAnchors = tokens.filter((token) => !token.includes("${"));
   const inferred = new Set<string>();
   for (const token of tokens) {
     if (!token.includes("${")) {
       if (knownClassNames.includes(token)) {
         inferred.add(token);
+      }
+      continue;
+    }
+
+    const literalTemplateText = token.replace(/\$\{[^}]+\}/g, "");
+    if (!hasMeaningfulTemplateLiteralAnchor(literalTemplateText)) {
+      for (const className of inferModifierClassNamesFromStaticAnchors(
+        staticAnchors,
+        knownClassNames,
+      )) {
+        inferred.add(className);
       }
       continue;
     }
@@ -505,6 +517,33 @@ function inferTemplatePatternClassNames(
   }
 
   return uniqueSorted([...inferred]);
+}
+
+function hasMeaningfulTemplateLiteralAnchor(text: string): boolean {
+  return /[A-Za-z0-9_]{2,}|-[A-Za-z0-9_]|[A-Za-z0-9_]-/.test(text);
+}
+
+function inferModifierClassNamesFromStaticAnchors(
+  staticAnchors: string[],
+  knownClassNames: string[],
+): string[] {
+  const matched = new Set<string>();
+  for (const anchor of staticAnchors) {
+    if (!knownClassNames.includes(anchor)) {
+      continue;
+    }
+    for (const className of knownClassNames) {
+      if (
+        className.startsWith(`${anchor}-`) ||
+        className.startsWith(`${anchor}_`) ||
+        className.startsWith(`${anchor}--`) ||
+        className.startsWith(`${anchor}__`)
+      ) {
+        matched.add(className);
+      }
+    }
+  }
+  return uniqueSorted([...matched]);
 }
 
 export function buildStaticallySkippedClassReferences(input: {

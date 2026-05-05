@@ -478,6 +478,58 @@ test("unused-css-class treats finite role template literal class variants as use
   }
 });
 
+test("unused-css-class does not treat pure dynamic template tokens as every known class", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        "declare function getRuntimeClass(): string;",
+        "export function App() {",
+        "  return <main className={`known ${getRuntimeClass()}`}>Hello</main>;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile(
+      "src/App.css",
+      [
+        ".known { display: block; }",
+        ".used-only-at-runtime { display: block; }",
+        ".actually-unused { color: red; }",
+        "",
+      ].join("\n"),
+    )
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
+      cssFilePaths: ["src/App.css"],
+    });
+
+    const unusedFindings = result.findings.filter(
+      (finding) => finding.ruleId === "unused-css-class",
+    );
+    assert.deepEqual(unusedFindings.map((finding) => finding.data?.className).sort(), [
+      "actually-unused",
+      "used-only-at-runtime",
+    ]);
+    assert.deepEqual(
+      result.findings.filter(
+        (finding) =>
+          finding.ruleId === "unused-css-class" &&
+          finding.data?.className === "actually-unused" &&
+          finding.location?.filePath === "src/App.css",
+      ).length,
+      1,
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("unused-css-class resolves finite variants through imported const-derived tuple aliases", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(
