@@ -284,7 +284,7 @@ function buildTransitiveSourceContextsByStylesheetPath(input: {
   return new Map(
     [...sourcesByStylesheetPath.entries()].map(([stylesheetPath, sourceFilePaths]) => [
       stylesheetPath,
-      expandSourceContextsThroughImports({
+      expandSourceContextsToStaticImporters({
         sourceFilePaths: [...sourceFilePaths],
         importedSourcePathsBySourcePath: input.importedSourcePathsBySourcePath,
       }),
@@ -292,7 +292,7 @@ function buildTransitiveSourceContextsByStylesheetPath(input: {
   );
 }
 
-function expandSourceContextsThroughImports(input: {
+function expandSourceContextsToStaticImporters(input: {
   sourceFilePaths: string[];
   importedSourcePathsBySourcePath: Map<string, string[]>;
 }): string[] {
@@ -304,48 +304,30 @@ function expandSourceContextsThroughImports(input: {
     }
   }
 
-  expandSourceContexts({
-    expanded,
-    sourceFilePaths: input.sourceFilePaths,
-    connectedSourcePathsBySourcePath: input.importedSourcePathsBySourcePath,
-  });
-  expandSourceContexts({
-    expanded,
-    sourceFilePaths: input.sourceFilePaths,
-    connectedSourcePathsBySourcePath: importerSourcePathsByImportedSourcePath,
-  });
-
-  return [...expanded].sort((left, right) => left.localeCompare(right));
-}
-
-function expandSourceContexts(input: {
-  expanded: Set<string>;
-  sourceFilePaths: string[];
-  connectedSourcePathsBySourcePath: Map<string, string[]>;
-}): void {
   const queue = [...input.sourceFilePaths];
   const queued = new Set(queue);
-
   while (queue.length > 0) {
     const sourceFilePath = queue.shift();
     if (!sourceFilePath) {
       continue;
     }
     queued.delete(sourceFilePath);
-    const connectedSourcePaths = (input.connectedSourcePathsBySourcePath.get(sourceFilePath) ?? [])
+    const importerPaths = (importerSourcePathsByImportedSourcePath.get(sourceFilePath) ?? [])
       .slice()
       .sort((left, right) => left.localeCompare(right));
-    for (const connectedSourcePath of connectedSourcePaths) {
-      if (input.expanded.has(connectedSourcePath)) {
+    for (const importerPath of importerPaths) {
+      if (expanded.has(importerPath)) {
         continue;
       }
-      input.expanded.add(connectedSourcePath);
-      if (!queued.has(connectedSourcePath)) {
-        queue.push(connectedSourcePath);
-        queued.add(connectedSourcePath);
+      expanded.add(importerPath);
+      if (!queued.has(importerPath)) {
+        queue.push(importerPath);
+        queued.add(importerPath);
       }
     }
   }
+
+  return [...expanded].sort((left, right) => left.localeCompare(right));
 }
 
 function buildEntryBundleContextsByStylesheetPath(input: {
@@ -371,9 +353,39 @@ function buildEntryBundleContextsByStylesheetPath(input: {
             kind: "source-file-entry-bundle",
             entrySourceFilePath: availability.entrySourceFilePath,
             ...(availability.htmlFilePath ? { htmlFilePath: availability.htmlFilePath } : {}),
+            chunkId: availability.chunkId,
+            bundler: availability.bundler,
+            cssLoading: availability.cssLoading,
           },
         ],
-        traces: [],
+        traces: [
+          {
+            traceId: [
+              "reachability:runtime-css",
+              availability.entryId,
+              availability.chunkId,
+              normalizeProjectPath(availability.stylesheetFilePath),
+              normalizeProjectPath(availability.sourceFilePath),
+              availability.availability,
+            ].join(":"),
+            category: "reachability",
+            summary: availability.reason,
+            children: [],
+            metadata: {
+              availability: availability.availability,
+              entryId: availability.entryId,
+              chunkId: availability.chunkId,
+              entrySourceFilePath: availability.entrySourceFilePath,
+              htmlFilePath: availability.htmlFilePath,
+              bundlerProfileId: availability.bundlerProfileId,
+              bundler: availability.bundler,
+              cssLoading: availability.cssLoading,
+              confidence: availability.confidence,
+              stylesheetFilePath: availability.stylesheetFilePath,
+              sourceFilePath: availability.sourceFilePath,
+            },
+          },
+        ],
       },
     );
   }

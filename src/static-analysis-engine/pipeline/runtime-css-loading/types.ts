@@ -29,14 +29,21 @@ export type RuntimeCssChunk = {
 export type RuntimeCssAvailability = {
   stylesheetFilePath: string;
   sourceFilePath: string;
-  availability: "definite";
+  availability: "definite" | "possible" | "unknown" | "unavailable";
   entryId: string;
   chunkId: string;
   entrySourceFilePath: string;
   htmlFilePath?: string;
+  bundlerProfileId: string;
+  bundler: RuntimeCssBundlerProfile["bundler"];
+  cssLoading: RuntimeCssBundlerProfile["cssLoading"];
+  confidence: RuntimeCssBundlerProfile["confidence"];
   reason:
     | "stylesheet is loaded by the same HTML app entry bundle"
-    | "stylesheet is loaded by the same lazy runtime CSS chunk";
+    | "stylesheet is loaded by the same lazy runtime CSS chunk"
+    | "stylesheet may be loaded by a dynamic CSS import"
+    | "stylesheet may be loaded by an unresolved dynamic import"
+    | "stylesheet may be loaded because bundler CSS chunk behavior is unknown";
 };
 
 export type RuntimeCssLoadingResult = {

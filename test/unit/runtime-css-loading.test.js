@@ -59,6 +59,10 @@ test("runtime CSS loading scopes dynamic route CSS to lazy chunks", async () => 
   const project = await new TestProjectBuilder()
     .withFile("index.html", '<script type="module" src="/src/main.tsx"></script>\n')
     .withSourceFile(
+      "vite.config.ts",
+      'import { defineConfig } from "vite";\nexport default defineConfig({});\n',
+    )
+    .withSourceFile(
       "src/main.tsx",
       'export const loadRoutes = () => import("./lazy/LazyRoutes");\n',
     )
@@ -119,9 +123,104 @@ test("runtime CSS loading scopes dynamic route CSS to lazy chunks", async () => 
       result.availability.some(
         (availability) =>
           availability.stylesheetFilePath === "src/lazy/StyledLazy.css" &&
-          availability.sourceFilePath === "src/main.tsx",
+          availability.sourceFilePath === "src/main.tsx" &&
+          availability.availability !== "unavailable",
       ),
       false,
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("runtime CSS loading marks lazy CSS possible when bundler behavior is unknown", async () => {
+  const project = await new TestProjectBuilder()
+    .withFile("index.html", '<script type="module" src="/src/main.tsx"></script>\n')
+    .withSourceFile("src/main.tsx", 'export const loadRoute = () => import("./LazyRoute");\n')
+    .withSourceFile("src/LazyRoute.tsx", 'import "./LazyRoute.css";\n')
+    .withCssFile("src/LazyRoute.css", ".lazy-global {}\n")
+    .build();
+
+  try {
+    const result = await buildRuntimeCssLoadingForProject(project, {
+      sourceFilePaths: ["src/main.tsx", "src/LazyRoute.tsx"],
+      cssFilePaths: ["src/LazyRoute.css"],
+      htmlFilePaths: ["index.html"],
+    });
+
+    assert.ok(
+      result.availability.some(
+        (availability) =>
+          availability.stylesheetFilePath === "src/LazyRoute.css" &&
+          availability.sourceFilePath === "src/main.tsx" &&
+          availability.availability === "possible" &&
+          availability.reason ===
+            "stylesheet may be loaded because bundler CSS chunk behavior is unknown",
+      ),
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("runtime CSS loading marks stylesheets possible after unresolved dynamic imports", async () => {
+  const project = await new TestProjectBuilder()
+    .withFile("index.html", '<script type="module" src="/src/main.tsx"></script>\n')
+    .withSourceFile(
+      "vite.config.ts",
+      'import { defineConfig } from "vite";\nexport default defineConfig({});\n',
+    )
+    .withSourceFile("src/main.tsx", 'export const loadMissing = () => import("./MissingRoute");\n')
+    .withCssFile("src/MissingRoute.css", ".maybe-loaded {}\n")
+    .build();
+
+  try {
+    const result = await buildRuntimeCssLoadingForProject(project, {
+      sourceFilePaths: ["src/main.tsx"],
+      cssFilePaths: ["src/MissingRoute.css"],
+      htmlFilePaths: ["index.html"],
+    });
+
+    assert.ok(
+      result.availability.some(
+        (availability) =>
+          availability.stylesheetFilePath === "src/MissingRoute.css" &&
+          availability.sourceFilePath === "src/main.tsx" &&
+          availability.availability === "possible" &&
+          availability.reason === "stylesheet may be loaded by an unresolved dynamic import",
+      ),
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("runtime CSS loading marks dynamic CSS imports possible", async () => {
+  const project = await new TestProjectBuilder()
+    .withFile("index.html", '<script type="module" src="/src/main.tsx"></script>\n')
+    .withSourceFile(
+      "vite.config.ts",
+      'import { defineConfig } from "vite";\nexport default defineConfig({});\n',
+    )
+    .withSourceFile("src/main.tsx", 'export const loadCss = () => import("./dynamic.css");\n')
+    .withCssFile("src/dynamic.css", ".dynamic-css {}\n")
+    .build();
+
+  try {
+    const result = await buildRuntimeCssLoadingForProject(project, {
+      sourceFilePaths: ["src/main.tsx"],
+      cssFilePaths: ["src/dynamic.css"],
+      htmlFilePaths: ["index.html"],
+    });
+
+    assert.ok(
+      result.availability.some(
+        (availability) =>
+          availability.stylesheetFilePath === "src/dynamic.css" &&
+          availability.sourceFilePath === "src/main.tsx" &&
+          availability.availability === "possible" &&
+          availability.reason === "stylesheet may be loaded by a dynamic CSS import",
+      ),
     );
   } finally {
     await project.cleanup();

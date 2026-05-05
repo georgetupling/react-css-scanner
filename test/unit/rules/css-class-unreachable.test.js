@@ -280,6 +280,10 @@ test("css-class-unreachable does not treat lazy route CSS as reachable from the 
   const project = await new TestProjectBuilder()
     .withFile("index.html", '<script type="module" src="/src/main.tsx"></script>\n')
     .withSourceFile(
+      "vite.config.ts",
+      'import { defineConfig } from "vite";\nexport default defineConfig({});\n',
+    )
+    .withSourceFile(
       "src/main.tsx",
       [
         'import { lazy } from "react";',
@@ -318,6 +322,33 @@ test("css-class-unreachable does not treat lazy route CSS as reachable from the 
       ),
       [],
     );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("css-class-unreachable does not report possible runtime CSS from unknown bundler behavior", async () => {
+  const project = await new TestProjectBuilder()
+    .withFile("index.html", '<script type="module" src="/src/main.tsx"></script>\n')
+    .withSourceFile(
+      "src/main.tsx",
+      [
+        'export const LazyRoute = () => import("./LazyRoute");',
+        'export function App() { return <main className="lazy-route-class">App</main>; }',
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/LazyRoute.tsx",
+      ['import "./LazyRoute.css";', "export function LazyRoute() { return null; }", ""].join("\n"),
+    )
+    .withCssFile("src/LazyRoute.css", ".lazy-route-class { color: red; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "css-class-unreachable", ["lazy-route-class"]);
   } finally {
     await project.cleanup();
   }
@@ -365,6 +396,61 @@ test("css-class-unreachable does not leak component CSS through shared dependenc
         candidate.ruleId === "css-class-unreachable" &&
         candidate.location?.filePath === "src/FeatureB.tsx" &&
         candidate.data?.className === "feature-a__button",
+    );
+
+    assert.ok(finding);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("css-class-unreachable does not expand local CSS through shared dependency importers", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/FeatureA.tsx",
+      [
+        'import { SharedWidget } from "./SharedWidget";',
+        'import "./FeatureA.css";',
+        "export function FeatureA() {",
+        "  return <SharedWidget />;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/FeatureB.tsx",
+      [
+        'import { SharedWidget } from "./SharedWidget";',
+        "export function FeatureB() {",
+        '  return <main className="shared-widget__accent"><SharedWidget /></main>;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/SharedWidget.tsx",
+      [
+        "export function SharedWidget() {",
+        '  return <div className="shared-widget">Shared</div>;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/FeatureA.css", ".shared-widget__accent { color: red; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/FeatureA.tsx", "src/FeatureB.tsx", "src/SharedWidget.tsx"],
+      cssFilePaths: ["src/FeatureA.css"],
+    });
+
+    const finding = result.findings.find(
+      (candidate) =>
+        candidate.ruleId === "css-class-unreachable" &&
+        candidate.location?.filePath === "src/FeatureB.tsx" &&
+        candidate.data?.className === "shared-widget__accent",
     );
 
     assert.ok(finding);

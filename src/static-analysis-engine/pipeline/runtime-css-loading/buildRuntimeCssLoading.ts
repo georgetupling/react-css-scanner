@@ -18,13 +18,27 @@ export function buildRuntimeCssLoading(input: {
   const importedSourcePathsBySourcePath = new Map<string, string[]>();
   const dynamicallyImportedSourcePathsBySourcePath = new Map<string, string[]>();
   const sourceImportedStylesheetsBySourcePath = new Map<string, string[]>();
+  const sourceDynamicallyImportedStylesheetsBySourcePath = new Map<string, string[]>();
+  const unresolvedDynamicImportSpecifiersBySourcePath = new Map<string, string[]>();
 
   for (const edge of graph.edges.imports) {
-    if (edge.importerKind !== "source" || !edge.resolvedFilePath) {
+    if (edge.importerKind !== "source") {
       continue;
     }
 
     const importerPath = normalizeProjectPath(edge.importerFilePath);
+    if (
+      edge.importLoading === "dynamic" &&
+      edge.importKind === "source" &&
+      edge.resolutionStatus !== "resolved"
+    ) {
+      pushMapValue(unresolvedDynamicImportSpecifiersBySourcePath, importerPath, edge.specifier);
+      continue;
+    }
+    if (!edge.resolvedFilePath) {
+      continue;
+    }
+
     const importedPath = normalizeProjectPath(edge.resolvedFilePath);
     if (edge.importKind === "source") {
       if (edge.importLoading === "static") {
@@ -36,6 +50,10 @@ export function buildRuntimeCssLoading(input: {
     }
     if (edge.importKind === "css" && edge.importLoading === "static") {
       pushMapValue(sourceImportedStylesheetsBySourcePath, importerPath, importedPath);
+      continue;
+    }
+    if (edge.importKind === "css" && edge.importLoading === "dynamic") {
+      pushMapValue(sourceDynamicallyImportedStylesheetsBySourcePath, importerPath, importedPath);
     }
   }
 
@@ -69,7 +87,8 @@ export function buildRuntimeCssLoading(input: {
   const bundlerProfiles = detectRuntimeCssBundlerProfiles({
     bundlerConfigFiles: input.factGraph.snapshot.files.bundlerConfigFiles,
   });
-  const runtimeCssMode = selectRuntimeCssMode(bundlerProfiles);
+  const selectedBundlerProfile = selectRuntimeCssBundlerProfile(bundlerProfiles);
+  const runtimeCssMode = selectedBundlerProfile.cssLoading;
   const entries = appEntries.map(createRuntimeCssEntry).sort(compareRuntimeCssEntries);
   const chunks: RuntimeCssChunk[] = [];
   const chunkKeys = new Set<string>();
@@ -100,7 +119,29 @@ export function buildRuntimeCssLoading(input: {
       availabilityKeys,
       entry,
       chunk: initialChunk,
+      bundlerProfile: selectedBundlerProfile,
+      availabilityState: "definite",
       reason: "stylesheet is loaded by the same HTML app entry bundle",
+    });
+    pushDynamicCssImportAvailabilityRecords({
+      availability,
+      availabilityKeys,
+      entry,
+      chunk: initialChunk,
+      bundlerProfile: selectedBundlerProfile,
+      sourceDynamicallyImportedStylesheetsBySourcePath,
+    });
+    pushUnresolvedDynamicImportAvailabilityRecords({
+      availability,
+      availabilityKeys,
+      entry,
+      chunk: initialChunk,
+      bundlerProfile: selectedBundlerProfile,
+      stylesheetFilePaths: graph.nodes.stylesheets
+        .map((stylesheet) => stylesheet.filePath)
+        .filter((filePath): filePath is string => Boolean(filePath))
+        .map(normalizeProjectPath),
+      unresolvedDynamicImportSpecifiersBySourcePath,
     });
 
     if (runtimeCssMode === "single-initial-stylesheet") {
@@ -129,7 +170,29 @@ export function buildRuntimeCssLoading(input: {
         availabilityKeys,
         entry,
         chunk: expandedInitialChunk,
+        bundlerProfile: selectedBundlerProfile,
+        availabilityState: "definite",
         reason: "stylesheet is loaded by the same HTML app entry bundle",
+      });
+      pushDynamicCssImportAvailabilityRecords({
+        availability,
+        availabilityKeys,
+        entry,
+        chunk: expandedInitialChunk,
+        bundlerProfile: selectedBundlerProfile,
+        sourceDynamicallyImportedStylesheetsBySourcePath,
+      });
+      pushUnresolvedDynamicImportAvailabilityRecords({
+        availability,
+        availabilityKeys,
+        entry,
+        chunk: expandedInitialChunk,
+        bundlerProfile: selectedBundlerProfile,
+        stylesheetFilePaths: graph.nodes.stylesheets
+          .map((stylesheet) => stylesheet.filePath)
+          .filter((filePath): filePath is string => Boolean(filePath))
+          .map(normalizeProjectPath),
+        unresolvedDynamicImportSpecifiersBySourcePath,
       });
       continue;
     }
@@ -187,7 +250,29 @@ export function buildRuntimeCssLoading(input: {
         availabilityKeys,
         entry,
         chunk: lazyChunk,
+        bundlerProfile: selectedBundlerProfile,
+        availabilityState: "definite",
         reason: "stylesheet is loaded by the same lazy runtime CSS chunk",
+      });
+      pushDynamicCssImportAvailabilityRecords({
+        availability,
+        availabilityKeys,
+        entry,
+        chunk: lazyChunk,
+        bundlerProfile: selectedBundlerProfile,
+        sourceDynamicallyImportedStylesheetsBySourcePath,
+      });
+      pushUnresolvedDynamicImportAvailabilityRecords({
+        availability,
+        availabilityKeys,
+        entry,
+        chunk: lazyChunk,
+        bundlerProfile: selectedBundlerProfile,
+        stylesheetFilePaths: graph.nodes.stylesheets
+          .map((stylesheet) => stylesheet.filePath)
+          .filter((filePath): filePath is string => Boolean(filePath))
+          .map(normalizeProjectPath),
+        unresolvedDynamicImportSpecifiersBySourcePath,
       });
       enqueueDynamicImportTargets({
         sourceFilePaths: lazySourceFilePaths,
@@ -198,6 +283,16 @@ export function buildRuntimeCssLoading(input: {
         processed: processedLazyRootSourceFilePaths,
       });
     }
+  }
+
+  if (runtimeCssMode === "generic-esm-chunks") {
+    pushGenericBundlerPossibleAvailabilityRecords({
+      availability,
+      availabilityKeys,
+      entries,
+      chunks,
+      bundlerProfile: selectedBundlerProfile,
+    });
   }
 
   return {
@@ -482,33 +577,166 @@ function pushAvailabilityRecords(input: {
   availabilityKeys: Set<string>;
   entry: RuntimeCssEntry;
   chunk: RuntimeCssChunk;
+  bundlerProfile: RuntimeCssBundlerProfile;
+  availabilityState: RuntimeCssAvailability["availability"];
   reason: RuntimeCssAvailability["reason"];
 }): void {
   for (const stylesheetFilePath of input.chunk.stylesheetFilePaths) {
     for (const sourceFilePath of input.chunk.sourceFilePaths) {
-      const record: RuntimeCssAvailability = {
+      pushAvailabilityRecord({
+        availability: input.availability,
+        availabilityKeys: input.availabilityKeys,
+        entry: input.entry,
+        chunk: input.chunk,
+        bundlerProfile: input.bundlerProfile,
         stylesheetFilePath,
         sourceFilePath,
-        availability: "definite",
-        entryId: input.entry.id,
-        chunkId: input.chunk.id,
-        entrySourceFilePath: input.entry.entrySourceFilePath,
-        ...(input.entry.htmlFilePath ? { htmlFilePath: input.entry.htmlFilePath } : {}),
+        availabilityState: input.availabilityState,
         reason: input.reason,
-      };
-      const key = [
-        record.stylesheetFilePath,
-        record.sourceFilePath,
-        record.entryId,
-        record.chunkId,
-      ].join("\0");
-      if (input.availabilityKeys.has(key)) {
-        continue;
-      }
-      input.availabilityKeys.add(key);
-      input.availability.push(record);
+      });
     }
   }
+}
+
+function pushDynamicCssImportAvailabilityRecords(input: {
+  availability: RuntimeCssAvailability[];
+  availabilityKeys: Set<string>;
+  entry: RuntimeCssEntry;
+  chunk: RuntimeCssChunk;
+  bundlerProfile: RuntimeCssBundlerProfile;
+  sourceDynamicallyImportedStylesheetsBySourcePath: Map<string, string[]>;
+}): void {
+  for (const sourceFilePath of input.chunk.sourceFilePaths) {
+    for (const stylesheetFilePath of input.sourceDynamicallyImportedStylesheetsBySourcePath.get(
+      sourceFilePath,
+    ) ?? []) {
+      pushAvailabilityRecord({
+        availability: input.availability,
+        availabilityKeys: input.availabilityKeys,
+        entry: input.entry,
+        chunk: input.chunk,
+        bundlerProfile: input.bundlerProfile,
+        stylesheetFilePath,
+        sourceFilePath,
+        availabilityState: "possible",
+        reason: "stylesheet may be loaded by a dynamic CSS import",
+      });
+    }
+  }
+}
+
+function pushUnresolvedDynamicImportAvailabilityRecords(input: {
+  availability: RuntimeCssAvailability[];
+  availabilityKeys: Set<string>;
+  entry: RuntimeCssEntry;
+  chunk: RuntimeCssChunk;
+  bundlerProfile: RuntimeCssBundlerProfile;
+  stylesheetFilePaths: string[];
+  unresolvedDynamicImportSpecifiersBySourcePath: Map<string, string[]>;
+}): void {
+  if (input.stylesheetFilePaths.length === 0) {
+    return;
+  }
+
+  const hasUnresolvedDynamicImport = input.chunk.sourceFilePaths.some(
+    (sourceFilePath) =>
+      (input.unresolvedDynamicImportSpecifiersBySourcePath.get(sourceFilePath) ?? []).length > 0,
+  );
+  if (!hasUnresolvedDynamicImport) {
+    return;
+  }
+
+  for (const sourceFilePath of input.chunk.sourceFilePaths) {
+    for (const stylesheetFilePath of input.stylesheetFilePaths) {
+      pushAvailabilityRecord({
+        availability: input.availability,
+        availabilityKeys: input.availabilityKeys,
+        entry: input.entry,
+        chunk: input.chunk,
+        bundlerProfile: input.bundlerProfile,
+        stylesheetFilePath,
+        sourceFilePath,
+        availabilityState: "possible",
+        reason: "stylesheet may be loaded by an unresolved dynamic import",
+      });
+    }
+  }
+}
+
+function pushGenericBundlerPossibleAvailabilityRecords(input: {
+  availability: RuntimeCssAvailability[];
+  availabilityKeys: Set<string>;
+  entries: RuntimeCssEntry[];
+  chunks: RuntimeCssChunk[];
+  bundlerProfile: RuntimeCssBundlerProfile;
+}): void {
+  for (const entry of input.entries) {
+    const entryChunks = input.chunks.filter((chunk) => chunk.entryId === entry.id);
+    const entrySourceFilePaths = [
+      ...new Set(entryChunks.flatMap((chunk) => chunk.sourceFilePaths)),
+    ].sort((left, right) => left.localeCompare(right));
+    const entryStylesheetFilePaths = [
+      ...new Set(entryChunks.flatMap((chunk) => chunk.stylesheetFilePaths)),
+    ].sort((left, right) => left.localeCompare(right));
+
+    for (const chunk of entryChunks) {
+      for (const sourceFilePath of entrySourceFilePaths) {
+        for (const stylesheetFilePath of entryStylesheetFilePaths) {
+          pushAvailabilityRecord({
+            availability: input.availability,
+            availabilityKeys: input.availabilityKeys,
+            entry,
+            chunk,
+            bundlerProfile: input.bundlerProfile,
+            stylesheetFilePath,
+            sourceFilePath,
+            availabilityState: "possible",
+            reason: "stylesheet may be loaded because bundler CSS chunk behavior is unknown",
+          });
+        }
+      }
+    }
+  }
+}
+
+function pushAvailabilityRecord(input: {
+  availability: RuntimeCssAvailability[];
+  availabilityKeys: Set<string>;
+  entry: RuntimeCssEntry;
+  chunk: RuntimeCssChunk;
+  bundlerProfile: RuntimeCssBundlerProfile;
+  stylesheetFilePath: string;
+  sourceFilePath: string;
+  availabilityState: RuntimeCssAvailability["availability"];
+  reason: RuntimeCssAvailability["reason"];
+}): void {
+  const record: RuntimeCssAvailability = {
+    stylesheetFilePath: input.stylesheetFilePath,
+    sourceFilePath: input.sourceFilePath,
+    availability: input.availabilityState,
+    entryId: input.entry.id,
+    chunkId: input.chunk.id,
+    entrySourceFilePath: input.entry.entrySourceFilePath,
+    ...(input.entry.htmlFilePath ? { htmlFilePath: input.entry.htmlFilePath } : {}),
+    bundlerProfileId: input.bundlerProfile.id,
+    bundler: input.bundlerProfile.bundler,
+    cssLoading: input.bundlerProfile.cssLoading,
+    confidence: input.bundlerProfile.confidence,
+    reason: input.reason,
+  };
+  const key = [
+    record.stylesheetFilePath,
+    record.sourceFilePath,
+    record.entryId,
+    record.chunkId,
+    record.availability,
+    record.reason,
+  ].join("\0");
+  if (input.availabilityKeys.has(key)) {
+    return;
+  }
+  input.availabilityKeys.add(key);
+  input.availability.push(record);
 }
 
 function compareRuntimeCssEntries(left: RuntimeCssEntry, right: RuntimeCssEntry): number {
@@ -529,7 +757,9 @@ function compareRuntimeCssAvailability(
     left.entryId.localeCompare(right.entryId) ||
     left.chunkId.localeCompare(right.chunkId) ||
     left.entrySourceFilePath.localeCompare(right.entrySourceFilePath) ||
-    (left.htmlFilePath ?? "").localeCompare(right.htmlFilePath ?? "")
+    (left.htmlFilePath ?? "").localeCompare(right.htmlFilePath ?? "") ||
+    left.availability.localeCompare(right.availability) ||
+    left.reason.localeCompare(right.reason)
   );
 }
 
@@ -571,16 +801,20 @@ function detectRuntimeCssBundlerProfiles(input: {
   ];
 }
 
-function selectRuntimeCssMode(
+function selectRuntimeCssBundlerProfile(
   profiles: RuntimeCssBundlerProfile[],
-): RuntimeCssBundlerProfile["cssLoading"] {
-  if (profiles.some((profile) => profile.cssLoading === "single-initial-stylesheet")) {
-    return "single-initial-stylesheet";
+): RuntimeCssBundlerProfile {
+  const singleInitialProfile = profiles.find(
+    (profile) => profile.cssLoading === "single-initial-stylesheet",
+  );
+  if (singleInitialProfile) {
+    return singleInitialProfile;
   }
-  if (profiles.some((profile) => profile.cssLoading === "split-by-runtime-chunk")) {
-    return "split-by-runtime-chunk";
+  const splitProfile = profiles.find((profile) => profile.cssLoading === "split-by-runtime-chunk");
+  if (splitProfile) {
+    return splitProfile;
   }
-  return "generic-esm-chunks";
+  return profiles[0];
 }
 
 function compareRuntimeCssBundlerProfiles(

@@ -77,7 +77,14 @@ export type StylesheetReachabilityContextRecord = {
   reasons: string[];
   derivations: Array<
     | { kind: "source-file-direct-import" }
-    | { kind: "source-file-entry-bundle"; entrySourceFilePath: string; htmlFilePath?: string }
+    | {
+        kind: "source-file-entry-bundle";
+        entrySourceFilePath: string;
+        htmlFilePath?: string;
+        chunkId?: string;
+        bundler?: string;
+        cssLoading?: string;
+      }
     | { kind: "source-file-project-wide-external-css"; stylesheetHref: string }
     | { kind: "whole-component-direct-import" }
   >;
