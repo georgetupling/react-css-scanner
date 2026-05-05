@@ -3,6 +3,7 @@ import {
   getClassDefinitions,
   getCssModuleImportsByStylesheetId,
   getCssModuleMemberMatches,
+  getCssModuleReferenceDiagnostics,
   getStylesheetById,
 } from "../analysisQueries.js";
 import type { RuleContext, RuleDefinition, UnresolvedFinding } from "../types.js";
@@ -19,6 +20,11 @@ function runUnusedCssModuleClassRule(context: RuleContext): UnresolvedFinding[] 
     getCssModuleMemberMatches(context.analysisEvidence)
       .filter((match) => match.status === "matched")
       .map((match) => createDefinitionKey(match.stylesheetId, match.className)),
+  );
+  const stylesheetsWithComputedModuleReads = new Set(
+    getCssModuleReferenceDiagnostics(context.analysisEvidence)
+      .filter((diagnostic) => diagnostic.reason === "computed-css-module-member")
+      .map((diagnostic) => diagnostic.stylesheetId),
   );
   const definitionsByClassAndStylesheet = new Map<
     string,
@@ -39,7 +45,10 @@ function runUnusedCssModuleClassRule(context: RuleContext): UnresolvedFinding[] 
     }
 
     const definitionKey = createDefinitionKey(definition.stylesheetId, definition.className);
-    if (usedDefinitionKeys.has(definitionKey)) {
+    if (
+      usedDefinitionKeys.has(definitionKey) ||
+      stylesheetsWithComputedModuleReads.has(definition.stylesheetId)
+    ) {
       continue;
     }
 

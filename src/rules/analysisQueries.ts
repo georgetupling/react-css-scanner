@@ -9,6 +9,7 @@ import {
   type CssModuleImportAnalysis,
   type CssModuleMemberMatchRelation,
   type CssModuleMemberReferenceAnalysis,
+  type CssModuleReferenceDiagnosticAnalysis,
   type ProjectEvidenceId,
   type ProviderClassSatisfactionRelation,
   type SelectorBranchAnalysis,
@@ -345,6 +346,12 @@ export function getCssModuleMemberMatches(
   analysis: AnalysisEvidence,
 ): CssModuleMemberMatchRelation[] {
   return analysis.projectEvidence.relations.cssModuleMemberMatches;
+}
+
+export function getCssModuleReferenceDiagnostics(
+  analysis: AnalysisEvidence,
+): CssModuleReferenceDiagnosticAnalysis[] {
+  return analysis.projectEvidence.entities.cssModuleReferenceDiagnostics;
 }
 
 export function getCssModuleMemberMatchesByReferenceId(

@@ -315,6 +315,45 @@ test("unused-css-module-class treats any member reference as using all selectors
   }
 });
 
+test("unused-css-module-class is suppressed for modules read through computed member access", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/MenuBar.tsx",
+      [
+        'import classes from "./MenuBar.module.css";',
+        'const menu = { special: { classname: "dropdown-menu-row" } };',
+        "export function MenuBar() {",
+        "  return <span className={[classes.group, classes[menu.special.classname]].join(' ')}>Menu</span>;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile(
+      "src/MenuBar.module.css",
+      ".group { display: inline-block; }\n.dropdown-menu-row { position: relative; }\n",
+    )
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/MenuBar.tsx"],
+      cssFilePaths: ["src/MenuBar.module.css"],
+    });
+
+    assert.deepEqual(
+      result.findings.filter(
+        (finding) =>
+          finding.ruleId === "missing-css-module-class" ||
+          finding.ruleId === "unused-css-module-class",
+      ),
+      [],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("CSS Module rules resolve member usage through simple aliases", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(
