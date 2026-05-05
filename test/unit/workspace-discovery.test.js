@@ -220,6 +220,59 @@ test("buildProjectSnapshot resolves aliased project stylesheet imports before pa
   }
 });
 
+test("buildProjectSnapshot ignores local export declarations while collecting source reexports", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import { Button } from "./components";',
+        "export const localToken = true;",
+        "export { localToken };",
+        "export function App() { return <Button />; }",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile("src/components/index.ts", 'export { Button } from "./Button";\n')
+    .withSourceFile(
+      "src/components/Button.tsx",
+      'export function Button() { return <button className="button">Save</button>; }\n',
+    )
+    .withCssFile("src/components/Button.css", ".button { display: inline-flex; }\n")
+    .build();
+
+  try {
+    const snapshot = await buildProjectSnapshot({
+      scanInput: {
+        rootDir: project.rootDir,
+      },
+      runStage: async (_stage, _message, run) => run(),
+    });
+
+    assert.ok(
+      snapshot.edges.some(
+        (edge) =>
+          edge.kind === "source-import" &&
+          edge.importerFilePath === "src/App.tsx" &&
+          edge.specifier === "./components" &&
+          edge.resolutionStatus === "resolved" &&
+          edge.resolvedFilePath === "src/components/index.ts",
+      ),
+    );
+    assert.ok(
+      snapshot.edges.some(
+        (edge) =>
+          edge.kind === "source-import" &&
+          edge.importerFilePath === "src/components/index.ts" &&
+          edge.specifier === "./Button" &&
+          edge.resolutionStatus === "resolved" &&
+          edge.resolvedFilePath === "src/components/Button.tsx",
+      ),
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("buildProjectSnapshot compiles Less stylesheets and keeps source maps", async () => {
   const project = await new TestProjectBuilder()
     .withCssFile(

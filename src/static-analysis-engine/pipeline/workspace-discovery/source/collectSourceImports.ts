@@ -31,8 +31,13 @@ export function collectSourceImports(input: {
     );
 
     for (const statement of parsedSourceFile.statements) {
-      if (ts.isExportDeclaration(statement) && ts.isStringLiteral(statement.moduleSpecifier)) {
-        const specifier = statement.moduleSpecifier.text;
+      if (ts.isExportDeclaration(statement)) {
+        const moduleSpecifier = statement.moduleSpecifier;
+        if (!moduleSpecifier || !ts.isStringLiteral(moduleSpecifier)) {
+          continue;
+        }
+
+        const specifier = moduleSpecifier.text;
         imports.push(
           resolveImportFact({
             importerFilePath: sourceFile.filePath,
