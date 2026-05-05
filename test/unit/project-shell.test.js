@@ -1021,6 +1021,7 @@ test("scanProject accepts reporting config", async () => {
         verbose: true,
         json: true,
         trace: true,
+        debugRuntimeCss: true,
         outputDirectory: "reports",
         overwriteOutput: true,
       },
@@ -1038,6 +1039,7 @@ test("scanProject accepts reporting config", async () => {
       verbose: true,
       json: true,
       trace: true,
+      debugRuntimeCss: true,
       outputDirectory: "reports",
       overwriteOutput: true,
     });
@@ -1064,6 +1066,29 @@ test("scanProject fails on invalid reporting config", async () => {
     assert.equal(result.failed, true);
     assert.equal(result.diagnostics[0].code, "config.invalid-reporting-trace");
     assert.match(result.diagnostics[0].message, /reporting\.trace must be a boolean/);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("scanProject fails on invalid runtime CSS debug reporting config", async () => {
+  const project = await new TestProjectBuilder()
+    .withConfig({
+      reporting: {
+        debugRuntimeCss: "yes",
+      },
+    })
+    .withSourceFile("src/App.tsx", "export function App() { return null; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+    });
+
+    assert.equal(result.failed, true);
+    assert.equal(result.diagnostics[0].code, "config.invalid-reporting-debug-runtime-css");
+    assert.match(result.diagnostics[0].message, /reporting\.debugRuntimeCss must be a boolean/);
   } finally {
     await project.cleanup();
   }

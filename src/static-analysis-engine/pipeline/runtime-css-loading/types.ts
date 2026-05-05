@@ -52,9 +52,24 @@ export type RuntimeCssAvailability = {
     | "stylesheet may be loaded because bundler CSS chunk behavior is unknown";
 };
 
+export type RuntimeCssDiagnostic = {
+  code:
+    | "runtime-css-unknown-bundler"
+    | "runtime-css-package-bundler-inference"
+    | "runtime-css-conventional-entry"
+    | "runtime-css-generic-chunk-semantics"
+    | "runtime-css-unresolved-dynamic-import";
+  severity: "debug" | "info" | "warning";
+  message: string;
+  filePath?: string;
+  evidence: string[];
+};
+
 export type RuntimeCssLoadingResult = {
   bundlerProfiles: RuntimeCssBundlerProfile[];
+  selectedBundlerProfileId: string;
   entries: RuntimeCssEntry[];
   chunks: RuntimeCssChunk[];
   availability: RuntimeCssAvailability[];
+  diagnostics: RuntimeCssDiagnostic[];
 };

@@ -17,6 +17,7 @@ import type {
   RuntimeCssAvailability,
   RuntimeCssBundlerProfile,
   RuntimeCssChunk,
+  RuntimeCssDiagnostic,
   RuntimeCssEntry,
   RuntimeCssLoadingResult,
 } from "./types.js";
@@ -273,10 +274,84 @@ export function buildRuntimeCssLoading(input: {
 
   return {
     bundlerProfiles,
+    selectedBundlerProfileId: selectedBundlerProfile.id,
     entries,
     chunks: chunks.sort(compareRuntimeCssChunks),
     availability: availability.sort(compareRuntimeCssAvailability),
+    diagnostics: buildRuntimeCssDiagnostics({
+      bundlerProfiles,
+      selectedBundlerProfile,
+      entries,
+      unresolvedDynamicImportSpecifiersBySourcePath,
+    }),
   };
+}
+
+function buildRuntimeCssDiagnostics(input: {
+  bundlerProfiles: RuntimeCssBundlerProfile[];
+  selectedBundlerProfile: RuntimeCssBundlerProfile;
+  entries: RuntimeCssEntry[];
+  unresolvedDynamicImportSpecifiersBySourcePath: Map<string, string[]>;
+}): RuntimeCssDiagnostic[] {
+  const diagnostics: RuntimeCssDiagnostic[] = [];
+  for (const profile of input.bundlerProfiles) {
+    if (profile.bundler === "unknown") {
+      diagnostics.push({
+        code: "runtime-css-unknown-bundler",
+        severity: "debug",
+        message:
+          "No supported bundler config or package metadata was detected; runtime CSS loading uses conservative generic ESM chunk semantics.",
+        evidence: profile.evidence,
+      });
+      continue;
+    }
+    if (profile.id.includes("-package:")) {
+      diagnostics.push({
+        code: "runtime-css-package-bundler-inference",
+        severity: "debug",
+        message: `Runtime CSS bundler was inferred from package metadata: ${profile.reason}`,
+        evidence: profile.evidence,
+      });
+    }
+  }
+
+  if (input.selectedBundlerProfile.cssLoading === "generic-esm-chunks") {
+    diagnostics.push({
+      code: "runtime-css-generic-chunk-semantics",
+      severity: "debug",
+      message:
+        "Runtime CSS loading could not use precise bundler chunk semantics; lazy chunk stylesheet reachability is reported as possible rather than definite.",
+      evidence: input.selectedBundlerProfile.evidence,
+    });
+  }
+
+  for (const entry of input.entries) {
+    if (entry.kind !== "conventional-entry") {
+      continue;
+    }
+    diagnostics.push({
+      code: "runtime-css-conventional-entry",
+      severity: "debug",
+      message: `Runtime CSS entry was guessed from conventional source entry ${entry.entrySourceFilePath} because no configured or HTML entry was available.`,
+      filePath: entry.entrySourceFilePath,
+      evidence: [entry.entrySourceFilePath],
+    });
+  }
+
+  for (const [sourceFilePath, specifiers] of input.unresolvedDynamicImportSpecifiersBySourcePath) {
+    diagnostics.push({
+      code: "runtime-css-unresolved-dynamic-import",
+      severity: "debug",
+      message: `Unresolved dynamic import(s) may affect runtime CSS loading: ${specifiers
+        .slice()
+        .sort((left, right) => left.localeCompare(right))
+        .join(", ")}`,
+      filePath: sourceFilePath,
+      evidence: [sourceFilePath, ...specifiers],
+    });
+  }
+
+  return diagnostics.sort(compareRuntimeCssDiagnostics);
 }
 
 function createRuntimeCssEntry(input: {
@@ -595,6 +670,17 @@ function compareRuntimeCssAvailability(
     (left.htmlFilePath ?? "").localeCompare(right.htmlFilePath ?? "") ||
     left.availability.localeCompare(right.availability) ||
     left.reason.localeCompare(right.reason)
+  );
+}
+
+function compareRuntimeCssDiagnostics(
+  left: RuntimeCssDiagnostic,
+  right: RuntimeCssDiagnostic,
+): number {
+  return (
+    left.code.localeCompare(right.code) ||
+    (left.filePath ?? "").localeCompare(right.filePath ?? "") ||
+    left.message.localeCompare(right.message)
   );
 }
 

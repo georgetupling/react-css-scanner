@@ -12,6 +12,7 @@ export async function writeJsonReport(input: {
   overwriteOutput: boolean;
   outputMinSeverity: RuleSeverity;
   includeTraces: boolean;
+  includeRuntimeCssDebug: boolean;
 }): Promise<string> {
   const requestedPath = path.resolve(
     input.outputFile ?? getDefaultJsonReportPath(input.outputDirectory),
@@ -21,7 +22,12 @@ export async function writeJsonReport(input: {
     : await findAvailableOutputPath(requestedPath);
   const outputDirectory = path.dirname(outputPath);
   const json = `${JSON.stringify(
-    formatJsonResult(input.result, input.outputMinSeverity, input.includeTraces),
+    formatJsonResult(
+      input.result,
+      input.outputMinSeverity,
+      input.includeTraces,
+      input.includeRuntimeCssDebug,
+    ),
     null,
     2,
   )}\n`;

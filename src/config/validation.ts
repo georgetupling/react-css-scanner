@@ -40,6 +40,7 @@ const REPORTING_CONFIG_KEYS = new Set([
   "verbose",
   "json",
   "trace",
+  "debugRuntimeCss",
   "outputDirectory",
   "overwriteOutput",
 ]);
@@ -150,6 +151,7 @@ export const DEFAULT_SCANNER_CONFIG: ScannerConfig = {
     verbose: false,
     json: false,
     trace: false,
+    debugRuntimeCss: false,
     outputDirectory: undefined,
     overwriteOutput: false,
   },
@@ -629,6 +631,14 @@ function parseReporting(
       code: "config.invalid-reporting-trace",
       message: "reporting.trace must be a boolean",
     }),
+    debugRuntimeCss: parseOptionalBoolean({
+      value: value.debugRuntimeCss,
+      fallback: DEFAULT_SCANNER_CONFIG.reporting.debugRuntimeCss,
+      filePath,
+      diagnostics,
+      code: "config.invalid-reporting-debug-runtime-css",
+      message: "reporting.debugRuntimeCss must be a boolean",
+    }),
     outputDirectory: parseOptionalNonEmptyString({
       value: value.outputDirectory,
       filePath,
@@ -940,6 +950,7 @@ function cloneReportingConfig(config: ScannerConfig["reporting"]): ScannerConfig
     verbose: config.verbose,
     json: config.json,
     trace: config.trace,
+    debugRuntimeCss: config.debugRuntimeCss,
     outputDirectory: config.outputDirectory,
     overwriteOutput: config.overwriteOutput,
   };

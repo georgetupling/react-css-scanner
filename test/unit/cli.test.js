@@ -365,6 +365,45 @@ test("CLI includes traces in JSON only when --trace is set", async () => {
   }
 });
 
+test("CLI includes runtime CSS debug output only when requested", async () => {
+  const project = await new TestProjectBuilder()
+    .withFile("package.json", '{ "dependencies": { "vite": "^5.0.0" } }\n')
+    .withSourceFile("src/main.tsx", 'import "./style.css";\n')
+    .withCssFile("src/style.css", ".app {}\n")
+    .build();
+
+  try {
+    const defaultPath = project.filePath("report-without-runtime-css-debug.json");
+    await runCli([project.rootDir, "--json", "--output-file", defaultPath]);
+    const defaultOutput = await readJsonFile(defaultPath);
+
+    assert.equal(defaultOutput.debug, undefined);
+
+    const debugPath = project.filePath("report-with-runtime-css-debug.json");
+    await runCli([
+      project.rootDir,
+      "--json",
+      "--debug-runtime-css",
+      "--output-min-severity",
+      "debug",
+      "--output-file",
+      debugPath,
+    ]);
+    const debugOutput = await readJsonFile(debugPath);
+
+    assert.equal(debugOutput.debug.runtimeCss.bundlerProfiles[0].bundler, "vite");
+    assert.equal(debugOutput.debug.runtimeCss.entries[0].entrySourceFilePath, "src/main.tsx");
+    assert.ok(Array.isArray(debugOutput.debug.runtimeCss.chunks));
+    assert.ok(
+      debugOutput.diagnostics.some(
+        (diagnostic) => diagnostic.code === "runtime-css-package-bundler-inference",
+      ),
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("CLI supports config-driven JSON reporting options", async () => {
   const project = await new TestProjectBuilder()
     .withConfig({
@@ -578,6 +617,14 @@ test("CLI rejects --trace without JSON mode", async () => {
 
   assert.equal(error.code, 2);
   assert.match(error.stderr, /--trace requires JSON output\./);
+  assert.equal(error.stdout, "");
+});
+
+test("CLI rejects --debug-runtime-css without JSON mode", async () => {
+  const error = await captureRejectedCliRun([".", "--debug-runtime-css"]);
+
+  assert.equal(error.code, 2);
+  assert.match(error.stderr, /--debug-runtime-css requires JSON output\./);
   assert.equal(error.stdout, "");
 });
 

@@ -34,6 +34,7 @@ export async function runCli(rawArgs: string[]): Promise<void> {
       onProgress: progressRenderer.onProgress,
       collectPerformance: args.timings,
       includeTraces,
+      includeDebugRuntimeCss: args.debugRuntimeCss,
     });
   } finally {
     progressRenderer.stop();
@@ -42,13 +43,17 @@ export async function runCli(rawArgs: string[]): Promise<void> {
   const focusedResult = applyFocusFilter(result, args.focusPaths);
   const useJson = args.json || focusedResult.config.reporting.json;
   const includeJsonTraces = args.trace || focusedResult.config.reporting.trace;
+  const includeRuntimeCssDebug =
+    args.debugRuntimeCss || focusedResult.config.reporting.debugRuntimeCss;
   const overwriteOutput = args.overwriteOutput || focusedResult.config.reporting.overwriteOutput;
 
-  if (!useJson && (args.trace || args.outputFile || args.overwriteOutput)) {
+  if (!useJson && (args.trace || args.debugRuntimeCss || args.outputFile || args.overwriteOutput)) {
     printCliUsageError(
       args.trace
         ? "--trace requires JSON output. Enable --json or set reporting.json=true in scan-react-css.json."
-        : "--output-file and --overwrite-output require JSON output. Enable --json or set reporting.json=true in scan-react-css.json.",
+        : args.debugRuntimeCss
+          ? "--debug-runtime-css requires JSON output. Enable --json or set reporting.json=true in scan-react-css.json."
+          : "--output-file and --overwrite-output require JSON output. Enable --json or set reporting.json=true in scan-react-css.json.",
     );
   }
 
@@ -56,6 +61,7 @@ export async function runCli(rawArgs: string[]): Promise<void> {
     await printJsonReport(focusedResult, {
       ...args,
       trace: includeJsonTraces,
+      debugRuntimeCss: includeRuntimeCssDebug,
       overwriteOutput,
     });
   } else {
@@ -93,6 +99,7 @@ async function printJsonReport(result: ScanProjectResult, args: CliArgs): Promis
       overwriteOutput: args.overwriteOutput,
       outputMinSeverity: args.outputMinSeverity,
       includeTraces: args.trace,
+      includeRuntimeCssDebug: args.debugRuntimeCss,
     });
     console.log(`JSON report written to ${outputPath}`);
     console.log(`Failed: ${result.failed ? "yes" : "no"}`);

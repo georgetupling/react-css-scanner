@@ -26,6 +26,22 @@ export async function scanProject(input: ScanProjectInput = {}): Promise<ScanPro
     onProgress: (event) => progress(event.stage, event.status, event.message, event.durationMs),
   });
   const { snapshot, analysisEvidence } = engineProjectResult;
+  const includeRuntimeCssDebug =
+    input.includeDebugRuntimeCss || snapshot.config.reporting.debugRuntimeCss;
+  const runtimeCssDiagnostics = analysisEvidence.runtimeCssLoading.diagnostics.map(
+    (diagnostic): ScanDiagnostic => ({
+      code: diagnostic.code,
+      severity: diagnostic.severity,
+      phase: "analysis",
+      message: diagnostic.message,
+      ...(diagnostic.filePath ? { filePath: diagnostic.filePath } : {}),
+      ...(diagnostic.evidence.length > 0 ? { evidence: diagnostic.evidence } : {}),
+    }),
+  );
+  const diagnostics = [
+    ...snapshot.diagnostics,
+    ...(includeRuntimeCssDebug ? runtimeCssDiagnostics : []),
+  ].sort(compareDiagnostics);
   const ruleResult = await runScanStage(progress, "run-rules", "Running rules", () =>
     runRules({
       analysisEvidence,
@@ -37,7 +53,7 @@ export async function scanProject(input: ScanProjectInput = {}): Promise<ScanPro
     }),
   );
   const failed =
-    snapshot.diagnostics.some((diagnostic) => diagnostic.severity === "error") ||
+    diagnostics.some((diagnostic) => diagnostic.severity === "error") ||
     ruleResult.findings.some((finding) =>
       severityMeetsThreshold(finding.severity, snapshot.config.failOnSeverity),
     );
@@ -45,7 +61,7 @@ export async function scanProject(input: ScanProjectInput = {}): Promise<ScanPro
     sourceFileCount: snapshot.discoveredFiles.sourceFiles.length,
     cssFileCount: snapshot.discoveredFiles.cssFiles.length,
     findings: ruleResult.findings,
-    diagnostics: snapshot.diagnostics,
+    diagnostics,
     classReferenceCount: analysisEvidence.projectEvidence.meta.classReferenceCount,
     classDefinitionCount: analysisEvidence.projectEvidence.meta.classDefinitionCount,
     selectorQueryCount: analysisEvidence.projectEvidence.entities.selectorQueries.length,
@@ -56,7 +72,7 @@ export async function scanProject(input: ScanProjectInput = {}): Promise<ScanPro
     rootDir: snapshot.rootDir,
     config: snapshot.config,
     findings: ruleResult.findings,
-    diagnostics: snapshot.diagnostics,
+    diagnostics,
     summary,
     ...(input.collectPerformance
       ? {
@@ -64,6 +80,18 @@ export async function scanProject(input: ScanProjectInput = {}): Promise<ScanPro
             totalMs: performance.now() - totalStartedAt,
             stages: performanceStages,
           }),
+        }
+      : {}),
+    ...(includeRuntimeCssDebug
+      ? {
+          debug: {
+            runtimeCss: {
+              bundlerProfiles: analysisEvidence.runtimeCssLoading.bundlerProfiles,
+              selectedBundlerProfileId: analysisEvidence.runtimeCssLoading.selectedBundlerProfileId,
+              entries: analysisEvidence.runtimeCssLoading.entries,
+              chunks: analysisEvidence.runtimeCssLoading.chunks,
+            },
+          },
         }
       : {}),
     failed,
@@ -81,6 +109,25 @@ export async function scanProject(input: ScanProjectInput = {}): Promise<ScanPro
       overrides: input.ignore,
     }),
   );
+}
+
+function compareDiagnostics(left: ScanDiagnostic, right: ScanDiagnostic): number {
+  return (
+    diagnosticSeverityRank(left.severity) - diagnosticSeverityRank(right.severity) ||
+    left.phase.localeCompare(right.phase) ||
+    (left.filePath ?? "").localeCompare(right.filePath ?? "") ||
+    left.code.localeCompare(right.code) ||
+    left.message.localeCompare(right.message)
+  );
+}
+
+function diagnosticSeverityRank(severity: ScanDiagnostic["severity"]): number {
+  return {
+    error: 0,
+    warning: 1,
+    info: 2,
+    debug: 3,
+  }[severity];
 }
 
 function createScanProgressReporter(input: {

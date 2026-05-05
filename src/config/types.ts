@@ -40,6 +40,7 @@ export type ReportingConfig = {
   verbose: boolean;
   json: boolean;
   trace: boolean;
+  debugRuntimeCss: boolean;
   outputDirectory?: string;
   overwriteOutput: boolean;
 };

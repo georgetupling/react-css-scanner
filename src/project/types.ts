@@ -1,6 +1,7 @@
 import type { Finding, RuleId } from "../rules/index.js";
 import type { ResolvedScannerConfig } from "../config/index.js";
 import type { RuleSeverity } from "../rules/index.js";
+import type { RuntimeCssLoadingResult } from "../static-analysis-engine/pipeline/runtime-css-loading/index.js";
 
 export type ScanProjectInput = {
   rootDir?: string;
@@ -16,6 +17,7 @@ export type ScanProjectInput = {
   onProgress?: ScanProgressCallback;
   collectPerformance?: boolean;
   includeTraces?: boolean;
+  includeDebugRuntimeCss?: boolean;
 };
 
 export type ScanProgressStatus = "started" | "completed";
@@ -39,6 +41,7 @@ export type ScanDiagnostic = {
   message: string;
   phase: ScanDiagnosticPhase;
   filePath?: string;
+  evidence?: string[];
 };
 
 export type ProjectFileRecord = {
@@ -76,6 +79,13 @@ export type ScanPerformance = {
   stages: ScanPerformanceStage[];
 };
 
+export type ScanDebugOutput = {
+  runtimeCss?: Pick<
+    RuntimeCssLoadingResult,
+    "bundlerProfiles" | "selectedBundlerProfileId" | "entries" | "chunks"
+  >;
+};
+
 export type ScanProjectResult = {
   rootDir: string;
   config: ResolvedScannerConfig;
@@ -83,6 +93,7 @@ export type ScanProjectResult = {
   diagnostics: ScanDiagnostic[];
   summary: ScanSummary;
   performance?: ScanPerformance;
+  debug?: ScanDebugOutput;
   failed: boolean;
   files: {
     sourceFiles: ProjectFileRecord[];

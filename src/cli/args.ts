@@ -9,6 +9,7 @@ export function parseArgs(rawArgs: string[]): CliArgs {
     outputMinSeverity: "info",
     verbose: false,
     trace: false,
+    debugRuntimeCss: false,
     overwriteOutput: false,
     ignoreClassNames: [],
     ignoreFilePaths: [],
@@ -37,6 +38,11 @@ export function parseArgs(rawArgs: string[]): CliArgs {
 
     if (arg === "--trace") {
       args.trace = true;
+      continue;
+    }
+
+    if (arg === "--debug-runtime-css") {
+      args.debugRuntimeCss = true;
       continue;
     }
 
@@ -143,7 +149,7 @@ export function parseArgs(rawArgs: string[]): CliArgs {
 
 export function printHelp(stream: NodeJS.WriteStream = process.stdout): void {
   stream.write(
-    `Usage: scan-react-css [rootDir] [--config path] [--focus path-or-glob] [--ignore-class class-or-glob] [--ignore-path path-or-glob] [--json] [--trace] [--output-file path] [--overwrite-output] [--output-min-severity severity] [--verbose] [--timings]\n`,
+    `Usage: scan-react-css [rootDir] [--config path] [--focus path-or-glob] [--ignore-class class-or-glob] [--ignore-path path-or-glob] [--json] [--trace] [--debug-runtime-css] [--output-file path] [--overwrite-output] [--output-min-severity severity] [--verbose] [--timings]\n`,
   );
 }
 

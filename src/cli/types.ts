@@ -7,6 +7,7 @@ export type CliArgs = {
   outputMinSeverity: RuleSeverity;
   verbose: boolean;
   trace: boolean;
+  debugRuntimeCss: boolean;
   outputFile?: string;
   overwriteOutput: boolean;
   ignoreClassNames: string[];

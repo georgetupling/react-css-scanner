@@ -28,6 +28,7 @@ export function formatJsonResult(
   result: ScanProjectResult,
   outputMinSeverity: RuleSeverity,
   includeTraces: boolean,
+  includeRuntimeCssDebug = false,
 ): object {
   const diagnostics = filterDiagnostics(result.diagnostics, outputMinSeverity);
   const findings = filterFindings(result.findings, outputMinSeverity);
@@ -43,6 +44,9 @@ export function formatJsonResult(
     findings: includeTraces ? findings : findings.map(withoutFindingTraces),
     summary: withOutputCounts(result.summary, diagnostics, findings),
     ...(result.performance ? { performance: result.performance } : {}),
+    ...(includeRuntimeCssDebug && result.debug?.runtimeCss
+      ? { debug: { runtimeCss: result.debug.runtimeCss } }
+      : {}),
     failed: result.failed,
   };
 }
