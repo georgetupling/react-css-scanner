@@ -50,6 +50,7 @@ export function collectProjectResourceEdges(input: {
       importerFilePath: importRecord.importerFilePath,
       specifier: importRecord.specifier,
       importKind: importRecord.importKind,
+      importLoading: importRecord.importLoading,
       resolutionStatus: importRecord.resolutionStatus,
       ...(importRecord.resolvedFilePath ? { resolvedFilePath: importRecord.resolvedFilePath } : {}),
     })),

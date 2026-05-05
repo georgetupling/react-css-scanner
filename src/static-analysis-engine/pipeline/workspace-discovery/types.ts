@@ -75,11 +75,13 @@ export type StylesheetImportFact = {
 };
 
 export type SourceImportKind = "source" | "css" | "external-css" | "type-only" | "unknown";
+export type SourceImportLoading = "static" | "dynamic";
 
 export type SourceImportFact = {
   importerFilePath: string;
   specifier: string;
   importKind: SourceImportKind;
+  importLoading: SourceImportLoading;
   resolutionStatus: "resolved" | "unresolved" | "external" | "unsupported";
   resolvedFilePath?: string;
 };

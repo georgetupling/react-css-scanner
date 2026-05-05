@@ -35,6 +35,7 @@ export function collectRootHtmlEntryLinkedStylesheetPaths(
   for (const edge of snapshot.edges) {
     if (
       edge.kind !== "source-import" ||
+      edge.importLoading !== "static" ||
       edge.resolutionStatus !== "resolved" ||
       !edge.resolvedFilePath
     ) {

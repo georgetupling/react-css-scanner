@@ -3,6 +3,7 @@ import type {
   ExternalResourceNode,
   FactCssSemantics,
   FactImportKind,
+  FactImportLoading,
   FactImportResolutionStatus,
   FactGraphInput,
   ImportsEdge,
@@ -24,6 +25,7 @@ type ImportRecord = {
   importerKind: "source" | "stylesheet";
   importerFilePath: string;
   importKind: FactImportKind;
+  importLoading: FactImportLoading;
   specifier: string;
   resolutionStatus: FactImportResolutionStatus;
   resolvedFilePath?: string;
@@ -56,6 +58,7 @@ export function buildImportEdges(input: {
           importerKind: "source",
           importerFilePath: file.filePath,
           importKind: importRecord.importKind,
+          importLoading: importRecord.importLoading,
           specifier: importRecord.specifier,
         }),
         record: normalizeFrontendImportRecord({
@@ -112,13 +115,20 @@ export function buildImportEdges(input: {
       }).id;
 
     imports.push({
-      id: importsEdgeId(importerNodeId, to, record.specifier, record.importKind),
+      id: importsEdgeId(
+        importerNodeId,
+        to,
+        record.specifier,
+        record.importKind,
+        record.importLoading,
+      ),
       kind: "imports",
       from: importerNodeId,
       to,
       importerKind: record.importerKind,
       importerFilePath: normalizedImporterFilePath,
       importKind: record.importKind,
+      importLoading: record.importLoading,
       specifier: record.specifier,
       resolutionStatus: record.resolutionStatus,
       ...(resolvedImport.resolvedFilePath
@@ -150,6 +160,7 @@ function normalizeFrontendImportRecord(input: {
     importerKind: "source",
     importerFilePath: input.importerFilePath,
     importKind: input.importRecord.importKind,
+    importLoading: input.importRecord.importLoading,
     specifier: input.importRecord.specifier,
     resolutionStatus: inferFrontendImportResolution(input.importRecord),
     ...(input.importRecord.importKind === "css" || input.importRecord.importKind === "external-css"
@@ -164,6 +175,7 @@ function normalizeSnapshotImportRecord(edge: ProjectResourceEdge): ImportRecord 
       importerKind: "source",
       importerFilePath: edge.importerFilePath,
       importKind: edge.importKind,
+      importLoading: edge.importLoading,
       specifier: edge.specifier,
       resolutionStatus: edge.resolutionStatus,
       ...(edge.resolvedFilePath ? { resolvedFilePath: edge.resolvedFilePath } : {}),
@@ -178,6 +190,7 @@ function normalizeSnapshotImportRecord(edge: ProjectResourceEdge): ImportRecord 
       importerKind: "stylesheet",
       importerFilePath: edge.importerFilePath,
       importKind: "css",
+      importLoading: "static",
       specifier: edge.specifier,
       resolutionStatus: "resolved",
       resolvedFilePath: edge.resolvedFilePath,
@@ -190,6 +203,7 @@ function normalizeSnapshotImportRecord(edge: ProjectResourceEdge): ImportRecord 
       importerKind: edge.importerKind,
       importerFilePath: edge.importerFilePath,
       importKind: "css",
+      importLoading: "static",
       specifier: edge.specifier,
       resolutionStatus: "resolved",
       resolvedFilePath: edge.resolvedFilePath,
@@ -337,6 +351,7 @@ function compareImportRecords(left: ImportRecord, right: ImportRecord): number {
       normalizeFilePath(right.importerFilePath),
     ) ||
     left.importKind.localeCompare(right.importKind) ||
+    left.importLoading.localeCompare(right.importLoading) ||
     left.specifier.localeCompare(right.specifier)
   );
 }
@@ -345,9 +360,10 @@ function createImportKey(input: {
   importerKind: "source" | "stylesheet";
   importerFilePath: string;
   importKind: FactImportKind;
+  importLoading: FactImportLoading;
   specifier: string;
 }): string {
-  return `${input.importerKind}\0${normalizeFilePath(input.importerFilePath)}\0${input.importKind}\0${normalizeFilePath(input.specifier)}`;
+  return `${input.importerKind}\0${normalizeFilePath(input.importerFilePath)}\0${input.importKind}\0${input.importLoading}\0${normalizeFilePath(input.specifier)}`;
 }
 
 function isRemoteSpecifier(specifier: string): boolean {

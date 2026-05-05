@@ -7,6 +7,7 @@ export type SourceModuleSyntaxFacts = {
 };
 
 export type SourceImportSyntaxKind = "source" | "css" | "external-css" | "type-only" | "unknown";
+export type SourceImportLoading = "static" | "dynamic";
 
 export type SourceImportSyntaxName = {
   kind: "default" | "named" | "namespace";
@@ -19,6 +20,7 @@ export type SourceImportSyntaxRecord = {
   filePath: string;
   specifier: string;
   importKind: SourceImportSyntaxKind;
+  importLoading: SourceImportLoading;
   importNames: SourceImportSyntaxName[];
 };
 

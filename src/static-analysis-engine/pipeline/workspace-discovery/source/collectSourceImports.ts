@@ -38,11 +38,36 @@ export function collectSourceImports(input: {
           importerFilePath: sourceFile.filePath,
           specifier,
           importKind,
+          importLoading: "static",
           knownSourceFilePaths,
           knownStylesheetFilePaths,
         }),
       );
     }
+
+    const visit = (node: ts.Node): void => {
+      if (
+        ts.isCallExpression(node) &&
+        node.expression.kind === ts.SyntaxKind.ImportKeyword &&
+        node.arguments.length === 1 &&
+        ts.isStringLiteralLike(node.arguments[0])
+      ) {
+        const specifier = node.arguments[0].text;
+        imports.push(
+          resolveImportFact({
+            importerFilePath: sourceFile.filePath,
+            specifier,
+            importKind: classifyDynamicImportKind(specifier),
+            importLoading: "dynamic",
+            knownSourceFilePaths,
+            knownStylesheetFilePaths,
+          }),
+        );
+      }
+
+      ts.forEachChild(node, visit);
+    };
+    ts.forEachChild(parsedSourceFile, visit);
   }
 
   return imports.sort(compareSourceImportFacts);
@@ -52,6 +77,7 @@ function resolveImportFact(input: {
   importerFilePath: string;
   specifier: string;
   importKind: SourceImportKind;
+  importLoading: "static" | "dynamic";
   knownSourceFilePaths: ReadonlySet<string>;
   knownStylesheetFilePaths: ReadonlySet<string>;
 }): SourceImportFact {
@@ -60,6 +86,7 @@ function resolveImportFact(input: {
       importerFilePath: input.importerFilePath,
       specifier: input.specifier,
       importKind: input.importKind,
+      importLoading: input.importLoading,
       resolutionStatus: "external",
     };
   }
@@ -69,6 +96,7 @@ function resolveImportFact(input: {
       importerFilePath: input.importerFilePath,
       specifier: input.specifier,
       importKind: input.importKind,
+      importLoading: input.importLoading,
       resolutionStatus: "unsupported",
     };
   }
@@ -79,6 +107,7 @@ function resolveImportFact(input: {
         importerFilePath: input.importerFilePath,
         specifier: input.specifier,
         importKind: input.importKind,
+        importLoading: input.importLoading,
         resolutionStatus: "external",
       };
     }
@@ -92,6 +121,7 @@ function resolveImportFact(input: {
           importerFilePath: input.importerFilePath,
           specifier: input.specifier,
           importKind: input.importKind,
+          importLoading: input.importLoading,
           resolutionStatus: "resolved",
           resolvedFilePath,
         }
@@ -99,6 +129,7 @@ function resolveImportFact(input: {
           importerFilePath: input.importerFilePath,
           specifier: input.specifier,
           importKind: input.importKind,
+          importLoading: input.importLoading,
           resolutionStatus: "unresolved",
         };
   }
@@ -108,6 +139,7 @@ function resolveImportFact(input: {
       importerFilePath: input.importerFilePath,
       specifier: input.specifier,
       importKind: input.importKind,
+      importLoading: input.importLoading,
       resolutionStatus: "unresolved",
     };
   }
@@ -122,6 +154,7 @@ function resolveImportFact(input: {
         importerFilePath: input.importerFilePath,
         specifier: input.specifier,
         importKind: input.importKind,
+        importLoading: input.importLoading,
         resolutionStatus: "resolved",
         resolvedFilePath,
       }
@@ -129,6 +162,7 @@ function resolveImportFact(input: {
         importerFilePath: input.importerFilePath,
         specifier: input.specifier,
         importKind: input.importKind,
+        importLoading: input.importLoading,
         resolutionStatus: "unresolved",
       };
 }
@@ -146,6 +180,26 @@ function classifyImportKind(statement: ts.ImportDeclaration, specifier: string):
     return "type-only";
   }
 
+  if (specifier.endsWith(".css")) {
+    return "css";
+  }
+
+  if (specifier.startsWith("http://") || specifier.startsWith("https://")) {
+    return "external-css";
+  }
+
+  if (specifier.startsWith(".") || specifier.startsWith("/") || /^[^./@][^:]*$/.test(specifier)) {
+    return "source";
+  }
+
+  if (specifier.startsWith("@")) {
+    return "source";
+  }
+
+  return "unknown";
+}
+
+function classifyDynamicImportKind(specifier: string): SourceImportKind {
   if (specifier.endsWith(".css")) {
     return "css";
   }
@@ -271,6 +325,7 @@ function compareSourceImportFacts(left: SourceImportFact, right: SourceImportFac
     left.importerFilePath.localeCompare(right.importerFilePath) ||
     left.specifier.localeCompare(right.specifier) ||
     left.importKind.localeCompare(right.importKind) ||
+    left.importLoading.localeCompare(right.importLoading) ||
     left.resolutionStatus.localeCompare(right.resolutionStatus) ||
     (left.resolvedFilePath ?? "").localeCompare(right.resolvedFilePath ?? "")
   );

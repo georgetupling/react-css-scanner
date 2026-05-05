@@ -9,6 +9,7 @@ export type {
   SourceDeclarationSyntaxIndex,
   SourceExportSyntaxRecord,
   SourceImportSyntaxKind,
+  SourceImportLoading,
   SourceImportSyntaxName,
   SourceImportSyntaxRecord,
   SourceModuleSyntaxFacts,

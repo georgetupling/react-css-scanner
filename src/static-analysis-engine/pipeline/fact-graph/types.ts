@@ -91,6 +91,7 @@ export type FactGraphNodes = {
 };
 
 export type FactImportKind = "source" | "css" | "external-css" | "type-only" | "unknown";
+export type FactImportLoading = "static" | "dynamic";
 export type FactImportResolutionStatus = "resolved" | "unresolved" | "external" | "unsupported";
 export type FactCssSemantics = "global" | "module";
 
@@ -338,6 +339,7 @@ export type ImportsEdge = FactEdgeBase & {
   importerKind: "source" | "stylesheet";
   importerFilePath: string;
   importKind: FactImportKind;
+  importLoading: FactImportLoading;
   specifier: string;
   resolutionStatus: FactImportResolutionStatus;
   cssSemantics?: FactCssSemantics;

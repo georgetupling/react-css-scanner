@@ -24,9 +24,31 @@ export function collectImports(
       filePath,
       specifier,
       importKind: classifyImportKind(specifier, importNames),
+      importLoading: "static",
       importNames,
     });
   }
+
+  const visit = (node: ts.Node): void => {
+    if (
+      ts.isCallExpression(node) &&
+      node.expression.kind === ts.SyntaxKind.ImportKeyword &&
+      node.arguments.length === 1 &&
+      ts.isStringLiteralLike(node.arguments[0])
+    ) {
+      const specifier = node.arguments[0].text;
+      imports.push({
+        filePath,
+        specifier,
+        importKind: classifyImportKind(specifier, []),
+        importLoading: "dynamic",
+        importNames: [],
+      });
+    }
+
+    ts.forEachChild(node, visit);
+  };
+  ts.forEachChild(sourceFile, visit);
 
   return imports.sort(compareImportRecords);
 }
@@ -108,6 +130,7 @@ function compareImportRecords(
 ): number {
   return (
     left.specifier.localeCompare(right.specifier) ||
+    left.importLoading.localeCompare(right.importLoading) ||
     compareImportNames(left.importNames[0], right.importNames[0])
   );
 }

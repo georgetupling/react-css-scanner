@@ -45,8 +45,10 @@ export function importsEdgeId(
   to: FactNodeId,
   specifier: string,
   importKind: string,
+  importLoading = "static",
 ): FactEdgeId {
-  return `imports:${from}->${to}:${specifier}:${importKind}`;
+  const loadingSuffix = importLoading === "static" ? "" : `:${importLoading}`;
+  return `imports:${from}->${to}:${specifier}:${importKind}${loadingSuffix}`;
 }
 
 export function externalResourceNodeId(specifier: string, resourceKind: string): FactNodeId {

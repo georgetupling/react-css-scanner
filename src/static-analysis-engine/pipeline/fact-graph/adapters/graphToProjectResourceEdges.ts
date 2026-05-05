@@ -12,6 +12,7 @@ export function graphToProjectResourceEdges(graph: FactGraph): ProjectResourceEd
         importerFilePath: importEdge.importerFilePath,
         specifier: importEdge.specifier,
         importKind: importEdge.importKind,
+        importLoading: importEdge.importLoading,
         resolutionStatus: importEdge.resolutionStatus,
         ...(importEdge.resolvedFilePath ? { resolvedFilePath: importEdge.resolvedFilePath } : {}),
       });

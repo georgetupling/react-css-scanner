@@ -143,6 +143,186 @@ test("css-class-unreachable treats app-entry imported CSS as reachable from rout
   }
 });
 
+test("css-class-unreachable treats eager route bundle CSS as reachable within the app entry", async () => {
+  const project = await new TestProjectBuilder()
+    .withFile("index.html", '<script type="module" src="/src/main.tsx"></script>\n')
+    .withSourceFile(
+      "src/main.tsx",
+      ['import { routes } from "./routes";', "export const appRoutes = routes;", ""].join("\n"),
+    )
+    .withSourceFile(
+      "src/routes.tsx",
+      [
+        'import { StyledRoute } from "./StyledRoute";',
+        'import { OtherRoute } from "./OtherRoute";',
+        "export const routes = [<StyledRoute />, <OtherRoute />];",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/StyledRoute.tsx",
+      ['import "./StyledRoute.css";', "export function StyledRoute() { return <div />; }", ""].join(
+        "\n",
+      ),
+    )
+    .withSourceFile(
+      "src/OtherRoute.tsx",
+      'export function OtherRoute() { return <main className="shared-route-class">Other</main>; }\n',
+    )
+    .withCssFile("src/StyledRoute.css", ".shared-route-class { color: red; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "css-class-unreachable", ["shared-route-class"]);
+    assertNoClassFindings(result, "missing-css-class", ["shared-route-class"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("css-class-unreachable keeps eager route bundle CSS inside its HTML app entry", async () => {
+  const project = await new TestProjectBuilder()
+    .withFile(
+      "apps/admin/index.html",
+      '<script type="module" src="/apps/admin/src/main.tsx"></script>\n',
+    )
+    .withFile(
+      "apps/web/index.html",
+      '<script type="module" src="/apps/web/src/main.tsx"></script>\n',
+    )
+    .withSourceFile(
+      "apps/admin/src/main.tsx",
+      ['import { routes } from "./routes";', "export const adminRoutes = routes;", ""].join("\n"),
+    )
+    .withSourceFile(
+      "apps/admin/src/routes.tsx",
+      [
+        'import { StyledRoute } from "./StyledRoute";',
+        "export const routes = [<StyledRoute />];",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "apps/admin/src/StyledRoute.tsx",
+      ['import "./StyledRoute.css";', "export function StyledRoute() { return <div />; }", ""].join(
+        "\n",
+      ),
+    )
+    .withCssFile("apps/admin/src/StyledRoute.css", ".admin-route-class { color: red; }\n")
+    .withSourceFile(
+      "apps/web/src/main.tsx",
+      'export function WebApp() { return <main className="admin-route-class">Web</main>; }\n',
+    )
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+    const finding = result.findings.find(
+      (candidate) =>
+        candidate.ruleId === "css-class-unreachable" &&
+        candidate.location?.filePath === "apps/web/src/main.tsx" &&
+        candidate.data?.className === "admin-route-class",
+    );
+
+    assert.ok(finding);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("css-class-unreachable treats conventional main modules as app entries when HTML is absent or unresolved", async () => {
+  const project = await new TestProjectBuilder()
+    .withFile("apps/client/index.html", '<script type="module" src="/src/main.tsx"></script>\n')
+    .withSourceFile(
+      "apps/client/src/main.tsx",
+      ['import { routes } from "./routes";', "export const appRoutes = routes;", ""].join("\n"),
+    )
+    .withSourceFile(
+      "apps/client/src/routes.tsx",
+      [
+        'import { StyledRoute } from "./StyledRoute";',
+        'import { OtherRoute } from "./OtherRoute";',
+        "export const routes = [<StyledRoute />, <OtherRoute />];",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "apps/client/src/StyledRoute.tsx",
+      ['import "./StyledRoute.css";', "export function StyledRoute() { return <div />; }", ""].join(
+        "\n",
+      ),
+    )
+    .withSourceFile(
+      "apps/client/src/OtherRoute.tsx",
+      'export function OtherRoute() { return <main className="shared-route-class">Other</main>; }\n',
+    )
+    .withCssFile("apps/client/src/StyledRoute.css", ".shared-route-class { color: red; }\n")
+    .withConfig({
+      discovery: {
+        sourceRoots: ["apps/client/src"],
+      },
+    })
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "css-class-unreachable", ["shared-route-class"]);
+    assertNoClassFindings(result, "missing-css-class", ["shared-route-class"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("css-class-unreachable does not treat lazy route CSS as reachable from the initial app bundle", async () => {
+  const project = await new TestProjectBuilder()
+    .withFile("index.html", '<script type="module" src="/src/main.tsx"></script>\n')
+    .withSourceFile(
+      "src/main.tsx",
+      [
+        'import { lazy } from "react";',
+        'const LazyRoute = lazy(() => import("./LazyRoute"));',
+        'export function App() { return <main className="lazy-route-class"><LazyRoute /></main>; }',
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/LazyRoute.tsx",
+      [
+        'import "./LazyRoute.css";',
+        'export function LazyRoute() { return <section className="lazy-route-class">Lazy</section>; }',
+        "export default LazyRoute;",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/LazyRoute.css", ".lazy-route-class { color: red; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+    const finding = result.findings.find(
+      (candidate) =>
+        candidate.ruleId === "css-class-unreachable" &&
+        candidate.location?.filePath === "src/main.tsx" &&
+        candidate.data?.className === "lazy-route-class",
+    );
+
+    assert.ok(finding);
+    assert.deepEqual(
+      result.findings.filter(
+        (candidate) =>
+          candidate.ruleId === "css-class-unreachable" &&
+          candidate.location?.filePath === "src/LazyRoute.tsx",
+      ),
+      [],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("css-class-unreachable does not leak component CSS through shared dependencies", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(
