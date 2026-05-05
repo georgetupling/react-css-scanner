@@ -2,6 +2,7 @@ import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
 import type { ResolvedScannerConfig } from "../../../config/index.js";
+import type { DiscoveryConfig } from "../../../config/index.js";
 import { loadScannerConfig } from "../../../config/index.js";
 import { normalizeProjectPath, resolveRootDir } from "../../../project/pathUtils.js";
 import type { ScanDiagnostic, ScanProjectInput } from "../../../project/types.js";
@@ -35,10 +36,15 @@ export async function buildProjectSnapshot(input: {
     configPath: input.scanInput.configPath,
     diagnostics,
   });
+  const discovery = await buildEffectiveDiscoveryConfig({
+    rootDir,
+    discovery: config.discovery,
+    diagnostics,
+  });
   const discovered = await discoverProjectFileRecords({
     ...input.scanInput,
     rootDir,
-    discovery: config.discovery,
+    discovery,
   });
   diagnostics.push(...discovered.diagnostics);
 
@@ -62,6 +68,8 @@ export async function buildProjectSnapshot(input: {
   const { htmlStylesheetLinks, htmlScriptSources } = collectHtmlResources({
     rootDir: discovered.rootDir,
     htmlFiles,
+    knownStylesheetFilePaths: discovered.cssFiles.map((cssFile) => cssFile.filePath),
+    discovery,
     diagnostics,
   });
   const linkedCssFiles = await readCssFiles(
@@ -77,6 +85,7 @@ export async function buildProjectSnapshot(input: {
     rootDir: discovered.rootDir,
     sourceFiles,
     cssSources: toCssSources([...cssFiles, ...linkedCssFiles]),
+    discovery,
     diagnostics,
   });
   const packageStylesheets = toStylesheetFiles(packageCssImports.cssSources, "package");
@@ -96,10 +105,12 @@ export async function buildProjectSnapshot(input: {
   ]);
   const stylesheetImports = collectStylesheetImports({
     stylesheets,
+    discovery,
   });
   const sourceImports = collectSourceImports({
     sourceFiles,
     stylesheets,
+    discovery,
   });
 
   return {
@@ -137,6 +148,110 @@ export async function buildProjectSnapshot(input: {
     },
     diagnostics,
   };
+}
+
+async function buildEffectiveDiscoveryConfig(input: {
+  rootDir: string;
+  discovery: DiscoveryConfig;
+  diagnostics: ScanDiagnostic[];
+}): Promise<DiscoveryConfig> {
+  const inferredAliases = await inferTsconfigAliases({
+    rootDir: input.rootDir,
+    diagnostics: input.diagnostics,
+  });
+
+  return {
+    ...input.discovery,
+    aliases: mergeAliases(inferredAliases, input.discovery.aliases),
+  };
+}
+
+async function inferTsconfigAliases(input: {
+  rootDir: string;
+  diagnostics: ScanDiagnostic[];
+}): Promise<Record<string, string[]>> {
+  const filePath = "tsconfig.json";
+  const absolutePath = path.join(input.rootDir, filePath);
+  let sourceText: string;
+  try {
+    sourceText = await readFile(absolutePath, "utf8");
+  } catch (error) {
+    if (isNodeErrorWithCode(error, "ENOENT")) {
+      return {};
+    }
+    input.diagnostics.push({
+      code: "loading.tsconfig-read-failed",
+      severity: "warning",
+      phase: "loading",
+      filePath,
+      message: `failed to read tsconfig.json for alias inference: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    });
+    return {};
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(sourceText);
+  } catch (error) {
+    input.diagnostics.push({
+      code: "loading.tsconfig-parse-failed",
+      severity: "warning",
+      phase: "loading",
+      filePath,
+      message: `failed to parse tsconfig.json for alias inference: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    });
+    return {};
+  }
+
+  if (!isRecord(parsed) || !isRecord(parsed.compilerOptions)) {
+    return {};
+  }
+
+  const compilerOptions = parsed.compilerOptions;
+  if (!isRecord(compilerOptions.paths)) {
+    return {};
+  }
+
+  const baseUrl =
+    typeof compilerOptions.baseUrl === "string"
+      ? normalizeProjectPath(compilerOptions.baseUrl)
+      : ".";
+  const aliases: Record<string, string[]> = {};
+  for (const [key, value] of Object.entries(compilerOptions.paths).sort(([left], [right]) =>
+    left.localeCompare(right),
+  )) {
+    if (!Array.isArray(value)) {
+      continue;
+    }
+
+    const targets = value
+      .filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+      .map((entry) => normalizeProjectPath(path.posix.join(baseUrl, entry)));
+    if (targets.length > 0) {
+      aliases[key] = targets;
+    }
+  }
+
+  return aliases;
+}
+
+function mergeAliases(
+  inferredAliases: Record<string, string[]>,
+  configuredAliases: Record<string, string[]>,
+): Record<string, string[]> {
+  const aliases: Record<string, string[]> = {};
+  for (const key of [...Object.keys(inferredAliases), ...Object.keys(configuredAliases)].sort(
+    (left, right) => left.localeCompare(right),
+  )) {
+    aliases[key] = [
+      ...new Set([...(configuredAliases[key] ?? []), ...(inferredAliases[key] ?? [])]),
+    ];
+  }
+  return aliases;
 }
 
 async function collectRootPackageJsonFiles(input: {

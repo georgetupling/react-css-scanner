@@ -1,15 +1,18 @@
 import ts from "typescript";
 
+import type { DiscoveryConfig } from "../../../../config/index.js";
 import type {
   ProjectSourceFile,
   ProjectStylesheetFile,
   SourceImportFact,
   SourceImportKind,
 } from "../types.js";
+import { resolveWorkspaceSpecifier } from "../resolution/index.js";
 
 export function collectSourceImports(input: {
   sourceFiles: ProjectSourceFile[];
   stylesheets: ProjectStylesheetFile[];
+  discovery?: Pick<DiscoveryConfig, "aliases" | "stylesheetExtensions">;
 }): SourceImportFact[] {
   const knownSourceFilePaths = new Set(input.sourceFiles.map((sourceFile) => sourceFile.filePath));
   const knownStylesheetFilePaths = new Set(
@@ -41,6 +44,7 @@ export function collectSourceImports(input: {
           importLoading: "static",
           knownSourceFilePaths,
           knownStylesheetFilePaths,
+          discovery: input.discovery,
         }),
       );
     }
@@ -61,6 +65,7 @@ export function collectSourceImports(input: {
             importLoading: "dynamic",
             knownSourceFilePaths,
             knownStylesheetFilePaths,
+            discovery: input.discovery,
           }),
         );
       }
@@ -80,6 +85,7 @@ function resolveImportFact(input: {
   importLoading: "static" | "dynamic";
   knownSourceFilePaths: ReadonlySet<string>;
   knownStylesheetFilePaths: ReadonlySet<string>;
+  discovery?: Pick<DiscoveryConfig, "aliases" | "stylesheetExtensions">;
 }): SourceImportFact {
   if (input.importKind === "external-css") {
     return {
@@ -102,69 +108,61 @@ function resolveImportFact(input: {
   }
 
   if (input.importKind === "css") {
-    if (!isRelativeOrAbsolutePath(input.specifier)) {
-      return {
-        importerFilePath: input.importerFilePath,
-        specifier: input.specifier,
-        importKind: input.importKind,
-        importLoading: input.importLoading,
-        resolutionStatus: "external",
-      };
-    }
-
-    const resolvedFilePath = resolveStylesheetSpecifierPath({
-      fromFilePath: input.importerFilePath,
+    const resolution = resolveWorkspaceSpecifier({
+      importerFilePath: input.importerFilePath,
       specifier: input.specifier,
+      targetKind: "stylesheet",
+      knownStylesheetFilePaths: input.knownStylesheetFilePaths,
+      discovery: input.discovery,
     });
-    return input.knownStylesheetFilePaths.has(resolvedFilePath)
+    return resolution.status === "resolved" && resolution.kind === "project"
       ? {
           importerFilePath: input.importerFilePath,
           specifier: input.specifier,
           importKind: input.importKind,
           importLoading: input.importLoading,
           resolutionStatus: "resolved",
-          resolvedFilePath,
+          resolvedFilePath: resolution.filePath,
         }
       : {
           importerFilePath: input.importerFilePath,
           specifier: input.specifier,
           importKind: input.importKind,
           importLoading: input.importLoading,
-          resolutionStatus: "unresolved",
+          resolutionStatus:
+            resolution.status === "external" ||
+            (resolution.status === "resolved" && resolution.kind === "package")
+              ? "external"
+              : "unresolved",
         };
   }
 
-  if (!input.specifier.startsWith(".")) {
+  const resolution = resolveWorkspaceSpecifier({
+    importerFilePath: input.importerFilePath,
+    specifier: input.specifier,
+    targetKind: "source",
+    knownSourceFilePaths: input.knownSourceFilePaths,
+    discovery: input.discovery,
+  });
+
+  if (resolution.status !== "resolved" || resolution.kind !== "project") {
     return {
       importerFilePath: input.importerFilePath,
       specifier: input.specifier,
       importKind: input.importKind,
       importLoading: input.importLoading,
-      resolutionStatus: "unresolved",
+      resolutionStatus: resolution.status === "external" ? "external" : "unresolved",
     };
   }
 
-  const resolvedFilePath = getSourceSpecifierCandidatePaths({
-    fromFilePath: input.importerFilePath,
+  return {
+    importerFilePath: input.importerFilePath,
     specifier: input.specifier,
-  }).find((candidatePath) => input.knownSourceFilePaths.has(candidatePath));
-
-  return resolvedFilePath
-    ? {
-        importerFilePath: input.importerFilePath,
-        specifier: input.specifier,
-        importKind: input.importKind,
-        importLoading: input.importLoading,
-        resolutionStatus: "resolved",
-        resolvedFilePath,
-      }
-    : {
-        importerFilePath: input.importerFilePath,
-        specifier: input.specifier,
-        importKind: input.importKind,
-        importLoading: input.importLoading,
-        resolutionStatus: "unresolved",
-      };
+    importKind: input.importKind,
+    importLoading: input.importLoading,
+    resolutionStatus: "resolved",
+    resolvedFilePath: resolution.filePath,
+  };
 }
 
 function classifyImportKind(statement: ts.ImportDeclaration, specifier: string): SourceImportKind {
@@ -180,7 +178,7 @@ function classifyImportKind(statement: ts.ImportDeclaration, specifier: string):
     return "type-only";
   }
 
-  if (specifier.endsWith(".css")) {
+  if (isStylesheetSpecifier(specifier)) {
     return "css";
   }
 
@@ -200,7 +198,7 @@ function classifyImportKind(statement: ts.ImportDeclaration, specifier: string):
 }
 
 function classifyDynamicImportKind(specifier: string): SourceImportKind {
-  if (specifier.endsWith(".css")) {
+  if (isStylesheetSpecifier(specifier)) {
     return "css";
   }
 
@@ -238,86 +236,8 @@ function getScriptKind(filePath: string): ts.ScriptKind {
   return ts.ScriptKind.JS;
 }
 
-function isRelativeOrAbsolutePath(specifier: string): boolean {
-  return specifier.startsWith(".") || specifier.startsWith("/");
-}
-
-function getSourceSpecifierCandidatePaths(input: {
-  fromFilePath: string;
-  specifier: string;
-}): string[] {
-  const fromSegments = input.fromFilePath.replace(/\\/g, "/").split("/");
-  fromSegments.pop();
-  const baseSegments = input.specifier.split("/").filter((segment) => segment.length > 0);
-  const candidateBasePath = normalizeSegments([...fromSegments, ...baseSegments]);
-
-  return [
-    candidateBasePath,
-    ...getTypeScriptSourceAlternatesForSpecifier(candidateBasePath),
-    `${candidateBasePath}.ts`,
-    `${candidateBasePath}.tsx`,
-    `${candidateBasePath}.js`,
-    `${candidateBasePath}.jsx`,
-    `${candidateBasePath}/index.ts`,
-    `${candidateBasePath}/index.tsx`,
-    `${candidateBasePath}/index.js`,
-    `${candidateBasePath}/index.jsx`,
-  ];
-}
-
-function resolveStylesheetSpecifierPath(input: {
-  fromFilePath: string;
-  specifier: string;
-}): string {
-  if (input.specifier.startsWith("/")) {
-    return input.specifier.replace(/^\/+/, "").replace(/\\/g, "/");
-  }
-
-  const fromSegments = input.fromFilePath.replace(/\\/g, "/").split("/");
-  fromSegments.pop();
-  const specifierSegments = input.specifier.split("/").filter(Boolean);
-  return normalizeSegments([...fromSegments, ...specifierSegments]);
-}
-
-function getTypeScriptSourceAlternatesForSpecifier(candidateBasePath: string): string[] {
-  if (candidateBasePath.endsWith(".js")) {
-    return [
-      `${candidateBasePath.slice(0, -".js".length)}.ts`,
-      `${candidateBasePath.slice(0, -".js".length)}.tsx`,
-    ];
-  }
-
-  if (candidateBasePath.endsWith(".jsx")) {
-    return [`${candidateBasePath.slice(0, -".jsx".length)}.tsx`];
-  }
-
-  if (candidateBasePath.endsWith(".mjs") || candidateBasePath.endsWith(".cjs")) {
-    return [
-      `${candidateBasePath.slice(0, -".mjs".length)}.mts`,
-      `${candidateBasePath.slice(0, -".mjs".length)}.cts`,
-    ];
-  }
-
-  return [];
-}
-
-function normalizeSegments(segments: string[]): string {
-  const normalized: string[] = [];
-
-  for (const segment of segments) {
-    if (segment === ".") {
-      continue;
-    }
-
-    if (segment === "..") {
-      normalized.pop();
-      continue;
-    }
-
-    normalized.push(segment);
-  }
-
-  return normalized.join("/");
+function isStylesheetSpecifier(specifier: string): boolean {
+  return /\.(?:css|less|scss|sass)(?:[?#].*)?$/i.test(specifier);
 }
 
 function compareSourceImportFacts(left: SourceImportFact, right: SourceImportFact): number {

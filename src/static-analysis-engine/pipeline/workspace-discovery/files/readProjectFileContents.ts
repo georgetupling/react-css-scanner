@@ -69,7 +69,7 @@ export async function readHtmlFiles(
 }
 
 function getCssKind(filePath: string): ProjectStylesheetFile["cssKind"] {
-  return /\.module\.[cm]?css$/i.test(filePath) ? "css-module" : "global-css";
+  return /\.module\.(?:[cm]?css|less|sass|scss)$/i.test(filePath) ? "css-module" : "global-css";
 }
 
 async function readProjectFile(

@@ -34,7 +34,13 @@ const OWNERSHIP_SHARING_POLICIES = new Set<OwnershipConfig["sharingPolicy"]>([
   "balanced",
   "permissive",
 ]);
-const DISCOVERY_CONFIG_KEYS = new Set(["sourceRoots", "exclude"]);
+const DISCOVERY_CONFIG_KEYS = new Set([
+  "sourceRoots",
+  "exclude",
+  "publicRoots",
+  "aliases",
+  "stylesheetExtensions",
+]);
 const IGNORE_CONFIG_KEYS = new Set(["classNames", "filePaths"]);
 const REPORTING_CONFIG_KEYS = new Set([
   "verbose",
@@ -142,6 +148,9 @@ export const DEFAULT_SCANNER_CONFIG: ScannerConfig = {
   discovery: {
     sourceRoots: [],
     exclude: [],
+    publicRoots: ["public"],
+    aliases: {},
+    stylesheetExtensions: [".css", ".less", ".sass", ".scss"],
   },
   ignore: {
     classNames: [],
@@ -574,6 +583,27 @@ function parseDiscovery(
       message: "discovery.exclude must be an array of non-empty strings",
       requireNonEmpty: true,
     }),
+    publicRoots: parseStringArray({
+      value: value.publicRoots,
+      fallback: DEFAULT_SCANNER_CONFIG.discovery.publicRoots,
+      filePath,
+      diagnostics,
+      code: "config.invalid-discovery-public-roots",
+      message: "discovery.publicRoots must be an array of non-empty strings",
+      requireNonEmpty: true,
+    }),
+    aliases: parseAliases(value.aliases, filePath, diagnostics),
+    stylesheetExtensions: normalizeStylesheetExtensions(
+      parseStringArray({
+        value: value.stylesheetExtensions,
+        fallback: DEFAULT_SCANNER_CONFIG.discovery.stylesheetExtensions,
+        filePath,
+        diagnostics,
+        code: "config.invalid-discovery-stylesheet-extensions",
+        message: "discovery.stylesheetExtensions must be an array of non-empty strings",
+        requireNonEmpty: true,
+      }),
+    ),
   };
 }
 
@@ -935,6 +965,11 @@ function cloneDiscoveryConfig(config: ScannerConfig["discovery"]): ScannerConfig
   return {
     sourceRoots: [...config.sourceRoots],
     exclude: [...config.exclude],
+    publicRoots: [...config.publicRoots],
+    aliases: Object.fromEntries(
+      Object.entries(config.aliases).map(([key, values]) => [key, [...values]]),
+    ),
+    stylesheetExtensions: [...config.stylesheetExtensions],
   };
 }
 
@@ -965,4 +1000,70 @@ function cloneExternalCssGlobals(
     classPrefixes: [...global.classPrefixes],
     classNames: [...global.classNames],
   }));
+}
+
+function parseAliases(
+  value: unknown,
+  filePath: string,
+  diagnostics: ScanDiagnostic[],
+): Record<string, string[]> {
+  if (value === undefined) {
+    return { ...DEFAULT_SCANNER_CONFIG.discovery.aliases };
+  }
+
+  if (!isRecord(value)) {
+    diagnostics.push({
+      code: "config.invalid-discovery-aliases",
+      severity: "error",
+      phase: "config",
+      filePath,
+      message: "discovery.aliases must be an object mapping alias patterns to string arrays",
+    });
+    return { ...DEFAULT_SCANNER_CONFIG.discovery.aliases };
+  }
+
+  const aliases: Record<string, string[]> = {};
+  for (const [key, aliasValue] of Object.entries(value).sort(([left], [right]) =>
+    left.localeCompare(right),
+  )) {
+    if (!key.trim() || !Array.isArray(aliasValue)) {
+      diagnostics.push({
+        code: "config.invalid-discovery-aliases",
+        severity: "error",
+        phase: "config",
+        filePath,
+        message: "discovery.aliases must map non-empty alias patterns to string arrays",
+      });
+      continue;
+    }
+
+    const targets = aliasValue.filter(
+      (entry): entry is string => typeof entry === "string" && entry.trim().length > 0,
+    );
+    if (targets.length !== aliasValue.length) {
+      diagnostics.push({
+        code: "config.invalid-discovery-aliases",
+        severity: "error",
+        phase: "config",
+        filePath,
+        message: `discovery.aliases["${key}"] must contain only non-empty strings`,
+      });
+      continue;
+    }
+
+    aliases[key] = targets;
+  }
+
+  return aliases;
+}
+
+function normalizeStylesheetExtensions(extensions: string[]): string[] {
+  return [
+    ...new Set(
+      extensions.map((extension) => {
+        const normalized = extension.trim().toLowerCase();
+        return normalized.startsWith(".") ? normalized : `.${normalized}`;
+      }),
+    ),
+  ].sort((left, right) => left.localeCompare(right));
 }

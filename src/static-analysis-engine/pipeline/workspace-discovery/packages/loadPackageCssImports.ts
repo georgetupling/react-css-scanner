@@ -1,9 +1,11 @@
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import ts from "typescript";
+import type { DiscoveryConfig } from "../../../../config/index.js";
 import { normalizeProjectPath } from "../../../../project/pathUtils.js";
 import type { ScanDiagnostic } from "../../../../project/types.js";
 import type { PackageCssImportFact } from "../types.js";
+import { resolveWorkspaceSpecifier } from "../resolution/index.js";
 
 export type PackageCssImportRecord = PackageCssImportFact & {
   resolvedAbsolutePath: string;
@@ -18,6 +20,7 @@ export async function loadPackageCssImports(input: {
   rootDir: string;
   sourceFiles: Array<{ filePath: string; sourceText: string }>;
   cssSources: Array<{ filePath: string; cssText: string }>;
+  discovery?: Pick<DiscoveryConfig, "aliases" | "stylesheetExtensions">;
   diagnostics: ScanDiagnostic[];
 }): Promise<LoadedPackageCssImports> {
   const nodeModulesRootsByStartDir = new Map<string, string[]>();
@@ -29,6 +32,8 @@ export async function loadPackageCssImports(input: {
     rootDir: input.rootDir,
     nodeModulesRootsByStartDir,
     sourceFiles: input.sourceFiles,
+    knownStylesheetFilePaths: new Set(cssSourcesByPath.keys()),
+    discovery: input.discovery,
   });
   const loadedPackageCssSources: Array<{ filePath: string; cssText: string }> = [];
   const attemptedFilePaths = new Set<string>();
@@ -37,6 +42,8 @@ export async function loadPackageCssImports(input: {
     rootDir: input.rootDir,
     nodeModulesRootsByStartDir,
     cssSources: [...cssSourcesByPath.values()],
+    knownStylesheetFilePaths: new Set(cssSourcesByPath.keys()),
+    discovery: input.discovery,
   })) {
     pendingImports.push(importRecord);
   }
@@ -69,6 +76,8 @@ export async function loadPackageCssImports(input: {
         rootDir: input.rootDir,
         nodeModulesRootsByStartDir,
         cssSources: [cssSource],
+        knownStylesheetFilePaths: new Set(cssSourcesByPath.keys()),
+        discovery: input.discovery,
       })),
     );
   }
@@ -91,6 +100,8 @@ async function collectSourcePackageCssImportRecords(input: {
   rootDir: string;
   nodeModulesRootsByStartDir: Map<string, string[]>;
   sourceFiles: Array<{ filePath: string; sourceText: string }>;
+  knownStylesheetFilePaths: ReadonlySet<string>;
+  discovery?: Pick<DiscoveryConfig, "aliases" | "stylesheetExtensions">;
 }): Promise<PackageCssImportRecord[]> {
   const imports: PackageCssImportRecord[] = [];
 
@@ -113,6 +124,8 @@ async function collectSourcePackageCssImportRecords(input: {
         rootDir: input.rootDir,
         importerFilePath: sourceFile.filePath,
         nodeModulesRootsByStartDir: input.nodeModulesRootsByStartDir,
+        knownStylesheetFilePaths: input.knownStylesheetFilePaths,
+        discovery: input.discovery,
         specifier,
       });
       if (!resolvedImport) {
@@ -136,6 +149,8 @@ async function collectStylesheetPackageCssImportRecords(input: {
   rootDir: string;
   nodeModulesRootsByStartDir: Map<string, string[]>;
   cssSources: Array<{ filePath: string; cssText: string }>;
+  knownStylesheetFilePaths: ReadonlySet<string>;
+  discovery?: Pick<DiscoveryConfig, "aliases" | "stylesheetExtensions">;
 }): Promise<PackageCssImportRecord[]> {
   const imports: PackageCssImportRecord[] = [];
 
@@ -145,6 +160,8 @@ async function collectStylesheetPackageCssImportRecords(input: {
         rootDir: input.rootDir,
         importerFilePath: cssSource.filePath,
         nodeModulesRootsByStartDir: input.nodeModulesRootsByStartDir,
+        knownStylesheetFilePaths: input.knownStylesheetFilePaths,
+        discovery: input.discovery,
         specifier,
       });
       if (!resolvedImport) {
@@ -190,10 +207,23 @@ async function resolvePackageCssImport(input: {
   rootDir: string;
   importerFilePath: string;
   nodeModulesRootsByStartDir: Map<string, string[]>;
+  knownStylesheetFilePaths: ReadonlySet<string>;
+  discovery?: Pick<DiscoveryConfig, "aliases" | "stylesheetExtensions">;
   specifier: string;
 }): Promise<{ filePath: string; absolutePath: string } | undefined> {
   const normalizedSpecifier = input.specifier.replace(/\\/g, "/");
   if (!isPackageCssImportSpecifier(normalizedSpecifier)) {
+    return undefined;
+  }
+
+  const projectResolution = resolveWorkspaceSpecifier({
+    importerFilePath: input.importerFilePath,
+    specifier: normalizedSpecifier,
+    targetKind: "stylesheet",
+    knownStylesheetFilePaths: input.knownStylesheetFilePaths,
+    discovery: input.discovery,
+  });
+  if (projectResolution.status === "resolved" && projectResolution.kind === "project") {
     return undefined;
   }
 
@@ -276,7 +306,7 @@ async function isDirectory(absolutePath: string): Promise<boolean> {
 }
 
 function isPackageCssImportSpecifier(specifier: string): boolean {
-  if (!specifier.endsWith(".css")) {
+  if (!/\.(?:css|less|scss|sass)$/i.test(specifier)) {
     return false;
   }
 

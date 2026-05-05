@@ -29,6 +29,9 @@ export type OwnershipConfig = {
 export type DiscoveryConfig = {
   sourceRoots: string[];
   exclude: string[];
+  publicRoots: string[];
+  aliases: Record<string, string[]>;
+  stylesheetExtensions: string[];
 };
 
 export type IgnoreConfig = {

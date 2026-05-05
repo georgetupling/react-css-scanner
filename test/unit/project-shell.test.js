@@ -169,6 +169,9 @@ test("scanProject returns deterministic public summary from discovered files", a
     assert.deepEqual(result.config.discovery, {
       sourceRoots: [],
       exclude: [],
+      publicRoots: ["public"],
+      aliases: {},
+      stylesheetExtensions: [".css", ".less", ".sass", ".scss"],
     });
     assert.deepEqual(result.config.ignore, {
       classNames: [],
@@ -715,6 +718,9 @@ test("scanProject accepts discovery config", async () => {
     assert.deepEqual(result.config.discovery, {
       sourceRoots: ["apps/web/src"],
       exclude: ["**/*.stories.tsx"],
+      publicRoots: ["public"],
+      aliases: {},
+      stylesheetExtensions: [".css", ".less", ".sass", ".scss"],
     });
     assert.deepEqual(
       result.files.sourceFiles.map((file) => file.filePath),

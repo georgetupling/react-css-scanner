@@ -1,4 +1,5 @@
 import path from "node:path";
+import type { DiscoveryConfig } from "../../../../config/index.js";
 import { normalizeProjectPath } from "../../../../project/pathUtils.js";
 import type { ProjectFileRecord, ScanDiagnostic } from "../../../../project/types.js";
 import type { HtmlScriptSourceFact, HtmlStylesheetLinkFact } from "../types.js";
@@ -47,8 +48,13 @@ export function resolveLocalHtmlScriptSources(input: {
 export function resolveLocalHtmlStylesheetLinks(input: {
   rootDir: string;
   htmlStylesheetLinks: HtmlStylesheetLinkFact[];
+  knownStylesheetFilePaths?: string[];
+  discovery?: Pick<DiscoveryConfig, "publicRoots">;
   diagnostics: ScanDiagnostic[];
 }): HtmlStylesheetLinkFact[] {
+  const knownStylesheetFilePaths = new Set(
+    (input.knownStylesheetFilePaths ?? []).map(normalizeProjectPath),
+  );
   return input.htmlStylesheetLinks.map((stylesheetLink) => {
     if (stylesheetLink.isRemote || !isLocalCssHref(stylesheetLink.href)) {
       return stylesheetLink;
@@ -57,6 +63,8 @@ export function resolveLocalHtmlStylesheetLinks(input: {
     const resolvedFilePath = resolveLocalHrefProjectPath({
       htmlFilePath: stylesheetLink.filePath,
       href: stylesheetLink.href,
+      knownFilePaths: knownStylesheetFilePaths,
+      publicRoots: input.discovery?.publicRoots ?? ["public"],
     });
     if (!resolvedFilePath) {
       return stylesheetLink;
@@ -132,15 +140,36 @@ function isLocalSourceHref(href: string): boolean {
 function resolveLocalHrefProjectPath(input: {
   htmlFilePath: string;
   href: string;
+  knownFilePaths?: ReadonlySet<string>;
+  publicRoots?: string[];
 }): string | undefined {
   const hrefPath = stripUrlSuffix(input.href).replace(/\\/g, "/");
+  const candidates: string[] = [];
   if (hrefPath.startsWith("/")) {
-    return normalizeProjectPath(hrefPath.replace(/^\/+/, ""));
+    const rootRelativePath = normalizeProjectPath(hrefPath.replace(/^\/+/, ""));
+    candidates.push(rootRelativePath);
+    for (const publicRoot of input.publicRoots ?? []) {
+      candidates.push(normalizeProjectPath(path.posix.join(publicRoot, rootRelativePath)));
+    }
+  } else {
+    const htmlDirectory = path.posix.dirname(input.htmlFilePath.replace(/\\/g, "/"));
+    const relativePath =
+      htmlDirectory === "." ? hrefPath : path.posix.join(htmlDirectory, hrefPath);
+    candidates.push(normalizeProjectPath(relativePath));
+    for (const publicRoot of input.publicRoots ?? []) {
+      candidates.push(normalizeProjectPath(path.posix.join(publicRoot, hrefPath)));
+    }
   }
 
-  const htmlDirectory = path.posix.dirname(input.htmlFilePath.replace(/\\/g, "/"));
-  const relativePath = htmlDirectory === "." ? hrefPath : path.posix.join(htmlDirectory, hrefPath);
-  return normalizeProjectPath(relativePath);
+  const uniqueCandidates = [...new Set(candidates)];
+  if (input.knownFilePaths && input.knownFilePaths.size > 0) {
+    return (
+      uniqueCandidates.find((candidate) => input.knownFilePaths?.has(candidate)) ??
+      uniqueCandidates[0]
+    );
+  }
+
+  return uniqueCandidates[0];
 }
 
 function inferHtmlScriptAppRootPath(input: {

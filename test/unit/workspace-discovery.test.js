@@ -102,6 +102,123 @@ test("discoverProjectFileRecords supports configured source roots and excludes",
   }
 });
 
+test("discoverProjectFileRecords discovers configured stylesheet extensions", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile("src/App.tsx", 'import styles from "./App.module.less";\n')
+    .withCssFile("src/App.module.less", ".root { color: red; }\n")
+    .withCssFile("src/theme.scss", ".theme { color: blue; }\n")
+    .build();
+
+  try {
+    const discovered = await discoverProjectFileRecords({
+      rootDir: project.rootDir,
+      discovery: {
+        sourceRoots: [],
+        exclude: [],
+        publicRoots: ["public"],
+        aliases: {},
+        stylesheetExtensions: [".css", ".less", ".scss", ".sass"],
+      },
+    });
+
+    assert.deepEqual(
+      discovered.cssFiles.map((file) => file.filePath),
+      ["src/App.module.less", "src/theme.scss"],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("buildProjectSnapshot resolves root HTML stylesheet links through public roots", async () => {
+  const project = await new TestProjectBuilder()
+    .withFile("index.html", '<link rel="stylesheet" href="/styles/initial-loading-screen.css">\n')
+    .withCssFile("public/styles/initial-loading-screen.css", ".loading { display: block; }\n")
+    .build();
+
+  try {
+    const snapshot = await buildProjectSnapshot({
+      scanInput: {
+        rootDir: project.rootDir,
+      },
+      runStage: async (_stage, _message, run) => run(),
+    });
+
+    assert.ok(
+      snapshot.edges.some(
+        (edge) =>
+          edge.kind === "html-stylesheet" &&
+          edge.href === "/styles/initial-loading-screen.css" &&
+          edge.resolvedFilePath === "public/styles/initial-loading-screen.css",
+      ),
+    );
+    assert.ok(
+      snapshot.files.stylesheets.some(
+        (stylesheet) =>
+          stylesheet.filePath === "public/styles/initial-loading-screen.css" &&
+          stylesheet.origin === "project",
+      ),
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("buildProjectSnapshot resolves aliased project stylesheet imports before package CSS", async () => {
+  const project = await new TestProjectBuilder()
+    .withFile(
+      "tsconfig.json",
+      JSON.stringify(
+        {
+          compilerOptions: {
+            paths: {
+              "shell/*": ["./src/shell/*"],
+            },
+          },
+        },
+        null,
+        2,
+      ),
+    )
+    .withSourceFile(
+      "src/App.tsx",
+      'import "shell/components/legacy/vendor.css";\nexport function App() { return null; }\n',
+    )
+    .withCssFile("src/shell/components/legacy/vendor.css", ".legacy { display: block; }\n")
+    .build();
+
+  try {
+    const snapshot = await buildProjectSnapshot({
+      scanInput: {
+        rootDir: project.rootDir,
+      },
+      runStage: async (_stage, _message, run) => run(),
+    });
+
+    assert.ok(
+      snapshot.edges.some(
+        (edge) =>
+          edge.kind === "source-import" &&
+          edge.importerFilePath === "src/App.tsx" &&
+          edge.specifier === "shell/components/legacy/vendor.css" &&
+          edge.importKind === "css" &&
+          edge.resolutionStatus === "resolved" &&
+          edge.resolvedFilePath === "src/shell/components/legacy/vendor.css",
+      ),
+    );
+    assert.deepEqual(
+      snapshot.edges.filter(
+        (edge) =>
+          edge.kind === "package-css-import" &&
+          edge.specifier === "shell/components/legacy/vendor.css",
+      ),
+      [],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("buildProjectSnapshot inventories root bundler config files outside source roots", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile("src/App.tsx", "export function App() { return null; }\n")

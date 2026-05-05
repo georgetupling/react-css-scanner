@@ -56,7 +56,9 @@ export async function discoverProjectFileRecords(input: {
       });
   const cssFiles = input.cssFilePaths
     ? normalizeExplicitFiles(rootDir, input.cssFilePaths)
-    : await discoverFilesByPredicate(rootDir, isCssFilePath);
+    : await discoverFilesByPredicate(rootDir, (filePath) =>
+        isStylesheetFilePath(filePath, input.discovery?.stylesheetExtensions),
+      );
   const htmlFiles = input.htmlFilePaths
     ? normalizeExplicitFiles(rootDir, input.htmlFilePaths)
     : await discoverFilesByPredicate(rootDir, isHtmlFilePath);
@@ -201,8 +203,12 @@ function isSourceFilePath(filePath: string): boolean {
   return SOURCE_EXTENSIONS.has(path.extname(filePath)) && !filePath.endsWith(".d.ts");
 }
 
-function isCssFilePath(filePath: string): boolean {
-  return path.extname(filePath) === ".css";
+function isStylesheetFilePath(
+  filePath: string,
+  stylesheetExtensions: string[] | undefined,
+): boolean {
+  const extensions = stylesheetExtensions ?? [".css"];
+  return extensions.includes(path.extname(filePath).toLowerCase());
 }
 
 function isHtmlFilePath(filePath: string): boolean {

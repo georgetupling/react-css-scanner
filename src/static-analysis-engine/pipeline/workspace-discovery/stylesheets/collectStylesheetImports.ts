@@ -1,8 +1,11 @@
+import type { DiscoveryConfig } from "../../../../config/index.js";
 import { normalizeProjectPath } from "../../../../project/pathUtils.js";
 import type { ProjectStylesheetFile, StylesheetImportFact } from "../types.js";
+import { resolveWorkspaceSpecifier } from "../resolution/index.js";
 
 export function collectStylesheetImports(input: {
   stylesheets: ProjectStylesheetFile[];
+  discovery?: Pick<DiscoveryConfig, "aliases" | "stylesheetExtensions">;
 }): StylesheetImportFact[] {
   const knownCssFilePaths = new Set(input.stylesheets.map((stylesheet) => stylesheet.filePath));
   const imports: StylesheetImportFact[] = [];
@@ -18,6 +21,7 @@ export function collectStylesheetImports(input: {
         fromFilePath: importerFilePath,
         specifier,
         knownCssFilePaths,
+        discovery: input.discovery,
       });
       if (!resolvedFilePath) {
         continue;
@@ -54,44 +58,18 @@ function resolveCssImportPath(input: {
   fromFilePath: string;
   specifier: string;
   knownCssFilePaths: Set<string>;
+  discovery?: Pick<DiscoveryConfig, "aliases" | "stylesheetExtensions">;
 }): string | undefined {
-  const normalizedSpecifier = normalizeProjectPath(input.specifier);
-  const normalizedFromFilePath = normalizeProjectPath(input.fromFilePath);
-  if (!normalizedSpecifier || !normalizedFromFilePath) {
-    return undefined;
-  }
-
-  if (!normalizedSpecifier.endsWith(".css")) {
-    return undefined;
-  }
-
-  if (!normalizedSpecifier.startsWith(".")) {
-    return undefined;
-  }
-
-  const fromSegments = normalizedFromFilePath.split("/");
-  fromSegments.pop();
-  const specifierSegments = normalizedSpecifier.split("/").filter((segment) => segment.length > 0);
-  const candidatePath = normalizeSegments([...fromSegments, ...specifierSegments]);
-  return input.knownCssFilePaths.has(candidatePath) ? candidatePath : undefined;
-}
-
-function normalizeSegments(segments: string[]): string {
-  const normalized: string[] = [];
-  for (const segment of segments) {
-    if (segment === ".") {
-      continue;
-    }
-
-    if (segment === "..") {
-      normalized.pop();
-      continue;
-    }
-
-    normalized.push(segment);
-  }
-
-  return normalized.join("/");
+  const resolution = resolveWorkspaceSpecifier({
+    importerFilePath: input.fromFilePath,
+    specifier: normalizeProjectPath(input.specifier),
+    targetKind: "stylesheet",
+    knownStylesheetFilePaths: input.knownCssFilePaths,
+    discovery: input.discovery,
+  });
+  return resolution.status === "resolved" && resolution.kind === "project"
+    ? resolution.filePath
+    : undefined;
 }
 
 function compareStylesheetImports(left: StylesheetImportFact, right: StylesheetImportFact): number {
