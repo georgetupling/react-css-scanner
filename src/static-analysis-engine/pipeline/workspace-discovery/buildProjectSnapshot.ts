@@ -47,10 +47,17 @@ export async function buildProjectSnapshot(input: {
     discovery,
   });
   diagnostics.push(...discovered.diagnostics);
+  const knownDiscoveredStylesheetFilePaths = new Set(
+    discovered.cssFiles.map((cssFile) => cssFile.filePath),
+  );
 
   const [sourceFiles, cssFiles, htmlFiles] = await Promise.all([
     readSourceFiles(discovered.sourceFiles, diagnostics),
-    readCssFiles(discovered.cssFiles, diagnostics, "project"),
+    readCssFiles(discovered.cssFiles, diagnostics, "project", {
+      rootDir: discovered.rootDir,
+      knownStylesheetFilePaths: knownDiscoveredStylesheetFilePaths,
+      discovery,
+    }),
     readHtmlFiles(discovered.htmlFiles, diagnostics),
   ]);
   const bundlerConfigFiles = hasRootDiscoveryError(discovered.diagnostics)
@@ -80,6 +87,11 @@ export async function buildProjectSnapshot(input: {
     }),
     diagnostics,
     "html-linked",
+    {
+      rootDir: discovered.rootDir,
+      knownStylesheetFilePaths: knownDiscoveredStylesheetFilePaths,
+      discovery,
+    },
   );
   const packageCssImports = await loadPackageCssImports({
     rootDir: discovered.rootDir,

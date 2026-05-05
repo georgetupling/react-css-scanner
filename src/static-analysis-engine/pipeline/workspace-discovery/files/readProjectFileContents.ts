@@ -1,6 +1,8 @@
 import { readFile } from "node:fs/promises";
+import type { DiscoveryConfig } from "../../../../config/index.js";
 import type { ProjectFileRecord, ScanDiagnostic } from "../../../../project/types.js";
 import type { ProjectHtmlFile, ProjectSourceFile, ProjectStylesheetFile } from "../types.js";
+import { compileStylesheetSource } from "../stylesheets/compileStylesheetSource.js";
 
 export async function readSourceFiles(
   sourceFiles: ProjectFileRecord[],
@@ -27,20 +29,39 @@ export async function readCssFiles(
   cssFiles: ProjectFileRecord[],
   diagnostics: ScanDiagnostic[],
   origin: ProjectStylesheetFile["origin"],
+  options: {
+    rootDir: string;
+    knownStylesheetFilePaths: ReadonlySet<string>;
+    discovery?: Pick<DiscoveryConfig, "aliases" | "stylesheetExtensions">;
+  },
 ): Promise<ProjectStylesheetFile[]> {
   const loadedFiles: Array<ProjectStylesheetFile | undefined> = await Promise.all(
     cssFiles.map(async (cssFile) => {
       const content = await readProjectFile(cssFile, diagnostics);
-      return content
-        ? {
-            kind: "stylesheet" as const,
-            filePath: cssFile.filePath,
-            absolutePath: cssFile.absolutePath,
-            cssText: content,
-            cssKind: getCssKind(cssFile.filePath),
-            origin,
-          }
-        : undefined;
+      if (!content) {
+        return undefined;
+      }
+
+      const compiled = await compileStylesheetSource({
+        rootDir: options.rootDir,
+        filePath: cssFile.filePath,
+        absolutePath: cssFile.absolutePath,
+        sourceText: content,
+        knownStylesheetFilePaths: options.knownStylesheetFilePaths,
+        discovery: options.discovery,
+        diagnostics,
+      });
+
+      return {
+        kind: "stylesheet" as const,
+        filePath: cssFile.filePath,
+        absolutePath: cssFile.absolutePath,
+        cssText: compiled.cssText,
+        cssKind: getCssKind(cssFile.filePath),
+        origin,
+        sourceSyntax: compiled.sourceSyntax,
+        ...(compiled.compiledFrom ? { compiledFrom: compiled.compiledFrom } : {}),
+      };
     }),
   );
 

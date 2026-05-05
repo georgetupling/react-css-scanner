@@ -8,6 +8,7 @@ import { dedupeExpressionSyntaxFacts } from "./source/expression-syntax/index.js
 import { collectSourceReactSyntax } from "./source/react-syntax/index.js";
 import { extractRuntimeDomClassSites } from "./source/runtime-dom-syntax/extractRuntimeDomSites.js";
 import { collectCssInJsSelectors } from "./source/css-in-js-syntax/index.js";
+import { remapCssStyleRuleLocations } from "./stylesheets/remapCssSourceLocations.js";
 import type {
   CssFrontendFacts,
   CssFrontendFile,
@@ -183,6 +184,11 @@ function buildCssFrontendFacts(snapshot: ProjectSnapshot): CssFrontendFacts {
         cssText: stylesheet.cssText,
         filePath: stylesheet.filePath,
       });
+      const remappedRules = remapCssStyleRuleLocations({
+        rules,
+        stylesheet,
+        rootDir: snapshot.rootDir,
+      });
 
       return {
         filePath: stylesheet.filePath,
@@ -190,8 +196,10 @@ function buildCssFrontendFacts(snapshot: ProjectSnapshot): CssFrontendFacts {
         cssText: stylesheet.cssText,
         cssKind: stylesheet.cssKind,
         origin: stylesheet.origin,
-        rules,
-        selectorEntries: rules.flatMap((rule) =>
+        sourceSyntax: stylesheet.sourceSyntax,
+        ...(stylesheet.compiledFrom ? { compiledFrom: stylesheet.compiledFrom } : {}),
+        rules: remappedRules,
+        selectorEntries: remappedRules.flatMap((rule) =>
           rule.selectorEntries.map(projectSelectorEntryToQuery),
         ),
       };

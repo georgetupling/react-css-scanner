@@ -93,6 +93,8 @@ export type CssFrontendFile = {
   cssText: string;
   cssKind: "global-css" | "css-module";
   origin: "project" | "html-linked" | "package" | "remote";
+  sourceSyntax?: ProjectSnapshot["files"]["stylesheets"][number]["sourceSyntax"];
+  compiledFrom?: ProjectSnapshot["files"]["stylesheets"][number]["compiledFrom"];
   rules: CssStyleRuleFact[];
   selectorEntries: ExtractedSelectorQuery[];
 };

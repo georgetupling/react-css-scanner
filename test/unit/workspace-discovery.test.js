@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { discoverProjectFileRecords } from "../../dist/static-analysis-engine/pipeline/workspace-discovery/files/discoverProjectFileRecords.js";
 import { buildProjectSnapshot } from "../../dist/static-analysis-engine/pipeline/workspace-discovery/buildProjectSnapshot.js";
+import { buildLanguageFrontends } from "../../dist/static-analysis-engine/pipeline/language-frontends/buildLanguageFrontends.js";
 import { TestProjectBuilder } from "../support/TestProjectBuilder.js";
 
 test("discoverProjectFileRecords scans source, CSS, and HTML under a root directory", async () => {
@@ -213,6 +214,111 @@ test("buildProjectSnapshot resolves aliased project stylesheet imports before pa
           edge.specifier === "shell/components/legacy/vendor.css",
       ),
       [],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("buildProjectSnapshot compiles Less stylesheets and keeps source maps", async () => {
+  const project = await new TestProjectBuilder()
+    .withCssFile(
+      "src/Card.less",
+      [
+        '@import "theme/tokens.less";',
+        ".card {",
+        "  &__title { color: @brand; }",
+        "  .icon { color: blue; }",
+        "}",
+      ].join("\n"),
+    )
+    .withCssFile("src/theme/tokens.less", "@brand: red;\n.aliasImported { color: blue; }\n")
+    .withFile(
+      "tsconfig.json",
+      JSON.stringify(
+        {
+          compilerOptions: {
+            paths: {
+              "theme/*": ["./src/theme/*"],
+            },
+          },
+        },
+        null,
+        2,
+      ),
+    )
+    .build();
+
+  try {
+    const snapshot = await buildProjectSnapshot({
+      scanInput: {
+        rootDir: project.rootDir,
+      },
+      runStage: async (_stage, _message, run) => run(),
+    });
+    const stylesheet = snapshot.files.stylesheets.find(
+      (candidate) => candidate.filePath === "src/Card.less",
+    );
+
+    assert.ok(stylesheet);
+    assert.equal(stylesheet.sourceSyntax, "less");
+    assert.equal(stylesheet.compiledFrom?.syntax, "less");
+    assert.ok(stylesheet.compiledFrom?.sourceMap);
+    assert.match(stylesheet.cssText, /\.card__title/);
+    assert.match(stylesheet.cssText, /\.card \.icon/);
+    assert.match(stylesheet.cssText, /\.aliasImported/);
+
+    const frontends = buildLanguageFrontends({ snapshot });
+    const selectorLocations = frontends.css.files
+      .flatMap((file) => file.selectorEntries)
+      .map((entry) => entry.source.selectorAnchor)
+      .filter(Boolean);
+    assert.ok(
+      selectorLocations.some(
+        (location) => location.filePath === "src/Card.less" && location.startLine === 3,
+      ),
+    );
+    assert.ok(
+      selectorLocations.some(
+        (location) => location.filePath === "src/theme/tokens.less" && location.startLine === 2,
+      ),
+    );
+    assert.ok(
+      frontends.css.files.some((file) =>
+        file.rules.some((rule) =>
+          rule.selectorBranches.some((branch) => branch.subjectClassNames.includes("card__title")),
+        ),
+      ),
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("buildProjectSnapshot falls back to raw Less text when Less compilation fails", async () => {
+  const project = await new TestProjectBuilder()
+    .withCssFile("src/Broken.less", ".broken { color: @missing; }\n")
+    .build();
+
+  try {
+    const snapshot = await buildProjectSnapshot({
+      scanInput: {
+        rootDir: project.rootDir,
+      },
+      runStage: async (_stage, _message, run) => run(),
+    });
+    const stylesheet = snapshot.files.stylesheets.find(
+      (candidate) => candidate.filePath === "src/Broken.less",
+    );
+
+    assert.ok(stylesheet);
+    assert.equal(stylesheet.cssText, ".broken { color: @missing; }\n");
+    assert.ok(
+      snapshot.diagnostics.some(
+        (diagnostic) =>
+          diagnostic.code === "loading.less-compile-failed" &&
+          diagnostic.filePath === "src/Broken.less",
+      ),
     );
   } finally {
     await project.cleanup();

@@ -47,6 +47,22 @@ export type ProjectStylesheetFile = {
   cssText: string;
   cssKind: "global-css" | "css-module";
   origin: "project" | "html-linked" | "package" | "remote";
+  sourceSyntax?: "css" | "less" | "scss" | "sass";
+  compiledFrom?: {
+    syntax: "less";
+    originalText: string;
+    sourceMap?: StylesheetSourceMap;
+  };
+};
+
+export type StylesheetSourceMap = {
+  version: 3;
+  sources: string[];
+  names?: string[];
+  mappings: string;
+  file?: string;
+  sourceRoot?: string;
+  sourcesContent?: string[];
 };
 
 export type HtmlStylesheetLinkFact = {
