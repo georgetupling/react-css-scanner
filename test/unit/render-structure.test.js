@@ -352,6 +352,57 @@ test("render structure instantiates parent-supplied external contributions durin
   assert.equal(staticChildEmission.suppliedByComponentNodeId, childComponentNodeId);
 });
 
+test("render structure instantiates parent-supplied contributions through unresolved child boundaries", async () => {
+  const fixture = await buildForwardedContributionToUnresolvedChildFixture();
+  const symbolicEvaluation = evaluateSymbolicExpressions({
+    graph: fixture.graph,
+  });
+  const result = buildRenderStructure({
+    graph: fixture.graph,
+    symbolicEvaluation,
+    options: {
+      includeTraces: true,
+    },
+  });
+
+  const appComponentNodeId = componentNodeIdByName(fixture.graph, "App");
+  const cardComponentNodeId = componentNodeIdByName(fixture.graph, "Card");
+  const externalEmission = findEmissionByToken(result.renderModel.emissionSites, "card--active");
+
+  assert.equal(externalEmission.emissionKind, "merged-element-class");
+  assert.equal(externalEmission.emittingComponentNodeId, cardComponentNodeId);
+  assert.ok(
+    externalEmission.tokenProvenance.some(
+      (provenance) =>
+        provenance.token === "card--active" &&
+        provenance.emittedByComponentNodeId === cardComponentNodeId &&
+        provenance.suppliedByComponentNodeId === appComponentNodeId,
+    ),
+  );
+});
+
+test("render structure keeps unconsumed component class prop diagnostics", async () => {
+  const fixture = await buildUnconsumedComponentClassPropFixture();
+  const symbolicEvaluation = evaluateSymbolicExpressions({
+    graph: fixture.graph,
+  });
+  const result = buildRenderStructure({
+    graph: fixture.graph,
+    symbolicEvaluation,
+    options: {
+      includeTraces: true,
+    },
+  });
+
+  const diagnostic = result.renderModel.diagnostics.find(
+    (candidate) => candidate.code === "unconsumed-component-class-prop",
+  );
+
+  assert.ok(diagnostic);
+  assert.equal(diagnostic.filePath, "src/App.tsx");
+  assert.equal(diagnostic.location?.startLine, 4);
+});
+
 test("render structure does not statically skip assigned conditional content guarded by prop defaults", async () => {
   const fixture = await buildAssignedConditionalContentFixture();
   const symbolicEvaluation = evaluateSymbolicExpressions({
@@ -465,6 +516,93 @@ async function buildForwardedContributionFixture() {
       scanInput: {
         rootDir: project.rootDir,
         sourceFilePaths: ["src/App.tsx"],
+        cssFilePaths: ["src/app.css"],
+      },
+      runStage: async (_stage, _message, run) => run(),
+    });
+    const frontends = buildLanguageFrontends({ snapshot });
+    const factGraph = buildFactGraph({ snapshot, frontends });
+    return {
+      graph: factGraph.graph,
+    };
+  } finally {
+    await project.cleanup();
+  }
+}
+
+async function buildForwardedContributionToUnresolvedChildFixture() {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import { Card } from "./Card";',
+        'import "./app.css";',
+        "export function App() {",
+        '  return <Card className="card--active" />;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/Card.tsx",
+      [
+        'import { Link } from "react-router-dom";',
+        "function joinClasses(...classes) { return classes.filter(Boolean).join(' '); }",
+        "export function Card({ className }) {",
+        '  return <Link to="/" className={joinClasses("card", className)} />;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/app.css", ".card, .card--active { display: block; }\n")
+    .build();
+
+  try {
+    const snapshot = await buildProjectSnapshot({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx", "src/Card.tsx"],
+        cssFilePaths: ["src/app.css"],
+      },
+      runStage: async (_stage, _message, run) => run(),
+    });
+    const frontends = buildLanguageFrontends({ snapshot });
+    const factGraph = buildFactGraph({ snapshot, frontends });
+    return {
+      graph: factGraph.graph,
+    };
+  } finally {
+    await project.cleanup();
+  }
+}
+
+async function buildUnconsumedComponentClassPropFixture() {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import { Card } from "./Card";',
+        'import "./app.css";',
+        "export function App() {",
+        '  return <Card className="card--active" />;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/Card.tsx",
+      ["export function Card({ className }) {", '  return <a className="card" />;', "}", ""].join(
+        "\n",
+      ),
+    )
+    .withCssFile("src/app.css", ".card, .card--active { display: block; }\n")
+    .build();
+
+  try {
+    const snapshot = await buildProjectSnapshot({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx", "src/Card.tsx"],
         cssFilePaths: ["src/app.css"],
       },
       runStage: async (_stage, _message, run) => run(),

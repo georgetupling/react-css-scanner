@@ -42,8 +42,8 @@ export function buildNativeEmissionSites(input: {
     expressionIdBySiteNodeId,
     expressionById,
   });
-  const componentBoundaryByReferenceRenderSiteNodeId =
-    buildComponentBoundaryByReferenceRenderSiteNodeId(input.componentBoundaries);
+  const componentBoundariesByReferenceRenderSiteNodeId =
+    buildComponentBoundariesByReferenceRenderSiteNodeId(input.componentBoundaries);
 
   for (const classSite of classSites) {
     const expressionId = expressionIdBySiteNodeId.get(classSite.id);
@@ -81,19 +81,18 @@ export function buildNativeEmissionSites(input: {
     const fallbackBoundaryId = shouldUseBoundaryFallbackForClassSite(classSite)
       ? resolveBoundaryIdForClassSite(classSite, input.rootBoundaryIdByComponentNodeId)
       : undefined;
-    const unresolvedComponentTarget =
+    const unresolvedComponentTargets =
       classSite.classExpressionSiteKind === "component-prop-class" && classSite.renderSiteNodeId
-        ? componentBoundaryByReferenceRenderSiteNodeId.get(classSite.renderSiteNodeId)
-        : undefined;
+        ? (componentBoundariesByReferenceRenderSiteNodeId.get(classSite.renderSiteNodeId) ?? [])
+        : [];
     const fallbackTargetBoundaryId =
       fallbackBoundaryId &&
       classSite.classExpressionSiteKind === "component-prop-class" &&
-      unresolvedComponentTarget?.boundaryKind === "expanded-component-reference"
+      unresolvedComponentTargets.some(
+        (target) => target.boundaryKind === "expanded-component-reference",
+      )
         ? undefined
         : fallbackBoundaryId;
-    const unresolvedComponentLocation = unresolvedComponentTarget?.referenceLocation
-      ? normalizeAnchor(unresolvedComponentTarget.referenceLocation)
-      : undefined;
     const targets: Array<{
       element?: RenderedElement;
       boundaryId: string;
@@ -106,16 +105,19 @@ export function buildNativeEmissionSites(input: {
             boundaryId: element.parentBoundaryId,
             emissionKind: "rendered-element-class" as const,
           }))
-        : unresolvedComponentTarget?.boundaryKind === "unresolved-component-reference" &&
-            unresolvedComponentLocation
-          ? [
-              {
+        : unresolvedComponentTargets.length > 0
+          ? unresolvedComponentTargets
+              .filter(
+                (target) =>
+                  target.boundaryKind === "unresolved-component-reference" &&
+                  Boolean(target.referenceLocation),
+              )
+              .map((target) => ({
                 element: undefined,
-                boundaryId: unresolvedComponentTarget.id,
+                boundaryId: target.id,
                 emissionKind: "unresolved-component-class-prop" as const,
-                emittedElementLocation: unresolvedComponentLocation,
-              },
-            ]
+                emittedElementLocation: normalizeAnchor(target.referenceLocation!),
+              }))
           : fallbackTargetBoundaryId
             ? [
                 {
@@ -457,14 +459,22 @@ function buildComponentPropSuppliesByBoundaryId(input: {
   return result;
 }
 
-function buildComponentBoundaryByReferenceRenderSiteNodeId(
+function buildComponentBoundariesByReferenceRenderSiteNodeId(
   componentBoundaries: RenderedComponentBoundary[],
-): Map<string, RenderedComponentBoundary> {
-  const result = new Map<string, RenderedComponentBoundary>();
+): Map<string, RenderedComponentBoundary[]> {
+  const result = new Map<string, RenderedComponentBoundary[]>();
   for (const boundary of componentBoundaries) {
     if (boundary.referenceRenderSiteNodeId) {
-      result.set(boundary.referenceRenderSiteNodeId, boundary);
+      const existing = result.get(boundary.referenceRenderSiteNodeId) ?? [];
+      existing.push(boundary);
+      result.set(boundary.referenceRenderSiteNodeId, existing);
     }
+  }
+  for (const [renderSiteNodeId, boundaries] of result.entries()) {
+    result.set(
+      renderSiteNodeId,
+      boundaries.sort((left, right) => left.id.localeCompare(right.id)),
+    );
   }
   return result;
 }

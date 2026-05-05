@@ -380,6 +380,271 @@ test("unused-css-class treats helper-forwarded class props as used through local
   }
 });
 
+test("unused-css-class treats local conditional className props consumed by wrappers as used", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import { Card } from "./Card";',
+        'import "./App.css";',
+        "export function App({ active }) {",
+        '  const modifier = active ? "card--active" : "card--hidden";',
+        "  return <Card className={modifier} />;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/Card.tsx",
+      [
+        "function joinClasses(...classes) { return classes.filter(Boolean).join(' '); }",
+        "export function Card({ className }) {",
+        '  return <a className={joinClasses("card", className)} />;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile(
+      "src/App.css",
+      ".card { display: block; }\n.card--active { opacity: 1; }\n.card--hidden { opacity: 0; }\n",
+    )
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx", "src/Card.tsx"],
+      cssFilePaths: ["src/App.css"],
+    });
+
+    assertNoClassFindings(result, "unused-css-class", ["card--active", "card--hidden"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unused-css-class treats mapped conditional className props consumed by Link wrappers as used", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import { Card } from "./Card";',
+        'import "./App.css";',
+        "export function App({ slots, activeIndex }) {",
+        "  return (",
+        '    <div className="stage">',
+        "      {slots.map((slot, index) => {",
+        "        const isActive = index === activeIndex;",
+        "        const isPrevious = index === activeIndex - 1;",
+        "        const isNext = index === activeIndex + 1;",
+        "        const modifier = isActive",
+        '          ? "card--active"',
+        "          : isPrevious",
+        '            ? "card--previous"',
+        "            : isNext",
+        '              ? "card--next"',
+        '              : "card--hidden";',
+        "        return <Card key={slot.id} slot={slot} className={modifier} />;",
+        "      })}",
+        "    </div>",
+        "  );",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/Card.tsx",
+      [
+        'import { Link } from "react-router-dom";',
+        "function joinClasses(...classes) { return classes.filter(Boolean).join(' '); }",
+        "export function Card({ slot, className }) {",
+        "  return (",
+        '    <Link to={slot.href} className={joinClasses("card", className)}>',
+        "      {slot.title}",
+        "    </Link>",
+        "  );",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile(
+      "src/App.css",
+      [
+        ".stage { display: grid; }",
+        ".card { display: block; }",
+        ".card--active { opacity: 1; }",
+        ".card--previous { transform: translateX(-1rem); }",
+        ".card--next { transform: translateX(1rem); }",
+        ".card--hidden { opacity: 0; }",
+        "",
+      ].join("\n"),
+    )
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx", "src/Card.tsx"],
+      cssFilePaths: ["src/App.css"],
+    });
+
+    assertNoClassFindings(result, "unused-css-class", [
+      "card--active",
+      "card--previous",
+      "card--next",
+      "card--hidden",
+    ]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unused-css-class still reports className props that wrappers do not consume", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import { Card } from "./Card";',
+        'import "./App.css";',
+        "export function App({ active }) {",
+        '  const modifier = active ? "card--active" : "card--hidden";',
+        "  return <Card className={modifier} />;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/Card.tsx",
+      ["export function Card({ className }) {", '  return <a className="card" />;', "}", ""].join(
+        "\n",
+      ),
+    )
+    .withCssFile(
+      "src/App.css",
+      ".card { display: block; }\n.card--active { opacity: 1; }\n.card--hidden { opacity: 0; }\n",
+    )
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx", "src/Card.tsx"],
+      cssFilePaths: ["src/App.css"],
+    });
+    const unusedClassNames = result.findings
+      .filter((finding) => finding.ruleId === "unused-css-class")
+      .map((finding) => finding.data?.className)
+      .sort();
+
+    assert.deepEqual(unusedClassNames, ["card--active", "card--hidden"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unused-css-class matches multiple class-like prop supplies to their named consumers", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import { Card } from "./Card";',
+        'import "./App.css";',
+        "export function App() {",
+        '  return <Card className="card--featured" iconClassName="card__icon--large" />;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/Card.tsx",
+      [
+        "function joinClasses(...classes) { return classes.filter(Boolean).join(' '); }",
+        "export function Card({ className, iconClassName }) {",
+        "  return (",
+        '    <a className={joinClasses("card", className)}>',
+        '      <span className={joinClasses("card__icon", iconClassName)} />',
+        "    </a>",
+        "  );",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile(
+      "src/App.css",
+      [
+        ".card { display: block; }",
+        ".card--featured { border: 1px solid currentColor; }",
+        ".card__icon { display: inline-flex; }",
+        ".card__icon--large { inline-size: 2rem; }",
+        "",
+      ].join("\n"),
+    )
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx", "src/Card.tsx"],
+      cssFilePaths: ["src/App.css"],
+    });
+
+    assertNoClassFindings(result, "unused-css-class", ["card--featured", "card__icon--large"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unused-css-class does not treat dynamic wrapper className props as arbitrary CSS evidence", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import { Card } from "./Card";',
+        'import "./App.css";',
+        "export function App({ stylesFromServer }) {",
+        "  return <Card className={stylesFromServer} />;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/Card.tsx",
+      [
+        "function joinClasses(...classes) { return classes.filter(Boolean).join(' '); }",
+        "export function Card({ className }) {",
+        '  return <a className={joinClasses("card", className)} />;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".card { display: block; }\n.server-only { color: purple; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx", "src/Card.tsx"],
+      cssFilePaths: ["src/App.css"],
+    });
+
+    assert.ok(
+      result.findings.some(
+        (finding) =>
+          finding.ruleId === "unused-css-class" && finding.data?.className === "server-only",
+      ),
+    );
+    assert.ok(
+      result.findings.some(
+        (finding) =>
+          finding.ruleId === "dynamic-class-reference" &&
+          finding.location?.filePath === "src/App.tsx",
+      ),
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("unused-css-class treats data-driven object literal class values in array maps as used", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(
