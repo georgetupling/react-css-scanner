@@ -20,6 +20,7 @@ export type StructuralRelationIndexes = {
   childIndexByElementId: Map<string, number>;
   adjacentLeftSiblingIdByElementId: Map<string, string>;
   precedingSiblingIdsByElementId: Map<string, string[]>;
+  repeatedSiblingCandidateByElementId: Map<string, boolean>;
   elementBitsetIndex: {
     indexByElementId: Map<string, number>;
     elementIdByIndex: string[];
@@ -175,12 +176,65 @@ export function buildStructuralMatches(input: {
         traces: [],
       });
     }
+
+    if (
+      isRepeatedSiblingCandidate({
+        combinator: input.constraint.combinator,
+        rightElementId: rightMatch.elementId,
+        leftMatchByElementId,
+        structuralRelationIndexes,
+      })
+    ) {
+      const repeatedLeftMatch = leftMatchByElementId.get(rightMatch.elementId);
+      if (!repeatedLeftMatch) {
+        continue;
+      }
+
+      branchMatches.push({
+        id: selectorBranchMatchId({
+          selectorBranchNodeId: input.branch.id,
+          elementId: `${rightMatch.elementId}:${rightMatch.elementId}:repeated`,
+        }),
+        selectorBranchNodeId: input.branch.id,
+        subjectElementId: rightMatch.elementId,
+        elementMatchIds: [repeatedLeftMatch.id, rightMatch.id].sort(compareStrings),
+        supportingEmissionSiteIds: mergeUniqueSortedStrings(
+          repeatedLeftMatch.supportingEmissionSiteIds,
+          rightMatch.supportingEmissionSiteIds,
+        ),
+        requiredClassNames,
+        matchedClassNames: mergeUniqueSortedStrings(
+          repeatedLeftMatch.matchedClassNames,
+          rightMatch.matchedClassNames,
+        ),
+        renderPathIds: [rightElement.renderPathId],
+        placementConditionIds: rightElement.placementConditionIds,
+        certainty: "possible",
+        confidence: "medium",
+        traces: [],
+      });
+    }
   }
 
   return {
     elementMatches: deduplicateElementMatches([...leftMatches, ...rightMatches]),
     branchMatches: branchMatches.sort((left, right) => compareStrings(left.id, right.id)),
   };
+}
+
+function isRepeatedSiblingCandidate(input: {
+  combinator: StructuralConstraint["combinator"];
+  rightElementId: string;
+  leftMatchByElementId: Map<string, SelectorElementMatch>;
+  structuralRelationIndexes: StructuralRelationIndexes;
+}): boolean {
+  return (
+    (input.combinator === "adjacent-sibling" || input.combinator === "general-sibling") &&
+    input.structuralRelationIndexes.repeatedSiblingCandidateByElementId.get(
+      input.rightElementId,
+    ) === true &&
+    input.leftMatchByElementId.has(input.rightElementId)
+  );
 }
 
 function getClassMatches(input: {
@@ -334,6 +388,21 @@ function buildChildIndexByElementId(renderModel: RenderModel): Map<string, numbe
     if (!path) {
       continue;
     }
+    if (element.parentElementId) {
+      const parentSegmentIndex = path.segments.findIndex(
+        (segment) => segment.kind === "element" && segment.elementId === element.parentElementId,
+      );
+      if (parentSegmentIndex >= 0) {
+        const relativeChildIndex = path.segments
+          .slice(parentSegmentIndex + 1)
+          .find((segment) => segment.kind === "child-index");
+        if (relativeChildIndex?.kind === "child-index") {
+          childIndexByElementId.set(element.id, relativeChildIndex.index);
+          continue;
+        }
+      }
+    }
+
     for (let i = path.segments.length - 1; i >= 0; i -= 1) {
       const segment = path.segments[i];
       if (segment.kind === "child-index") {
@@ -348,12 +417,37 @@ function buildChildIndexByElementId(renderModel: RenderModel): Map<string, numbe
   return childIndexByElementId;
 }
 
+function buildRepeatedSiblingCandidateByElementId(renderModel: RenderModel): Map<string, boolean> {
+  const result = new Map<string, boolean>();
+  const conditionById = new Map(
+    renderModel.placementConditions.map((condition) => [condition.id, condition] as const),
+  );
+
+  for (const element of renderModel.elements) {
+    if (!element.parentElementId) {
+      continue;
+    }
+    const repeatedCondition = element.placementConditionIds
+      .map((conditionId) => conditionById.get(conditionId))
+      .find((condition) => condition?.kind === "repeated-region");
+    if (
+      repeatedCondition?.kind === "repeated-region" &&
+      repeatedCondition.mayHaveMultipleIterations !== false
+    ) {
+      result.set(element.id, true);
+    }
+  }
+
+  return result;
+}
+
 export function buildStructuralRelationIndexes(
   renderModel: RenderModel,
 ): StructuralRelationIndexes {
   const childIndexByElementId = buildChildIndexByElementId(renderModel);
   const adjacentLeftSiblingIdByElementId = new Map<string, string>();
   const precedingSiblingIdsByElementId = new Map<string, string[]>();
+  const repeatedSiblingCandidateByElementId = buildRepeatedSiblingCandidateByElementId(renderModel);
 
   const elementIdByIndex = renderModel.elements.map((element) => element.id);
   const indexByElementId = new Map<string, number>(
@@ -404,6 +498,7 @@ export function buildStructuralRelationIndexes(
     childIndexByElementId,
     adjacentLeftSiblingIdByElementId,
     precedingSiblingIdsByElementId,
+    repeatedSiblingCandidateByElementId,
     elementBitsetIndex,
     ancestorBitsByElementId,
     precedingSiblingBitsByElementId,

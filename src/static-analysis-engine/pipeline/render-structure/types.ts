@@ -203,6 +203,7 @@ export type PlacementCondition = {
   sourceLocation?: SourceAnchor;
   branch?: "when-true" | "when-false";
   reason?: string;
+  mayHaveMultipleIterations?: boolean;
   certainty: RenderCertainty;
   confidence: AnalysisConfidence;
   traces: AnalysisTrace[];

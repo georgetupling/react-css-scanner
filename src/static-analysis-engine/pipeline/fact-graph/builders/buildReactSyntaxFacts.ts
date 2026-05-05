@@ -215,6 +215,12 @@ export function buildReactSyntaxFacts(input: FactGraphInput): BuiltReactSyntaxFa
                     }
                   : {}),
                 certainty: renderSite.repeatedRegion.certainty,
+                ...(renderSite.repeatedRegion.mayHaveMultipleIterations !== undefined
+                  ? {
+                      mayHaveMultipleIterations:
+                        renderSite.repeatedRegion.mayHaveMultipleIterations,
+                    }
+                  : {}),
               },
             }
           : {}),

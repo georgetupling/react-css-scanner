@@ -106,6 +106,7 @@ function getArrayMapMetadata(
     sourceLocation: toSourceAnchor(call.expression, sourceFile, filePath),
     callbackParameterNames: collectIdentifierParameterNames(mapper),
     certainty: "possible",
+    mayHaveMultipleIterations: mayArrayMapHaveMultipleIterations(call.expression.expression),
   };
 }
 
@@ -133,7 +134,55 @@ function getArrayFromMetadata(
     sourceLocation: toSourceAnchor(call.expression, sourceFile, filePath),
     callbackParameterNames: collectIdentifierParameterNames(mapper),
     certainty: "possible",
+    mayHaveMultipleIterations: mayArrayFromHaveMultipleIterations(call.arguments[0]),
   };
+}
+
+function mayArrayMapHaveMultipleIterations(receiver: ts.Expression): boolean | undefined {
+  const unwrapped = unwrapExpressionForRepeat(receiver);
+  if (!ts.isArrayLiteralExpression(unwrapped)) {
+    return undefined;
+  }
+
+  return unwrapped.elements.length >= 2;
+}
+
+function mayArrayFromHaveMultipleIterations(source: ts.Expression): boolean | undefined {
+  const unwrapped = unwrapExpressionForRepeat(source);
+  if (!ts.isObjectLiteralExpression(unwrapped)) {
+    return undefined;
+  }
+
+  const lengthProperty = unwrapped.properties.find(
+    (property): property is ts.PropertyAssignment =>
+      ts.isPropertyAssignment(property) &&
+      !ts.isComputedPropertyName(property.name) &&
+      property.name.getText() === "length",
+  );
+  if (!lengthProperty) {
+    return undefined;
+  }
+
+  const lengthExpression = unwrapExpressionForRepeat(lengthProperty.initializer);
+  if (!ts.isNumericLiteral(lengthExpression)) {
+    return undefined;
+  }
+
+  return Number(lengthExpression.text) >= 2;
+}
+
+function unwrapExpressionForRepeat(expression: ts.Expression): ts.Expression {
+  let current = expression;
+  while (
+    ts.isParenthesizedExpression(current) ||
+    ts.isAsExpression(current) ||
+    ts.isTypeAssertionExpression(current) ||
+    ts.isNonNullExpression(current) ||
+    ts.isSatisfiesExpression(current)
+  ) {
+    current = current.expression;
+  }
+  return current;
 }
 
 function collectIdentifierParameterNames(

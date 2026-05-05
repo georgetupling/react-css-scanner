@@ -299,6 +299,92 @@ test("selector reachability matches adjacent sibling selectors by child order", 
   assert.equal(branch.matchIds.length, 1);
 });
 
+test("selector reachability treats repeated intrinsic templates as possible adjacent siblings", async () => {
+  const renderStructure = await buildRenderStructureFixture({
+    sourceText:
+      'export function App({ items }) { return <div>{items.map((item) => <section className="item" />)}</div>; }\n',
+    cssText: ".item + .item { margin-block-start: 1rem; }\n",
+  });
+
+  const result = buildSelectorReachability(renderStructure);
+  const branch = findBranch(result, ".item + .item");
+
+  assert.equal(branch.status, "possibly-matchable");
+  assert.equal(branch.confidence, "medium");
+  assert.equal(branch.matchIds.length, 1);
+
+  const match = result.indexes.matchById.get(branch.matchIds[0]);
+  assert.ok(match);
+  assert.equal(match.certainty, "possible");
+});
+
+test("selector reachability treats repeated component templates as possible adjacent siblings", async () => {
+  const renderStructure = await buildRenderStructureFixture({
+    sourceText: [
+      'function Item() { return <section className="item" />; }',
+      "export function App({ items }) {",
+      "  return <div>{items.map((item) => <Item />)}</div>;",
+      "}",
+      "",
+    ].join("\n"),
+    cssText: ".item + .item { margin-block-start: 1rem; }\n",
+  });
+
+  const result = buildSelectorReachability(renderStructure);
+  const branch = findBranch(result, ".item + .item");
+
+  assert.equal(branch.status, "possibly-matchable");
+  assert.equal(branch.confidence, "medium");
+  assert.equal(branch.matchIds.length, 1);
+});
+
+test("selector reachability matches adjacent siblings across explicit repeated component calls", async () => {
+  const renderStructure = await buildRenderStructureFixture({
+    sourceText: [
+      'function Section() { return <section className="browse-popover-section" />; }',
+      "export function App() {",
+      "  return <div><Section /><Section /><Section /></div>;",
+      "}",
+      "",
+    ].join("\n"),
+    cssText:
+      ".browse-popover-section + .browse-popover-section { border-block-start: 1px solid; }\n",
+  });
+
+  const result = buildSelectorReachability(renderStructure);
+  const branch = findBranch(result, ".browse-popover-section + .browse-popover-section");
+
+  assert.equal(branch.status, "definitely-matchable");
+  assert.equal(branch.matchIds.length, 2);
+});
+
+test("selector reachability keeps single non-repeated adjacent self selectors unsatisfiable", async () => {
+  const renderStructure = await buildRenderStructureFixture({
+    sourceText: 'export function App() { return <div><section className="item" /></div>; }\n',
+    cssText: ".item + .item { margin-block-start: 1rem; }\n",
+  });
+
+  const result = buildSelectorReachability(renderStructure);
+  const branch = findBranch(result, ".item + .item");
+
+  assert.equal(branch.status, "not-matchable");
+  assert.deepEqual(branch.matchIds, []);
+});
+
+test("selector reachability keeps statically single-item repeats unsatisfiable", async () => {
+  const renderStructure = await buildRenderStructureFixture({
+    sourceText:
+      'export function App() { return <div>{["one"].map((item) => <section className="item" />)}</div>; }\n',
+    cssText: ".item + .item { margin-block-start: 1rem; }\n",
+  });
+
+  const result = buildSelectorReachability(renderStructure);
+  const branch = findBranch(result, ".item + .item");
+
+  assert.equal(branch.status, "not-matchable");
+  assert.deepEqual(branch.matchIds, []);
+});
+
 test("selector reachability matches general sibling selectors by later sibling order", async () => {
   const renderStructure = await buildRenderStructureFixture({
     sourceText:
@@ -310,6 +396,21 @@ test("selector reachability matches general sibling selectors by later sibling o
   const branch = findBranch(result, ".first ~ .third");
 
   assert.equal(branch.status, "definitely-matchable");
+  assert.equal(branch.matchIds.length, 1);
+});
+
+test("selector reachability treats repeated intrinsic templates as possible general siblings", async () => {
+  const renderStructure = await buildRenderStructureFixture({
+    sourceText:
+      'export function App({ items }) { return <div>{items.map((item) => <section className="item" />)}</div>; }\n',
+    cssText: ".item ~ .item { margin-block-start: 1rem; }\n",
+  });
+
+  const result = buildSelectorReachability(renderStructure);
+  const branch = findBranch(result, ".item ~ .item");
+
+  assert.equal(branch.status, "possibly-matchable");
+  assert.equal(branch.confidence, "medium");
   assert.equal(branch.matchIds.length, 1);
 });
 

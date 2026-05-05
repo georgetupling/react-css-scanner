@@ -237,6 +237,9 @@ export function expandRenderSite(state: ExpansionState, context: ExpandContext):
       reason: `${repeatedRegion.repeatKind} render repetition`,
       sourceText: repeatedRegion.sourceText,
       sourceLocation: normalizeAnchor(repeatedRegion.sourceLocation),
+      ...(repeatedRegion.mayHaveMultipleIterations !== undefined
+        ? { mayHaveMultipleIterations: repeatedRegion.mayHaveMultipleIterations }
+        : {}),
       certainty: repeatedRegion.certainty,
       confidence: "medium",
       traces: [],
@@ -379,7 +382,15 @@ export function expandRenderSite(state: ExpansionState, context: ExpandContext):
   let shouldExpandComponentChildren = componentTemplates.length === 0;
   const renderedPropNames = new Set<string>();
   for (const template of componentTemplates) {
-    const result = projectComponentTemplate(state, context, template);
+    const result = projectComponentTemplate(
+      state,
+      {
+        ...context,
+        placementConditionIds: effectivePlacementConditionIds,
+        certainty: effectiveCertainty,
+      },
+      template,
+    );
     shouldExpandComponentChildren ||= result.rendersSuppliedChildren;
     for (const propName of result.renderedPropNames) {
       renderedPropNames.add(propName);

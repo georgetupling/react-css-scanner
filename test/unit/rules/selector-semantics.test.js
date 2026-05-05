@@ -74,6 +74,69 @@ test("unsatisfiable-selector does not report selectors with bounded render match
   }
 });
 
+test("unsatisfiable-selector does not report adjacent sibling selectors satisfied by repeated templates", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        "export function App({ items }) {",
+        '  return <main>{items.map((item) => <section className="item" />)}</main>;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".item + .item { margin-block-start: 1rem; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
+      cssFilePaths: ["src/App.css"],
+    });
+
+    assert.deepEqual(
+      result.findings.filter((finding) => finding.ruleId === "unsatisfiable-selector"),
+      [],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unsatisfiable-selector still reports adjacent self selectors for statically single-item repeats", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        "export function App() {",
+        '  return <main>{["one"].map((item) => <section className="item" />)}</main>;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".item + .item { margin-block-start: 1rem; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
+      cssFilePaths: ["src/App.css"],
+    });
+    const findings = result.findings.filter(
+      (finding) => finding.ruleId === "unsatisfiable-selector",
+    );
+
+    assert.equal(findings.length, 1);
+    assert.equal(findings[0].data?.selectorText, ".item + .item");
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("unsatisfiable-selector does not report non-local package CSS selectors", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(

@@ -47,6 +47,7 @@ export type ReactRenderSiteFact = {
     sourceLocation: SourceAnchor;
     callbackParameterNames?: string[];
     certainty: "possible" | "unknown";
+    mayHaveMultipleIterations?: boolean;
   };
   conditionExpressionId?: string;
   conditionSourceText?: string;
