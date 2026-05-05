@@ -31,6 +31,22 @@ export function collectSourceImports(input: {
     );
 
     for (const statement of parsedSourceFile.statements) {
+      if (ts.isExportDeclaration(statement) && ts.isStringLiteral(statement.moduleSpecifier)) {
+        const specifier = statement.moduleSpecifier.text;
+        imports.push(
+          resolveImportFact({
+            importerFilePath: sourceFile.filePath,
+            specifier,
+            importKind: classifyExportKind(statement, specifier),
+            importLoading: "static",
+            knownSourceFilePaths,
+            knownStylesheetFilePaths,
+            discovery: input.discovery,
+          }),
+        );
+        continue;
+      }
+
       if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) {
         continue;
       }
@@ -166,6 +182,14 @@ function resolveImportFact(input: {
   };
 }
 
+function classifyExportKind(statement: ts.ExportDeclaration, specifier: string): SourceImportKind {
+  if (statement.isTypeOnly || exportDeclarationOnlyExportsTypes(statement)) {
+    return "type-only";
+  }
+
+  return classifyModuleSpecifierKind(specifier);
+}
+
 function classifyImportKind(statement: ts.ImportDeclaration, specifier: string): SourceImportKind {
   const importClause = statement.importClause;
   if (
@@ -179,6 +203,14 @@ function classifyImportKind(statement: ts.ImportDeclaration, specifier: string):
     return "type-only";
   }
 
+  return classifyModuleSpecifierKind(specifier);
+}
+
+function classifyDynamicImportKind(specifier: string): SourceImportKind {
+  return classifyModuleSpecifierKind(specifier);
+}
+
+function classifyModuleSpecifierKind(specifier: string): SourceImportKind {
   if (isStylesheetSpecifier(specifier)) {
     return "css";
   }
@@ -198,24 +230,14 @@ function classifyImportKind(statement: ts.ImportDeclaration, specifier: string):
   return "unknown";
 }
 
-function classifyDynamicImportKind(specifier: string): SourceImportKind {
-  if (isStylesheetSpecifier(specifier)) {
-    return "css";
-  }
-
-  if (specifier.startsWith("http://") || specifier.startsWith("https://")) {
-    return "external-css";
-  }
-
-  if (specifier.startsWith(".") || specifier.startsWith("/") || /^[^./@][^:]*$/.test(specifier)) {
-    return "source";
-  }
-
-  if (specifier.startsWith("@")) {
-    return "source";
-  }
-
-  return "unknown";
+function exportDeclarationOnlyExportsTypes(statement: ts.ExportDeclaration): boolean {
+  const exportClause = statement.exportClause;
+  return (
+    exportClause !== undefined &&
+    ts.isNamedExports(exportClause) &&
+    exportClause.elements.length > 0 &&
+    exportClause.elements.every((element) => element.isTypeOnly)
+  );
 }
 
 function getScriptKind(filePath: string): ts.ScriptKind {

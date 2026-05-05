@@ -1,5 +1,5 @@
 import path from "node:path";
-import { loadScannerConfig } from "../config/index.js";
+import { loadScannerConfig, type ReportingConfig } from "../config/index.js";
 import { scanProject, type ScanProjectResult } from "../project/index.js";
 import { parseArgs, printHelp } from "./args.js";
 import { applyFocusFilter } from "./focus.js";
@@ -22,7 +22,19 @@ export async function runCli(rawArgs: string[]): Promise<void> {
     useColor: shouldUseColor(process.stderr),
   });
 
-  const configTraceEnabled = await loadConfigTraceSetting(args);
+  const configReporting = await loadConfigReporting(args);
+  const useJson = args.json || configReporting.json;
+
+  if (!useJson && (args.trace || args.debugRuntimeCss || args.outputFile || args.overwriteOutput)) {
+    printCliUsageError(
+      args.trace
+        ? "--trace requires JSON output. Enable --json or set reporting.json=true in scan-react-css.json."
+        : args.debugRuntimeCss
+          ? "--debug-runtime-css requires JSON output. Enable --json or set reporting.json=true in scan-react-css.json."
+          : "--output-file and --overwrite-output require JSON output. Enable --json or set reporting.json=true in scan-react-css.json.",
+    );
+  }
+
   let result: ScanProjectResult;
   try {
     result = await scanProject({
@@ -35,29 +47,18 @@ export async function runCli(rawArgs: string[]): Promise<void> {
       },
       onProgress: progressRenderer.onProgress,
       collectPerformance: args.timings,
-      includeTraces: args.trace || configTraceEnabled,
-      includeDebugRuntimeCss: args.debugRuntimeCss,
+      includeTraces: args.trace || configReporting.trace,
+      includeDebugRuntimeCss: args.debugRuntimeCss || configReporting.debugRuntimeCss,
     });
   } finally {
     progressRenderer.stop();
   }
 
   const focusedResult = applyFocusFilter(result, args.focusPaths);
-  const useJson = args.json || focusedResult.config.reporting.json;
   const includeJsonTraces = args.trace || focusedResult.config.reporting.trace;
   const includeRuntimeCssDebug =
     args.debugRuntimeCss || focusedResult.config.reporting.debugRuntimeCss;
   const overwriteOutput = args.overwriteOutput || focusedResult.config.reporting.overwriteOutput;
-
-  if (!useJson && (args.trace || args.debugRuntimeCss || args.outputFile || args.overwriteOutput)) {
-    printCliUsageError(
-      args.trace
-        ? "--trace requires JSON output. Enable --json or set reporting.json=true in scan-react-css.json."
-        : args.debugRuntimeCss
-          ? "--debug-runtime-css requires JSON output. Enable --json or set reporting.json=true in scan-react-css.json."
-          : "--output-file and --overwrite-output require JSON output. Enable --json or set reporting.json=true in scan-react-css.json.",
-    );
-  }
 
   if (useJson) {
     await printJsonReport(focusedResult, {
@@ -73,14 +74,14 @@ export async function runCli(rawArgs: string[]): Promise<void> {
   process.exit(focusedResult.failed ? 1 : 0);
 }
 
-async function loadConfigTraceSetting(args: CliArgs): Promise<boolean> {
+async function loadConfigReporting(args: CliArgs): Promise<ReportingConfig> {
   const config = await loadScannerConfig({
     rootDir: path.resolve(process.cwd(), args.rootDir ?? "."),
     configBaseDir: process.cwd(),
     configPath: args.configPath,
     diagnostics: [],
   });
-  return config.reporting.trace;
+  return config.reporting;
 }
 
 function parseCliArgs(rawArgs: string[]): CliArgs {

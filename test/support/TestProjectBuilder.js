@@ -5,6 +5,7 @@ import { mkdtemp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promis
 const RESOURCE_ROOT = path.resolve("test/resources");
 
 const TEMPLATE_FILES = {
+  empty: {},
   "basic-react-app": {
     "package.json":
       '{\n  "name": "basic-react-app",\n  "dependencies": {\n    "react": "^18.0.0"\n  }\n}\n',
