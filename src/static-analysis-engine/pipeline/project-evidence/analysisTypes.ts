@@ -192,7 +192,8 @@ export type ClassDefinitionAnalysis = {
 
 export type ClassContextAnalysis = {
   id: ProjectEvidenceId;
-  stylesheetId: ProjectEvidenceId;
+  stylesheetId?: ProjectEvidenceId;
+  sourceKind?: "css-rule" | "css-in-js";
   className: string;
   selectorText: string;
   selectorKind: ClassDefinitionSelectorKind;

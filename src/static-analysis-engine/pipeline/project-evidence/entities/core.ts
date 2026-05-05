@@ -35,6 +35,8 @@ import {
   normalizeProjectPath,
   pushMapValue,
   sortIndexValues,
+  stableHash,
+  uniqueSorted,
 } from "../internal/shared.js";
 
 export function buildSourceFiles(
@@ -314,6 +316,7 @@ export function buildClassContexts(
         const analysis: ClassContextAnalysis = {
           id,
           stylesheetId: stylesheet.id,
+          sourceKind: "css-rule",
           className: context.className,
           selectorText: context.selector,
           selectorKind: getSelectorBranchKind(context.selectorBranch),
@@ -325,6 +328,47 @@ export function buildClassContexts(
         contexts.push(analysis);
         pushMapValue(indexes.contextsByClassName, context.className, id);
         pushMapValue(indexes.contextsByStylesheetId, stylesheet.id, id);
+      }
+    }
+  }
+
+  for (const sourceFile of input.factGraph.frontends.source.files) {
+    for (const selectorFact of sourceFile.cssInJsSelectors) {
+      for (const branch of selectorFact.selectorBranches) {
+        for (const className of uniqueSorted([
+          ...branch.requiredClassNames,
+          ...branch.contextClassNames,
+        ])) {
+          const context = {
+            className,
+            selector: branch.raw,
+            selectorBranch: branch,
+            line: selectorFact.location.startLine,
+            atRuleContext: [],
+          };
+          const id = [
+            "class-context",
+            "css-in-js",
+            normalizeProjectPath(selectorFact.filePath),
+            className,
+            selectorFact.location.startLine,
+            selectorFact.location.startColumn,
+            stableHash(`${branch.raw}:${selectorFact.hostKind}`),
+          ].join(":");
+          const analysis: ClassContextAnalysis = {
+            id,
+            sourceKind: "css-in-js",
+            className: context.className,
+            selectorText: context.selector,
+            selectorKind: getSelectorBranchKind(context.selectorBranch),
+            line: context.line,
+            atRuleContext: [],
+            sourceContext: context,
+          };
+
+          contexts.push(analysis);
+          pushMapValue(indexes.contextsByClassName, context.className, id);
+        }
       }
     }
   }

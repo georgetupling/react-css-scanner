@@ -105,7 +105,6 @@ test("symbolic evaluation uses normalized graph expression syntax for current co
   const { graph } = await buildFixtureAnalysis([
     'import "./app.css";',
     "const active = true;",
-    "function cx(...values) { return values.join(' '); }",
     "export function App() {",
     "  return (",
     "    <>",
@@ -114,7 +113,7 @@ test("symbolic evaluation uses normalized graph expression syntax for current co
     '      <div className={active ? "choice-a" : "choice-b"} />',
     '      <div className={active && "logical"} />',
     '      <div className={["array", active && "array-active"].join(" ")} />',
-    '      <div className={cx("helper", { selected: active })} />',
+    '      <div className={classNames("helper", { selected: active })} />',
     "      <div className={{ objectClass: active }} />",
     "    </>",
     "  );",
@@ -143,8 +142,11 @@ test("symbolic evaluation uses normalized graph expression syntax for current co
       '["array", active && "array-active"].join(" ")',
       { definite: ["array"], possible: ["array-active"], unknownDynamic: false },
     ],
-    ['cx("helper", { selected: active })', { definite: [], possible: [], unknownDynamic: true }],
-    ["{ objectClass: active }", { definite: [], possible: ["objectClass"], unknownDynamic: false }],
+    [
+      'classNames("helper", { selected: active })',
+      { definite: ["helper"], possible: ["selected"], unknownDynamic: false },
+    ],
+    ["{ objectClass: active }", { definite: [], possible: [], unknownDynamic: true }],
   ]);
 
   for (const site of graph.nodes.classExpressionSites) {
@@ -251,11 +253,11 @@ test("symbolic evaluation keeps nullish fallback possible for unknown left opera
   });
 });
 
-test("symbolic evaluation promotes definitely truthy object map entries", async () => {
+test("symbolic evaluation promotes definitely truthy object map entries inside class helpers", async () => {
   const { graph } = await buildFixtureAnalysis([
     "const c = Math.random() > 0.5;",
     "export function App() {",
-    "  return <div className={{ a: true, b: false, c }} />;",
+    "  return <div className={classNames({ a: true, b: false, c })} />;",
     "}",
     "",
   ]);

@@ -6,6 +6,7 @@ import type { SourceAnchor } from "../../types/core.js";
 import type { SourceModuleSyntaxFacts } from "./source/module-syntax/index.js";
 import type { SourceExpressionSyntaxFact } from "./source/expression-syntax/index.js";
 import type { SourceReactSyntaxFacts } from "./source/react-syntax/index.js";
+import type { CssSelectorBranchFact } from "../../types/css.js";
 
 export type ParsedProjectFile = {
   filePath: string;
@@ -36,6 +37,7 @@ export type SourceFrontendFile = {
   reactSyntax: SourceReactSyntaxFacts;
   expressionSyntax: SourceExpressionSyntaxFact[];
   runtimeDomClassSites: RuntimeDomClassSite[];
+  cssInJsSelectors: CssInJsSelectorFact[];
   legacy: {
     parsedFile: ParsedProjectFile;
   };
@@ -63,6 +65,21 @@ export type RuntimeDomLibraryHint = {
   packageName: string;
   importedName: string;
   localName: string;
+};
+
+export type CssInJsSelectorHostKind = "jsx-sx" | "mui-styled" | "object-literal-style";
+
+export type CssInJsSelectorFact = {
+  factId: string;
+  filePath: string;
+  location: SourceAnchor;
+  selectorText: string;
+  hostKind: CssInJsSelectorHostKind;
+  confidence: "high" | "medium" | "low";
+  selectorBranches: CssSelectorBranchFact[];
+  trace: {
+    summary: string;
+  };
 };
 
 export type CssFrontendFacts = {

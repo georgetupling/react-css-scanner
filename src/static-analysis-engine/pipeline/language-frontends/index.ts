@@ -20,6 +20,8 @@ export type {
   CssFrontendFile,
   LanguageFrontendsInput,
   LanguageFrontendsResult,
+  CssInJsSelectorFact,
+  CssInJsSelectorHostKind,
   RuntimeDomClassSite,
   RuntimeDomClassSiteKind,
   RuntimeDomLibraryHint,

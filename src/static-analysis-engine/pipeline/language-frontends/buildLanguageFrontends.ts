@@ -7,6 +7,7 @@ import { parseSourceFile } from "./source/parseSourceFile.js";
 import { dedupeExpressionSyntaxFacts } from "./source/expression-syntax/index.js";
 import { collectSourceReactSyntax } from "./source/react-syntax/index.js";
 import { extractRuntimeDomClassSites } from "./source/runtime-dom-syntax/extractRuntimeDomSites.js";
+import { collectCssInJsSelectors } from "./source/css-in-js-syntax/index.js";
 import type {
   CssFrontendFacts,
   CssFrontendFile,
@@ -67,6 +68,11 @@ export function buildSourceFrontendFactsFromSourceFiles(
         sourceFile: parsedFile.parsedSourceFile,
         moduleSyntax,
       });
+      const cssInJsSelectors = collectCssInJsSelectors({
+        filePath,
+        sourceFile: parsedFile.parsedSourceFile,
+        moduleSyntax,
+      });
 
       return {
         filePath: sourceFile.filePath,
@@ -80,6 +86,7 @@ export function buildSourceFrontendFactsFromSourceFiles(
           runtimeDomClassSites,
         }),
         runtimeDomClassSites,
+        cssInJsSelectors,
         legacy: {
           parsedFile,
         },
@@ -113,6 +120,11 @@ export function buildSourceFrontendFactsFromParsedFiles(
         sourceFile: parsedFile.parsedSourceFile,
         moduleSyntax,
       });
+      const cssInJsSelectors = collectCssInJsSelectors({
+        filePath,
+        sourceFile: parsedFile.parsedSourceFile,
+        moduleSyntax,
+      });
 
       return {
         filePath: parsedFile.filePath,
@@ -126,6 +138,7 @@ export function buildSourceFrontendFactsFromParsedFiles(
           runtimeDomClassSites,
         }),
         runtimeDomClassSites,
+        cssInJsSelectors,
         legacy: {
           parsedFile,
         },

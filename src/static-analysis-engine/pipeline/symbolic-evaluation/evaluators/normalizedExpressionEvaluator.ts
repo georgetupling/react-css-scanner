@@ -70,6 +70,7 @@ function summarizeNormalizedClassExpression(input: {
   depth: number;
   seenExpressionIds: Set<string>;
   helperBindings?: Map<string, AbstractValue>;
+  allowObjectClassMap?: boolean;
 }): AbstractValue {
   const maxDepth = input.input.options.maxExpressionDepth ?? 100;
   if (input.depth > maxDepth) {
@@ -91,7 +92,7 @@ function summarizeNormalizedClassExpression(input: {
     case "string-literal":
       return {
         kind: "string-exact",
-        value: expression.value,
+        value: normalizeSelectorLikeComponentClassNameValue(input.input, expression.value),
       };
 
     case "template-literal":
@@ -132,6 +133,12 @@ function summarizeNormalizedClassExpression(input: {
       });
 
     case "object-literal":
+      if (!input.allowObjectClassMap) {
+        return {
+          kind: "unknown",
+          reason: "unsupported-object-class-map-outside-class-helper",
+        };
+      }
       return summarizeObjectExpressionSyntax({
         ...input,
         expression,
@@ -1039,6 +1046,7 @@ function summarizeClassNamesHelperArg(
     depth: input.depth + 1,
     seenExpressionIds: input.seenExpressionIds,
     helperBindings: input.helperBindings,
+    allowObjectClassMap: true,
   });
   if (value.kind === "unknown") {
     return {
@@ -1051,6 +1059,25 @@ function summarizeClassNamesHelperArg(
   }
 
   return value;
+}
+
+function normalizeSelectorLikeComponentClassNameValue(
+  input: SymbolicExpressionEvaluatorInput,
+  value: string,
+): string {
+  if (
+    input.classExpressionSite.classExpressionSiteKind !== "component-prop-class" ||
+    !input.classExpressionSite.componentPropName?.endsWith("ClassName")
+  ) {
+    return value;
+  }
+
+  const trimmed = value.trim();
+  if (!/^\.[_a-zA-Z-][-_a-zA-Z0-9]*$/.test(trimmed)) {
+    return value;
+  }
+
+  return trimmed.slice(1);
 }
 
 function summarizeObjectExpressionSyntax(input: {

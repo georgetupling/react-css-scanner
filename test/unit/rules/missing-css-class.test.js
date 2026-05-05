@@ -59,6 +59,152 @@ test("missing-css-class does not report defined classes", async () => {
   }
 });
 
+test("missing-css-class ignores object-valued JSX className maps outside class helpers", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'export function App() { return <article className={{ display: "flex" }}>Hello</article>; }\n',
+    )
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
+      cssFilePaths: [],
+    });
+
+    assert.deepEqual(
+      result.findings.filter((finding) => finding.ruleId === "missing-css-class"),
+      [],
+    );
+    assert.ok(
+      result.findings.some(
+        (finding) =>
+          finding.ruleId === "dynamic-class-reference" &&
+          finding.location?.filePath === "src/App.tsx",
+      ),
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("missing-css-class still evaluates object maps inside class helpers", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import classNames from "classnames";',
+        "export function App() { return <article className={classNames({ active: true })}>Hello</article>; }",
+      ].join("\n"),
+    )
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
+      cssFilePaths: [],
+    });
+
+    const missingFindings = result.findings.filter(
+      (finding) => finding.ruleId === "missing-css-class",
+    );
+    assert.equal(missingFindings.length, 1);
+    assert.equal(missingFindings[0].data?.className, "active");
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("missing-css-class normalizes selector-like component ClassName prop values", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        'export function App() { return <Switch focusVisibleClassName=".Mui-focusVisible" />; }',
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".Mui-focusVisible { outline: 1px solid currentColor; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+    });
+
+    assert.deepEqual(
+      result.findings.filter((finding) => finding.ruleId === "missing-css-class"),
+      [],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("missing-css-class accepts classes mentioned in JSX sx selector contexts", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        "export function App() {",
+        '  return <Box className="no-results-container" sx={{ "& + .no-results-container": { display: "none" } }} />;',
+        "}",
+      ].join("\n"),
+    )
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
+      cssFilePaths: [],
+    });
+
+    assert.deepEqual(
+      result.findings.filter((finding) => finding.ruleId === "missing-css-class"),
+      [],
+    );
+    assert.deepEqual(
+      result.findings.filter((finding) => finding.ruleId === "unused-css-class"),
+      [],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("missing-css-class accepts classes mentioned in MUI styled selector contexts", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'export function App() { return <Switch focusVisibleClassName=".Mui-focusVisible" />; }',
+        "const IOSSwitch = styled((props) => <Switch {...props} />)(({ theme }) => ({",
+        '  "&.Mui-focusVisible .MuiSwitch-thumb": { border: "6px solid #fff" },',
+        "}));",
+      ].join("\n"),
+    )
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
+      cssFilePaths: [],
+    });
+
+    assert.deepEqual(
+      result.findings.filter((finding) => finding.ruleId === "missing-css-class"),
+      [],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("missing-css-class accepts classes from imported package CSS", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(
