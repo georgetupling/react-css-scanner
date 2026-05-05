@@ -17,6 +17,7 @@ function summarizeConciseBodyToExpression(body: ts.ConciseBody): ts.Expression |
 
 function summarizeStatementSequenceAsReturnExpression(
   statements: readonly ts.Statement[],
+  localConstInitializers = new Map<string, ts.Expression>(),
 ): ts.Expression | undefined {
   for (let index = 0; index < statements.length; index += 1) {
     const statement = statements[index];
@@ -25,12 +26,21 @@ function summarizeStatementSequenceAsReturnExpression(
       continue;
     }
 
-    if (ts.isFunctionDeclaration(statement) || ts.isVariableStatement(statement)) {
+    if (ts.isFunctionDeclaration(statement)) {
+      continue;
+    }
+
+    if (ts.isVariableStatement(statement)) {
+      collectConstInitializers(statement, localConstInitializers);
       continue;
     }
 
     if (ts.isIfStatement(statement)) {
-      const ifExpression = summarizeIfStatementAsExpression(statement, statements.slice(index + 1));
+      const ifExpression = summarizeIfStatementAsExpression(
+        statement,
+        statements.slice(index + 1),
+        localConstInitializers,
+      );
       if (ifExpression) {
         return ifExpression;
       }
@@ -39,7 +49,10 @@ function summarizeStatementSequenceAsReturnExpression(
     }
 
     if (ts.isSwitchStatement(statement)) {
-      const switchExpression = summarizeSwitchStatementAsExpression(statement);
+      const switchExpression = summarizeSwitchStatementAsExpression(
+        statement,
+        localConstInitializers,
+      );
       if (switchExpression) {
         return switchExpression;
       }
@@ -47,7 +60,10 @@ function summarizeStatementSequenceAsReturnExpression(
       continue;
     }
 
-    const returnExpression = summarizeStatementAsReturnExpression(statement);
+    const returnExpression = summarizeStatementAsReturnExpression(
+      statement,
+      localConstInitializers,
+    );
     if (returnExpression) {
       return returnExpression;
     }
@@ -56,21 +72,27 @@ function summarizeStatementSequenceAsReturnExpression(
   return undefined;
 }
 
-function summarizeStatementAsReturnExpression(statement: ts.Statement): ts.Expression | undefined {
+function summarizeStatementAsReturnExpression(
+  statement: ts.Statement,
+  localConstInitializers: ReadonlyMap<string, ts.Expression>,
+): ts.Expression | undefined {
   if (ts.isBlock(statement)) {
-    return summarizeStatementSequenceAsReturnExpression(statement.statements);
+    return summarizeStatementSequenceAsReturnExpression(
+      statement.statements,
+      new Map(localConstInitializers),
+    );
   }
 
   if (ts.isReturnStatement(statement) && statement.expression) {
-    return statement.expression;
+    return resolveLocalConstIdentifierExpression(statement.expression, localConstInitializers);
   }
 
   if (ts.isSwitchStatement(statement)) {
-    return summarizeSwitchStatementAsExpression(statement);
+    return summarizeSwitchStatementAsExpression(statement, localConstInitializers);
   }
 
   if (ts.isIfStatement(statement)) {
-    return summarizeIfStatementAsExpression(statement, []);
+    return summarizeIfStatementAsExpression(statement, [], localConstInitializers);
   }
 
   if (ts.isEmptyStatement(statement)) {
@@ -83,15 +105,22 @@ function summarizeStatementAsReturnExpression(statement: ts.Statement): ts.Expre
 function summarizeIfStatementAsExpression(
   statement: ts.IfStatement,
   subsequentStatements: readonly ts.Statement[],
+  localConstInitializers: ReadonlyMap<string, ts.Expression>,
 ): ts.Expression | undefined {
-  const whenTrue = summarizeStatementAsReturnExpression(statement.thenStatement);
+  const whenTrue = summarizeStatementAsReturnExpression(
+    statement.thenStatement,
+    localConstInitializers,
+  );
   if (!whenTrue) {
     return undefined;
   }
 
   const whenFalse = statement.elseStatement
-    ? summarizeStatementAsReturnExpression(statement.elseStatement)
-    : summarizeStatementSequenceAsReturnExpression(subsequentStatements);
+    ? summarizeStatementAsReturnExpression(statement.elseStatement, localConstInitializers)
+    : summarizeStatementSequenceAsReturnExpression(
+        subsequentStatements,
+        new Map(localConstInitializers),
+      );
   if (!whenFalse) {
     return undefined;
   }
@@ -110,6 +139,7 @@ function summarizeIfStatementAsExpression(
 
 function summarizeSwitchStatementAsExpression(
   statement: ts.SwitchStatement,
+  localConstInitializers: ReadonlyMap<string, ts.Expression>,
 ): ts.Expression | undefined {
   const caseGroups: Array<{
     labels: ts.Expression[];
@@ -119,7 +149,10 @@ function summarizeSwitchStatementAsExpression(
   let defaultExpression: ts.Expression | undefined;
 
   for (const clause of statement.caseBlock.clauses) {
-    const clauseReturnExpression = summarizeSwitchClauseReturnExpression(clause.statements);
+    const clauseReturnExpression = summarizeSwitchClauseReturnExpression(
+      clause.statements,
+      localConstInitializers,
+    );
     if (ts.isCaseClause(clause)) {
       if (!clauseReturnExpression) {
         if (clause.statements.length === 0) {
@@ -170,10 +203,11 @@ function summarizeSwitchStatementAsExpression(
 
 function summarizeSwitchClauseReturnExpression(
   statements: readonly ts.Statement[],
+  localConstInitializers: ReadonlyMap<string, ts.Expression>,
 ): ts.Expression | undefined {
   for (const statement of statements) {
     if (ts.isReturnStatement(statement) && statement.expression) {
-      return statement.expression;
+      return resolveLocalConstIdentifierExpression(statement.expression, localConstInitializers);
     }
 
     if (ts.isBreakStatement(statement) || ts.isEmptyStatement(statement)) {
@@ -184,6 +218,40 @@ function summarizeSwitchClauseReturnExpression(
   }
 
   return undefined;
+}
+
+function collectConstInitializers(
+  statement: ts.VariableStatement,
+  localConstInitializers: Map<string, ts.Expression>,
+): void {
+  if ((statement.declarationList.flags & ts.NodeFlags.Const) === 0) {
+    return;
+  }
+
+  for (const declaration of statement.declarationList.declarations) {
+    if (ts.isIdentifier(declaration.name) && declaration.initializer) {
+      localConstInitializers.set(declaration.name.text, declaration.initializer);
+    }
+  }
+}
+
+function resolveLocalConstIdentifierExpression(
+  expression: ts.Expression,
+  localConstInitializers: ReadonlyMap<string, ts.Expression>,
+  seen = new Set<string>(),
+): ts.Expression {
+  const unwrapped = unwrapExpression(expression);
+  if (!ts.isIdentifier(unwrapped)) {
+    return expression;
+  }
+
+  const initializer = localConstInitializers.get(unwrapped.text);
+  if (!initializer || seen.has(unwrapped.text)) {
+    return expression;
+  }
+
+  seen.add(unwrapped.text);
+  return resolveLocalConstIdentifierExpression(initializer, localConstInitializers, seen);
 }
 
 function buildSwitchCaseCondition(

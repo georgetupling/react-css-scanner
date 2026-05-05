@@ -1014,8 +1014,10 @@ function resolveLocalBindingExpressionForIdentifier(input: {
     );
 
   for (const binding of bindings) {
-    const expressionId =
-      binding.expressionId ?? binding.initializerExpressionId ?? binding.objectExpressionId;
+    const expressionId = resolveLocalBindingExpressionId({
+      state: input.state,
+      binding,
+    });
     if (!expressionId) {
       continue;
     }
@@ -1025,6 +1027,47 @@ function resolveLocalBindingExpressionForIdentifier(input: {
     }
   }
   return undefined;
+}
+
+function resolveLocalBindingExpressionId(input: {
+  state: ExpansionState;
+  binding: RenderStructureInput["graph"]["nodes"]["localValueBindings"][number];
+}): string | undefined {
+  if (input.binding.bindingKind !== "destructured-property") {
+    return input.binding.expressionId;
+  }
+
+  if (!input.binding.objectExpressionId) {
+    return input.binding.initializerExpressionId;
+  }
+
+  const objectExpression = getExpressionSyntaxNodeById(
+    input.state,
+    input.binding.objectExpressionId,
+  );
+  if (
+    !objectExpression ||
+    objectExpression.expressionKind !== "object-literal" ||
+    !input.binding.propertyName
+  ) {
+    return undefined;
+  }
+
+  const property = objectExpression.properties.find(
+    (candidate) =>
+      candidate.propertyKind === "property" &&
+      candidate.keyKind !== "computed" &&
+      candidate.keyText === input.binding.propertyName,
+  );
+  if (property?.valueExpressionId) {
+    return property.valueExpressionId;
+  }
+
+  if (objectExpression.hasSpreadProperty || objectExpression.hasUnsupportedProperty) {
+    return undefined;
+  }
+
+  return input.binding.initializerExpressionId;
 }
 
 function evaluateUnsupportedComparisonExpression(input: {

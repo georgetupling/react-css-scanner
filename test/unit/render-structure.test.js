@@ -352,6 +352,39 @@ test("render structure instantiates parent-supplied external contributions durin
   assert.equal(staticChildEmission.suppliedByComponentNodeId, childComponentNodeId);
 });
 
+test("render structure does not statically skip assigned conditional content guarded by prop defaults", async () => {
+  const fixture = await buildAssignedConditionalContentFixture();
+  const symbolicEvaluation = evaluateSymbolicExpressions({
+    graph: fixture.graph,
+  });
+  const result = buildRenderStructure({
+    graph: fixture.graph,
+    symbolicEvaluation,
+    options: {
+      includeTraces: true,
+    },
+  });
+
+  const buttonComponentNodeId = componentNodeIdByName(fixture.graph, "Button");
+  const spinnerEmission = findEmissionByToken(result.renderModel.emissionSites, "button__spinner");
+  const spinnerPlacementConditions = result.renderModel.placementConditions.filter((condition) =>
+    spinnerEmission.placementConditionIds.includes(condition.id),
+  );
+  assert.equal(spinnerEmission.emittingComponentNodeId, buttonComponentNodeId);
+  assert.equal(spinnerEmission.suppliedByComponentNodeId, buttonComponentNodeId);
+  assert.deepEqual(
+    spinnerPlacementConditions.filter(
+      (condition) => condition.kind === "statically-skipped-branch",
+    ),
+    [],
+  );
+
+  const spinnerElement = result.renderModel.indexes.elementById.get(spinnerEmission.elementId);
+  assert.ok(spinnerElement);
+  assert.equal(spinnerElement.tagName, "span");
+  assert.equal(spinnerElement.emittingComponentNodeId, buttonComponentNodeId);
+});
+
 test("render structure projection is deterministic across repeated runs", async () => {
   const fixture = await buildProjectionFixture();
   const symbolicEvaluation = evaluateSymbolicExpressions({
@@ -433,6 +466,54 @@ async function buildForwardedContributionFixture() {
         rootDir: project.rootDir,
         sourceFilePaths: ["src/App.tsx"],
         cssFilePaths: ["src/app.css"],
+      },
+      runStage: async (_stage, _message, run) => run(),
+    });
+    const frontends = buildLanguageFrontends({ snapshot });
+    const factGraph = buildFactGraph({ snapshot, frontends });
+    return {
+      graph: factGraph.graph,
+    };
+  } finally {
+    await project.cleanup();
+  }
+}
+
+async function buildAssignedConditionalContentFixture() {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/Button.tsx",
+      [
+        'import "./Button.css";',
+        "export function Button(props) {",
+        "  const { children, isLoading = false } = props;",
+        "  const content = isLoading ? (",
+        "    <>",
+        '      <span className="button__spinner" aria-hidden="true" />',
+        "      <span>{children}</span>",
+        "    </>",
+        "  ) : (",
+        "    children",
+        "  );",
+        '  return <button className="button">{content}</button>;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile(
+      "src/Button.css",
+      [".button { display: inline-flex; }", ".button__spinner { inline-size: 1rem; }", ""].join(
+        "\n",
+      ),
+    )
+    .build();
+
+  try {
+    const snapshot = await buildProjectSnapshot({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/Button.tsx"],
+        cssFilePaths: ["src/Button.css"],
       },
       runStage: async (_stage, _message, run) => run(),
     });

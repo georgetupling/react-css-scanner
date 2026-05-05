@@ -1604,6 +1604,178 @@ test("unused-css-class treats static JSX classes inside assigned conditional con
   }
 });
 
+test("unused-css-class treats assigned conditional content guarded by destructured prop defaults as used", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/Button.tsx",
+      [
+        'import "./Button.css";',
+        "export function Button(props) {",
+        "  const { children, isLoading = false } = props;",
+        "  const content = isLoading ? (",
+        "    <>",
+        '      <span className="button__spinner" aria-hidden="true" />',
+        "      <span>{children}</span>",
+        "    </>",
+        "  ) : (",
+        "    children",
+        "  );",
+        '  return <button className="button">{content}</button>;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile(
+      "src/Button.css",
+      [".button { display: inline-flex; }", ".button__spinner { inline-size: 1rem; }", ""].join(
+        "\n",
+      ),
+    )
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", ["button__spinner"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unused-css-class treats assigned conditional content guarded by unknown props as used", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        "export function App({ loading }) {",
+        '  const content = loading ? <span className="spinner" /> : null;',
+        '  return <button className="button">{content}</button>;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".button { display: inline-flex; }\n.spinner { flex: none; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
+      cssFilePaths: ["src/App.css"],
+    });
+
+    assertNoClassFindings(result, "unused-css-class", ["spinner"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unused-css-class treats both assigned conditional content branches as used", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        "export function App({ condition }) {",
+        '  const content = condition ? <span className="used" /> : <span className="also-used" />;',
+        "  return content;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".used { color: blue; }\n.also-used { color: green; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
+      cssFilePaths: ["src/App.css"],
+    });
+
+    assertNoClassFindings(result, "unused-css-class", ["used", "also-used"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unused-css-class does not treat dynamic assigned content as concrete CSS evidence", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        "function getDynamicJsx() {",
+        "  return Math.random() > 0.5 ? null : <span />;",
+        "}",
+        "export function App() {",
+        "  const content = getDynamicJsx();",
+        "  return content;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".dynamic-only { color: purple; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
+      cssFilePaths: ["src/App.css"],
+    });
+
+    assert.equal(
+      result.findings.some(
+        (finding) =>
+          finding.ruleId === "unused-css-class" && finding.data?.className === "dynamic-only",
+      ),
+      true,
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unused-css-class keeps assigned statically skipped content as skipped evidence", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        "export function App() {",
+        '  const content = false ? <span className="dead" /> : null;',
+        "  return content;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".dead { opacity: 0; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
+      cssFilePaths: ["src/App.css"],
+    });
+    const finding = result.findings.find(
+      (candidate) =>
+        candidate.ruleId === "unused-css-class" && candidate.data?.className === "dead",
+    );
+
+    assert.ok(finding);
+    assert.equal(finding.data?.usageReason, "only-in-statically-skipped-render-branches");
+    assert.equal(
+      finding.evidence.some((entry) => entry.kind === "statically-skipped-class-reference"),
+      true,
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("unused-css-class treats full button helper variant assembly as used", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(
