@@ -144,6 +144,44 @@ test("selector-only-matches-in-unknown-contexts reports debug uncertainty for dy
   }
 });
 
+test("selector-only-matches-in-unknown-contexts suppresses built-in runtime vendor stylesheet noise", async () => {
+  const project = await new TestProjectBuilder()
+    .withFile(
+      "index.html",
+      '<link rel="stylesheet" href="/public/vendors/tinymce/skins/ui/oxide/skin.css">\n',
+    )
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        "export function App(props) {",
+        '  return <main className={props.wrapperClass}><span className="tox-statusbar__path-item" /></main>;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile(
+      "public/vendors/tinymce/skins/ui/oxide/skin.css",
+      ".tox-statusbar > .tox-statusbar__path-item { display: inline-block; }\n",
+    )
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
+    });
+
+    assert.deepEqual(
+      result.findings.filter(
+        (finding) => finding.ruleId === "selector-only-matches-in-unknown-contexts",
+      ),
+      [],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("compound-selector-never-matched reports same-node class conjunctions with no render match", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(

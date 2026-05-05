@@ -2339,6 +2339,65 @@ test("unused-css-class ignores local HTML-linked CSS that matches an external pr
   }
 });
 
+test("unused-css-class ignores built-in runtime vendor stylesheet classes", async () => {
+  const project = await new TestProjectBuilder()
+    .withFile(
+      "index.html",
+      '<link rel="stylesheet" href="/public/vendors/tinymce/skins/ui/oxide/skin.css">\n',
+    )
+    .withSourceFile("src/App.tsx", "export function App() { return null; }\n")
+    .withCssFile(
+      "public/vendors/tinymce/skins/ui/oxide/skin.css",
+      ".tox-statusbar__path-item { display: inline-block; }\n",
+    )
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
+    });
+
+    assert.deepEqual(
+      result.findings.filter(
+        (finding) =>
+          finding.ruleId === "unused-css-class" &&
+          finding.data?.className === "tox-statusbar__path-item",
+      ),
+      [],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unused-css-class still reports project CSS that merely uses vendor-looking names", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./App.css";\nexport function App() { return <main />; }\n',
+    )
+    .withCssFile("src/App.css", ".tox-project-local { display: block; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
+      cssFilePaths: ["src/App.css"],
+    });
+
+    assert.ok(
+      result.findings.some(
+        (finding) =>
+          finding.ruleId === "unused-css-class" && finding.data?.className === "tox-project-local",
+      ),
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("unused-css-class ignores unreferenced imported package CSS classes", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(

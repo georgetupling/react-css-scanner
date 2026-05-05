@@ -13,6 +13,7 @@ export type ExternalCssGlobalProviderConfig = {
   match: string[];
   classPrefixes: string[];
   classNames: string[];
+  stylesheetRole: "external-global" | "third-party-runtime";
 };
 
 export type ExternalCssConfig = {

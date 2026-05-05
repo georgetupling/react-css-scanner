@@ -192,10 +192,16 @@ export function getStylesheetReachabilityByStylesheetId(
 export function getProviderBackedStylesheetRelationsByStylesheetId(
   analysis: AnalysisEvidence,
   stylesheetId: ProjectEvidenceId,
-): Array<{ stylesheetId: ProjectEvidenceId; provider: string }> {
-  return (analysis.projectEvidence.relations.providerBackedStylesheets ?? [])
-    .filter((relation) => relation.stylesheetId === stylesheetId)
-    .map((relation) => ({ stylesheetId: relation.stylesheetId, provider: relation.provider }));
+): Array<{
+  stylesheetId: ProjectEvidenceId;
+  provider: string;
+  runtimeDom: boolean;
+  suppressUnused: boolean;
+  suppressUnknownContextSelectors: boolean;
+}> {
+  return (analysis.projectEvidence.relations.providerBackedStylesheets ?? []).filter(
+    (relation) => relation.stylesheetId === stylesheetId,
+  );
 }
 
 export function getSelectorBranchById(

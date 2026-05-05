@@ -55,7 +55,9 @@ const EXTERNAL_CSS_GLOBAL_CONFIG_KEYS = new Set([
   "match",
   "classPrefixes",
   "classNames",
+  "stylesheetRole",
 ]);
+const EXTERNAL_CSS_STYLESHEET_ROLES = new Set(["external-global", "third-party-runtime"]);
 const RULE_IDS = new Set(Object.keys(DEFAULT_RULE_SEVERITIES));
 
 export const DEFAULT_EXTERNAL_CSS_GLOBALS: ExternalCssGlobalProviderConfig[] = [
@@ -70,6 +72,7 @@ export const DEFAULT_EXTERNAL_CSS_GLOBALS: ExternalCssGlobalProviderConfig[] = [
     ],
     classPrefixes: ["fa-"],
     classNames: ["fa", "fa-solid", "fa-regular", "fa-brands", "fa-light", "fa-thin", "fa-duotone"],
+    stylesheetRole: "external-global",
   },
   {
     provider: "material-design-icons",
@@ -81,6 +84,7 @@ export const DEFAULT_EXTERNAL_CSS_GLOBALS: ExternalCssGlobalProviderConfig[] = [
     ],
     classPrefixes: ["mdi-"],
     classNames: ["mdi", "mdi-set"],
+    stylesheetRole: "external-global",
   },
   {
     provider: "bootstrap-icons",
@@ -92,6 +96,7 @@ export const DEFAULT_EXTERNAL_CSS_GLOBALS: ExternalCssGlobalProviderConfig[] = [
     ],
     classPrefixes: ["bi-"],
     classNames: ["bi"],
+    stylesheetRole: "external-global",
   },
   {
     provider: "animate.css",
@@ -103,6 +108,7 @@ export const DEFAULT_EXTERNAL_CSS_GLOBALS: ExternalCssGlobalProviderConfig[] = [
     ],
     classPrefixes: ["animate__"],
     classNames: ["animate__animated"],
+    stylesheetRole: "external-global",
   },
   {
     provider: "uikit",
@@ -114,6 +120,7 @@ export const DEFAULT_EXTERNAL_CSS_GLOBALS: ExternalCssGlobalProviderConfig[] = [
     ],
     classPrefixes: ["uk-"],
     classNames: [],
+    stylesheetRole: "external-global",
   },
   {
     provider: "pure.css",
@@ -125,6 +132,44 @@ export const DEFAULT_EXTERNAL_CSS_GLOBALS: ExternalCssGlobalProviderConfig[] = [
     ],
     classPrefixes: ["pure-"],
     classNames: [],
+    stylesheetRole: "external-global",
+  },
+  {
+    provider: "tinymce",
+    match: [
+      "**/tinymce/**/skin*.css",
+      "**/tinymce/**/content*.css",
+      "**/tinymce/skins/**/*.css",
+      "**/public/vendors/tinymce/**/*.css",
+      "**/node_modules/tinymce/**/*.css",
+    ],
+    classPrefixes: ["tox-", "mce-", "ephox-"],
+    classNames: ["tox", "mce-content-body"],
+    stylesheetRole: "third-party-runtime",
+  },
+  {
+    provider: "codemirror",
+    match: [
+      "**/codemirror/**/*.css",
+      "**/@codemirror/**/*.css",
+      "**/node_modules/codemirror/**/*.css",
+      "**/node_modules/@codemirror/**/*.css",
+    ],
+    classPrefixes: ["cm-", "CodeMirror-"],
+    classNames: ["CodeMirror", "cm-editor"],
+    stylesheetRole: "third-party-runtime",
+  },
+  {
+    provider: "prosemirror",
+    match: [
+      "**/prosemirror*/**/*.css",
+      "**/prosemirror-view/**/*.css",
+      "**/node_modules/prosemirror*/**/*.css",
+      "**/node_modules/prosemirror-view/**/*.css",
+    ],
+    classPrefixes: ["ProseMirror-"],
+    classNames: ["ProseMirror", "column-resize-handle", "selectedCell"],
+    stylesheetRole: "third-party-runtime",
   },
 ];
 
@@ -772,6 +817,13 @@ function parseExternalCssGlobalProvider(
     code: "config.invalid-external-css-provider-class-names",
     message: `externalCss.globals[${index}].classNames must be an array of strings`,
   });
+  const stylesheetRole = parseStylesheetRole({
+    value: value.stylesheetRole,
+    fallback: "external-global",
+    filePath,
+    diagnostics,
+    index,
+  });
 
   if (!provider) {
     return [];
@@ -783,8 +835,34 @@ function parseExternalCssGlobalProvider(
       match,
       classPrefixes,
       classNames,
+      stylesheetRole,
     },
   ];
+}
+
+function parseStylesheetRole(input: {
+  value: unknown;
+  fallback: ExternalCssGlobalProviderConfig["stylesheetRole"];
+  filePath: string;
+  diagnostics: ScanDiagnostic[];
+  index: number;
+}): ExternalCssGlobalProviderConfig["stylesheetRole"] {
+  if (input.value === undefined) {
+    return input.fallback;
+  }
+
+  if (typeof input.value === "string" && EXTERNAL_CSS_STYLESHEET_ROLES.has(input.value)) {
+    return input.value as ExternalCssGlobalProviderConfig["stylesheetRole"];
+  }
+
+  input.diagnostics.push({
+    code: "config.invalid-external-css-provider-stylesheet-role",
+    severity: "error",
+    phase: "config",
+    filePath: input.filePath,
+    message: `externalCss.globals[${input.index}].stylesheetRole must be "external-global" or "third-party-runtime"`,
+  });
+  return input.fallback;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -999,6 +1077,7 @@ function cloneExternalCssGlobals(
     match: [...global.match],
     classPrefixes: [...global.classPrefixes],
     classNames: [...global.classNames],
+    stylesheetRole: global.stylesheetRole,
   }));
 }
 

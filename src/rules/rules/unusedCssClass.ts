@@ -46,7 +46,7 @@ function runUnusedCssClassRule(context: RuleContext): UnresolvedFinding[] {
       getProviderBackedStylesheetRelationsByStylesheetId(
         context.analysisEvidence,
         definition.stylesheetId,
-      ).length > 0
+      ).some((relation) => relation.suppressUnused)
     ) {
       continue;
     }

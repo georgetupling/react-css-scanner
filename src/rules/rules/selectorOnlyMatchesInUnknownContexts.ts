@@ -9,6 +9,7 @@ import {
   getProjectSelectorQueryForReachability,
   getSelectorReachabilityBranches,
 } from "./selectorReachabilityRuleUtils.js";
+import { getProviderBackedStylesheetRelationsByStylesheetId } from "../analysisQueries.js";
 
 export const selectorOnlyMatchesInUnknownContextsRule: RuleDefinition = {
   id: "selector-only-matches-in-unknown-contexts",
@@ -20,6 +21,7 @@ export const selectorOnlyMatchesInUnknownContextsRule: RuleDefinition = {
 function runSelectorOnlyMatchesInUnknownContextsRule(context: RuleContext): UnresolvedFinding[] {
   return getSelectorReachabilityBranches(context)
     .filter((branch) => branch.status === "only-matches-in-unknown-context")
+    .filter((branch) => !isSuppressedProviderRuntimeSelector(context, branch))
     .map((branch): UnresolvedFinding => {
       const query = getProjectSelectorQueryForReachability(context, branch);
 
@@ -53,6 +55,21 @@ function runSelectorOnlyMatchesInUnknownContextsRule(context: RuleContext): Unre
       };
     })
     .sort((left, right) => left.id.localeCompare(right.id));
+}
+
+function isSuppressedProviderRuntimeSelector(
+  context: RuleContext,
+  branch: SelectorBranchReachability,
+): boolean {
+  const query = getProjectSelectorQueryForReachability(context, branch);
+  if (!query?.stylesheetId) {
+    return false;
+  }
+
+  return getProviderBackedStylesheetRelationsByStylesheetId(
+    context.analysisEvidence,
+    query.stylesheetId,
+  ).some((relation) => relation.suppressUnknownContextSelectors);
 }
 
 function buildSelectorOnlyMatchesInUnknownContextsTraces(input: {

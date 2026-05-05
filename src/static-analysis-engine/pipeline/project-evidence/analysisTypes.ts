@@ -406,6 +406,9 @@ export type ProviderBackedStylesheetRelation = {
   id: ProjectEvidenceId;
   stylesheetId: ProjectEvidenceId;
   provider: string;
+  runtimeDom: boolean;
+  suppressUnused: boolean;
+  suppressUnknownContextSelectors: boolean;
   reasons: string[];
   traces: AnalysisTrace[];
 };

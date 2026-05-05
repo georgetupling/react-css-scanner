@@ -7,7 +7,10 @@ import type {
   SelectorMatchRelation,
   SelectorQueryAnalysis,
 } from "../analysisTypes.js";
+import type { ExternalCssGlobalProviderConfig } from "../../../../config/index.js";
 import { collectReferenceClassNames, compareById, mergeTraces } from "../internal/shared.js";
+
+type ActiveExternalCssProvider = ExternalCssGlobalProviderConfig;
 
 export function buildProviderClassSatisfactions(input: {
   references: ClassReferenceAnalysis[];
@@ -15,7 +18,7 @@ export function buildProviderClassSatisfactions(input: {
   includeTraces: boolean;
 }): ProviderClassSatisfactionRelation[] {
   const relations: ProviderClassSatisfactionRelation[] = [];
-  const activeProviders = collectActiveExternalCssProviders(input.input);
+  const activeProviders = collectHtmlActivatedExternalCssProviders(input.input);
 
   for (const reference of input.references) {
     for (const className of collectReferenceClassNames(reference)) {
@@ -45,12 +48,9 @@ export function buildProviderClassSatisfactions(input: {
   return relations.sort(compareById);
 }
 
-function collectActiveExternalCssProviders(input: ProjectEvidenceBuildInput): Array<{
-  provider: string;
-  match: string[];
-  classPrefixes: string[];
-  classNames: string[];
-}> {
+function collectHtmlActivatedExternalCssProviders(
+  input: ProjectEvidenceBuildInput,
+): ActiveExternalCssProvider[] {
   const snapshot = input.factGraph?.snapshot;
   if (!snapshot) {
     return [];
@@ -60,13 +60,9 @@ function collectActiveExternalCssProviders(input: ProjectEvidenceBuildInput): Ar
   return snapshot.externalCss.globalProviders
     .filter((provider) =>
       stylesheetLinks.some((link) =>
-        provider.match.some(
-          (pattern) =>
-            globToRegExp(pattern).test(normalizeProjectPath(link.href ?? "")) ||
-            (link.resolvedFilePath
-              ? globToRegExp(pattern).test(normalizeProjectPath(link.resolvedFilePath))
-              : false),
-        ),
+        [link.href, link.resolvedFilePath]
+          .filter((value): value is string => Boolean(value))
+          .some((filePath) => providerMatchesPath(provider, filePath)),
       ),
     )
     .map((provider) => ({
@@ -74,7 +70,17 @@ function collectActiveExternalCssProviders(input: ProjectEvidenceBuildInput): Ar
       match: [...provider.match],
       classPrefixes: [...provider.classPrefixes],
       classNames: [...provider.classNames],
+      stylesheetRole: provider.stylesheetRole,
     }));
+}
+
+function providerMatchesPath(
+  provider: Pick<ExternalCssGlobalProviderConfig, "match">,
+  filePath: string,
+): boolean {
+  return provider.match.some((pattern) =>
+    globToRegExp(pattern).test(normalizeProjectPath(filePath)),
+  );
 }
 
 function globToRegExp(pattern: string): RegExp {
@@ -151,32 +157,19 @@ export function buildProviderBackedStylesheets(input: {
     return [];
   }
 
-  const activeProviders = collectActiveExternalCssProviders(input.input);
-  if (activeProviders.length === 0) {
-    return [];
-  }
+  const providers = snapshot.externalCss.globalProviders;
 
   const relations: ProviderBackedStylesheetRelation[] = [];
-  const stylesheetLinks = snapshot.edges.filter((edge) => edge.kind === "html-stylesheet");
-  for (const link of stylesheetLinks) {
-    if (!link.resolvedFilePath) {
-      continue;
-    }
-
+  for (const stylesheet of snapshot.files.stylesheets) {
     const stylesheetId = input.indexes.stylesheetIdByPath.get(
-      normalizeProjectPath(link.resolvedFilePath),
+      normalizeProjectPath(stylesheet.filePath),
     );
     if (!stylesheetId) {
       continue;
     }
 
-    for (const provider of activeProviders) {
-      const matchesProvider = provider.match.some(
-        (pattern) =>
-          globToRegExp(pattern).test(normalizeProjectPath(link.href ?? "")) ||
-          globToRegExp(pattern).test(normalizeProjectPath(link.resolvedFilePath ?? "")),
-      );
-      if (!matchesProvider) {
+    for (const provider of providers) {
+      if (!providerMatchesPath(provider, stylesheet.filePath)) {
         continue;
       }
 
@@ -184,6 +177,7 @@ export function buildProviderBackedStylesheets(input: {
         id: `provider-backed-stylesheet:${stylesheetId}:${provider.provider}`,
         stylesheetId,
         provider: provider.provider,
+        ...providerRuntimePolicy(provider),
         reasons: [`stylesheet matched active provider "${provider.provider}"`],
         traces: [],
       });
@@ -191,4 +185,25 @@ export function buildProviderBackedStylesheets(input: {
   }
 
   return relations.sort(compareById);
+}
+
+function providerRuntimePolicy(
+  provider: Pick<ExternalCssGlobalProviderConfig, "stylesheetRole">,
+): Pick<
+  ProviderBackedStylesheetRelation,
+  "runtimeDom" | "suppressUnused" | "suppressUnknownContextSelectors"
+> {
+  if (provider.stylesheetRole === "third-party-runtime") {
+    return {
+      runtimeDom: true,
+      suppressUnused: true,
+      suppressUnknownContextSelectors: true,
+    };
+  }
+
+  return {
+    runtimeDom: false,
+    suppressUnused: true,
+    suppressUnknownContextSelectors: false,
+  };
 }
