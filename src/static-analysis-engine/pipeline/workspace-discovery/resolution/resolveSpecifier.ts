@@ -106,10 +106,25 @@ function expandCandidateBase(
     `${base}.tsx`,
     `${base}.js`,
     `${base}.jsx`,
+    ...getDirectoryBasenameSourceCandidates(base),
     `${base}/index.ts`,
     `${base}/index.tsx`,
     `${base}/index.js`,
     `${base}/index.jsx`,
+  ];
+}
+
+function getDirectoryBasenameSourceCandidates(base: string): string[] {
+  const basename = path.posix.basename(base);
+  if (!basename || basename === "." || basename === "..") {
+    return [];
+  }
+
+  return [
+    `${base}/${basename}.ts`,
+    `${base}/${basename}.tsx`,
+    `${base}/${basename}.js`,
+    `${base}/${basename}.jsx`,
   ];
 }
 

@@ -71,7 +71,16 @@ export function collectAppEntries(input: {
 }
 
 function collectConventionalEntrySourceFilePaths(moduleFilePaths: string[]): string[] {
-  const entryFileNames = new Set(["main.jsx", "main.js", "main.ts", "main.tsx"]);
+  const entryFileNames = new Set([
+    "index.jsx",
+    "index.js",
+    "index.ts",
+    "index.tsx",
+    "main.jsx",
+    "main.js",
+    "main.ts",
+    "main.tsx",
+  ]);
   return moduleFilePaths
     .filter((filePath) => entryFileNames.has(getBaseName(filePath).toLowerCase()))
     .sort((left, right) => left.localeCompare(right));

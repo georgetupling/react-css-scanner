@@ -67,6 +67,38 @@ test("css-class-unreachable does not report reachable definitions", async () => 
   }
 });
 
+test("css-class-unreachable treats conventional index.js app CSS imports as reachable", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile("src/index.js", 'import App from "./App";\nimport "./index.css";\nApp();\n')
+    .withSourceFile(
+      "src/App.js",
+      'import "./App.css";\nimport Cart from "./components/Cart";\nexport default function App() { return <main className="shell"><Cart /></main>; }\n',
+    )
+    .withSourceFile(
+      "src/components/Cart/Cart.js",
+      'export default function Cart() { return <section className="cart-shell">Cart</section>; }\n',
+    )
+    .withFile("src/components/Cart/package.json", '{ "main": "Cart.js" }\n')
+    .withCssFile("src/index.css", ".page { display: block; }\n")
+    .withCssFile("src/App.css", ".shell { display: block; }\n.cart-shell { display: block; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      includeDebugRuntimeCss: true,
+    });
+
+    assert.equal(result.debug?.runtimeCss?.entries[0]?.entrySourceFilePath, "src/index.js");
+    assert.deepEqual(
+      result.findings.filter((finding) => finding.ruleId === "css-class-unreachable"),
+      [],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("css-class-unreachable keeps app-entry CSS inside the HTML app boundary", async () => {
   const project = await new TestProjectBuilder()
     .withFile(
