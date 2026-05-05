@@ -8,7 +8,13 @@ const nodeGlobals = {
 
 export default [
   {
-    ignores: ["dist/**", "node_modules/**", "coverage/**"],
+    ignores: [
+      "dist/**",
+      "node_modules/**",
+      "coverage/**",
+      "test/fixtures/**/dist/**",
+      "test/fixtures/**/node_modules/**",
+    ],
   },
   {
     files: ["**/*.js"],

@@ -30,6 +30,7 @@
     "format:check": "prettier --check .",
     "precommit": "npm run format:check && npm run lint && npm run test:coverage:check",
     "test": "npm run build && node --test \"test/unit/**/*.test.js\"",
+    "test:bundlers": "npm run build && node --test \"test/bundlers/**/*.test.js\"",
     "test:coverage": "npm run build && node --test --experimental-test-coverage \"test/unit/**/*.test.js\"",
     "test:coverage:check": "npm run build && node --test --experimental-test-coverage --test-coverage-lines=70 --test-coverage-branches=70 --test-coverage-functions=80 \"test/unit/**/*.test.js\"",
     "prepublishOnly": "npm run check && npm run lint && npm run build",
