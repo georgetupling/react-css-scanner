@@ -138,8 +138,10 @@ function compareRenderedPropSlots(
     left.location.filePath.localeCompare(right.location.filePath) ||
     left.location.startLine - right.location.startLine ||
     left.location.startColumn - right.location.startColumn ||
-    left.location.endLine - right.location.endLine ||
-    left.location.endColumn - right.location.endColumn ||
+    (left.location.endLine ?? left.location.startLine) -
+      (right.location.endLine ?? right.location.startLine) ||
+    (left.location.endColumn ?? left.location.startColumn) -
+      (right.location.endColumn ?? right.location.startColumn) ||
     left.propName.localeCompare(right.propName)
   );
 }

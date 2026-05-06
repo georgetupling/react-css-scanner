@@ -944,11 +944,12 @@ function resolveCssModuleImportForNamespace(input: {
   if (!importEdge?.resolvedFilePath) {
     return undefined;
   }
+  const resolvedFilePath = importEdge.resolvedFilePath;
 
   const stylesheetNode = input.input.graph.nodes.stylesheets.find(
     (node) =>
       node.filePath &&
-      normalizePath(node.filePath) === normalizePath(importEdge.resolvedFilePath) &&
+      normalizePath(node.filePath) === normalizePath(resolvedFilePath) &&
       node.cssKind === "css-module",
   );
   if (!stylesheetNode) {

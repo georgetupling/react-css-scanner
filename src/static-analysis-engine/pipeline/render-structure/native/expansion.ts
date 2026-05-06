@@ -539,7 +539,12 @@ function containsAnchor(
       inner.startLine,
       inner.startColumn,
     ) <= 0 &&
-    compareAnchorPositions(outer.endLine, outer.endColumn, inner.endLine, inner.endColumn) >= 0
+    compareAnchorPositions(
+      outer.endLine ?? outer.startLine,
+      outer.endColumn ?? outer.startColumn,
+      inner.endLine ?? inner.startLine,
+      inner.endColumn ?? inner.startColumn,
+    ) >= 0
   );
 }
 
@@ -550,7 +555,12 @@ function compareAnchors(
   return (
     left.filePath.localeCompare(right.filePath) ||
     compareAnchorPositions(left.startLine, left.startColumn, right.startLine, right.startColumn) ||
-    compareAnchorPositions(left.endLine, left.endColumn, right.endLine, right.endColumn)
+    compareAnchorPositions(
+      left.endLine ?? left.startLine,
+      left.endColumn ?? left.startColumn,
+      right.endLine ?? right.startLine,
+      right.endColumn ?? right.startColumn,
+    )
   );
 }
 

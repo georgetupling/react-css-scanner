@@ -37,6 +37,7 @@ export function buildElementMatchesForClassNames(input: {
       elementId,
       requirement: {
         requiredClassNames,
+        classAttributePredicates: [],
         unsupportedParts: [],
       },
       matchedClassNames: match.matchedClassNames,

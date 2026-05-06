@@ -261,6 +261,7 @@ function getClassMatches(input: {
     elementId: match.elementId,
     requirement: {
       requiredClassNames: [input.className],
+      classAttributePredicates: [],
       unsupportedParts: [],
     },
     matchedClassNames: match.matchedClassNames,
@@ -551,14 +552,14 @@ function hasRenderedPropSlotBetween(input: {
   return boundary.renderedPropSlots.some(
     (slot) =>
       compareSourcePositions(
-        input.leftElement.sourceLocation.endLine,
-        input.leftElement.sourceLocation.endColumn,
+        input.leftElement.sourceLocation.endLine ?? input.leftElement.sourceLocation.startLine,
+        input.leftElement.sourceLocation.endColumn ?? input.leftElement.sourceLocation.startColumn,
         slot.location.startLine,
         slot.location.startColumn,
       ) <= 0 &&
       compareSourcePositions(
-        slot.location.endLine,
-        slot.location.endColumn,
+        slot.location.endLine ?? slot.location.startLine,
+        slot.location.endColumn ?? slot.location.startColumn,
         input.rightElement.sourceLocation.startLine,
         input.rightElement.sourceLocation.startColumn,
       ) <= 0,
