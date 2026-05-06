@@ -74,6 +74,77 @@ test("unsatisfiable-selector does not report selectors with bounded render match
   }
 });
 
+test(":has() selectors model argument classes and reachability", async () => {
+  const matchingProject = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        "export function App() {",
+        '  return <section className="card"><h2 className="title">Title</h2></section>;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".card:has(.title) { border: 1px solid; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: matchingProject.rootDir });
+
+    assertNoClassFindings(result, "missing-css-class", ["title"]);
+  } finally {
+    await matchingProject.cleanup();
+  }
+
+  const impossibleProject = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        "export function App() {",
+        '  return <section className="card"><p>No title</p></section>;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".card:has(.title) { border: 1px solid; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: impossibleProject.rootDir });
+
+    assert.equal(hasSelectorFinding(result, "unsatisfiable-selector", ".card:has(.title)"), true);
+  } finally {
+    await impossibleProject.cleanup();
+  }
+});
+
+test(":not() selectors do not define negated classes and can be unsatisfiable", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        "export function App() {",
+        '  return <button className="btn disabled">Save</button>;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".btn:not(.disabled) { color: green; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "missing-css-class", ["disabled"]);
+    assert.equal(hasSelectorFinding(result, "unsatisfiable-selector", ".btn:not(.disabled)"), true);
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("unsatisfiable-selector does not report adjacent sibling selectors satisfied by repeated templates", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(
@@ -654,5 +725,11 @@ function assertNoSelectorFindings(result, ruleId, selectorTexts) {
       )
       .map((finding) => finding.data?.selectorText),
     [],
+  );
+}
+
+function hasSelectorFinding(result, ruleId, selectorText) {
+  return result.findings.some(
+    (finding) => finding.ruleId === ruleId && finding.data?.selectorText === selectorText,
   );
 }

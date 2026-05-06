@@ -360,6 +360,11 @@ export type ImportsEdge = FactEdgeBase & {
   specifier: string;
   resolutionStatus: FactImportResolutionStatus;
   cssSemantics?: FactCssSemantics;
+  importNames?: Array<{
+    bindingKind: "default" | "named" | "namespace";
+    importedName: string;
+    localName: string;
+  }>;
   resolvedFilePath?: string;
   resolvedTargetNodeId?: string;
 };

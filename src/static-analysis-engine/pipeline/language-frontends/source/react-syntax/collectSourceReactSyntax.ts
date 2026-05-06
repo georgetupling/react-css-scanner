@@ -5,7 +5,7 @@ import { createSiteKey } from "./keys.js";
 import { collectReactComponents } from "./collectComponents.js";
 import { collectCssModuleNamespaceNames } from "./cssModuleImports.js";
 import { tryCreateElementTemplate } from "./elementTemplates.js";
-import { tryCreateRenderSite } from "./renderSites.js";
+import { isLogicalAndJsxExpression, tryCreateRenderSite } from "./renderSites.js";
 import {
   dedupeExpressionSyntaxFacts,
   collectExpressionSyntaxForNode,
@@ -153,15 +153,19 @@ export function collectSourceReactSyntax(input: {
       renderSites.push(renderSite);
       renderStack.push(renderSite);
       renderNodeStack.push(node);
-      if (renderSite.kind === "conditional" && ts.isConditionalExpression(node)) {
+      if (
+        renderSite.kind === "conditional" &&
+        (ts.isConditionalExpression(node) || isLogicalAndJsxExpression(node))
+      ) {
+        const conditionNode = ts.isConditionalExpression(node) ? node.condition : node.left;
         const conditionSyntax = collectExpressionSyntaxForNode({
-          node: node.condition,
+          node: conditionNode,
           filePath: input.filePath,
           sourceFile: input.sourceFile,
         });
         expressionSyntax.push(...conditionSyntax.expressions);
         renderSite.conditionExpressionId = conditionSyntax.rootExpressionId;
-        renderSite.conditionSourceText = node.condition.getText(input.sourceFile);
+        renderSite.conditionSourceText = conditionNode.getText(input.sourceFile);
       }
 
       template = tryCreateElementTemplate({

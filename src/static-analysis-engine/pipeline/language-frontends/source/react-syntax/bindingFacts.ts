@@ -180,7 +180,14 @@ function collectComponentPropBinding(input: {
     };
   }
 
-  if (input.parameters.length > 1) {
+  const effectiveParameters =
+    input.parameters.length === 2 &&
+    ts.isIdentifier(input.parameters[1].name) &&
+    input.parameters[1].name.text === "ref"
+      ? [input.parameters[0]]
+      : input.parameters;
+
+  if (effectiveParameters.length > 1) {
     return buildUnsupportedComponentPropBinding({
       ...input,
       location,
@@ -189,7 +196,7 @@ function collectComponentPropBinding(input: {
     });
   }
 
-  const [parameter] = input.parameters;
+  const [parameter] = effectiveParameters;
   if (ts.isIdentifier(parameter.name)) {
     return {
       bindingKey,

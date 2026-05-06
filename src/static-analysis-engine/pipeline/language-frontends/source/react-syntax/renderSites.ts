@@ -2,7 +2,12 @@ import ts from "typescript";
 
 import { toSourceAnchor } from "../../../../libraries/react-components/reactComponentAstUtils.js";
 import { createSiteKey } from "./keys.js";
-import { getJsxTagName, isHelperReturnStatement, isIntrinsicTagName } from "./jsxUtils.js";
+import {
+  getJsxTagName,
+  isHelperReturnStatement,
+  isIntrinsicTagName,
+  isJsxLikeExpression,
+} from "./jsxUtils.js";
 import type { ReactRenderSiteFact } from "./types.js";
 
 export function tryCreateRenderSite(input: {
@@ -17,6 +22,7 @@ export function tryCreateRenderSite(input: {
     !ts.isJsxSelfClosingElement(input.node) &&
     !ts.isJsxFragment(input.node) &&
     !ts.isConditionalExpression(input.node) &&
+    !isLogicalAndJsxExpression(input.node) &&
     !isHelperReturnStatement(input.node)
   ) {
     return undefined;
@@ -52,6 +58,9 @@ function getRenderSiteKind(node: ts.Node): ReactRenderSiteFact["kind"] {
   if (ts.isConditionalExpression(node)) {
     return "conditional";
   }
+  if (isLogicalAndJsxExpression(node)) {
+    return "conditional";
+  }
   if (isHelperReturnStatement(node)) {
     return "helper-return";
   }
@@ -60,6 +69,14 @@ function getRenderSiteKind(node: ts.Node): ReactRenderSiteFact["kind"] {
     return "component-reference";
   }
   return "jsx-element";
+}
+
+export function isLogicalAndJsxExpression(node: ts.Node): node is ts.BinaryExpression {
+  return (
+    ts.isBinaryExpression(node) &&
+    node.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken &&
+    isJsxLikeExpression(node.right)
+  );
 }
 
 function resolveRepeatedRegionMetadata(input: {

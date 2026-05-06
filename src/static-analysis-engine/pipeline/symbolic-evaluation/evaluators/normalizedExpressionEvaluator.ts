@@ -250,14 +250,19 @@ function summarizeImportedIdentifierExpressionSyntax(input: {
   input: SymbolicExpressionEvaluatorInput;
   expression: Extract<ExpressionSyntaxNode, { expressionKind: "identifier" }>;
 }): { value: AbstractValue; sourceAnchor: ExpressionSyntaxNode["location"] } | undefined {
-  const imported = resolveImportedIdentifierLiteral(input);
+  const imported = resolveImportedIdentifierExpressionSyntax(input);
   if (!imported) {
     return undefined;
   }
 
   return {
-    value: { kind: "string-exact", value: imported.value },
-    sourceAnchor: imported.sourceAnchor,
+    value: summarizeNormalizedClassExpression({
+      input: input.input,
+      expression: imported.expression,
+      depth: 1,
+      seenExpressionIds: new Set([input.expression.expressionId]),
+    }),
+    sourceAnchor: imported.binding.location,
   };
 }
 
@@ -269,7 +274,7 @@ function buildImportedIdentifierTokenAnchors(input: {
     return undefined;
   }
 
-  const imported = resolveImportedIdentifierLiteral({
+  const imported = resolveImportedIdentifierExpressionSyntax({
     input: input.input,
     expression: input.syntax,
   });
@@ -277,22 +282,103 @@ function buildImportedIdentifierTokenAnchors(input: {
     return undefined;
   }
 
-  const classNames = tokenizeClassNames(imported.value);
+  const value = summarizeNormalizedClassExpression({
+    input: input.input,
+    expression: imported.expression,
+    depth: 1,
+    seenExpressionIds: new Set([input.syntax.expressionId]),
+  });
+  const classNames =
+    getStringCandidates(value)?.flatMap((candidate) => tokenizeClassNames(candidate)) ?? [];
   if (classNames.length === 0) {
     return undefined;
   }
 
   return Object.fromEntries(
-    classNames.map((className) => [className, [imported.sourceAnchor]] as const),
+    uniqueSorted(classNames).map((className) => [className, [imported.binding.location]] as const),
   );
 }
 
-function resolveImportedIdentifierLiteral(input: {
+function resolveImportedIdentifierExpressionSyntax(input: {
   input: SymbolicExpressionEvaluatorInput;
   expression: Extract<ExpressionSyntaxNode, { expressionKind: "identifier" }>;
-}): { value: string; sourceAnchor: ExpressionSyntaxNode["location"] } | undefined {
-  void input;
+}):
+  | {
+      binding: SymbolicExpressionEvaluatorInput["graph"]["nodes"]["localValueBindings"][number];
+      expression: ExpressionSyntaxNode;
+    }
+  | undefined {
+  const binding = resolveImportedLocalValueBinding(input);
+  const expressionId = binding?.expressionId ?? binding?.initializerExpressionId;
+  const expression = expressionId ? getExpressionSyntax(input.input, expressionId) : undefined;
+  return binding && expression ? { binding, expression } : undefined;
+}
+
+function resolveImportedLocalValueBinding(input: {
+  input: SymbolicExpressionEvaluatorInput;
+  expression: Extract<ExpressionSyntaxNode, { expressionKind: "identifier" }>;
+}): SymbolicExpressionEvaluatorInput["graph"]["nodes"]["localValueBindings"][number] | undefined {
+  const importEdge = input.input.graph.edges.imports.find(
+    (edge) =>
+      edge.importerKind === "source" &&
+      edge.importerFilePath === input.expression.filePath &&
+      edge.importKind === "source" &&
+      edge.resolutionStatus === "resolved" &&
+      edge.resolvedFilePath &&
+      edge.importNames?.some((importName) => importName.localName === input.expression.name),
+  );
+  const importName = importEdge?.importNames?.find(
+    (candidate) => candidate.localName === input.expression.name,
+  );
+  if (!importEdge?.resolvedFilePath || !importName || importName.bindingKind === "namespace") {
+    return undefined;
+  }
+
+  const targetLocalName =
+    importName.bindingKind === "default" ? "default" : importName.importedName;
+  const directBinding = findLocalValueBindingInFile({
+    input: input.input,
+    filePath: importEdge.resolvedFilePath,
+    localName: targetLocalName,
+  });
+  if (directBinding) {
+    return directBinding;
+  }
+
+  if (importName.bindingKind === "default") {
+    return findSingleModuleValueBinding({
+      input: input.input,
+      filePath: importEdge.resolvedFilePath,
+    });
+  }
+
   return undefined;
+}
+
+function findLocalValueBindingInFile(input: {
+  input: SymbolicExpressionEvaluatorInput;
+  filePath: string;
+  localName: string;
+}): SymbolicExpressionEvaluatorInput["graph"]["nodes"]["localValueBindings"][number] | undefined {
+  const candidates = input.input.graph.nodes.localValueBindings
+    .filter(
+      (binding) =>
+        binding.filePath === input.filePath &&
+        binding.localName === input.localName &&
+        binding.ownerKind === "source-file",
+    )
+    .sort((left, right) => left.location.startLine - right.location.startLine);
+  return candidates[0];
+}
+
+function findSingleModuleValueBinding(input: {
+  input: SymbolicExpressionEvaluatorInput;
+  filePath: string;
+}): SymbolicExpressionEvaluatorInput["graph"]["nodes"]["localValueBindings"][number] | undefined {
+  const candidates = input.input.graph.nodes.localValueBindings
+    .filter((binding) => binding.filePath === input.filePath && binding.ownerKind === "source-file")
+    .sort((left, right) => left.location.startLine - right.location.startLine);
+  return candidates.length === 1 ? candidates[0] : undefined;
 }
 
 function summarizeLocalBindingValue(input: {
@@ -1027,7 +1113,7 @@ function summarizeCallExpressionSyntax(input: {
     return { kind: "unknown", reason: "unsupported-call:spread-argument" };
   }
 
-  const arrayJoinTarget = callee ? getArrayJoinTarget(input.input, callee) : undefined;
+  const arrayJoinTarget = callee ? getArrayJoinTarget(input, callee) : undefined;
   if (arrayJoinTarget) {
     return summarizeClassArrayJoin({
       ...input,
@@ -1397,6 +1483,18 @@ function resolveObjectLiteralExpressionSyntax(input: {
     if (resolved) {
       return resolved;
     }
+  }
+
+  const imported = resolveImportedIdentifierExpressionSyntax({
+    input: input.input,
+    expression: unwrapped,
+  });
+  if (imported) {
+    return resolveObjectLiteralExpressionSyntax({
+      ...input,
+      expression: imported.expression,
+      depth: input.depth + 1,
+    });
   }
 
   return undefined;
@@ -1963,12 +2061,17 @@ function isClassNamesHelper(expression: ExpressionSyntaxNode): boolean {
 }
 
 function getArrayJoinTarget(
-  input: SymbolicExpressionEvaluatorInput,
+  input: {
+    input: SymbolicExpressionEvaluatorInput;
+    depth: number;
+    seenExpressionIds: Set<string>;
+    helperBindings?: Map<string, AbstractValue>;
+  },
   callee: ExpressionSyntaxNode,
 ): ClassArrayJoinTarget | undefined {
   const unwrappedCallee =
     callee.expressionKind === "wrapper"
-      ? (getExpressionSyntax(input, callee.innerExpressionId) ?? callee)
+      ? (getExpressionSyntax(input.input, callee.innerExpressionId) ?? callee)
       : callee;
   if (
     unwrappedCallee.expressionKind !== "member-access" ||
@@ -1977,17 +2080,22 @@ function getArrayJoinTarget(
     return undefined;
   }
 
-  const target = getExpressionSyntax(input, unwrappedCallee.objectExpressionId);
+  const target = getExpressionSyntax(input.input, unwrappedCallee.objectExpressionId);
   return target ? getClassArrayJoinTarget(input, target) : undefined;
 }
 
 function getClassArrayJoinTarget(
-  input: SymbolicExpressionEvaluatorInput,
+  input: {
+    input: SymbolicExpressionEvaluatorInput;
+    depth: number;
+    seenExpressionIds: Set<string>;
+    helperBindings?: Map<string, AbstractValue>;
+  },
   expression: ExpressionSyntaxNode,
 ): ClassArrayJoinTarget | undefined {
   const unwrapped =
     expression.expressionKind === "wrapper"
-      ? (getExpressionSyntax(input, expression.innerExpressionId) ?? expression)
+      ? (getExpressionSyntax(input.input, expression.innerExpressionId) ?? expression)
       : expression;
   if (unwrapped.expressionKind === "array-literal") {
     return {
@@ -1997,24 +2105,31 @@ function getClassArrayJoinTarget(
     };
   }
 
+  if (unwrapped.expressionKind === "call") {
+    const objectValuesTarget = getObjectValuesTarget(input, unwrapped);
+    if (objectValuesTarget) {
+      return objectValuesTarget;
+    }
+  }
+
   if (unwrapped.expressionKind !== "call" || !isBooleanFilterCall(input, unwrapped)) {
     return undefined;
   }
 
-  const filterCallee = getExpressionSyntax(input, unwrapped.calleeExpressionId);
+  const filterCallee = getExpressionSyntax(input.input, unwrapped.calleeExpressionId);
   if (!filterCallee || filterCallee.expressionKind !== "member-access") {
     return undefined;
   }
 
-  const filterTarget = getExpressionSyntax(input, filterCallee.objectExpressionId);
+  const filterTarget = getExpressionSyntax(input.input, filterCallee.objectExpressionId);
   return filterTarget ? getClassArrayJoinTarget(input, filterTarget) : undefined;
 }
 
 function isBooleanFilterCall(
-  input: SymbolicExpressionEvaluatorInput,
+  input: { input: SymbolicExpressionEvaluatorInput },
   expression: Extract<ExpressionSyntaxNode, { expressionKind: "call" }>,
 ): boolean {
-  const callee = getExpressionSyntax(input, expression.calleeExpressionId);
+  const callee = getExpressionSyntax(input.input, expression.calleeExpressionId);
   if (!callee || callee.expressionKind !== "member-access" || callee.propertyName !== "filter") {
     return false;
   }
@@ -2027,8 +2142,64 @@ function isBooleanFilterCall(
     return false;
   }
 
-  const argument = getExpressionSyntax(input, expression.argumentExpressionIds[0]);
+  const argument = getExpressionSyntax(input.input, expression.argumentExpressionIds[0]);
   return argument?.expressionKind === "identifier" && argument.name === "Boolean";
+}
+
+function getObjectValuesTarget(
+  input: {
+    input: SymbolicExpressionEvaluatorInput;
+    depth: number;
+    seenExpressionIds: Set<string>;
+    helperBindings?: Map<string, AbstractValue>;
+  },
+  expression: Extract<ExpressionSyntaxNode, { expressionKind: "call" }>,
+): ClassArrayJoinTarget | undefined {
+  if (expression.argumentExpressionIds.length !== 1 || expression.hasSpreadArgument) {
+    return undefined;
+  }
+
+  const callee = getExpressionSyntax(input.input, expression.calleeExpressionId);
+  if (!callee || callee.expressionKind !== "member-access" || callee.propertyName !== "values") {
+    return undefined;
+  }
+
+  const objectCallee = getExpressionSyntax(input.input, callee.objectExpressionId);
+  if (objectCallee?.expressionKind !== "identifier" || objectCallee.name !== "Object") {
+    return undefined;
+  }
+
+  const targetExpression = getExpressionSyntax(input.input, expression.argumentExpressionIds[0]);
+  const objectLiteral = targetExpression
+    ? resolveObjectLiteralExpressionSyntax({
+        input: input.input,
+        expression: targetExpression,
+        depth: input.depth + 1,
+        seenExpressionIds: input.seenExpressionIds,
+        helperBindings: input.helperBindings,
+      })
+    : undefined;
+  if (!objectLiteral || objectLiteral.hasSpreadProperty || objectLiteral.hasUnsupportedProperty) {
+    return undefined;
+  }
+
+  const elementExpressionIds: string[] = [];
+  for (const property of objectLiteral.properties) {
+    if (
+      property.propertyKind !== "property" ||
+      property.keyKind === "computed" ||
+      !property.valueExpressionId
+    ) {
+      return undefined;
+    }
+    elementExpressionIds.push(property.valueExpressionId);
+  }
+
+  return {
+    elementExpressionIds,
+    hasSpreadElement: false,
+    hasOmittedElement: false,
+  };
 }
 
 function getJoinSeparator(

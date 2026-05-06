@@ -411,6 +411,14 @@ function buildChildIndexByElementId(renderModel: RenderModel): Map<string, numbe
       }
     }
 
+    if (!element.parentElementId) {
+      const topLevelChildIndex = path.segments.find((segment) => segment.kind === "child-index");
+      if (topLevelChildIndex?.kind === "child-index") {
+        childIndexByElementId.set(element.id, topLevelChildIndex.index);
+        continue;
+      }
+    }
+
     for (let i = path.segments.length - 1; i >= 0; i -= 1) {
       const segment = path.segments[i];
       if (segment.kind === "child-index") {

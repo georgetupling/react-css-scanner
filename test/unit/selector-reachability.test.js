@@ -494,6 +494,27 @@ test("selector reachability preserves child emission provenance across component
   assert.equal(subjectElement.placementComponentNodeId, appComponent.componentNodeId);
 });
 
+test("selector reachability matches adjacent siblings across component expansion boundaries", async () => {
+  const renderStructure = await buildRenderStructureFixture({
+    sourceText: [
+      "function Second() {",
+      '  return <span className="second">Two</span>;',
+      "}",
+      "export function App() {",
+      '  return <><span className="first">One</span><Second /></>;',
+      "}",
+      "",
+    ].join("\n"),
+    cssText: ".first + .second { margin-left: 0.5rem; }\n",
+  });
+
+  const result = buildSelectorReachability(renderStructure);
+  const branch = findBranch(result, ".first + .second");
+
+  assert.equal(branch.status, "definitely-matchable");
+  assert.equal(branch.matchIds.length, 1);
+});
+
 test("selector reachability marks multi-class structural sides unsupported", async () => {
   const renderStructure = await buildRenderStructureFixture({
     sourceText:

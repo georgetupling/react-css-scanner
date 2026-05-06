@@ -84,7 +84,14 @@ export function buildRenderModelIndexes(input: {
 
   for (const element of input.elements) {
     ancestorElementIdsByElementId.set(element.id, collectAncestorElementIds(element, elementById));
-    siblingElementIdsByElementId.set(element.id, collectSiblingElementIds(element, elementById));
+    siblingElementIdsByElementId.set(
+      element.id,
+      collectSiblingElementIds({
+        element,
+        elementsById: elementById,
+        boundariesById: componentBoundaryById,
+      }),
+    );
   }
 
   for (const emissionSite of input.emissionSites) {
@@ -224,10 +231,12 @@ function collectAncestorElementIds(
   return ancestorIds;
 }
 
-function collectSiblingElementIds(
-  element: RenderedElement,
-  elementsById: Map<string, RenderedElement>,
-): string[] {
+function collectSiblingElementIds(input: {
+  element: RenderedElement;
+  elementsById: Map<string, RenderedElement>;
+  boundariesById: Map<string, RenderedComponentBoundary>;
+}): string[] {
+  const { element, elementsById, boundariesById } = input;
   if (element.parentElementId) {
     return (
       elementsById
@@ -237,13 +246,39 @@ function collectSiblingElementIds(
     );
   }
 
-  return [...elementsById.values()]
-    .filter(
-      (candidate) =>
-        candidate.id !== element.id &&
-        !candidate.parentElementId &&
-        candidate.parentBoundaryId === element.parentBoundaryId,
-    )
-    .map((candidate) => candidate.id)
+  const boundary = boundariesById.get(element.parentBoundaryId);
+  const siblingBoundary =
+    boundary && !boundary.parentElementId && boundary.parentBoundaryId
+      ? boundariesById.get(boundary.parentBoundaryId)
+      : boundary;
+  const siblingElementIds = siblingBoundary
+    ? collectBoundaryTopLevelElementIds({
+        boundary: siblingBoundary,
+        boundariesById,
+      })
+    : [...elementsById.values()]
+        .filter(
+          (candidate) =>
+            !candidate.parentElementId && candidate.parentBoundaryId === element.parentBoundaryId,
+        )
+        .map((candidate) => candidate.id);
+
+  return siblingElementIds
+    .filter((elementId) => elementId !== element.id)
     .sort((left, right) => left.localeCompare(right));
+}
+
+function collectBoundaryTopLevelElementIds(input: {
+  boundary: RenderedComponentBoundary;
+  boundariesById: Map<string, RenderedComponentBoundary>;
+}): string[] {
+  const elementIds = [...input.boundary.rootElementIds];
+  for (const childBoundaryId of input.boundary.childBoundaryIds) {
+    const childBoundary = input.boundariesById.get(childBoundaryId);
+    if (!childBoundary || childBoundary.parentElementId) {
+      continue;
+    }
+    elementIds.push(...childBoundary.rootElementIds);
+  }
+  return elementIds;
 }

@@ -59,6 +59,154 @@ test("missing-css-class does not report defined classes", async () => {
   }
 });
 
+test("missing-css-class accepts classes defined through modern selector wrappers", async () => {
+  const cases = [
+    {
+      name: ":is()",
+      className: "btn",
+      source:
+        'import "./App.css";\nexport function App() { return <button className="btn">Save</button>; }\n',
+      cssPath: "src/App.css",
+      css: ":is(.btn) { color: green; }\n",
+    },
+    {
+      name: ":where()",
+      className: "btn",
+      source:
+        'import "./App.css";\nexport function App() { return <button className="btn">Save</button>; }\n',
+      cssPath: "src/App.css",
+      css: ":where(.btn) { color: green; }\n",
+    },
+    {
+      name: "[class~=token]",
+      className: "token",
+      source:
+        'import "./App.css";\nexport function App() { return <div className="token">Hello</div>; }\n',
+      cssPath: "src/App.css",
+      css: '[class~="token"] { color: green; }\n',
+    },
+    {
+      name: "CSS Module :global()",
+      className: "global-token",
+      source:
+        'import "./App.module.css";\nexport function App() { return <div className="global-token">Hello</div>; }\n',
+      cssPath: "src/App.module.css",
+      css: ":global(.global-token) { color: green; }\n",
+    },
+  ];
+
+  const failures = [];
+  for (const currentCase of cases) {
+    const project = await new TestProjectBuilder()
+      .withSourceFile("src/App.tsx", currentCase.source)
+      .withCssFile(currentCase.cssPath, currentCase.css)
+      .build();
+
+    try {
+      const result = await scanProject({ rootDir: project.rootDir });
+      if (hasClassFinding(result, "missing-css-class", currentCase.className)) {
+        failures.push(`${currentCase.name} reported ${currentCase.className} as missing`);
+      }
+    } finally {
+      await project.cleanup();
+    }
+  }
+
+  assert.deepEqual(failures, []);
+});
+
+test("missing-css-class sees className from JSX spread object literals", async () => {
+  const usedProject = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        'const props = { className: "spread" };',
+        "export function App() { return <div {...props}>Hello</div>; }",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".spread { color: green; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: usedProject.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", ["spread"]);
+  } finally {
+    await usedProject.cleanup();
+  }
+
+  const missingProject = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'const props = { className: "missing" };',
+        "export function App() { return <div {...props}>Hello</div>; }",
+        "",
+      ].join("\n"),
+    )
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: missingProject.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
+      cssFilePaths: [],
+    });
+
+    assert.equal(hasClassFinding(result, "missing-css-class", "missing"), true);
+  } finally {
+    await missingProject.cleanup();
+  }
+});
+
+test("missing-css-class sees className from React.createElement props", async () => {
+  const usedProject = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import React from "react";',
+        'import "./App.css";',
+        'export function App() { return React.createElement("div", { className: "created" }, "Hello"); }',
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".created { color: green; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: usedProject.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", ["created"]);
+  } finally {
+    await usedProject.cleanup();
+  }
+
+  const missingProject = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import React from "react";',
+        'export function App() { return React.createElement("div", { className: "missing" }, "Hello"); }',
+        "",
+      ].join("\n"),
+    )
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: missingProject.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
+      cssFilePaths: [],
+    });
+
+    assert.equal(hasClassFinding(result, "missing-css-class", "missing"), true);
+  } finally {
+    await missingProject.cleanup();
+  }
+});
+
 test("missing-css-class ignores object-valued JSX className maps outside class helpers", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(
@@ -1152,5 +1300,11 @@ function assertNoClassFindings(result, ruleId, classNames) {
       )
       .map((finding) => finding.data?.className),
     [],
+  );
+}
+
+function hasClassFinding(result, ruleId, className) {
+  return result.findings.some(
+    (finding) => finding.ruleId === ruleId && finding.data?.className === className,
   );
 }

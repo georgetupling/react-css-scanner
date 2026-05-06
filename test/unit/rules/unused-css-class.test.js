@@ -199,6 +199,158 @@ test("unused-css-class does not report referenced classes", async () => {
   }
 });
 
+test("unused-css-class respects JSX spread className prop override order", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        'const props = { className: "actual" };',
+        'export function App() { return <div className="overridden" {...props}>Hello</div>; }',
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".actual { color: green; }\n.overridden { color: red; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", ["actual"]);
+    assert.equal(hasClassFinding(result, "unused-css-class", "overridden"), true);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unused-css-class treats imported local class constants as finite references", async () => {
+  const constantProject = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        'import { rootClass } from "./classes";',
+        "export function App() { return <main className={rootClass}>Hello</main>; }",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile("src/classes.ts", 'export const rootClass = "root";\n')
+    .withCssFile("src/App.css", ".root { color: green; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: constantProject.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", ["root"]);
+  } finally {
+    await constantProject.cleanup();
+  }
+
+  const lookupProject = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        'import { toneClass } from "./classes";',
+        "export function App({ tone }: { tone: keyof typeof toneClass }) {",
+        "  return <button className={toneClass[tone]}>Save</button>;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/classes.ts",
+      'export const toneClass = { primary: "btn-primary", secondary: "btn-secondary" } as const;\n',
+    )
+    .withCssFile(
+      "src/App.css",
+      ".btn-primary { color: blue; }\n.btn-secondary { color: purple; }\n",
+    )
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: lookupProject.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", ["btn-primary", "btn-secondary"]);
+  } finally {
+    await lookupProject.cleanup();
+  }
+});
+
+test("unused-css-class accepts finite Object.values(...).join class composition", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        'const classes = { root: "root", elevated: "elevated" };',
+        'export function App() { return <div className={Object.values(classes).join(" ")}>Hello</div>; }',
+        "",
+      ].join("\n"),
+    )
+    .withCssFile(
+      "src/App.css",
+      ".root { color: green; }\n.elevated { box-shadow: 0 0 2px black; }\n",
+    )
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", ["root", "elevated"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unused-css-class preserves className flow through forwardRef wrappers", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import { forwardRef } from "react";',
+        'import "./App.css";',
+        "const Box = forwardRef<HTMLDivElement, { className?: string }>(function Box(props, ref) {",
+        "  return <div ref={ref} className={props.className} />;",
+        "});",
+        'export function App() { return <Box className="forwarded" />; }',
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".forwarded { color: green; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", ["forwarded"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unused-css-class reports classes only referenced in literal unreachable render branches", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        'export function App() { return <>{false && <div className="never">Never</div>}</>; }',
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".never { color: red; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assert.equal(hasClassFinding(result, "unused-css-class", "never"), true);
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("unused-css-class treats className on unresolved components as used", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(
@@ -2685,6 +2837,12 @@ function assertNoClassFindings(result, ruleId, classNames) {
       )
       .map((finding) => finding.data?.className),
     [],
+  );
+}
+
+function hasClassFinding(result, ruleId, className) {
+  return result.findings.some(
+    (finding) => finding.ruleId === ruleId && finding.data?.className === className,
   );
 }
 

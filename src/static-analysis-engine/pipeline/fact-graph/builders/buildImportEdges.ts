@@ -30,6 +30,7 @@ type ImportRecord = {
   resolutionStatus: FactImportResolutionStatus;
   resolvedFilePath?: string;
   cssSemantics?: FactCssSemantics;
+  importNames?: ImportsEdge["importNames"];
 };
 
 export function buildImportEdges(input: {
@@ -138,6 +139,9 @@ export function buildImportEdges(input: {
         ? { resolvedTargetNodeId: resolvedImport.resolvedTargetNodeId }
         : {}),
       ...(record.cssSemantics ? { cssSemantics: record.cssSemantics } : {}),
+      ...(record.importNames && record.importNames.length > 0
+        ? { importNames: record.importNames }
+        : {}),
       confidence: "high",
       provenance: factGraphProvenance(
         `Mapped import relation from ${record.importerKind} ${record.importerFilePath} to ${record.specifier}`,
@@ -163,6 +167,14 @@ function normalizeFrontendImportRecord(input: {
     importLoading: input.importRecord.importLoading,
     specifier: input.importRecord.specifier,
     resolutionStatus: inferFrontendImportResolution(input.importRecord),
+    importNames: input.importRecord.importNames
+      .filter((importName) => !importName.typeOnly)
+      .map((importName) => ({
+        bindingKind: importName.kind,
+        importedName: importName.importedName,
+        localName: importName.localName,
+      }))
+      .sort(compareImportNames),
     ...(input.importRecord.importKind === "css" || input.importRecord.importKind === "external-css"
       ? { cssSemantics: getCssSemantics(input.importRecord.specifier) }
       : {}),
@@ -316,8 +328,42 @@ function upsertImportRecord(input: {
 }): void {
   const existing = input.recordsByKey.get(input.key);
   if (!existing || shouldReplaceImportRecord(existing, input.record)) {
-    input.recordsByKey.set(input.key, input.record);
+    input.recordsByKey.set(input.key, {
+      ...input.record,
+      importNames: mergeImportNames(existing?.importNames, input.record.importNames),
+    });
+    return;
   }
+
+  input.recordsByKey.set(input.key, {
+    ...existing,
+    importNames: mergeImportNames(existing.importNames, input.record.importNames),
+  });
+}
+
+function mergeImportNames(
+  left: ImportsEdge["importNames"],
+  right: ImportsEdge["importNames"],
+): ImportsEdge["importNames"] {
+  const byKey = new Map<string, NonNullable<ImportsEdge["importNames"]>[number]>();
+  for (const importName of [...(left ?? []), ...(right ?? [])]) {
+    byKey.set(
+      `${importName.bindingKind}\0${importName.importedName}\0${importName.localName}`,
+      importName,
+    );
+  }
+  return [...byKey.values()].sort(compareImportNames);
+}
+
+function compareImportNames(
+  left: NonNullable<ImportsEdge["importNames"]>[number],
+  right: NonNullable<ImportsEdge["importNames"]>[number],
+): number {
+  return (
+    left.bindingKind.localeCompare(right.bindingKind) ||
+    left.localName.localeCompare(right.localName) ||
+    left.importedName.localeCompare(right.importedName)
+  );
 }
 
 function shouldReplaceImportRecord(existing: ImportRecord, candidate: ImportRecord): boolean {
