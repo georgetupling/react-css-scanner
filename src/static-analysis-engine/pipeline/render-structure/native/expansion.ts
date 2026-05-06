@@ -15,6 +15,7 @@ import type {
   RenderedComponentBoundary,
   RenderedElement,
 } from "../types.js";
+import { evaluateStaticTruthiness } from "../../static-truthiness.js";
 import { normalizeAnchor, normalizeProjectPath, uniqueSorted } from "./common.js";
 import { buildDiagnostic } from "./diagnostics.js";
 
@@ -877,94 +878,31 @@ function evaluateStaticConditionValue(input: {
   depth: number;
   visitedExpressionIds: Set<string>;
 }): boolean | "nullish" | undefined {
-  if (input.depth > 20) {
-    return undefined;
+  const direct = evaluateStaticTruthiness({
+    expression: input.expression,
+    depth: input.depth,
+    seenExpressionIds: input.visitedExpressionIds,
+    resolveExpressionById: (expressionId) => getExpressionSyntaxNodeById(input.state, expressionId),
+    resolveIdentifier: (expression) =>
+      resolveLocalBindingExpressionForIdentifier({
+        state: input.state,
+        context: input.context,
+        identifierName: expression.name,
+        targetLocation: expression.location,
+      }),
+  });
+  if (direct !== undefined) {
+    return direct;
   }
-  if (input.visitedExpressionIds.has(input.expression.expressionId)) {
-    return undefined;
-  }
-  input.visitedExpressionIds.add(input.expression.expressionId);
 
-  if (input.expression.expressionKind === "boolean-literal") {
-    return input.expression.value;
+  if (input.expression.expressionKind === "unsupported") {
+    return evaluateUnsupportedComparisonExpression({
+      state: input.state,
+      context: input.context,
+      rawText: input.expression.rawText,
+    });
   }
-  if (input.expression.expressionKind === "nullish-literal") {
-    return "nullish";
-  }
-  if (input.expression.expressionKind === "numeric-literal") {
-    return Number(input.expression.value) !== 0;
-  }
-  if (input.expression.expressionKind === "string-literal") {
-    return input.expression.value.length > 0;
-  }
-  if (input.expression.expressionKind === "wrapper") {
-    const inner = getExpressionSyntaxNodeById(input.state, input.expression.innerExpressionId);
-    return inner
-      ? evaluateStaticConditionValue({
-          ...input,
-          expression: inner,
-          depth: input.depth + 1,
-        })
-      : undefined;
-  }
-  if (input.expression.expressionKind === "prefix-unary" && input.expression.operator === "!") {
-    const operand = getExpressionSyntaxNodeById(input.state, input.expression.operandExpressionId);
-    const operandValue =
-      operand &&
-      evaluateStaticConditionValue({
-        ...input,
-        expression: operand,
-        depth: input.depth + 1,
-      });
-    if (operandValue === undefined) {
-      return undefined;
-    }
-    if (operandValue === "nullish") {
-      return true;
-    }
-    return !operandValue;
-  }
-  if (input.expression.expressionKind === "binary") {
-    const left = getExpressionSyntaxNodeById(input.state, input.expression.leftExpressionId);
-    const right = getExpressionSyntaxNodeById(input.state, input.expression.rightExpressionId);
-    const leftValue =
-      left &&
-      evaluateStaticConditionValue({
-        ...input,
-        expression: left,
-        depth: input.depth + 1,
-      });
-    const rightValue =
-      right &&
-      evaluateStaticConditionValue({
-        ...input,
-        expression: right,
-        depth: input.depth + 1,
-      });
-    if (input.expression.operator === "&&") {
-      if (leftValue === undefined || rightValue === undefined) {
-        return undefined;
-      }
-      return leftValue === "nullish" ? false : Boolean(leftValue) && Boolean(rightValue);
-    }
-    if (input.expression.operator === "||") {
-      if (leftValue === undefined || rightValue === undefined) {
-        return undefined;
-      }
-      return leftValue === "nullish"
-        ? rightValue === "nullish"
-          ? false
-          : Boolean(rightValue)
-        : Boolean(leftValue) || (rightValue === "nullish" ? false : Boolean(rightValue));
-    }
-    if (input.expression.operator === "??") {
-      if (leftValue === undefined || rightValue === undefined) {
-        return undefined;
-      }
-      return leftValue === "nullish" ? rightValue : leftValue;
-    }
-    return undefined;
-  }
+
   if (input.expression.expressionKind === "identifier") {
     const resolvedExpression = resolveLocalBindingExpressionForIdentifier({
       state: input.state,
@@ -972,18 +910,7 @@ function evaluateStaticConditionValue(input: {
       identifierName: input.expression.name,
       targetLocation: input.expression.location,
     });
-    if (!resolvedExpression) {
-      return undefined;
-    }
-    const direct = evaluateStaticConditionValue({
-      ...input,
-      expression: resolvedExpression,
-      depth: input.depth + 1,
-    });
-    if (direct !== undefined) {
-      return direct;
-    }
-    if (resolvedExpression.expressionKind === "unsupported") {
+    if (resolvedExpression?.expressionKind === "unsupported") {
       return evaluateUnsupportedComparisonExpression({
         state: input.state,
         context: input.context,
@@ -1001,10 +928,14 @@ function resolveLocalBindingExpressionForIdentifier(input: {
   identifierName: string;
   targetLocation: RenderStructureInput["graph"]["nodes"]["expressionSyntax"][number]["location"];
 }): RenderStructureInput["graph"]["nodes"]["expressionSyntax"][number] | undefined {
-  const bindingNodeIds =
-    input.state.input.graph.indexes.localValueBindingNodeIdsByOwnerNodeId.get(
-      input.context.componentNodeId,
-    ) ?? [];
+  const ownerNodeIds = uniqueSorted([
+    input.context.componentNodeId,
+    input.state.input.graph.indexes.moduleNodeIdByFilePath.get(input.targetLocation.filePath) ?? "",
+  ]).filter(Boolean);
+  const bindingNodeIds = ownerNodeIds.flatMap(
+    (ownerNodeId) =>
+      input.state.input.graph.indexes.localValueBindingNodeIdsByOwnerNodeId.get(ownerNodeId) ?? [],
+  );
   const bindings = bindingNodeIds
     .map((bindingNodeId) => input.state.input.graph.indexes.nodesById.get(bindingNodeId))
     .filter((node): node is RenderStructureInput["graph"]["nodes"]["localValueBindings"][number] =>

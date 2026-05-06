@@ -14,6 +14,7 @@ import {
   buildConditions,
 } from "./canonicalClassExpressionBuilder.js";
 import type { ExpressionSyntaxNode } from "../../fact-graph/index.js";
+import { evaluateStaticTruthiness } from "../../static-truthiness.js";
 import { conditionId, externalContributionId } from "../ids.js";
 import type { ExternalClassContribution } from "../types.js";
 import type { SymbolicExpressionEvaluator, SymbolicExpressionEvaluatorInput } from "../types.js";
@@ -1038,7 +1039,22 @@ function summarizeBinaryExpressionSyntax(input: {
     return combineStringLikeValues(left, right);
   }
 
+  const leftExpression = getExpressionSyntax(input.input, input.expression.leftExpressionId);
+  const leftTruthiness = leftExpression
+    ? evaluateExpressionStaticTruthiness({
+        ...input,
+        expression: leftExpression,
+      })
+    : undefined;
+
   if (input.expression.operator === "&&") {
+    if (leftTruthiness === false || leftTruthiness === "nullish") {
+      return { kind: "string-exact", value: "" };
+    }
+    if (leftTruthiness === true) {
+      return right;
+    }
+
     const rightClassSet = toClassSet(right);
     return {
       kind: "class-set",
@@ -1051,7 +1067,10 @@ function summarizeBinaryExpressionSyntax(input: {
   }
 
   if (input.expression.operator === "??") {
-    if (left.kind !== "unknown") {
+    if (leftTruthiness === "nullish") {
+      return right;
+    }
+    if (leftTruthiness !== undefined || left.kind !== "unknown") {
       return left;
     }
 
@@ -1066,6 +1085,15 @@ function summarizeBinaryExpressionSyntax(input: {
     };
   }
 
+  if (input.expression.operator === "||") {
+    if (leftTruthiness === true) {
+      return left;
+    }
+    if (leftTruthiness === false || leftTruthiness === "nullish") {
+      return right;
+    }
+  }
+
   return mergeClassSets([left, right], "logical-or expression");
 }
 
@@ -1076,6 +1104,23 @@ function summarizeConditionalExpressionSyntax(input: {
   seenExpressionIds: Set<string>;
   helperBindings?: Map<string, AbstractValue>;
 }): AbstractValue {
+  const conditionExpression = getExpressionSyntax(
+    input.input,
+    input.expression.conditionExpressionId,
+  );
+  const conditionTruthiness = conditionExpression
+    ? evaluateExpressionStaticTruthiness({
+        ...input,
+        expression: conditionExpression,
+      })
+    : undefined;
+  if (conditionTruthiness === true) {
+    return getExpressionValue(input, input.expression.whenTrueExpressionId);
+  }
+  if (conditionTruthiness === false || conditionTruthiness === "nullish") {
+    return getExpressionValue(input, input.expression.whenFalseExpressionId);
+  }
+
   const whenTrue = getExpressionValue(input, input.expression.whenTrueExpressionId);
   const whenFalse = getExpressionValue(input, input.expression.whenFalseExpressionId);
   const stringCandidates = collectStringCandidates(whenTrue, whenFalse);
@@ -1091,6 +1136,22 @@ function summarizeConditionalExpressionSyntax(input: {
   }
 
   return mergeClassSets([whenTrue, whenFalse], "conditional expression");
+}
+
+function evaluateExpressionStaticTruthiness(input: {
+  input: SymbolicExpressionEvaluatorInput;
+  expression: ExpressionSyntaxNode;
+  depth: number;
+  seenExpressionIds: Set<string>;
+  helperBindings?: Map<string, AbstractValue>;
+}): ReturnType<typeof evaluateStaticTruthiness> {
+  return evaluateStaticTruthiness({
+    expression: input.expression,
+    maxDepth: input.input.options.maxExpressionDepth ?? 100,
+    depth: input.depth,
+    seenExpressionIds: input.seenExpressionIds,
+    resolveExpressionById: (expressionId) => getExpressionSyntax(input.input, expressionId),
+  });
 }
 
 function summarizeCallExpressionSyntax(input: {

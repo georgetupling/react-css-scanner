@@ -225,7 +225,7 @@ test.todo(
   },
 );
 
-test.todo("QA 0.3.5: statically truthy logical-or fallback classes are unused", async () => {
+test("QA 0.3.5: statically truthy logical-or fallback classes are unused", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(
       "src/App.tsx",
@@ -251,7 +251,7 @@ test.todo("QA 0.3.5: statically truthy logical-or fallback classes are unused", 
   }
 });
 
-test.todo("QA 0.3.5: const false conditional render classes are unused", async () => {
+test("QA 0.3.5: const false conditional render classes are unused", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(
       "src/App.tsx",
