@@ -109,7 +109,7 @@ test(
   },
 );
 
-test("JSX spread className object literals create class references", { todo: TODO }, async () => {
+test("JSX spread className object literals create class references", async () => {
   const usedResult = await scan({
     source:
       'import "./App.css";\nconst props = { className: "spread" };\nexport function App() { return <div {...props}>Hello</div>; }\n',
@@ -125,7 +125,7 @@ test("JSX spread className object literals create class references", { todo: TOD
   assert.ok(classFindings(missingResult, "missing-css-class", ["missing"]).length > 0);
 });
 
-test("JSX spread className respects prop override order", { todo: TODO }, async () => {
+test("JSX spread className respects prop override order", async () => {
   const result = await scan({
     source:
       'import "./App.css";\nconst props = { className: "actual" };\nexport function App() { return <div className="overridden" {...props}>Hello</div>; }\n',
@@ -136,7 +136,7 @@ test("JSX spread className respects prop override order", { todo: TODO }, async 
   assert.ok(classFindings(result, "unused-css-class", ["overridden"]).length > 0);
 });
 
-test("React.createElement className props create class references", { todo: TODO }, async () => {
+test("React.createElement className props create class references", async () => {
   const usedResult = await scan({
     source:
       'import React from "react";\nimport "./App.css";\nexport function App() { return React.createElement("div", { className: "created" }, "Hello"); }\n',

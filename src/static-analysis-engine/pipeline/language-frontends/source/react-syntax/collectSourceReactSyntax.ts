@@ -20,6 +20,7 @@ import {
 import {
   dedupeClassExpressionSites,
   tryCreateCloneElementClassExpressionSite,
+  tryCreateCreateElementClassExpressionSite,
   tryCreateCssModuleClassExpressionSite,
   createJsxClassExpressionSites,
 } from "./classExpressionSites.js";
@@ -208,6 +209,17 @@ export function collectSourceReactSyntax(input: {
     if (cloneElementClassSite) {
       classExpressionSites.push(cloneElementClassSite.site);
       expressionSyntax.push(...cloneElementClassSite.expressionSyntax);
+    }
+
+    const createElementClassSite = tryCreateCreateElementClassExpressionSite({
+      node,
+      filePath: input.filePath,
+      sourceFile: input.sourceFile,
+      ...(currentComponentKey ? { emittingComponentKey: currentComponentKey } : {}),
+    });
+    if (createElementClassSite) {
+      classExpressionSites.push(createElementClassSite.site);
+      expressionSyntax.push(...createElementClassSite.expressionSyntax);
     }
 
     const renderPropInvocation = tryCreateRenderPropInvocation({

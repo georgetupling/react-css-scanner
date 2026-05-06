@@ -33,17 +33,12 @@ export function createJsxClassExpressionSites(input: {
   const attributes = ts.isJsxElement(input.node)
     ? input.node.openingElement.attributes.properties
     : input.node.attributes.properties;
-  const classAttributes = attributes.filter(
-    (attribute): attribute is ts.JsxAttribute =>
-      ts.isJsxAttribute(attribute) &&
-      ts.isIdentifier(attribute.name) &&
-      Boolean(attribute.initializer) &&
-      isClassLikeJsxAttributeName({
-        attributeName: attribute.name.text,
-        intrinsicTag,
-      }),
-  );
-  if (classAttributes.length === 0) {
+  const classSiteInputs = collectEffectiveJsxClassSiteInputs({
+    attributes,
+    sourceFile: input.sourceFile,
+    intrinsicTag,
+  });
+  if (classSiteInputs.length === 0) {
     return [];
   }
 
@@ -51,16 +46,10 @@ export function createJsxClassExpressionSites(input: {
   const placementComponentKey = input.renderSite?.placementComponentKey ?? emittingComponentKey;
   const sites: CreatedReactClassExpressionSite[] = [];
 
-  for (const classAttribute of classAttributes) {
-    if (!ts.isIdentifier(classAttribute.name)) {
-      continue;
-    }
-    const attributeName = classAttribute.name.text;
-    const initializer = classAttribute.initializer;
-    if (!initializer) {
-      continue;
-    }
-    const expression = unwrapJsxAttributeInitializer(initializer);
+  for (const classSiteInput of classSiteInputs) {
+    const attributeName = classSiteInput.attributeName;
+    const initializer = classSiteInput.initializer;
+    const expression = classSiteInput.expression;
     const anchorNode =
       !intrinsicTag && expression
         ? (unwrapFunctionReturnedExpression(expression) ?? expression)
@@ -95,6 +84,161 @@ export function createJsxClassExpressionSites(input: {
   }
 
   return sites;
+}
+
+type JsxClassSiteInput = {
+  attributeName: string;
+  initializer: ts.Node;
+  expression?: ts.Expression;
+};
+
+function collectEffectiveJsxClassSiteInputs(input: {
+  attributes: ts.NodeArray<ts.JsxAttributeLike>;
+  sourceFile: ts.SourceFile;
+  intrinsicTag: boolean;
+}): JsxClassSiteInput[] {
+  if (!input.intrinsicTag) {
+    return input.attributes.flatMap((attribute) => {
+      if (
+        !ts.isJsxAttribute(attribute) ||
+        !ts.isIdentifier(attribute.name) ||
+        !attribute.initializer ||
+        !isClassLikeJsxAttributeName({
+          attributeName: attribute.name.text,
+          intrinsicTag: input.intrinsicTag,
+        })
+      ) {
+        return [];
+      }
+
+      return [
+        {
+          attributeName: attribute.name.text,
+          initializer: attribute.initializer,
+          expression: unwrapJsxAttributeInitializer(attribute.initializer),
+        },
+      ];
+    });
+  }
+
+  let effectiveClassName: JsxClassSiteInput | undefined;
+  for (const attribute of input.attributes) {
+    if (
+      ts.isJsxAttribute(attribute) &&
+      ts.isIdentifier(attribute.name) &&
+      attribute.name.text === "className" &&
+      attribute.initializer
+    ) {
+      effectiveClassName = {
+        attributeName: "className",
+        initializer: attribute.initializer,
+        expression: unwrapJsxAttributeInitializer(attribute.initializer),
+      };
+      continue;
+    }
+
+    if (ts.isJsxSpreadAttribute(attribute)) {
+      const spreadClassName = resolveSpreadClassName({
+        expression: attribute.expression,
+        sourceFile: input.sourceFile,
+      });
+      if (spreadClassName) {
+        effectiveClassName = spreadClassName;
+      }
+    }
+  }
+
+  return effectiveClassName ? [effectiveClassName] : [];
+}
+
+function resolveSpreadClassName(input: {
+  expression: ts.Expression;
+  sourceFile: ts.SourceFile;
+}): JsxClassSiteInput | undefined {
+  const objectLiteral = resolveObjectLiteralExpression(input.expression, input.sourceFile);
+  if (!objectLiteral) {
+    return undefined;
+  }
+
+  const classNameProperty = objectLiteral.properties.find(
+    (property): property is ts.PropertyAssignment =>
+      ts.isPropertyAssignment(property) && getStaticPropertyName(property.name) === "className",
+  );
+  if (!classNameProperty) {
+    return undefined;
+  }
+
+  return {
+    attributeName: "className",
+    initializer: classNameProperty.initializer,
+    expression: classNameProperty.initializer,
+  };
+}
+
+function resolveObjectLiteralExpression(
+  expression: ts.Expression,
+  sourceFile: ts.SourceFile,
+): ts.ObjectLiteralExpression | undefined {
+  const unwrapped = unwrapExpression(expression);
+  if (ts.isObjectLiteralExpression(unwrapped)) {
+    return unwrapped;
+  }
+
+  if (!ts.isIdentifier(unwrapped)) {
+    return undefined;
+  }
+
+  const declaration = findConstObjectLiteralDeclaration(sourceFile, unwrapped.text);
+  return declaration?.initializer
+    ? unwrapObjectLiteralInitializer(declaration.initializer)
+    : undefined;
+}
+
+function findConstObjectLiteralDeclaration(
+  sourceFile: ts.SourceFile,
+  localName: string,
+): ts.VariableDeclaration | undefined {
+  for (const statement of sourceFile.statements) {
+    if (!ts.isVariableStatement(statement)) {
+      continue;
+    }
+    const isConst = (statement.declarationList.flags & ts.NodeFlags.Const) === ts.NodeFlags.Const;
+    if (!isConst) {
+      continue;
+    }
+    for (const declaration of statement.declarationList.declarations) {
+      if (
+        ts.isIdentifier(declaration.name) &&
+        declaration.name.text === localName &&
+        declaration.initializer
+      ) {
+        return declaration;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function unwrapObjectLiteralInitializer(
+  expression: ts.Expression,
+): ts.ObjectLiteralExpression | undefined {
+  const unwrapped = unwrapExpression(expression);
+  return ts.isObjectLiteralExpression(unwrapped) ? unwrapped : undefined;
+}
+
+function unwrapExpression(expression: ts.Expression): ts.Expression {
+  let current = expression;
+  while (
+    ts.isParenthesizedExpression(current) ||
+    ts.isAsExpression(current) ||
+    ts.isTypeAssertionExpression(current) ||
+    ts.isNonNullExpression(current) ||
+    ts.isSatisfiesExpression(current)
+  ) {
+    current = current.expression;
+  }
+  return current;
 }
 
 function unwrapFunctionReturnedExpression(expression: ts.Expression): ts.Expression | undefined {
@@ -206,6 +350,61 @@ export function tryCreateCloneElementClassExpressionSite(input: {
   };
 }
 
+export function tryCreateCreateElementClassExpressionSite(input: {
+  node: ts.Node;
+  filePath: string;
+  sourceFile: ts.SourceFile;
+  emittingComponentKey?: string;
+}): CreatedReactClassExpressionSite | undefined {
+  if (!ts.isCallExpression(input.node) || !isCreateElementCall(input.node)) {
+    return undefined;
+  }
+
+  const propsArgument = input.node.arguments[1];
+  if (!propsArgument || !ts.isObjectLiteralExpression(unwrapExpression(propsArgument))) {
+    return undefined;
+  }
+
+  const objectLiteral = unwrapExpression(propsArgument);
+  if (!ts.isObjectLiteralExpression(objectLiteral)) {
+    return undefined;
+  }
+
+  const classNameProperty = objectLiteral.properties.find(
+    (property): property is ts.PropertyAssignment =>
+      ts.isPropertyAssignment(property) && getStaticPropertyName(property.name) === "className",
+  );
+  if (!classNameProperty) {
+    return undefined;
+  }
+
+  const expression = classNameProperty.initializer;
+  const location = toSourceAnchor(expression, input.sourceFile, input.filePath);
+  const expressionSyntax = collectExpressionSyntaxForNode({
+    node: expression,
+    filePath: input.filePath,
+    sourceFile: input.sourceFile,
+  });
+
+  return {
+    site: {
+      siteKey: createSiteKey("class-expression", location, "create-element-class"),
+      kind: "jsx-class",
+      filePath: input.filePath,
+      location,
+      expressionId: expressionSyntax.rootExpressionId,
+      rawExpressionText: expression.getText(input.sourceFile),
+      ...(input.emittingComponentKey
+        ? {
+            emittingComponentKey: input.emittingComponentKey,
+            placementComponentKey: input.emittingComponentKey,
+          }
+        : {}),
+    },
+    expressionSyntax: expressionSyntax.expressions,
+  };
+}
+
 export function dedupeClassExpressionSites(
   sites: ReactClassExpressionSiteFact[],
 ): ReactClassExpressionSiteFact[] {
@@ -223,6 +422,15 @@ function isCloneElementCall(expression: ts.CallExpression): boolean {
   }
 
   return ts.isPropertyAccessExpression(callee) && callee.name.text === "cloneElement";
+}
+
+function isCreateElementCall(expression: ts.CallExpression): boolean {
+  const callee = expression.expression;
+  if (ts.isIdentifier(callee)) {
+    return callee.text === "createElement";
+  }
+
+  return ts.isPropertyAccessExpression(callee) && callee.name.text === "createElement";
 }
 
 function getStaticPropertyName(name: ts.PropertyName): string | undefined {
