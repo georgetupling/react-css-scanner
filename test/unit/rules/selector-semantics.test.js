@@ -105,6 +105,91 @@ test("unsatisfiable-selector does not report adjacent sibling selectors satisfie
   }
 });
 
+test("unsatisfiable-selector does not report adjacent siblings from literal mapped arrays", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        "export function App() {",
+        "  return (",
+        "    <>",
+        "      {[1, 2, 3].map((item) => (",
+        '        <div key={item} className="mapped-sibling" />',
+        "      ))}",
+        "    </>",
+        "  );",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".mapped-sibling + .mapped-sibling { margin-top: 1rem; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
+      cssFilePaths: ["src/App.css"],
+    });
+
+    assert.deepEqual(
+      result.findings
+        .filter(
+          (finding) =>
+            finding.ruleId === "unsatisfiable-selector" &&
+            finding.data?.selectorText === ".mapped-sibling + .mapped-sibling",
+        )
+        .map((finding) => finding.data?.selectorText),
+      [],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unsatisfiable-selector does not report adjacent selectors satisfied by explicit siblings", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        "export function App() {",
+        "  return (",
+        "    <>",
+        '      <div className="explicit-sibling" />',
+        '      <div className="explicit-sibling" />',
+        "    </>",
+        "  );",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".explicit-sibling + .explicit-sibling { margin-top: 1rem; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
+      cssFilePaths: ["src/App.css"],
+    });
+
+    assert.deepEqual(
+      result.findings
+        .filter(
+          (finding) =>
+            finding.ruleId === "unsatisfiable-selector" &&
+            finding.data?.selectorText === ".explicit-sibling + .explicit-sibling",
+        )
+        .map((finding) => finding.data?.selectorText),
+      [],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("unsatisfiable-selector still reports adjacent self selectors for statically single-item repeats", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(

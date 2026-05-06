@@ -25,7 +25,7 @@ function runMissingCssClassRule(context: RuleContext): UnresolvedFinding[] {
   >();
 
   for (const reference of getClassReferences(context.analysisEvidence)) {
-    for (const className of reference.definiteClassNames) {
+    for (const className of getReportableClassNames(reference)) {
       if (getClassDefinitionsByClassName(context.analysisEvidence, className).length > 0) {
         continue;
       }
@@ -56,6 +56,16 @@ function runMissingCssClassRule(context: RuleContext): UnresolvedFinding[] {
   return [...findingInputsByClassName.entries()]
     .map(([className, inputs]) => buildMissingClassFinding(context, className, inputs))
     .sort((left, right) => left.id.localeCompare(right.id));
+}
+
+function getReportableClassNames(reference: ClassReferenceAnalysis): string[] {
+  if (reference.unknownDynamic) {
+    return reference.definiteClassNames;
+  }
+
+  return [...new Set([...reference.definiteClassNames, ...reference.possibleClassNames])].sort(
+    (left, right) => left.localeCompare(right),
+  );
 }
 
 function buildMissingClassFinding(

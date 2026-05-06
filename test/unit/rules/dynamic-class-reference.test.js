@@ -142,6 +142,72 @@ test("dynamic-class-reference does not report bounded array joins, concatenation
   }
 });
 
+test("broad template classes expose missing and unused dynamic variants", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        'type State = "open" | "closed";',
+        "",
+        "export function App({ state }: { state: State }) {",
+        "  const dynamicName = `dynamic-${state}`;",
+        "  const invisibleMissing = `dynamic-missing-${state}`;",
+        "  return (",
+        "    <>",
+        "      <div className={dynamicName} />",
+        "      <div className={invisibleMissing} />",
+        "    </>",
+        "  );",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile(
+      "src/App.css",
+      [
+        ".dynamic-open { color: teal; }",
+        ".dynamic-closed { color: gray; }",
+        ".dynamic-missing-hidden { color: orange; }",
+        "",
+      ].join("\n"),
+    )
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
+      cssFilePaths: ["src/App.css"],
+    });
+
+    assert.deepEqual(
+      result.findings.filter((finding) => finding.ruleId === "dynamic-class-reference"),
+      [],
+    );
+    assert.deepEqual(
+      result.findings
+        .filter(
+          (candidate) =>
+            candidate.ruleId === "missing-css-class" &&
+            ["dynamic-missing-open", "dynamic-missing-closed"].includes(candidate.data?.className),
+        )
+        .map((candidate) => candidate.data?.className)
+        .sort(),
+      ["dynamic-missing-closed", "dynamic-missing-open"],
+    );
+    assert.ok(
+      result.findings.some(
+        (candidate) =>
+          candidate.ruleId === "unused-css-class" &&
+          candidate.data?.className === "dynamic-missing-hidden",
+      ),
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("dynamic-class-reference does not report common local and imported class helper patterns", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(

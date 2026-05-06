@@ -228,14 +228,22 @@ function collectSiblingElementIds(
   element: RenderedElement,
   elementsById: Map<string, RenderedElement>,
 ): string[] {
-  if (!element.parentElementId) {
-    return [];
+  if (element.parentElementId) {
+    return (
+      elementsById
+        .get(element.parentElementId)
+        ?.childElementIds.filter((elementId) => elementId !== element.id)
+        .sort((left, right) => left.localeCompare(right)) ?? []
+    );
   }
 
-  return (
-    elementsById
-      .get(element.parentElementId)
-      ?.childElementIds.filter((elementId) => elementId !== element.id)
-      .sort((left, right) => left.localeCompare(right)) ?? []
-  );
+  return [...elementsById.values()]
+    .filter(
+      (candidate) =>
+        candidate.id !== element.id &&
+        !candidate.parentElementId &&
+        candidate.parentBoundaryId === element.parentBoundaryId,
+    )
+    .map((candidate) => candidate.id)
+    .sort((left, right) => left.localeCompare(right));
 }

@@ -424,9 +424,6 @@ function buildRepeatedSiblingCandidateByElementId(renderModel: RenderModel): Map
   );
 
   for (const element of renderModel.elements) {
-    if (!element.parentElementId) {
-      continue;
-    }
     const repeatedCondition = element.placementConditionIds
       .map((conditionId) => conditionById.get(conditionId))
       .find((condition) => condition?.kind === "repeated-region");

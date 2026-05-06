@@ -51,6 +51,7 @@ export type SourceNullishLiteralExpressionSyntax = {
 export type SourceIdentifierExpressionSyntax = {
   expressionKind: "identifier";
   name: string;
+  possibleStringValues?: string[];
 };
 
 export type SourceTemplateExpressionSyntax = {

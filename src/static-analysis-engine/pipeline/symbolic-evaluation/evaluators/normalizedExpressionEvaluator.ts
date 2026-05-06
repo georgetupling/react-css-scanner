@@ -165,6 +165,9 @@ function summarizeNormalizedClassExpression(input: {
       if (imported) {
         return imported.value;
       }
+      if (expression.possibleStringValues && expression.possibleStringValues.length > 0) {
+        return toStringValue(expression.possibleStringValues);
+      }
       return {
         kind: "unknown",
         reason: `unsupported-expression:${expression.expressionKind}`,

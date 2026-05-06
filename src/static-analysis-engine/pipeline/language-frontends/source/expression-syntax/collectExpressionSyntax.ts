@@ -136,10 +136,12 @@ function buildExpressionSyntaxFact(
   }
 
   if (ts.isIdentifier(node)) {
+    const possibleStringValues = inferIdentifierStringValues(node, context.sourceFile);
     return {
       ...base,
       expressionKind: "identifier",
       name: node.text,
+      ...(possibleStringValues.length > 0 ? { possibleStringValues } : {}),
     };
   }
 
@@ -506,6 +508,154 @@ function getSupportedPrefixUnaryOperator(
 
   if (operator === ts.SyntaxKind.TildeToken) {
     return "~";
+  }
+
+  return undefined;
+}
+
+function inferIdentifierStringValues(
+  identifier: ts.Identifier,
+  sourceFile: ts.SourceFile,
+): string[] {
+  const values = new Set<string>();
+  let current: ts.Node | undefined = identifier.parent;
+  while (current) {
+    if (ts.isFunctionLike(current)) {
+      for (const parameter of current.parameters) {
+        for (const value of inferParameterIdentifierStringValues({
+          identifierName: identifier.text,
+          parameter,
+          sourceFile,
+        })) {
+          values.add(value);
+        }
+      }
+      break;
+    }
+    current = current.parent;
+  }
+
+  return [...values].sort((left, right) => left.localeCompare(right));
+}
+
+function inferParameterIdentifierStringValues(input: {
+  identifierName: string;
+  parameter: ts.ParameterDeclaration;
+  sourceFile: ts.SourceFile;
+}): string[] {
+  if (ts.isIdentifier(input.parameter.name) && input.parameter.name.text === input.identifierName) {
+    return resolveStringLiteralTypeValues(input.parameter.type, input.sourceFile);
+  }
+
+  if (!ts.isObjectBindingPattern(input.parameter.name) || !input.parameter.type) {
+    return [];
+  }
+
+  const bindingElement = input.parameter.name.elements.find(
+    (element) => ts.isIdentifier(element.name) && element.name.text === input.identifierName,
+  );
+  if (!bindingElement) {
+    return [];
+  }
+
+  const propertyName = getBindingElementPropertyName(bindingElement);
+  if (!propertyName) {
+    return [];
+  }
+
+  return resolveStringLiteralTypeValues(
+    findPropertyTypeNode(input.parameter.type, propertyName, input.sourceFile),
+    input.sourceFile,
+  );
+}
+
+function getBindingElementPropertyName(element: ts.BindingElement): string | undefined {
+  if (!element.propertyName) {
+    return ts.isIdentifier(element.name) ? element.name.text : undefined;
+  }
+
+  if (ts.isIdentifier(element.propertyName) || ts.isStringLiteral(element.propertyName)) {
+    return element.propertyName.text;
+  }
+
+  return undefined;
+}
+
+function findPropertyTypeNode(
+  typeNode: ts.TypeNode | undefined,
+  propertyName: string,
+  sourceFile: ts.SourceFile,
+): ts.TypeNode | undefined {
+  const resolvedTypeNode = typeNode
+    ? (resolveTypeReference(typeNode, sourceFile) ?? typeNode)
+    : undefined;
+  if (!resolvedTypeNode || !ts.isTypeLiteralNode(resolvedTypeNode)) {
+    return undefined;
+  }
+
+  for (const member of resolvedTypeNode.members) {
+    if (!ts.isPropertySignature(member) || !member.type) {
+      continue;
+    }
+
+    if (getPropertyNameText(member.name) === propertyName) {
+      return member.type;
+    }
+  }
+
+  return undefined;
+}
+
+function resolveStringLiteralTypeValues(
+  typeNode: ts.TypeNode | undefined,
+  sourceFile: ts.SourceFile,
+): string[] {
+  if (!typeNode) {
+    return [];
+  }
+
+  const resolvedTypeNode = resolveTypeReference(typeNode, sourceFile) ?? typeNode;
+  if (ts.isUnionTypeNode(resolvedTypeNode)) {
+    return [
+      ...new Set(
+        resolvedTypeNode.types.flatMap((member) =>
+          resolveStringLiteralTypeValues(member, sourceFile),
+        ),
+      ),
+    ].sort((left, right) => left.localeCompare(right));
+  }
+
+  if (
+    ts.isLiteralTypeNode(resolvedTypeNode) &&
+    (ts.isStringLiteral(resolvedTypeNode.literal) ||
+      ts.isNoSubstitutionTemplateLiteral(resolvedTypeNode.literal))
+  ) {
+    return [resolvedTypeNode.literal.text];
+  }
+
+  return [];
+}
+
+function resolveTypeReference(
+  typeNode: ts.TypeNode,
+  sourceFile: ts.SourceFile,
+): ts.TypeNode | undefined {
+  if (!ts.isTypeReferenceNode(typeNode) || !ts.isIdentifier(typeNode.typeName)) {
+    return undefined;
+  }
+
+  for (const statement of sourceFile.statements) {
+    if (ts.isTypeAliasDeclaration(statement) && statement.name.text === typeNode.typeName.text) {
+      return statement.type;
+    }
+  }
+
+  return undefined;
+}
+
+function getPropertyNameText(name: ts.PropertyName): string | undefined {
+  if (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNumericLiteral(name)) {
+    return name.text;
   }
 
   return undefined;
