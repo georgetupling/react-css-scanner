@@ -309,7 +309,7 @@ function buildClassReferenceFromEmissionSite(input: {
         shouldInferTemplateCandidatesForSite(site),
       ),
   );
-  const sourceLocation = resolveReferenceSourceLocation(classExpression, input.emissionSite);
+  const sourceLocation = normalizeAnchor(input.emissionSite.sourceLocation);
   const sourceSite = findClassExpressionSiteAtLocation(
     sourceLocation,
     input.lookupContext,
@@ -734,29 +734,6 @@ function buildEmissionClassNameComponentIds(input: {
   }
 
   return Object.keys(componentIdsByClassName).length > 0 ? componentIdsByClassName : undefined;
-}
-
-function resolveReferenceSourceLocation(
-  classExpression: ClassExpressionSummary,
-  emissionSite: EmissionSite,
-): SourceAnchor {
-  const classNames = uniqueSorted([
-    ...classExpression.classes.definite,
-    ...classExpression.classes.possible,
-  ]);
-  const sourceAnchors = classNames
-    .map((className) => classExpression.classNameSourceAnchors?.[className])
-    .filter((anchor): anchor is SourceAnchor => Boolean(anchor))
-    .map(normalizeAnchor);
-
-  if (
-    sourceAnchors.length > 0 &&
-    sourceAnchors.every((anchor) => anchorsEqual(anchor, sourceAnchors[0]))
-  ) {
-    return sourceAnchors[0];
-  }
-
-  return normalizeAnchor(emissionSite.sourceLocation);
 }
 
 function findClassExpressionSiteAtLocation(
