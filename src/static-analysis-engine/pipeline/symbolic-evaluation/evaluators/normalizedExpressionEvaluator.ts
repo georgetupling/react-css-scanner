@@ -1269,19 +1269,17 @@ function summarizeMemberAccessExpressionSyntax(input: {
   helperBindings?: Map<string, AbstractValue>;
 }): AbstractValue {
   const objectExpression = getExpressionSyntax(input.input, input.expression.objectExpressionId);
-  if (!objectExpression) {
-    return { kind: "unknown", reason: "missing-expression-syntax" };
-  }
-
-  const unwrapped = unwrapExpressionSyntax({
-    ...input,
-    expression: objectExpression,
-  });
-  if (unwrapped.expressionKind !== "object-literal") {
+  const objectLiteral = objectExpression
+    ? resolveObjectLiteralExpressionSyntax({
+        ...input,
+        expression: objectExpression,
+      })
+    : undefined;
+  if (!objectLiteral) {
     return { kind: "unknown", reason: "unresolved-member-access" };
   }
 
-  const property = unwrapped.properties.find(
+  const property = objectLiteral.properties.find(
     (candidate) =>
       candidate.propertyKind === "property" &&
       candidate.keyKind !== "computed" &&
@@ -1449,6 +1447,16 @@ function resolveObjectLiteralExpressionSyntax(input: {
   seenExpressionIds: Set<string>;
   helperBindings?: Map<string, AbstractValue>;
 }): Extract<ExpressionSyntaxNode, { expressionKind: "object-literal" }> | undefined {
+  if (input.depth > (input.input.options.maxExpressionDepth ?? 100)) {
+    return undefined;
+  }
+
+  if (input.seenExpressionIds.has(input.expression.expressionId)) {
+    return undefined;
+  }
+
+  const seenExpressionIds = new Set(input.seenExpressionIds);
+  seenExpressionIds.add(input.expression.expressionId);
   const unwrapped = unwrapExpressionSyntax(input);
   if (unwrapped.expressionKind === "object-literal") {
     return unwrapped;
@@ -1479,6 +1487,7 @@ function resolveObjectLiteralExpressionSyntax(input: {
       ...input,
       expression,
       depth: input.depth + 1,
+      seenExpressionIds,
     });
     if (resolved) {
       return resolved;
@@ -1494,6 +1503,77 @@ function resolveObjectLiteralExpressionSyntax(input: {
       ...input,
       expression: imported.expression,
       depth: input.depth + 1,
+      seenExpressionIds,
+    });
+  }
+
+  return undefined;
+}
+
+function resolveArrayLiteralExpressionSyntax(input: {
+  input: SymbolicExpressionEvaluatorInput;
+  expression: ExpressionSyntaxNode;
+  depth: number;
+  seenExpressionIds: Set<string>;
+  helperBindings?: Map<string, AbstractValue>;
+}): Extract<ExpressionSyntaxNode, { expressionKind: "array-literal" }> | undefined {
+  if (input.depth > (input.input.options.maxExpressionDepth ?? 100)) {
+    return undefined;
+  }
+
+  if (input.seenExpressionIds.has(input.expression.expressionId)) {
+    return undefined;
+  }
+
+  const seenExpressionIds = new Set(input.seenExpressionIds);
+  seenExpressionIds.add(input.expression.expressionId);
+  const unwrapped = unwrapExpressionSyntax(input);
+  if (unwrapped.expressionKind === "array-literal") {
+    return unwrapped;
+  }
+
+  if (unwrapped.expressionKind !== "identifier") {
+    return undefined;
+  }
+
+  const rootOwnerNodeId = input.input.classExpressionSite.emittingComponentNodeId;
+  if (!rootOwnerNodeId) {
+    return undefined;
+  }
+
+  const bindings = resolveLocalValueBindingsForIdentifier({
+    input: input.input,
+    rootOwnerNodeId,
+    identifierName: unwrapped.name,
+    targetLocation: unwrapped.location,
+  });
+  for (const binding of bindings) {
+    const expressionId = binding.expressionId ?? binding.initializerExpressionId;
+    const expression = expressionId ? getExpressionSyntax(input.input, expressionId) : undefined;
+    if (!expression) {
+      continue;
+    }
+    const resolved = resolveArrayLiteralExpressionSyntax({
+      ...input,
+      expression,
+      depth: input.depth + 1,
+      seenExpressionIds,
+    });
+    if (resolved) {
+      return resolved;
+    }
+  }
+
+  const imported = resolveImportedIdentifierExpressionSyntax({
+    input: input.input,
+    expression: unwrapped,
+  });
+  if (imported) {
+    return resolveArrayLiteralExpressionSyntax({
+      ...input,
+      expression: imported.expression,
+      depth: input.depth + 1,
+      seenExpressionIds,
     });
   }
 
@@ -2103,6 +2183,23 @@ function getClassArrayJoinTarget(
       hasSpreadElement: unwrapped.hasSpreadElement,
       hasOmittedElement: unwrapped.hasOmittedElement,
     };
+  }
+
+  if (unwrapped.expressionKind === "identifier") {
+    const arrayLiteral = resolveArrayLiteralExpressionSyntax({
+      input: input.input,
+      expression: unwrapped,
+      depth: input.depth + 1,
+      seenExpressionIds: input.seenExpressionIds,
+      helperBindings: input.helperBindings,
+    });
+    if (arrayLiteral) {
+      return {
+        elementExpressionIds: arrayLiteral.elementExpressionIds,
+        hasSpreadElement: arrayLiteral.hasSpreadElement,
+        hasOmittedElement: arrayLiteral.hasOmittedElement,
+      };
+    }
   }
 
   if (unwrapped.expressionKind === "call") {

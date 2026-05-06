@@ -30,7 +30,7 @@ test("QA 0.3.5: imported class constants are checked at the consuming render sit
   }
 });
 
-test.todo("QA 0.3.5: imported object property class constants keep CSS live", async () => {
+test("QA 0.3.5: imported object property class constants keep CSS live", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(
       "src/App.tsx",
@@ -59,7 +59,7 @@ test.todo("QA 0.3.5: imported object property class constants keep CSS live", as
   }
 });
 
-test.todo("QA 0.3.5: imported default object property class constants keep CSS live", async () => {
+test("QA 0.3.5: imported default object property class constants keep CSS live", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(
       "src/App.tsx",
@@ -90,7 +90,7 @@ test.todo("QA 0.3.5: imported default object property class constants keep CSS l
   }
 });
 
-test.todo("QA 0.3.5: imported const tuple joins keep all finite classes live", async () => {
+test("QA 0.3.5: imported const tuple joins keep all finite classes live", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(
       "src/App.tsx",
