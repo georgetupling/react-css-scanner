@@ -165,6 +165,12 @@ export type ComponentNode = FactNodeBase & {
   location: SourceAnchor;
   rendersChildrenProp?: boolean;
   renderedPropNames?: string[];
+  renderedPropSlots?: RenderedPropSlotNode[];
+};
+
+export type RenderedPropSlotNode = {
+  propName: string;
+  location: SourceAnchor;
 };
 
 export type RenderSiteNode = FactNodeBase & {

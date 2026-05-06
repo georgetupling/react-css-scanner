@@ -89,6 +89,7 @@ export type RenderedComponentBoundary = {
   declarationLocation?: SourceAnchor;
   referenceRenderSiteNodeId?: FactNodeId;
   referenceLocation?: SourceAnchor;
+  renderedPropSlots?: RenderedPropSlot[];
   parentBoundaryId?: RenderedComponentBoundaryId;
   parentElementId?: RenderedElementId;
   childBoundaryIds: RenderedComponentBoundaryId[];
@@ -103,6 +104,11 @@ export type RenderedComponentBoundary = {
         reason: string;
       };
   traces: AnalysisTrace[];
+};
+
+export type RenderedPropSlot = {
+  propName: string;
+  location: SourceAnchor;
 };
 
 export type RenderedElement = {

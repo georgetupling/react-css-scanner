@@ -1,5 +1,5 @@
 import type { SelectorBranchNode } from "../fact-graph/index.js";
-import type { RenderModel } from "../render-structure/index.js";
+import type { RenderedElement, RenderModel } from "../render-structure/index.js";
 import { matchElementClassRequirement } from "./elementRequirementMatcher.js";
 import { selectorBranchMatchId, selectorElementMatchId } from "./ids.js";
 import { getCandidateElementIds, type SelectorRenderMatchIndexes } from "./subjectMatches.js";
@@ -495,7 +495,18 @@ export function buildStructuralRelationIndexes(
       buildElementBitset(precedingSiblingIds, elementBitsetIndex),
     );
     const adjacent = precedingSiblings[precedingSiblings.length - 1];
-    if (adjacent.childIndex === elementChildIndex - 1) {
+    const adjacentElement = renderModel.indexes.elementById.get(adjacent.siblingId);
+    const element = renderModel.indexes.elementById.get(elementId);
+    if (
+      adjacent.childIndex === elementChildIndex - 1 &&
+      adjacentElement &&
+      element &&
+      !hasRenderedPropSlotBetween({
+        renderModel,
+        leftElement: adjacentElement,
+        rightElement: element,
+      })
+    ) {
       adjacentLeftSiblingIdByElementId.set(elementId, adjacent.siblingId);
     }
   }
@@ -516,6 +527,51 @@ export function buildStructuralRelationIndexes(
     ancestorBitsByElementId,
     precedingSiblingBitsByElementId,
   };
+}
+
+function hasRenderedPropSlotBetween(input: {
+  renderModel: RenderModel;
+  leftElement: RenderedElement;
+  rightElement: RenderedElement;
+}): boolean {
+  if (
+    input.leftElement.parentBoundaryId !== input.rightElement.parentBoundaryId ||
+    input.leftElement.parentElementId !== input.rightElement.parentElementId
+  ) {
+    return false;
+  }
+
+  const boundary = input.renderModel.indexes.componentBoundaryById.get(
+    input.rightElement.parentBoundaryId,
+  );
+  if (!boundary?.renderedPropSlots?.length) {
+    return false;
+  }
+
+  return boundary.renderedPropSlots.some(
+    (slot) =>
+      compareSourcePositions(
+        input.leftElement.sourceLocation.endLine,
+        input.leftElement.sourceLocation.endColumn,
+        slot.location.startLine,
+        slot.location.startColumn,
+      ) <= 0 &&
+      compareSourcePositions(
+        slot.location.endLine,
+        slot.location.endColumn,
+        input.rightElement.sourceLocation.startLine,
+        input.rightElement.sourceLocation.startColumn,
+      ) <= 0,
+  );
+}
+
+function compareSourcePositions(
+  leftLine: number,
+  leftColumn: number,
+  rightLine: number,
+  rightColumn: number,
+): number {
+  return leftLine - rightLine || leftColumn - rightColumn;
 }
 
 function combineCertainty(

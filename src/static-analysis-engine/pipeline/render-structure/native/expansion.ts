@@ -32,8 +32,14 @@ export type ExpandContext = {
   componentExpansionDepth: number;
   renderExpressionDepth: number;
   rootElementIds: string[];
+  suppliedRenderSiteIdsByPropName?: ReadonlyMap<string, string[]>;
   placementConditionIds: string[];
   certainty: "definite" | "possible" | "unknown";
+};
+
+type ChildExpansionSpec = {
+  renderSite: RenderStructureInput["graph"]["nodes"]["renderSites"][number];
+  childIndex: number;
 };
 
 export type ExpansionState = {
@@ -360,15 +366,15 @@ export function expandRenderSite(state: ExpansionState, context: ExpandContext):
         context.rootElementIds.push(element.id);
       }
 
-      for (const [childIndex, childRenderSiteId] of childRenderSiteIds.entries()) {
-        const childRenderSite = state.input.graph.indexes.nodesById.get(childRenderSiteId);
-        if (!childRenderSite || childRenderSite.kind !== "render-site") {
-          continue;
-        }
+      for (const childSpec of buildChildExpansionSpecs({
+        state,
+        context,
+        childRenderSiteIds,
+      })) {
         expandRenderSite(state, {
           ...context,
-          renderSite: childRenderSite,
-          childIndex,
+          renderSite: childSpec.renderSite,
+          childIndex: childSpec.childIndex,
           parentElementId: element.id,
           basePathSegments: pathSegments,
           renderExpressionDepth: context.renderExpressionDepth + 1,
@@ -381,6 +387,10 @@ export function expandRenderSite(state: ExpansionState, context: ExpandContext):
   }
 
   let shouldExpandComponentChildren = componentTemplates.length === 0;
+  const suppliedRenderSiteIdsByPropName = buildSuppliedRenderSiteIdsByPropName({
+    state,
+    childRenderSiteIds,
+  });
   const renderedPropNames = new Set<string>();
   for (const template of componentTemplates) {
     const result = projectComponentTemplate(
@@ -391,6 +401,7 @@ export function expandRenderSite(state: ExpansionState, context: ExpandContext):
         certainty: effectiveCertainty,
       },
       template,
+      suppliedRenderSiteIdsByPropName,
     );
     shouldExpandComponentChildren ||= result.rendersSuppliedChildren;
     for (const propName of result.renderedPropNames) {
@@ -398,11 +409,12 @@ export function expandRenderSite(state: ExpansionState, context: ExpandContext):
     }
   }
 
-  for (const [childIndex, childRenderSiteId] of childRenderSiteIds.entries()) {
-    const childRenderSite = state.input.graph.indexes.nodesById.get(childRenderSiteId);
-    if (!childRenderSite || childRenderSite.kind !== "render-site") {
-      continue;
-    }
+  for (const childSpec of buildChildExpansionSpecs({
+    state,
+    context,
+    childRenderSiteIds,
+  })) {
+    const childRenderSite = childSpec.renderSite;
     if (
       componentTemplates.length > 0 &&
       isSuppliedComponentInputRenderSite(childRenderSite) &&
@@ -417,7 +429,7 @@ export function expandRenderSite(state: ExpansionState, context: ExpandContext):
     expandRenderSite(state, {
       ...context,
       renderSite: childRenderSite,
-      childIndex,
+      childIndex: childSpec.childIndex,
       renderExpressionDepth: context.renderExpressionDepth + 1,
       placementConditionIds: effectivePlacementConditionIds,
       certainty: effectiveCertainty,
@@ -433,6 +445,122 @@ function isSuppliedComponentInputRenderSite(
     renderSite.parentRenderRelation === "jsx-child" ||
     renderSite.parentRenderRelation === "jsx-attribute-expression"
   );
+}
+
+function buildSuppliedRenderSiteIdsByPropName(input: {
+  state: ExpansionState;
+  childRenderSiteIds: readonly string[];
+}): ReadonlyMap<string, string[]> {
+  const result = new Map<string, string[]>();
+  for (const childRenderSiteId of input.childRenderSiteIds) {
+    const childRenderSite = input.state.input.graph.indexes.nodesById.get(childRenderSiteId);
+    if (!childRenderSite || childRenderSite.kind !== "render-site") {
+      continue;
+    }
+    const propName = getSuppliedComponentInputPropName(childRenderSite);
+    if (!propName) {
+      continue;
+    }
+    result.set(propName, [...(result.get(propName) ?? []), childRenderSite.id]);
+  }
+  return result;
+}
+
+function buildChildExpansionSpecs(input: {
+  state: ExpansionState;
+  context: ExpandContext;
+  childRenderSiteIds: readonly string[];
+}): ChildExpansionSpec[] {
+  const childRenderSites = input.childRenderSiteIds
+    .map((childRenderSiteId) => input.state.input.graph.indexes.nodesById.get(childRenderSiteId))
+    .filter(
+      (
+        childRenderSite,
+      ): childRenderSite is RenderStructureInput["graph"]["nodes"]["renderSites"][number] =>
+        childRenderSite?.kind === "render-site",
+    );
+  const specs: Array<{
+    renderSite: RenderStructureInput["graph"]["nodes"]["renderSites"][number];
+    location: RenderStructureInput["graph"]["nodes"]["renderSites"][number]["location"];
+  }> = childRenderSites.map((renderSite) => ({
+    renderSite,
+    location: renderSite.location,
+  }));
+
+  const suppliedRenderSiteIdsByPropName = input.context.suppliedRenderSiteIdsByPropName;
+  if (suppliedRenderSiteIdsByPropName) {
+    const component = input.state.componentById.get(input.context.componentNodeId);
+    for (const slot of component?.renderedPropSlots ?? []) {
+      const suppliedRenderSiteIds = suppliedRenderSiteIdsByPropName.get(slot.propName) ?? [];
+      if (
+        suppliedRenderSiteIds.length === 0 ||
+        !containsAnchor(input.context.renderSite.location, slot.location) ||
+        childRenderSites.some((renderSite) => containsAnchor(renderSite.location, slot.location))
+      ) {
+        continue;
+      }
+      for (const suppliedRenderSiteId of suppliedRenderSiteIds) {
+        const suppliedRenderSite =
+          input.state.input.graph.indexes.nodesById.get(suppliedRenderSiteId);
+        if (!suppliedRenderSite || suppliedRenderSite.kind !== "render-site") {
+          continue;
+        }
+        specs.push({
+          renderSite: suppliedRenderSite,
+          location: slot.location,
+        });
+      }
+    }
+  }
+
+  return specs
+    .sort(
+      (left, right) =>
+        compareAnchors(left.location, right.location) ||
+        left.renderSite.id.localeCompare(right.renderSite.id),
+    )
+    .map((spec, childIndex) => ({
+      renderSite: spec.renderSite,
+      childIndex,
+    }));
+}
+
+function containsAnchor(
+  outer: RenderStructureInput["graph"]["nodes"]["renderSites"][number]["location"],
+  inner: RenderStructureInput["graph"]["nodes"]["renderSites"][number]["location"],
+): boolean {
+  if (outer.filePath !== inner.filePath) {
+    return false;
+  }
+  return (
+    compareAnchorPositions(
+      outer.startLine,
+      outer.startColumn,
+      inner.startLine,
+      inner.startColumn,
+    ) <= 0 &&
+    compareAnchorPositions(outer.endLine, outer.endColumn, inner.endLine, inner.endColumn) >= 0
+  );
+}
+
+function compareAnchors(
+  left: RenderStructureInput["graph"]["nodes"]["renderSites"][number]["location"],
+  right: RenderStructureInput["graph"]["nodes"]["renderSites"][number]["location"],
+): number {
+  return (
+    left.filePath.localeCompare(right.filePath) ||
+    compareAnchorPositions(left.startLine, left.startColumn, right.startLine, right.startColumn) ||
+    compareAnchorPositions(left.endLine, left.endColumn, right.endLine, right.endColumn)
+  );
+}
+
+function compareAnchorPositions(
+  leftLine: number,
+  leftColumn: number,
+  rightLine: number,
+  rightColumn: number,
+): number {
+  return leftLine - rightLine || leftColumn - rightColumn;
 }
 
 function shouldExpandSuppliedComponentInputRenderSite(input: {
@@ -457,11 +585,27 @@ function shouldExpandSuppliedComponentInputRenderSite(input: {
   return true;
 }
 
+function getSuppliedComponentInputPropName(
+  renderSite: RenderStructureInput["graph"]["nodes"]["renderSites"][number],
+): string | undefined {
+  if (!renderSite.parentRenderRelation || renderSite.parentRenderRelation === "jsx-child") {
+    return "children";
+  }
+  if (renderSite.parentRenderRelation === "jsx-attribute-expression") {
+    return renderSite.parentRenderAttributeName;
+  }
+  return undefined;
+}
+
 function projectComponentTemplate(
   state: ExpansionState,
   context: ExpandContext,
   template: RenderStructureInput["graph"]["nodes"]["elementTemplates"][number],
-): { rendersSuppliedChildren: boolean; renderedPropNames: string[] } {
+  suppliedRenderSiteIdsByPropName: ReadonlyMap<string, string[]>,
+): {
+  rendersSuppliedChildren: boolean;
+  renderedPropNames: string[];
+} {
   const boundaryPathSegments: RenderPathSegment[] = [
     ...context.basePathSegments,
     { kind: "child-index", index: context.childIndex },
@@ -517,6 +661,7 @@ function projectComponentTemplate(
       ...(target ? { declarationLocation: normalizeAnchor(target.location) } : {}),
       referenceRenderSiteNodeId: context.renderSite.id,
       referenceLocation: normalizeAnchor(template.location),
+      ...(target?.renderedPropSlots?.length ? { renderedPropSlots: target.renderedPropSlots } : {}),
       parentBoundaryId: context.boundaryId,
       ...(context.parentElementId ? { parentElementId: context.parentElementId } : {}),
       childBoundaryIds: [],
@@ -700,6 +845,7 @@ function projectComponentTemplate(
       componentExpansionDepth: context.componentExpansionDepth + 1,
       renderExpressionDepth: context.renderExpressionDepth + 1,
       rootElementIds,
+      suppliedRenderSiteIdsByPropName,
       placementConditionIds: context.placementConditionIds,
       certainty: boundaryCertainty === "unknown" ? "unknown" : context.certainty,
     });

@@ -238,6 +238,9 @@ export function buildNativeRenderStructure(
       componentName: componentNode.componentName,
       filePath,
       declarationLocation,
+      ...(componentNode.renderedPropSlots?.length
+        ? { renderedPropSlots: componentNode.renderedPropSlots }
+        : {}),
       childBoundaryIds: [],
       rootElementIds,
       renderPathId: boundaryRenderPathId,

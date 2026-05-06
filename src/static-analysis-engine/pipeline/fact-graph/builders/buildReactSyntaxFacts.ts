@@ -98,6 +98,9 @@ export function buildReactSyntaxFacts(input: FactGraphInput): BuiltReactSyntaxFa
         ...(component.renderedPropNames?.length
           ? { renderedPropNames: [...component.renderedPropNames].sort() }
           : {}),
+        ...(component.renderedPropSlots?.length
+          ? { renderedPropSlots: [...component.renderedPropSlots].sort(compareRenderedPropSlots) }
+          : {}),
         confidence: "high",
         provenance: frontendFileProvenance({
           filePath: component.filePath,
@@ -760,6 +763,38 @@ function buildReferencesClassExpressionEdge(
     confidence: "high",
     provenance: factGraphProvenance("Linked class expression site to syntax owner"),
   };
+}
+
+function compareRenderedPropSlots(
+  left: {
+    propName: string;
+    location: {
+      filePath: string;
+      startLine: number;
+      startColumn: number;
+      endLine: number;
+      endColumn: number;
+    };
+  },
+  right: {
+    propName: string;
+    location: {
+      filePath: string;
+      startLine: number;
+      startColumn: number;
+      endLine: number;
+      endColumn: number;
+    };
+  },
+): number {
+  return (
+    left.location.filePath.localeCompare(right.location.filePath) ||
+    left.location.startLine - right.location.startLine ||
+    left.location.startColumn - right.location.startColumn ||
+    left.location.endLine - right.location.endLine ||
+    left.location.endColumn - right.location.endColumn ||
+    left.propName.localeCompare(right.propName)
+  );
 }
 
 function findComponentNodeIdByName(input: {

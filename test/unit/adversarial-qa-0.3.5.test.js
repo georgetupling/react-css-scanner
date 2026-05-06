@@ -195,35 +195,32 @@ test("QA 0.3.5: native CSS nesting compound self selectors define state classes"
   }
 });
 
-test.todo(
-  "QA 0.3.5: slotted children between siblings make adjacent selectors unsatisfiable",
-  async () => {
-    const project = await new TestProjectBuilder()
-      .withSourceFile(
-        "src/App.tsx",
-        [
-          'import "./App.css";',
-          "function Shell({ children }: { children: React.ReactNode }) {",
-          '  return <><span className="first">One</span>{children}<span className="second">Two</span></>;',
-          "}",
-          "export function App() {",
-          "  return <Shell><em>gap</em></Shell>;",
-          "}",
-          "",
-        ].join("\n"),
-      )
-      .withCssFile("src/App.css", ".first + .second { margin-left: 0.5rem; }\n")
-      .build();
+test("QA 0.3.5: slotted children between siblings make adjacent selectors unsatisfiable", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        "function Shell({ children }: { children: React.ReactNode }) {",
+        '  return <><span className="first">One</span>{children}<span className="second">Two</span></>;',
+        "}",
+        "export function App() {",
+        "  return <Shell><em>gap</em></Shell>;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".first + .second { margin-left: 0.5rem; }\n")
+    .build();
 
-    try {
-      const result = await scanProject({ rootDir: project.rootDir });
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
 
-      assertHasSelectorFinding(result, "unsatisfiable-selector", ".first + .second");
-    } finally {
-      await project.cleanup();
-    }
-  },
-);
+    assertHasSelectorFinding(result, "unsatisfiable-selector", ".first + .second");
+  } finally {
+    await project.cleanup();
+  }
+});
 
 test("QA 0.3.5: statically truthy logical-or fallback classes are unused", async () => {
   const project = await new TestProjectBuilder()

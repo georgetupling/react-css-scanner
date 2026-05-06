@@ -23,6 +23,12 @@ export type ReactComponentDeclarationFact = {
   location: SourceAnchor;
   rendersChildrenProp?: boolean;
   renderedPropNames?: string[];
+  renderedPropSlots?: ReactRenderedPropSlotFact[];
+};
+
+export type ReactRenderedPropSlotFact = {
+  propName: string;
+  location: SourceAnchor;
 };
 
 export type ReactRenderSiteFact = {

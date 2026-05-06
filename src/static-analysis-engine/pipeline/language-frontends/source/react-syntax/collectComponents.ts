@@ -1,8 +1,9 @@
 import ts from "typescript";
 
 import { collectComponentLikeDefinitions } from "../../../../libraries/react-components/index.js";
+import { toSourceAnchor } from "../../../../libraries/react-components/reactComponentAstUtils.js";
 import { createComponentKey } from "./componentIdentity.js";
-import type { ReactComponentDeclarationFact } from "./types.js";
+import type { ReactComponentDeclarationFact, ReactRenderedPropSlotFact } from "./types.js";
 
 export function collectReactComponents(input: { filePath: string; sourceFile: ts.SourceFile }): {
   components: ReactComponentDeclarationFact[];
@@ -27,11 +28,20 @@ export function collectReactComponents(input: { filePath: string; sourceFile: ts
       componentKeyByFunction.set(definition.renderMethodNode, componentKey);
     }
 
-    const renderedPropNames = definition.functionLikeNode
-      ? collectRenderedPropNames(definition.functionLikeNode)
+    const renderedPropConsumptions = definition.functionLikeNode
+      ? collectRenderedPropConsumptions({
+          functionLikeNode: definition.functionLikeNode,
+          filePath: input.filePath,
+          sourceFile: input.sourceFile,
+        })
       : definition.renderMethodNode
-        ? collectRenderedPropNames(definition.renderMethodNode)
-        : [];
+        ? collectRenderedPropConsumptions({
+            functionLikeNode: definition.renderMethodNode,
+            filePath: input.filePath,
+            sourceFile: input.sourceFile,
+          })
+        : { names: [], slots: [] };
+    const renderedPropNames = renderedPropConsumptions.names;
 
     return {
       componentKey,
@@ -43,6 +53,9 @@ export function collectReactComponents(input: { filePath: string; sourceFile: ts
       location: definition.sourceAnchor,
       ...(renderedPropNames.includes("children") ? { rendersChildrenProp: true } : {}),
       ...(renderedPropNames.length > 0 ? { renderedPropNames } : {}),
+      ...(renderedPropConsumptions.slots.length > 0
+        ? { renderedPropSlots: renderedPropConsumptions.slots }
+        : {}),
     };
   });
 
@@ -54,22 +67,26 @@ type PropBinding = {
   propsIdentifier?: string;
 };
 
-function collectRenderedPropNames(
+function collectRenderedPropConsumptions(input: {
   functionLikeNode:
     | ts.FunctionDeclaration
     | ts.ArrowFunction
     | ts.FunctionExpression
-    | (ts.MethodDeclaration & { body: ts.Block }),
-): string[] {
+    | (ts.MethodDeclaration & { body: ts.Block });
+  filePath: string;
+  sourceFile: ts.SourceFile;
+}): { names: string[]; slots: ReactRenderedPropSlotFact[] } {
+  const { functionLikeNode } = input;
   const binding = getPropBinding(functionLikeNode);
   if (!binding || (binding.localNamesByPropName.size === 0 && !binding.propsIdentifier)) {
-    return [];
+    return { names: [], slots: [] };
   }
 
   const renderedPropNames = new Set<string>();
+  const renderedPropSlots: ReactRenderedPropSlotFact[] = [];
   const rootBody = functionLikeNode.body;
   if (!rootBody) {
-    return [];
+    return { names: [], slots: [] };
   }
 
   const visit = (node: ts.Node, shadowedNames: ReadonlySet<string>): void => {
@@ -84,13 +101,47 @@ function collectRenderedPropNames(
     const propName = getReferencedPropName({ node, binding, shadowedNames });
     if (propName && isRenderPropConsumption({ node, propName, rootBody })) {
       renderedPropNames.add(propName);
+      renderedPropSlots.push({
+        propName,
+        location: toSourceAnchor(node, input.sourceFile, input.filePath),
+      });
     }
 
     ts.forEachChild(node, (child) => visit(child, shadowedNames));
   };
 
   visit(rootBody, new Set());
-  return [...renderedPropNames].sort((left, right) => left.localeCompare(right));
+  return {
+    names: [...renderedPropNames].sort((left, right) => left.localeCompare(right)),
+    slots: deduplicateRenderedPropSlots(renderedPropSlots).sort(compareRenderedPropSlots),
+  };
+}
+
+function deduplicateRenderedPropSlots(
+  slots: ReactRenderedPropSlotFact[],
+): ReactRenderedPropSlotFact[] {
+  const byKey = new Map<string, ReactRenderedPropSlotFact>();
+  for (const slot of slots) {
+    byKey.set(
+      `${slot.propName}:${slot.location.filePath}:${slot.location.startLine}:${slot.location.startColumn}:${slot.location.endLine}:${slot.location.endColumn}`,
+      slot,
+    );
+  }
+  return [...byKey.values()];
+}
+
+function compareRenderedPropSlots(
+  left: ReactRenderedPropSlotFact,
+  right: ReactRenderedPropSlotFact,
+): number {
+  return (
+    left.location.filePath.localeCompare(right.location.filePath) ||
+    left.location.startLine - right.location.startLine ||
+    left.location.startColumn - right.location.startColumn ||
+    left.location.endLine - right.location.endLine ||
+    left.location.endColumn - right.location.endColumn ||
+    left.propName.localeCompare(right.propName)
+  );
 }
 
 function getPropBinding(
