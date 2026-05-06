@@ -23,7 +23,12 @@ function runUnsatisfiableSelectorRule(context: RuleContext): UnresolvedFinding[]
     .filter((branch) => branch.status === "not-matchable")
     .filter((branch) => isProjectLocalStylesheetBranch(context.analysisEvidence, branch))
     .filter((branch) => branch.requirement.kind !== "unsupported")
-    .filter((branch) => branch.requirement.kind !== "same-node-class-conjunction")
+    .filter(
+      (branch) =>
+        branch.requirement.kind !== "same-node-class-conjunction" ||
+        ((branch.requirement.forbiddenClassNames?.length ?? 0) > 0 &&
+          branch.requirement.classNames.length > 0),
+    )
     .filter((branch) => branch.branchCount === 1)
     .map((branch): UnresolvedFinding => {
       const query = getProjectSelectorQueryForReachability(context, branch);

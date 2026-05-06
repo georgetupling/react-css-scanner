@@ -88,8 +88,8 @@ export function buildSelectorReachability(
     if (branch.subjectClassNames.length > 0 && branchDiagnostics.length === 0) {
       const subjectElementMatches = profiler.time(
         "selectorReachability.buildElementMatchesForClassNames",
-        () =>
-          buildElementMatchesForClassNames({
+        () => {
+          const matches = buildElementMatchesForClassNames({
             branch,
             classNames: branch.subjectClassNames,
             elementIds: getCandidateElementIds({
@@ -98,7 +98,13 @@ export function buildSelectorReachability(
               renderIndexes,
             }),
             renderIndexes,
-          }),
+          });
+          return filterNegatedSubjectMatches({
+            matches,
+            requirement,
+            elementIdsByClassName: renderIndexes.elementIdsByClassName,
+          });
+        },
       );
       branchElementMatches.push(...subjectElementMatches);
     }
@@ -195,6 +201,28 @@ export function buildSelectorReachability(
     diagnostics,
     indexes,
   };
+}
+
+function filterNegatedSubjectMatches(input: {
+  matches: SelectorElementMatch[];
+  requirement: ReturnType<typeof projectSelectorBranchRequirement>;
+  elementIdsByClassName: Map<string, string[]>;
+}): SelectorElementMatch[] {
+  if (
+    input.requirement.kind !== "same-node-class-conjunction" ||
+    !input.requirement.forbiddenClassNames ||
+    input.requirement.forbiddenClassNames.length === 0
+  ) {
+    return input.matches;
+  }
+
+  const forbiddenElementIds = new Set(
+    input.requirement.forbiddenClassNames.flatMap(
+      (className) => input.elementIdsByClassName.get(className) ?? [],
+    ),
+  );
+
+  return input.matches.filter((match) => !forbiddenElementIds.has(match.elementId));
 }
 
 function createSelectorReachabilityProfiler(enabled: boolean): SelectorReachabilityProfiler {

@@ -150,6 +150,10 @@ npm.cmd run lint
 npm.cmd test
 ```
 
+## Final Response Expectations
+
+- When returning after code or test changes, include a suggested commit message.
+
 ## Editing Docs
 
 - Durable architecture/behavior docs live in `docs/design`

@@ -83,6 +83,15 @@ export type SelectorBranchRequirement =
   | {
       kind: "same-node-class-conjunction";
       classNames: string[];
+      forbiddenClassNames?: string[];
+      normalizedSteps: SelectorRequirementStep[];
+      parseNotes: string[];
+      traces: AnalysisTrace[];
+    }
+  | {
+      kind: "has-descendant";
+      subjectClassName: string;
+      descendantClassName: string;
       normalizedSteps: SelectorRequirementStep[];
       parseNotes: string[];
       traces: AnalysisTrace[];

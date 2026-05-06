@@ -20,8 +20,9 @@ export function projectSelectorBranchRequirement(
 
   if (
     parsedBranch.hasUnknownSemantics ||
-    parsedBranch.hasSubjectModifiers ||
-    parsedBranch.negativeClassNames.length > 0
+    (parsedBranch.hasSubjectModifiers &&
+      parsedBranch.hasDescendantClassNames.length === 0 &&
+      parsedBranch.negativeClassNames.length === 0)
   ) {
     return createUnsupportedRequirement({
       reason: UNSUPPORTED_SELECTOR_REASON,
@@ -31,6 +32,7 @@ export function projectSelectorBranchRequirement(
         hasUnknownSemantics: parsedBranch.hasUnknownSemantics,
         hasSubjectModifiers: parsedBranch.hasSubjectModifiers,
         negativeClassNames: [...parsedBranch.negativeClassNames],
+        hasDescendantClassNames: [...parsedBranch.hasDescendantClassNames],
       },
       includeTraces,
     });
@@ -38,7 +40,52 @@ export function projectSelectorBranchRequirement(
 
   if (parsedBranch.steps.length === 1) {
     const requiredClasses = parsedBranch.steps[0].selector.requiredClasses;
+    const hasDescendantClasses = parsedBranch.steps[0].selector.hasDescendantClasses;
+    if (requiredClasses.length === 1 && hasDescendantClasses.length === 1) {
+      return {
+        kind: "has-descendant",
+        subjectClassName: requiredClasses[0],
+        descendantClassName: hasDescendantClasses[0],
+        normalizedSteps: [
+          {
+            combinatorFromPrevious: null,
+            requiredClasses: [requiredClasses[0]],
+          },
+          {
+            combinatorFromPrevious: "descendant",
+            requiredClasses: [hasDescendantClasses[0]],
+          },
+        ],
+        parseNotes: [
+          "normalized selector into a simple :has() descendant class relationship",
+          `subject class: ${requiredClasses[0]}`,
+          `descendant class: ${hasDescendantClasses[0]}`,
+        ],
+        traces: [],
+      };
+    }
+
     if (requiredClasses.length < 2) {
+      if (requiredClasses.length === 1 && parsedBranch.negativeClassNames.length > 0) {
+        return {
+          kind: "same-node-class-conjunction",
+          classNames: [...requiredClasses],
+          forbiddenClassNames: [...parsedBranch.negativeClassNames],
+          normalizedSteps: [
+            {
+              combinatorFromPrevious: null,
+              requiredClasses: [requiredClasses[0]],
+            },
+          ],
+          parseNotes: [
+            "normalized selector into a same-node class conjunction with negated class guards",
+            `required class: ${requiredClasses[0]}`,
+            `forbidden classes: ${parsedBranch.negativeClassNames.join(", ")}`,
+          ],
+          traces: [],
+        };
+      }
+
       return createUnsupportedRequirement({
         reason: UNSUPPORTED_SELECTOR_REASON,
         summary:

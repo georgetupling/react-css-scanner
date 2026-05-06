@@ -316,6 +316,7 @@ export type SelectorBranchNode = FactNodeBase & {
   subjectClassNames: string[];
   contextClassNames: string[];
   negativeClassNames: string[];
+  hasDescendantClassNames: string[];
   matchKind: "standalone" | "compound" | "contextual" | "complex";
   hasUnknownSemantics: boolean;
   atRuleContext: Array<{ kind: "media"; queryText: string }>;

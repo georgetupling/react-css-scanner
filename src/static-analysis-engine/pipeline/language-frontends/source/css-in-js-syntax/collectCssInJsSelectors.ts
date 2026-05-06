@@ -343,6 +343,7 @@ function createSelectorMentionBranch(
     requiredClassNames: [],
     contextClassNames: uniqueSortedStrings(mentionClassNames),
     negativeClassNames: [],
+    hasDescendantClassNames: [],
     hasCombinators: true,
     hasSubjectModifiers: true,
     hasUnknownSemantics: true,

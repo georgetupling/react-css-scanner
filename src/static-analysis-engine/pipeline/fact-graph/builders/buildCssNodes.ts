@@ -103,6 +103,7 @@ export function buildCssNodes(input: FactGraphInput): BuiltCssNodes {
           subjectClassNames: [...branchFact.subjectClassNames],
           contextClassNames: [...branchFact.contextClassNames],
           negativeClassNames: [...branchFact.negativeClassNames],
+          hasDescendantClassNames: [...branchFact.hasDescendantClassNames],
           matchKind: branchFact.matchKind,
           hasUnknownSemantics: branchFact.hasUnknownSemantics,
           atRuleContext: entry.source.atRuleContext ?? [],

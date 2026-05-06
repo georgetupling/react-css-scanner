@@ -10,6 +10,7 @@ import type { ParsedSimpleSelectorSequence } from "./types.js";
 export function parseSimpleSelectorSequence(segment: string): ParsedSimpleSelectorSequence {
   const requiredClasses: string[] = [];
   const negativeClasses: string[] = [];
+  const hasDescendantClasses: string[] = [];
   let hasUnknownSemantics = false;
   let hasSubjectModifiers = false;
   let hasTypeOrIdConstraint = false;
@@ -40,6 +41,13 @@ export function parseSimpleSelectorSequence(segment: string): ParsedSimpleSelect
     }
 
     if (character === "[") {
+      const attributeToken = readAttributeClassToken(segment, index);
+      if (attributeToken) {
+        requiredClasses.push(attributeToken.className);
+        index = attributeToken.nextIndex;
+        continue;
+      }
+
       hasSubjectModifiers = true;
       index = skipBalancedSection(segment, index, "[", "]");
       continue;
@@ -64,7 +72,28 @@ export function parseSimpleSelectorSequence(segment: string): ParsedSimpleSelect
       const inner = readParenthesizedContent(segment, index);
       index = inner.nextIndex;
 
-      if (pseudoName.value.toLowerCase() === "not") {
+      const normalizedPseudoName = pseudoName.value.toLowerCase();
+      if (
+        normalizedPseudoName === "is" ||
+        normalizedPseudoName === "where" ||
+        normalizedPseudoName === "global"
+      ) {
+        const parsedRequiredClasses = parseRequiredClassNames(inner.content);
+        if (parsedRequiredClasses) {
+          requiredClasses.push(...parsedRequiredClasses);
+          continue;
+        }
+      }
+
+      if (normalizedPseudoName === "has") {
+        const parsedHasClasses = parseRequiredClassNames(inner.content);
+        if (parsedHasClasses) {
+          hasDescendantClasses.push(...parsedHasClasses);
+          continue;
+        }
+      }
+
+      if (normalizedPseudoName === "not") {
         const parsedNegativeClasses = parseNegatedClassNames(inner.content);
         if (parsedNegativeClasses) {
           negativeClasses.push(...parsedNegativeClasses);
@@ -95,10 +124,52 @@ export function parseSimpleSelectorSequence(segment: string): ParsedSimpleSelect
   return {
     requiredClasses: unique(requiredClasses),
     negativeClasses: unique(negativeClasses),
+    hasDescendantClasses: unique(hasDescendantClasses),
     hasUnknownSemantics,
     hasSubjectModifiers,
     hasTypeOrIdConstraint,
   };
+}
+
+function readAttributeClassToken(
+  segment: string,
+  startIndex: number,
+): { className: string; nextIndex: number } | undefined {
+  const endIndex = skipBalancedSection(segment, startIndex, "[", "]");
+  const rawAttribute = segment.slice(startIndex + 1, Math.max(startIndex + 1, endIndex - 1)).trim();
+  const match = /^class\s*~=\s*(["'])(.*?)\1$/u.exec(rawAttribute);
+  if (!match?.[2]) {
+    return undefined;
+  }
+
+  return {
+    className: match[2],
+    nextIndex: endIndex,
+  };
+}
+
+function parseRequiredClassNames(value: string): string[] | undefined {
+  const selectors = splitTopLevelSelectorList(value);
+  if (selectors.length === 0) {
+    return undefined;
+  }
+
+  const classNames: string[] = [];
+  for (const selector of selectors) {
+    const trimmed = selector.trim();
+    if (!trimmed.startsWith(".")) {
+      return undefined;
+    }
+
+    const identifier = readCssIdentifier(trimmed, 1);
+    if (!identifier || identifier.nextIndex !== trimmed.length) {
+      return undefined;
+    }
+
+    classNames.push(identifier.value);
+  }
+
+  return classNames;
 }
 
 function parseNegatedClassNames(value: string): string[] | undefined {

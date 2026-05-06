@@ -20,9 +20,13 @@ export function parseSelectorBranch(branch: string): ParsedSelectorBranch | unde
   }
 
   const contextClassNames = unique(
-    steps.slice(0, -1).flatMap((step) => step.selector.requiredClasses),
+    steps
+      .slice(0, -1)
+      .flatMap((step) => [...step.selector.requiredClasses, ...step.selector.hasDescendantClasses])
+      .concat(subjectStep.selector.hasDescendantClasses),
   );
   const negativeClassNames = unique(subjectStep.selector.negativeClasses);
+  const hasDescendantClassNames = unique(subjectStep.selector.hasDescendantClasses);
   const hasUnknownSemantics = steps.some((step) => step.selector.hasUnknownSemantics);
   const hasCombinators = steps.length > 1;
   const hasSubjectModifiers =
@@ -47,6 +51,7 @@ export function parseSelectorBranch(branch: string): ParsedSelectorBranch | unde
     requiredClassNames: subjectClassNames,
     contextClassNames,
     negativeClassNames,
+    hasDescendantClassNames,
     hasCombinators,
     hasSubjectModifiers,
     hasUnknownSemantics,

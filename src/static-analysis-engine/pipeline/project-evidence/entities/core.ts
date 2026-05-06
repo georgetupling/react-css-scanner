@@ -238,6 +238,7 @@ export function buildClassDefinitions(
           declarationSignature: getDeclarationSignature(definition.declarationDetails),
           isCssModule:
             isCssModuleStylesheet &&
+            !definition.selector.includes(":global(") &&
             (!stylesheet.filePath ||
               !sourceFilePath ||
               sourceFilePath === normalizeProjectPath(stylesheet.filePath)),
@@ -321,7 +322,10 @@ export function buildClassContexts(
     }
 
     for (const branch of rule.sourceRule.selectorBranches) {
-      for (const className of branch.contextClassNames) {
+      for (const className of uniqueSorted([
+        ...branch.contextClassNames,
+        ...branch.negativeClassNames,
+      ])) {
         const context = {
           className,
           selector: branch.raw,

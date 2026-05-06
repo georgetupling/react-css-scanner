@@ -47,11 +47,22 @@ function getUnsupportedSelectorReason(input: {
     return "selector branch contains unsupported selector semantics";
   }
 
-  if (parsedBranch.hasSubjectModifiers) {
+  if (
+    parsedBranch.hasSubjectModifiers &&
+    input.requirement.kind !== "has-descendant" &&
+    input.requirement.kind !== "same-node-class-conjunction"
+  ) {
     return "selector branch contains subject modifiers outside bounded selector reachability";
   }
 
-  if (parsedBranch.negativeClassNames.length > 0) {
+  if (
+    parsedBranch.negativeClassNames.length > 0 &&
+    !(
+      input.requirement.kind === "same-node-class-conjunction" &&
+      input.requirement.forbiddenClassNames &&
+      input.requirement.forbiddenClassNames.length > 0
+    )
+  ) {
     return "selector branch contains negative class constraints outside bounded selector reachability";
   }
 

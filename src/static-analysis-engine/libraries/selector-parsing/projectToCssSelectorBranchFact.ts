@@ -11,6 +11,7 @@ export function projectToCssSelectorBranchFact(
     requiredClassNames: [...parsedBranch.requiredClassNames],
     contextClassNames: [...parsedBranch.contextClassNames],
     negativeClassNames: [...parsedBranch.negativeClassNames],
+    hasDescendantClassNames: [...parsedBranch.hasDescendantClassNames],
     hasCombinators: parsedBranch.hasCombinators,
     hasSubjectModifiers: parsedBranch.hasSubjectModifiers,
     hasUnknownSemantics: parsedBranch.hasUnknownSemantics,

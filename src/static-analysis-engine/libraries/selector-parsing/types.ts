@@ -8,6 +8,7 @@ export type SelectorStepCombinator =
 export type ParsedSimpleSelectorSequence = {
   requiredClasses: string[];
   negativeClasses: string[];
+  hasDescendantClasses: string[];
   hasUnknownSemantics: boolean;
   hasSubjectModifiers: boolean;
   hasTypeOrIdConstraint: boolean;
@@ -28,6 +29,7 @@ export type ParsedSelectorBranch = {
   requiredClassNames: string[];
   contextClassNames: string[];
   negativeClassNames: string[];
+  hasDescendantClassNames: string[];
   hasCombinators: boolean;
   hasSubjectModifiers: boolean;
   hasUnknownSemantics: boolean;

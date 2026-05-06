@@ -10,6 +10,7 @@ export type CssSelectorBranchFact = {
   requiredClassNames: string[];
   contextClassNames: string[];
   negativeClassNames: string[];
+  hasDescendantClassNames: string[];
   hasCombinators: boolean;
   hasSubjectModifiers: boolean;
   hasUnknownSemantics: boolean;

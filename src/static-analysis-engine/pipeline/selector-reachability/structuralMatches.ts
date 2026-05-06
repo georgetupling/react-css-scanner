@@ -69,6 +69,14 @@ export function projectStructuralConstraintFromRequirement(
     };
   }
 
+  if (requirement.kind === "has-descendant") {
+    return {
+      combinator: "descendant",
+      leftClassName: requirement.subjectClassName,
+      rightClassName: requirement.descendantClassName,
+    };
+  }
+
   if (requirement.kind !== "sibling") {
     return undefined;
   }
