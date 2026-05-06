@@ -51,6 +51,7 @@ export type FactNodeKind =
   | "render-site"
   | "element-template"
   | "class-expression-site"
+  | "render-prop-invocation"
   | "expression-syntax"
   | "component-prop-binding"
   | "local-value-binding"
@@ -77,6 +78,7 @@ export type FactGraphNodes = {
   renderSites: RenderSiteNode[];
   elementTemplates: ElementTemplateNode[];
   classExpressionSites: ClassExpressionSiteNode[];
+  renderPropInvocations: RenderPropInvocationNode[];
   expressionSyntax: ExpressionSyntaxNode[];
   componentPropBindings: ComponentPropBindingNode[];
   localValueBindings: LocalValueBindingNode[];
@@ -182,6 +184,8 @@ export type RenderSiteNode = FactNodeBase & {
   parentRenderSiteNodeId?: FactNodeId;
   parentRenderRelation?: "jsx-child" | "jsx-attribute-expression" | "nested-render-expression";
   parentRenderAttributeName?: string;
+  callbackPropName?: string;
+  callbackParameterNames?: string[];
   repeatedRegion?: {
     repeatKind: "array-map" | "array-from";
     sourceText: string;
@@ -227,6 +231,16 @@ export type ClassExpressionSiteNode = FactNodeBase & {
   placementComponentNodeId?: FactNodeId;
   renderSiteNodeId?: FactNodeId;
   elementTemplateNodeId?: FactNodeId;
+};
+
+export type RenderPropInvocationNode = FactNodeBase & {
+  kind: "render-prop-invocation";
+  invocationKey: string;
+  componentNodeId: FactNodeId;
+  propName: string;
+  filePath: string;
+  location: SourceAnchor;
+  argumentExpressionNodeIds: FactNodeId[];
 };
 
 export type ExpressionSyntaxNode = FactNodeBase &
@@ -325,6 +339,7 @@ export type FactNode =
   | RenderSiteNode
   | ElementTemplateNode
   | ClassExpressionSiteNode
+  | RenderPropInvocationNode
   | ExpressionSyntaxNode
   | ComponentPropBindingNode
   | LocalValueBindingNode
@@ -360,7 +375,9 @@ export type ContainsEdgeContainmentKind =
   | "component-render-site"
   | "render-site-element-template"
   | "render-site-child-site"
+  | "component-render-prop-invocation"
   | "component-prop-binding"
+  | "module-local-value-binding"
   | "component-local-value-binding"
   | "component-helper-definition"
   | "helper-local-value-binding"

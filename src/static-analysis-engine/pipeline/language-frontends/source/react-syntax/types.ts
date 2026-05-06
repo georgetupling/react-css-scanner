@@ -6,6 +6,7 @@ export type SourceReactSyntaxFacts = {
   renderSites: ReactRenderSiteFact[];
   elementTemplates: ReactElementTemplateFact[];
   classExpressionSites: ReactClassExpressionSiteFact[];
+  renderPropInvocations: ReactRenderPropInvocationFact[];
   componentPropBindings: ReactComponentPropBindingFact[];
   localValueBindings: ReactLocalValueBindingFact[];
   helperDefinitions: ReactHelperDefinitionFact[];
@@ -40,6 +41,8 @@ export type ReactRenderSiteFact = {
   parentSiteKey?: string;
   parentRenderRelation?: "jsx-child" | "jsx-attribute-expression" | "nested-render-expression";
   parentRenderAttributeName?: string;
+  callbackPropName?: string;
+  callbackParameterNames?: string[];
   elementTemplateKey?: string;
   repeatedRegion?: {
     repeatKind: "array-map" | "array-from";
@@ -78,6 +81,15 @@ export type ReactClassExpressionSiteFact = {
   elementTemplateKey?: string;
 };
 
+export type ReactRenderPropInvocationFact = {
+  invocationKey: string;
+  componentKey: string;
+  propName: string;
+  filePath: string;
+  location: SourceAnchor;
+  argumentExpressionIds: string[];
+};
+
 export type ReactComponentPropBindingFact = {
   bindingKey: string;
   componentKey: string;
@@ -98,7 +110,7 @@ export type ReactDestructuredBindingPropertyFact = {
 
 export type ReactLocalValueBindingFact = {
   bindingKey: string;
-  ownerKind: "component" | "helper";
+  ownerKind: "source-file" | "component" | "helper";
   ownerKey: string;
   filePath: string;
   scopeKey: string;

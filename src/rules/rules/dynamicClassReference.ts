@@ -10,8 +10,20 @@ export const dynamicClassReferenceRule: RuleDefinition = {
 };
 
 function runDynamicClassReferenceRule(context: RuleContext): UnresolvedFinding[] {
+  const cssModuleReferenceKeys = new Set(
+    context.analysisEvidence.projectEvidence.entities.cssModuleMemberReferences.map((reference) =>
+      createLocationExpressionKey(reference.location, reference.rawExpressionText),
+    ),
+  );
+
   return getClassReferences(context.analysisEvidence)
     .filter((reference) => reference.unknownDynamic)
+    .filter(
+      (reference) =>
+        !cssModuleReferenceKeys.has(
+          createLocationExpressionKey(reference.location, reference.rawExpressionText),
+        ),
+    )
     .map((reference) => ({
       id: `dynamic-class-reference:${reference.id}`,
       ruleId: "dynamic-class-reference" as const,
@@ -36,6 +48,20 @@ function runDynamicClassReferenceRule(context: RuleContext): UnresolvedFinding[]
       },
     }))
     .sort((left, right) => left.id.localeCompare(right.id));
+}
+
+function createLocationExpressionKey(
+  location: ClassReferenceAnalysis["location"],
+  rawExpressionText: string,
+): string {
+  return [
+    location.filePath,
+    location.startLine,
+    location.startColumn,
+    location.endLine ?? "",
+    location.endColumn ?? "",
+    rawExpressionText,
+  ].join(":");
 }
 
 function buildDynamicClassReferenceTraces(input: {

@@ -381,6 +381,27 @@ test("render structure instantiates parent-supplied contributions through unreso
   );
 });
 
+test("render structure instantiates render-prop callback parameter classes from provider arguments", async () => {
+  const fixture = await buildRenderPropCallbackFixture();
+  const symbolicEvaluation = evaluateSymbolicExpressions({
+    graph: fixture.graph,
+  });
+  const result = buildRenderStructure({
+    graph: fixture.graph,
+    symbolicEvaluation,
+    options: {
+      includeTraces: true,
+    },
+  });
+
+  const appComponentNodeId = componentNodeIdByName(fixture.graph, "App");
+  const emission = findEmissionByToken(result.renderModel.emissionSites, "slot");
+
+  assert.equal(emission.emissionKind, "instantiated-external-class");
+  assert.equal(emission.suppliedByComponentNodeId, appComponentNodeId);
+  assert.deepEqual(emission.unsupported, []);
+});
+
 test("render structure keeps unconsumed component class prop diagnostics", async () => {
   const fixture = await buildUnconsumedComponentClassPropFixture();
   const symbolicEvaluation = evaluateSymbolicExpressions({
@@ -665,6 +686,43 @@ async function buildAssignedConditionalContentFixture() {
   }
 }
 
+async function buildRenderPropCallbackFixture() {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./app.css";',
+        "function Slot({ children }) {",
+        '  return <>{children("slot")}</>;',
+        "}",
+        "export function App() {",
+        "  return <Slot>{(className) => <div className={className}>Content</div>}</Slot>;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/app.css", ".slot { display: block; }\n")
+    .build();
+
+  try {
+    const snapshot = await buildProjectSnapshot({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+        cssFilePaths: ["src/app.css"],
+      },
+      runStage: async (_stage, _message, run) => run(),
+    });
+    const frontends = buildLanguageFrontends({ snapshot });
+    const factGraph = buildFactGraph({ snapshot, frontends });
+    return {
+      graph: factGraph.graph,
+    };
+  } finally {
+    await project.cleanup();
+  }
+}
+
 function findEmissionByToken(emissionSites, token) {
   const emissionSite = emissionSites.find((candidate) =>
     candidate.tokens.some((candidateToken) => candidateToken.token === token),
@@ -705,6 +763,7 @@ function emptyFactGraph() {
       renderSites: [],
       elementTemplates: [],
       classExpressionSites: [],
+      renderPropInvocations: [],
       expressionSyntax: [],
       componentPropBindings: [],
       localValueBindings: [],

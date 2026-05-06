@@ -83,6 +83,7 @@ export function buildFactGraph(input: FactGraphInput): FactGraphResult {
         renderSites: reactSyntaxFacts.renderSites,
         elementTemplates: reactSyntaxFacts.elementTemplates,
         classExpressionSites: reactSyntaxFacts.classExpressionSites,
+        renderPropInvocations: reactSyntaxFacts.renderPropInvocations,
         expressionSyntax: expressionSyntaxNodes,
         componentPropBindings: reactSyntaxFacts.componentPropBindings,
         localValueBindings: reactSyntaxFacts.localValueBindings,

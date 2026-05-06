@@ -1252,7 +1252,12 @@ function summarizeElementAccessExpressionSyntax(input: {
   );
   const propertyNames = getStringCandidates(argumentValue);
   if (!propertyNames || propertyNames.length === 0) {
-    return { kind: "unknown", reason: "unresolved-element-access-key" };
+    return summarizeAllStaticObjectLiteralPropertyValues({
+      input,
+      objectLiteral,
+      reason: "element access object map with unresolved key",
+      keyResolutionIsUnknownDynamic: isDynamicElementAccessKeyUncertainty(argumentValue),
+    });
   }
 
   const propertyValues: AbstractValue[] = [];
@@ -1283,6 +1288,72 @@ function summarizeElementAccessExpressionSyntax(input: {
   }
 
   return mergeClassSets(propertyValues, "element access object map");
+}
+
+function summarizeAllStaticObjectLiteralPropertyValues(input: {
+  input: {
+    input: SymbolicExpressionEvaluatorInput;
+    expression: Extract<ExpressionSyntaxNode, { expressionKind: "element-access" }>;
+    depth: number;
+    seenExpressionIds: Set<string>;
+    helperBindings?: Map<string, AbstractValue>;
+  };
+  objectLiteral: Extract<ExpressionSyntaxNode, { expressionKind: "object-literal" }>;
+  reason: string;
+  keyResolutionIsUnknownDynamic?: boolean;
+}): AbstractValue {
+  const propertyValues: AbstractValue[] = [];
+  let unknownDynamic =
+    Boolean(input.keyResolutionIsUnknownDynamic) ||
+    input.objectLiteral.hasSpreadProperty ||
+    input.objectLiteral.hasUnsupportedProperty;
+
+  for (const property of input.objectLiteral.properties) {
+    if (
+      property.propertyKind !== "property" ||
+      property.keyKind === "computed" ||
+      !property.valueExpressionId
+    ) {
+      unknownDynamic = true;
+      continue;
+    }
+
+    propertyValues.push(
+      getExpressionValue(
+        {
+          input: input.input.input,
+          depth: input.input.depth + 1,
+          seenExpressionIds: input.input.seenExpressionIds,
+          helperBindings: input.input.helperBindings,
+        },
+        property.valueExpressionId,
+      ),
+    );
+  }
+
+  if (propertyValues.length === 0) {
+    return { kind: "unknown", reason: "unresolved-element-access-key" };
+  }
+
+  const merged = mergeClassSets(propertyValues, input.reason);
+  if (merged.kind !== "class-set") {
+    return merged;
+  }
+
+  return {
+    ...merged,
+    definite: [],
+    possible: uniqueSorted([...merged.definite, ...merged.possible]),
+    unknownDynamic: merged.unknownDynamic || unknownDynamic,
+  };
+}
+
+function isDynamicElementAccessKeyUncertainty(argumentValue: AbstractValue): boolean {
+  return (
+    argumentValue.kind === "unknown" &&
+    (argumentValue.reason === "class-name-resolution-cycle" ||
+      argumentValue.reason === "class-name-resolution-budget-exceeded")
+  );
 }
 
 function resolveObjectLiteralExpressionSyntax(input: {

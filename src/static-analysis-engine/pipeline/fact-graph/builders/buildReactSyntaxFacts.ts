@@ -9,6 +9,7 @@ import type {
   HelperDefinitionNode,
   LocalValueBindingNode,
   ReferencesClassExpressionEdge,
+  RenderPropInvocationNode,
   RendersEdge,
   RenderSiteNode,
 } from "../types.js";
@@ -28,6 +29,7 @@ import {
   localValueBindingNodeId,
   moduleNodeId,
   referencesClassExpressionEdgeId,
+  renderPropInvocationNodeId,
   rendersEdgeId,
   renderSiteNodeId,
 } from "../ids.js";
@@ -40,6 +42,7 @@ export type BuiltReactSyntaxFacts = {
     | RenderSiteNode
     | ElementTemplateNode
     | ClassExpressionSiteNode
+    | RenderPropInvocationNode
     | ComponentPropBindingNode
     | LocalValueBindingNode
     | HelperDefinitionNode
@@ -48,6 +51,7 @@ export type BuiltReactSyntaxFacts = {
   renderSites: RenderSiteNode[];
   elementTemplates: ElementTemplateNode[];
   classExpressionSites: ClassExpressionSiteNode[];
+  renderPropInvocations: RenderPropInvocationNode[];
   componentPropBindings: ComponentPropBindingNode[];
   localValueBindings: LocalValueBindingNode[];
   helperDefinitions: HelperDefinitionNode[];
@@ -67,6 +71,7 @@ export function buildReactSyntaxFacts(input: FactGraphInput): BuiltReactSyntaxFa
   const renderSites: RenderSiteNode[] = [];
   const elementTemplates: ElementTemplateNode[] = [];
   const classExpressionSites: ClassExpressionSiteNode[] = [];
+  const renderPropInvocations: RenderPropInvocationNode[] = [];
   const componentPropBindings: ComponentPropBindingNode[] = [];
   const localValueBindings: LocalValueBindingNode[] = [];
   const helperDefinitions: HelperDefinitionNode[] = [];
@@ -145,9 +150,11 @@ export function buildReactSyntaxFacts(input: FactGraphInput): BuiltReactSyntaxFa
     for (const localBinding of file.reactSyntax.localValueBindings) {
       const nodeId = localValueBindingNodeId(localBinding.bindingKey);
       const ownerNodeId =
-        localBinding.ownerKind === "component"
-          ? componentNodeId(localBinding.ownerKey)
-          : helperDefinitionNodeId(localBinding.ownerKey);
+        localBinding.ownerKind === "source-file"
+          ? moduleNodeId(localBinding.filePath)
+          : localBinding.ownerKind === "component"
+            ? componentNodeId(localBinding.ownerKey)
+            : helperDefinitionNodeId(localBinding.ownerKey);
       localValueBindings.push({
         ...localBinding,
         id: nodeId,
@@ -170,9 +177,11 @@ export function buildReactSyntaxFacts(input: FactGraphInput): BuiltReactSyntaxFa
         buildContainsEdge(
           ownerNodeId,
           nodeId,
-          localBinding.ownerKind === "component"
-            ? "component-local-value-binding"
-            : "helper-local-value-binding",
+          localBinding.ownerKind === "source-file"
+            ? "module-local-value-binding"
+            : localBinding.ownerKind === "component"
+              ? "component-local-value-binding"
+              : "helper-local-value-binding",
         ),
       );
     }
@@ -200,6 +209,10 @@ export function buildReactSyntaxFacts(input: FactGraphInput): BuiltReactSyntaxFa
           : {}),
         ...(renderSite.parentRenderAttributeName
           ? { parentRenderAttributeName: renderSite.parentRenderAttributeName }
+          : {}),
+        ...(renderSite.callbackPropName ? { callbackPropName: renderSite.callbackPropName } : {}),
+        ...(renderSite.callbackParameterNames?.length
+          ? { callbackParameterNames: [...renderSite.callbackParameterNames].sort() }
           : {}),
         ...(renderSite.repeatedRegion
           ? {
@@ -255,6 +268,25 @@ export function buildReactSyntaxFacts(input: FactGraphInput): BuiltReactSyntaxFa
           ),
         );
       }
+    }
+
+    for (const invocation of file.reactSyntax.renderPropInvocations) {
+      const { argumentExpressionIds, ...nodeInvocation } = invocation;
+      const nodeId = renderPropInvocationNodeId(invocation.invocationKey);
+      const componentId = componentNodeId(invocation.componentKey);
+      renderPropInvocations.push({
+        ...nodeInvocation,
+        id: nodeId,
+        kind: "render-prop-invocation",
+        componentNodeId: componentId,
+        argumentExpressionNodeIds: [...argumentExpressionIds],
+        confidence: "high",
+        provenance: frontendFileProvenance({
+          filePath: invocation.filePath,
+          summary: "Extracted render prop invocation frontend fact",
+        }),
+      });
+      contains.push(buildContainsEdge(componentId, nodeId, "component-render-prop-invocation"));
     }
 
     for (const template of file.reactSyntax.elementTemplates) {
@@ -397,6 +429,7 @@ export function buildReactSyntaxFacts(input: FactGraphInput): BuiltReactSyntaxFa
       ...renderSites,
       ...elementTemplates,
       ...classExpressionSites,
+      ...renderPropInvocations,
       ...componentPropBindings,
       ...localValueBindings,
       ...helperDefinitions,
@@ -405,6 +438,7 @@ export function buildReactSyntaxFacts(input: FactGraphInput): BuiltReactSyntaxFa
     renderSites: sortNodes(renderSites),
     elementTemplates: sortNodes(elementTemplates),
     classExpressionSites: sortNodes(classExpressionSites),
+    renderPropInvocations: sortNodes(renderPropInvocations),
     componentPropBindings: sortNodes(componentPropBindings),
     localValueBindings: sortNodes(localValueBindings),
     helperDefinitions: sortNodes(helperDefinitions),

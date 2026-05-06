@@ -1,5 +1,6 @@
 import ts from "typescript";
 
+import { toSourceAnchor } from "../../../../libraries/react-components/reactComponentAstUtils.js";
 import { createSiteKey } from "./keys.js";
 import { collectReactComponents } from "./collectComponents.js";
 import { collectCssModuleNamespaceNames } from "./cssModuleImports.js";
@@ -35,6 +36,7 @@ import type { SourceModuleSyntaxFacts } from "../module-syntax/index.js";
 import type {
   ReactClassExpressionSiteFact,
   ReactElementTemplateFact,
+  ReactRenderPropInvocationFact,
   ReactRenderSiteFact,
   SourceReactSyntaxFacts,
 } from "./types.js";
@@ -52,6 +54,7 @@ export function collectSourceReactSyntax(input: {
   const renderSites: ReactRenderSiteFact[] = [];
   const elementTemplates: ReactElementTemplateFact[] = [];
   const classExpressionSites: ReactClassExpressionSiteFact[] = [];
+  const renderPropInvocations: ReactRenderPropInvocationFact[] = [];
   const expressionSyntax: SourceExpressionSyntaxFact[] = [];
   const componentByKey = new Map(
     components.map((component) => [component.componentKey, component]),
@@ -137,6 +140,14 @@ export function collectSourceReactSyntax(input: {
             renderSite.parentRenderAttributeName = parentRenderAttributeName;
           }
         }
+        const callbackBinding = resolveContainingRenderPropCallback({
+          node,
+          parentRenderNode: currentParentRenderNode,
+        });
+        if (callbackBinding) {
+          renderSite.callbackPropName = callbackBinding.propName;
+          renderSite.callbackParameterNames = callbackBinding.parameterNames;
+        }
       }
       renderSites.push(renderSite);
       renderStack.push(renderSite);
@@ -199,6 +210,17 @@ export function collectSourceReactSyntax(input: {
       expressionSyntax.push(...cloneElementClassSite.expressionSyntax);
     }
 
+    const renderPropInvocation = tryCreateRenderPropInvocation({
+      node,
+      filePath: input.filePath,
+      sourceFile: input.sourceFile,
+      ...(currentComponentKey ? { componentKey: currentComponentKey } : {}),
+    });
+    if (renderPropInvocation) {
+      renderPropInvocations.push(renderPropInvocation.invocation);
+      expressionSyntax.push(...renderPropInvocation.expressionSyntax);
+    }
+
     ts.forEachChild(node, visit);
 
     if (renderSite) {
@@ -223,6 +245,9 @@ export function collectSourceReactSyntax(input: {
     classExpressionSites: dedupeClassExpressionSites(classExpressionSites).sort(
       compareClassExpressionSites,
     ),
+    renderPropInvocations: renderPropInvocations.sort((left, right) =>
+      left.invocationKey.localeCompare(right.invocationKey),
+    ),
     componentPropBindings: bindingFacts.componentPropBindings.sort(compareComponentPropBindings),
     localValueBindings: bindingFacts.localValueBindings.sort(compareLocalValueBindings),
     helperDefinitions: bindingFacts.helperDefinitions.sort(compareHelperDefinitions),
@@ -231,6 +256,111 @@ export function collectSourceReactSyntax(input: {
       ...bindingFacts.expressionSyntax,
     ]),
   };
+}
+
+function tryCreateRenderPropInvocation(input: {
+  node: ts.Node;
+  filePath: string;
+  sourceFile: ts.SourceFile;
+  componentKey?: string;
+}):
+  | { invocation: ReactRenderPropInvocationFact; expressionSyntax: SourceExpressionSyntaxFact[] }
+  | undefined {
+  if (!input.componentKey || !ts.isCallExpression(input.node)) {
+    return undefined;
+  }
+
+  const propName = getInvokedRenderPropName(input.node.expression);
+  if (!propName || input.node.arguments.length === 0) {
+    return undefined;
+  }
+
+  const location = toSourceAnchor(input.node.expression, input.sourceFile, input.filePath);
+  const argumentExpressionIds: string[] = [];
+  const expressionSyntax: SourceExpressionSyntaxFact[] = [];
+  for (const argument of input.node.arguments) {
+    const argumentSyntax = collectExpressionSyntaxForNode({
+      node: argument,
+      filePath: input.filePath,
+      sourceFile: input.sourceFile,
+    });
+    argumentExpressionIds.push(argumentSyntax.rootExpressionId);
+    expressionSyntax.push(...argumentSyntax.expressions);
+  }
+
+  return {
+    invocation: {
+      invocationKey: createSiteKey(
+        "render-prop-invocation",
+        location,
+        `${input.componentKey}:${propName}`,
+      ),
+      componentKey: input.componentKey,
+      propName,
+      filePath: input.filePath,
+      location,
+      argumentExpressionIds,
+    },
+    expressionSyntax,
+  };
+}
+
+function getInvokedRenderPropName(callee: ts.Expression): string | undefined {
+  if (ts.isIdentifier(callee)) {
+    return callee.text === "children" ? "children" : undefined;
+  }
+
+  if (
+    ts.isPropertyAccessExpression(callee) &&
+    ts.isIdentifier(callee.expression) &&
+    callee.expression.text === "props"
+  ) {
+    return callee.name.text;
+  }
+
+  return undefined;
+}
+
+function resolveContainingRenderPropCallback(input: {
+  node: ts.Node;
+  parentRenderNode: ts.Node;
+}): { propName: string; parameterNames: string[] } | undefined {
+  let current: ts.Node | undefined = input.node.parent;
+  while (current && current !== input.parentRenderNode) {
+    if (ts.isArrowFunction(current) || ts.isFunctionExpression(current)) {
+      const propName = getCallbackPropName(current);
+      const parameterNames = current.parameters
+        .map((parameter) => parameter.name)
+        .filter((name): name is ts.Identifier => ts.isIdentifier(name))
+        .map((name) => name.text);
+      if (propName && parameterNames.length > 0) {
+        return { propName, parameterNames };
+      }
+    }
+    current = current.parent;
+  }
+
+  return undefined;
+}
+
+function getCallbackPropName(
+  callback: ts.ArrowFunction | ts.FunctionExpression,
+): string | undefined {
+  const parent = callback.parent;
+  if (ts.isJsxExpression(parent) && parent.expression === callback) {
+    return "children";
+  }
+
+  if (
+    ts.isJsxExpression(parent) &&
+    ts.isJsxAttribute(parent.parent) &&
+    parent.parent.initializer === parent &&
+    ts.isIdentifier(parent.parent.name)
+  ) {
+    return parent.parent.name.text;
+  }
+
+  return undefined;
 }
 
 function classifyParentRenderRelation(input: {

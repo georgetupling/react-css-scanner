@@ -1,6 +1,6 @@
 {
   "name": "scan-react-css",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "CLI and Node API for auditing React CSS usage.",
   "type": "module",
   "bin": {
@@ -61,11 +61,11 @@
     "husky": "^9.1.7",
     "prettier": "^3.8.3",
     "tsdown": "^0.14.2",
-    "typescript": "^5.9.3",
     "typescript-eslint": "^8.58.2"
   },
   "dependencies": {
     "@jridgewell/trace-mapping": "^0.3.31",
-    "less": "^4.6.4"
+    "less": "^4.6.4",
+    "typescript": "^5.9.3"
   }
 }

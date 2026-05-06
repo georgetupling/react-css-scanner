@@ -351,7 +351,25 @@ test("fact graph reports duplicate graph ids", async () => {
         {
           severity: "error",
           code: "duplicate-graph-id",
+          message:
+            "Duplicate fact graph node id: expression-syntax:src/App.tsx:1:22:1:23:FirstLiteralToken",
+        },
+        {
+          severity: "error",
+          code: "duplicate-graph-id",
+          message:
+            "Duplicate fact graph node id: local-value-binding:local-value-binding:src/App.tsx:1:14:1:19:local-scope:src/App.tsx:1:1:2:1:src/App.tsx:value",
+        },
+        {
+          severity: "error",
+          code: "duplicate-graph-id",
           message: "Duplicate fact graph node id: module:src/App.tsx",
+        },
+        {
+          severity: "error",
+          code: "duplicate-graph-id",
+          message:
+            "Duplicate fact graph edge id: contains:module:src/App.tsx->local-value-binding:local-value-binding:src/App.tsx:1:14:1:19:local-scope:src/App.tsx:1:1:2:1:src/App.tsx:value",
         },
         {
           severity: "error",

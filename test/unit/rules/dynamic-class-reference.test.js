@@ -442,6 +442,40 @@ test("dynamic-class-reference degrades recursive element access keys without ove
   }
 });
 
+test("dynamic-class-reference does not report render-prop callback parameters instantiated from provider arguments", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        "function Slot({ children }) {",
+        '  return <>{children("slot")}</>;',
+        "}",
+        "export function App() {",
+        "  return <Slot>{(className) => <div className={className}>Content</div>}</Slot>;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".slot { display: block; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
+      cssFilePaths: ["src/App.css"],
+    });
+
+    assert.deepEqual(
+      result.findings.filter((finding) => finding.ruleId === "dynamic-class-reference"),
+      [],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("dynamic-class-reference can be disabled from config", async () => {
   const project = await new TestProjectBuilder()
     .withConfig({

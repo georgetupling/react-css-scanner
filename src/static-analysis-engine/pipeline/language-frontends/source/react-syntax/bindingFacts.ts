@@ -83,6 +83,12 @@ export function collectTopLevelHelperBindingFacts(input: {
       continue;
     }
 
+    const scope = createLocalBindingScope({
+      ownerKey: input.filePath,
+      filePath: input.filePath,
+      sourceFile: input.sourceFile,
+      node: input.sourceFile,
+    });
     for (const declaration of statement.declarationList.declarations) {
       if (!ts.isIdentifier(declaration.name) || !declaration.initializer) {
         continue;
@@ -90,6 +96,15 @@ export function collectTopLevelHelperBindingFacts(input: {
 
       const unwrapped = unwrapExpression(declaration.initializer);
       if (!ts.isArrowFunction(unwrapped) && !ts.isFunctionExpression(unwrapped)) {
+        collectLocalBindingFactFromDeclaration({
+          declaration,
+          scope,
+          ownerKind: "source-file",
+          ownerKey: input.filePath,
+          filePath: input.filePath,
+          sourceFile: input.sourceFile,
+          collected,
+        });
         continue;
       }
       if (
@@ -317,7 +332,7 @@ function collectLocalBindingFactsFromStatements(input: {
 function collectLocalBindingFactFromDeclaration(input: {
   declaration: ts.VariableDeclaration;
   scope: LocalBindingScope;
-  ownerKind: "component" | "helper";
+  ownerKind: "source-file" | "component" | "helper";
   ownerKey: string;
   filePath: string;
   sourceFile: ts.SourceFile;

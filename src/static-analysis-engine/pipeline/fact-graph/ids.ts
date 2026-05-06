@@ -71,6 +71,10 @@ export function classExpressionSiteNodeId(siteKey: string): FactNodeId {
   return `class-expression-site:${normalizeIdPart(siteKey)}`;
 }
 
+export function renderPropInvocationNodeId(invocationKey: string): FactNodeId {
+  return `render-prop-invocation:${normalizeIdPart(invocationKey)}`;
+}
+
 export function componentPropBindingNodeId(bindingKey: string): FactNodeId {
   return `component-prop-binding:${normalizeIdPart(bindingKey)}`;
 }

@@ -1,4 +1,5 @@
 import { emissionSiteId, renderPathId } from "../ids.js";
+import { conditionId } from "../../symbolic-evaluation/ids.js";
 import type {
   EmissionSite,
   EmissionTokenProvenance,
@@ -30,6 +31,9 @@ export function buildNativeEmissionSites(input: {
     input.renderInput.symbolicEvaluation.evaluatedExpressions.indexes.classExpressionIdBySiteNodeId;
   const expressionById =
     input.renderInput.symbolicEvaluation.evaluatedExpressions.indexes.classExpressionById;
+  const expressionSyntaxById = new Map(
+    input.renderInput.graph.nodes.expressionSyntax.map((expression) => [expression.id, expression]),
+  );
   const elementIdsByTemplateNodeId = buildElementIdsByTemplateNodeId(input.elements);
   const elementIdsByRenderSiteNodeId = buildElementIdsByRenderSiteNodeId(input.elements);
   const classSites = [...input.renderInput.graph.nodes.classExpressionSites].sort(
@@ -230,13 +234,30 @@ export function buildNativeEmissionSites(input: {
         componentPropSuppliesByBoundaryId,
         counts: emissionIdCounts,
       });
-      const finalEmissionSite = instantiatedSite
+      const renderPropCallbackSite = instantiateRenderPropCallbackEmissionSite({
+        emissionSite,
+        expression,
+        classSite,
+        element,
+        boundaryById,
+        renderSitesById: input.renderInput.graph.indexes.nodesById,
+        renderPropInvocations: input.renderInput.graph.nodes.renderPropInvocations,
+        expressionSyntaxById,
+        counts: emissionIdCounts,
+      });
+      const finalEmissionSite = renderPropCallbackSite
         ? {
-            ...instantiatedSite,
+            ...renderPropCallbackSite,
             id: emissionSite.id,
             renderPathId: emissionSite.renderPathId,
           }
-        : emissionSite;
+        : instantiatedSite
+          ? {
+              ...instantiatedSite,
+              id: emissionSite.id,
+              renderPathId: emissionSite.renderPathId,
+            }
+          : emissionSite;
       emissionSites.push(finalEmissionSite);
       if (element) {
         element.emissionSiteIds = [...new Set([...element.emissionSiteIds, id])].sort();
@@ -629,9 +650,7 @@ function instantiateExternalContributionEmissionSite(input: {
     cssModuleContributions: [...input.emissionSite.cssModuleContributions].sort((left, right) =>
       left.id.localeCompare(right.id),
     ),
-    unsupported: [...input.emissionSite.unsupported].sort((left, right) =>
-      left.id.localeCompare(right.id),
-    ),
+    unsupported: [],
     confidence: "medium",
     renderPathId: renderPathId({ terminalKind: "emission-site", terminalId: id }),
     placementConditionIds: input.element?.placementConditionIds ?? [],
@@ -699,6 +718,189 @@ function collectExternalSupplyTokens(input: {
   }
 
   return [...directTokens, ...upstreamTokens];
+}
+
+function instantiateRenderPropCallbackEmissionSite(input: {
+  emissionSite: EmissionSite;
+  expression: RenderStructureInput["symbolicEvaluation"]["evaluatedExpressions"]["classExpressions"][number];
+  classSite: RenderStructureInput["graph"]["nodes"]["classExpressionSites"][number];
+  element?: RenderedElement;
+  boundaryById: Map<string, RenderedComponentBoundary>;
+  renderSitesById: RenderStructureInput["graph"]["indexes"]["nodesById"];
+  renderPropInvocations: RenderStructureInput["graph"]["nodes"]["renderPropInvocations"];
+  expressionSyntaxById: Map<
+    string,
+    RenderStructureInput["graph"]["nodes"]["expressionSyntax"][number]
+  >;
+  counts: Map<string, number>;
+}): EmissionSite | undefined {
+  if (
+    input.expression.tokens.length > 0 ||
+    input.classSite.classExpressionSiteKind !== "jsx-class"
+  ) {
+    return undefined;
+  }
+
+  const renderSite = input.classSite.renderSiteNodeId
+    ? input.renderSitesById.get(input.classSite.renderSiteNodeId)
+    : undefined;
+  if (
+    !renderSite ||
+    renderSite.kind !== "render-site" ||
+    !renderSite.callbackPropName ||
+    !renderSite.callbackParameterNames?.length
+  ) {
+    return undefined;
+  }
+
+  const parameterIndex = renderSite.callbackParameterNames.indexOf(
+    input.classSite.rawExpressionText,
+  );
+  if (parameterIndex < 0 || !renderSite.parentRenderSiteNodeId) {
+    return undefined;
+  }
+
+  const boundary = [...input.boundaryById.values()].find(
+    (candidate) => candidate.referenceRenderSiteNodeId === renderSite.parentRenderSiteNodeId,
+  );
+  if (!boundary?.componentNodeId) {
+    return undefined;
+  }
+
+  const invocation = input.renderPropInvocations.find(
+    (candidate) =>
+      candidate.componentNodeId === boundary.componentNodeId &&
+      candidate.propName === renderSite.callbackPropName,
+  );
+  const argumentExpressionId = invocation?.argumentExpressionNodeIds[parameterIndex];
+  if (!invocation || !argumentExpressionId) {
+    return undefined;
+  }
+
+  const sourceExpression = input.expressionSyntaxById.get(argumentExpressionId);
+  if (!sourceExpression) {
+    return undefined;
+  }
+
+  const classNames = collectStaticClassNamesFromExpressionSyntax({
+    expressionId: argumentExpressionId,
+    expressionSyntaxById: input.expressionSyntaxById,
+    seen: new Set(),
+  });
+  if (classNames.length === 0) {
+    return undefined;
+  }
+
+  const suppliedByComponentNodeId = boundary.parentBoundaryId
+    ? (input.boundaryById.get(boundary.parentBoundaryId)?.componentNodeId ??
+      input.emissionSite.suppliedByComponentNodeId)
+    : input.emissionSite.suppliedByComponentNodeId;
+  const fallbackConditionId =
+    input.expression.tokens[0]?.conditionId ??
+    conditionId({ expressionId: input.expression.id, conditionKey: "render-prop-callback" });
+  const tokens = classNames
+    .map((className, index) => ({
+      id: `${input.expression.id}:render-prop-callback:${invocation.id}:${index}`,
+      token: className,
+      tokenKind: "external-class" as const,
+      presence: "possible" as const,
+      conditionId: fallbackConditionId,
+      sourceAnchor: normalizeAnchor(sourceExpression.location),
+      confidence: "medium" as const,
+    }))
+    .sort(compareTokens);
+  const tokenProvenance: EmissionTokenProvenance[] = tokens.map((token) => ({
+    token: token.token,
+    tokenKind: token.tokenKind,
+    presence: token.presence,
+    sourceExpressionId: input.expression.id,
+    sourceClassExpressionSiteNodeId: input.expression.classExpressionSiteNodeId,
+    sourceLocation: token.sourceAnchor,
+    ...(suppliedByComponentNodeId ? { suppliedByComponentNodeId } : {}),
+    ...(input.emissionSite.emittingComponentNodeId
+      ? { emittedByComponentNodeId: input.emissionSite.emittingComponentNodeId }
+      : {}),
+    conditionId: token.conditionId,
+    confidence: token.confidence,
+  }));
+
+  const siteKey = `${input.classSite.id}:${input.element?.id ?? input.emissionSite.boundaryId}:render-prop:${invocation.id}`;
+  const id = createEmissionSiteId({
+    classExpressionId: input.expression.id,
+    key: siteKey,
+    counts: input.counts,
+  });
+
+  return {
+    ...input.emissionSite,
+    id,
+    emissionKind: "instantiated-external-class",
+    ...(suppliedByComponentNodeId ? { suppliedByComponentNodeId } : {}),
+    tokenProvenance,
+    tokens,
+    sourceExpressionIds: [input.expression.id, argumentExpressionId].sort(),
+    unsupported: [],
+    confidence: "medium",
+    renderPathId: renderPathId({ terminalKind: "emission-site", terminalId: id }),
+  };
+}
+
+function collectStaticClassNamesFromExpressionSyntax(input: {
+  expressionId: string;
+  expressionSyntaxById: Map<
+    string,
+    RenderStructureInput["graph"]["nodes"]["expressionSyntax"][number]
+  >;
+  seen: Set<string>;
+}): string[] {
+  if (input.seen.has(input.expressionId)) {
+    return [];
+  }
+  const seen = new Set(input.seen);
+  seen.add(input.expressionId);
+  const expression = input.expressionSyntaxById.get(input.expressionId);
+  if (!expression) {
+    return [];
+  }
+
+  if (expression.expressionKind === "string-literal") {
+    return splitClassNames(expression.value);
+  }
+  if (expression.expressionKind === "identifier" && expression.possibleStringValues?.length) {
+    return expression.possibleStringValues.flatMap(splitClassNames).sort();
+  }
+  if (expression.expressionKind === "template-literal" && expression.spans.length === 0) {
+    return splitClassNames(expression.headText);
+  }
+  if (expression.expressionKind === "conditional") {
+    return [
+      ...collectStaticClassNamesFromExpressionSyntax({
+        expressionId: expression.whenTrueExpressionId,
+        expressionSyntaxById: input.expressionSyntaxById,
+        seen,
+      }),
+      ...collectStaticClassNamesFromExpressionSyntax({
+        expressionId: expression.whenFalseExpressionId,
+        expressionSyntaxById: input.expressionSyntaxById,
+        seen,
+      }),
+    ].sort();
+  }
+  if (expression.expressionKind === "wrapper") {
+    return collectStaticClassNamesFromExpressionSyntax({
+      expressionId: expression.innerExpressionId,
+      expressionSyntaxById: input.expressionSyntaxById,
+      seen,
+    });
+  }
+
+  return [];
+}
+
+function splitClassNames(value: string): string[] {
+  return [...new Set(value.split(/\s+/).filter(Boolean))].sort((left, right) =>
+    left.localeCompare(right),
+  );
 }
 
 function findBoundaryRenderPath(

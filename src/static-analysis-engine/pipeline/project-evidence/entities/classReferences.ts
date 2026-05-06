@@ -262,7 +262,6 @@ function shouldSkipConsumedComponentPropFallback(input: {
 }): boolean {
   return (
     input.emissionSite.emissionKind === "rendered-element-class" &&
-    !input.emissionSite.elementId &&
     input.expression.classExpressionSiteKind === "component-prop-class" &&
     input.consumedComponentPropExpressionIds.has(input.expression.id)
   );

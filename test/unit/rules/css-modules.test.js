@@ -33,6 +33,31 @@ test("CSS Module rules do not report used module classes", async () => {
   }
 });
 
+test("CSS Module member access does not report dynamic class references", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/Button.tsx",
+      'import styles from "./Button.module.css";\nexport function Button() { return <button className={styles.root}>Button</button>; }\n',
+    )
+    .withCssFile("src/Button.module.css", ".root { display: block; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/Button.tsx"],
+      cssFilePaths: ["src/Button.module.css"],
+    });
+
+    assert.deepEqual(
+      result.findings.filter((finding) => finding.ruleId === "dynamic-class-reference"),
+      [],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("missing-css-module-class reports missing module members", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(
@@ -415,6 +440,35 @@ test("CSS Module rules respect camelCase locals convention", async () => {
           finding.ruleId === "missing-css-module-class" ||
           finding.ruleId === "unused-css-module-class",
       ),
+      [],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("CSS Module camelCase member access does not report dynamic class references", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/components/Button.tsx",
+      [
+        'import styles from "./Button.module.css";',
+        "export function Button() { return <button className={styles.fooBar}>Button</button>; }",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/components/Button.module.css", ".foo-bar { display: block; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/components/Button.tsx"],
+      cssFilePaths: ["src/components/Button.module.css"],
+    });
+
+    assert.deepEqual(
+      result.findings.filter((finding) => finding.ruleId === "dynamic-class-reference"),
       [],
     );
   } finally {

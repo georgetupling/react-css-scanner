@@ -453,6 +453,10 @@ function collectUnsupportedClassReferenceDiagnosticsFromRenderModel(
       continue;
     }
 
+    if (site.classExpressionSiteKind === "component-prop-class") {
+      continue;
+    }
+
     const location = normalizeAnchor(site.location);
     diagnostics.push({
       sourceAnchor: location,

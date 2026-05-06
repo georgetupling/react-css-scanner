@@ -701,6 +701,95 @@ test("unused-css-class treats data-driven object literal class values in array m
   }
 });
 
+test("unused-css-class treats finite enum object lookup values as used", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        "const toneClass = {",
+        '  primary: "btn-primary",',
+        '  secondary: "btn-secondary",',
+        "};",
+        "export function App({ tone }: { tone: keyof typeof toneClass }) {",
+        "  return <button className={toneClass[tone]}>Save</button>;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile(
+      "src/App.css",
+      [".btn-primary { color: blue; }", ".btn-secondary { color: purple; }", ""].join("\n"),
+    )
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", ["btn-primary", "btn-secondary"]);
+    assert.deepEqual(
+      result.findings.filter((finding) => finding.ruleId === "dynamic-class-reference"),
+      [],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unused-css-class treats direct class-like prop values consumed by children as used", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        "function Label({ toneClass }: { toneClass: string }) {",
+        "  return <span className={toneClass}>Name</span>;",
+        "}",
+        "export function App() {",
+        '  return <Label toneClass="muted" />;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".muted { color: gray; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", ["muted"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unused-css-class treats render-prop supplied class values as used", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        "function Slot({ children }: { children: (className: string) => React.ReactNode }) {",
+        '  return <>{children("slot")}</>;',
+        "}",
+        "export function App() {",
+        "  return <Slot>{(className) => <div className={className}>Content</div>}</Slot>;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".slot { padding: 1rem; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", ["slot"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("unused-css-class treats finite role template literal class variants as used", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(

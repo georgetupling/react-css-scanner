@@ -241,5 +241,9 @@ function isClassLikeJsxAttributeName(input: {
     return input.attributeName === "className";
   }
 
-  return input.attributeName === "className" || input.attributeName.endsWith("ClassName");
+  return (
+    input.attributeName === "className" ||
+    input.attributeName.endsWith("ClassName") ||
+    input.attributeName.endsWith("Class")
+  );
 }
