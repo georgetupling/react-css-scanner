@@ -7,11 +7,17 @@ export type SelectorStepCombinator =
 
 export type ParsedSimpleSelectorSequence = {
   requiredClasses: string[];
+  classAttributePredicates: ParsedClassAttributePredicate[];
   negativeClasses: string[];
   hasDescendantClasses: string[];
   hasUnknownSemantics: boolean;
   hasSubjectModifiers: boolean;
   hasTypeOrIdConstraint: boolean;
+};
+
+export type ParsedClassAttributePredicate = {
+  operator: "prefix" | "substring";
+  value: string;
 };
 
 export type ParsedSelectorStep = {
@@ -26,6 +32,7 @@ export type ParsedSelectorBranch = {
   steps: ParsedSelectorStep[];
   subjectStepIndex: number;
   subjectClassNames: string[];
+  classAttributePredicates: ParsedClassAttributePredicate[];
   requiredClassNames: string[];
   contextClassNames: string[];
   negativeClassNames: string[];

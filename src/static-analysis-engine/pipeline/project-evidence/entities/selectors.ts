@@ -113,6 +113,11 @@ export function buildSelectorBranches(input: {
       ruleKey: branchProjection.ruleKey,
       location: branchProjection.location,
       selectorReachabilityStatus: branchProjection.status,
+      classAttributePredicates: branchProjection.subject.classAttributePredicates.map(
+        (predicate) => ({
+          ...predicate,
+        }),
+      ),
       reasons: [...branchProjection.reasons],
       confidence: branchProjection.confidence,
       traces: input.includeTraces ? [...branchProjection.traces] : [],

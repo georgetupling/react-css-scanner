@@ -22,6 +22,7 @@ export type {
 } from "./queryTypes.js";
 export type {
   ParsedCssAtRuleContext,
+  ParsedClassAttributePredicate,
   ParsedCssSelectorEntry,
   ParsedSelectorBranch,
   ParsedSelectorBranchMatchKind,

@@ -119,7 +119,7 @@ test("QA 0.3.5: imported const tuple joins keep all finite classes live", async 
   }
 });
 
-test.todo("QA 0.3.5: prefix class attribute selectors satisfy matching classes", async () => {
+test("QA 0.3.5: prefix class attribute selectors satisfy matching classes", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(
       "src/App.tsx",
@@ -137,7 +137,7 @@ test.todo("QA 0.3.5: prefix class attribute selectors satisfy matching classes",
   }
 });
 
-test.todo("QA 0.3.5: substring class attribute selectors satisfy matching classes", async () => {
+test("QA 0.3.5: substring class attribute selectors satisfy matching classes", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(
       "src/App.tsx",
@@ -155,7 +155,7 @@ test.todo("QA 0.3.5: substring class attribute selectors satisfy matching classe
   }
 });
 
-test.todo("QA 0.3.5: native CSS nesting descendant selectors define nested classes", async () => {
+test("QA 0.3.5: native CSS nesting descendant selectors define nested classes", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(
       "src/App.tsx",
@@ -177,7 +177,7 @@ test.todo("QA 0.3.5: native CSS nesting descendant selectors define nested class
   }
 });
 
-test.todo("QA 0.3.5: native CSS nesting compound self selectors define state classes", async () => {
+test("QA 0.3.5: native CSS nesting compound self selectors define state classes", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(
       "src/App.tsx",

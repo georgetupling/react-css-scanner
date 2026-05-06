@@ -5,10 +5,11 @@ import {
   skipTypeOrNamespaceToken,
 } from "./readCssIdentifier.js";
 import { splitTopLevelSelectorList } from "./splitTopLevelSelectorList.js";
-import type { ParsedSimpleSelectorSequence } from "./types.js";
+import type { ParsedClassAttributePredicate, ParsedSimpleSelectorSequence } from "./types.js";
 
 export function parseSimpleSelectorSequence(segment: string): ParsedSimpleSelectorSequence {
   const requiredClasses: string[] = [];
+  const classAttributePredicates: ParsedClassAttributePredicate[] = [];
   const negativeClasses: string[] = [];
   const hasDescendantClasses: string[] = [];
   let hasUnknownSemantics = false;
@@ -43,7 +44,15 @@ export function parseSimpleSelectorSequence(segment: string): ParsedSimpleSelect
     if (character === "[") {
       const attributeToken = readAttributeClassToken(segment, index);
       if (attributeToken) {
-        requiredClasses.push(attributeToken.className);
+        if (attributeToken.operator === "token") {
+          requiredClasses.push(attributeToken.value);
+        } else {
+          classAttributePredicates.push({
+            operator: attributeToken.operator,
+            value: attributeToken.value,
+          });
+          hasSubjectModifiers = true;
+        }
         index = attributeToken.nextIndex;
         continue;
       }
@@ -123,6 +132,7 @@ export function parseSimpleSelectorSequence(segment: string): ParsedSimpleSelect
 
   return {
     requiredClasses: unique(requiredClasses),
+    classAttributePredicates: uniqueClassAttributePredicates(classAttributePredicates),
     negativeClasses: unique(negativeClasses),
     hasDescendantClasses: unique(hasDescendantClasses),
     hasUnknownSemantics,
@@ -134,16 +144,24 @@ export function parseSimpleSelectorSequence(segment: string): ParsedSimpleSelect
 function readAttributeClassToken(
   segment: string,
   startIndex: number,
-): { className: string; nextIndex: number } | undefined {
+):
+  | {
+      operator: "token" | "prefix" | "substring";
+      value: string;
+      nextIndex: number;
+    }
+  | undefined {
   const endIndex = skipBalancedSection(segment, startIndex, "[", "]");
   const rawAttribute = segment.slice(startIndex + 1, Math.max(startIndex + 1, endIndex - 1)).trim();
-  const match = /^class\s*~=\s*(["'])(.*?)\1$/u.exec(rawAttribute);
-  if (!match?.[2]) {
+  const match = /^class\s*(~=|\^=|\*=)\s*(["'])(.*?)\2$/u.exec(rawAttribute);
+  if (!match?.[3]) {
     return undefined;
   }
 
+  const operator = match[1] === "~=" ? "token" : match[1] === "^=" ? "prefix" : "substring";
   return {
-    className: match[2],
+    operator,
+    value: match[3],
     nextIndex: endIndex,
   };
 }
@@ -198,6 +216,16 @@ function parseNegatedClassNames(value: string): string[] | undefined {
 
 function unique(values: string[]): string[] {
   return [...new Set(values)];
+}
+
+function uniqueClassAttributePredicates(
+  predicates: ParsedClassAttributePredicate[],
+): ParsedClassAttributePredicate[] {
+  return [
+    ...new Map(
+      predicates.map((predicate) => [`${predicate.operator}:${predicate.value}`, predicate]),
+    ).values(),
+  ];
 }
 
 function isIdentifierStart(character: string): boolean {

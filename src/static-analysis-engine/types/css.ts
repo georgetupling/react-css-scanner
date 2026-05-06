@@ -7,6 +7,7 @@ export type CssSelectorBranchFact = {
   raw: string;
   matchKind: CssSelectorMatchKind;
   subjectClassNames: string[];
+  classAttributePredicates: CssClassAttributePredicateFact[];
   requiredClassNames: string[];
   contextClassNames: string[];
   negativeClassNames: string[];
@@ -14,6 +15,11 @@ export type CssSelectorBranchFact = {
   hasCombinators: boolean;
   hasSubjectModifiers: boolean;
   hasUnknownSemantics: boolean;
+};
+
+export type CssClassAttributePredicateFact = {
+  operator: "prefix" | "substring";
+  value: string;
 };
 
 export type CssAtRuleContextFact = {

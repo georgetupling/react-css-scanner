@@ -239,6 +239,7 @@ export type SelectorBranchAnalysis = {
   ruleKey: string;
   location?: SourceAnchor;
   selectorReachabilityStatus: SelectorReachabilityStatus;
+  classAttributePredicates: Array<{ operator: "prefix" | "substring"; value: string }>;
   reasons: string[];
   scopedReachability?: {
     availability: ReachabilityAvailability;

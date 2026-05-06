@@ -7,6 +7,7 @@ import {
   extractParsedSelectorEntriesFromSelectorPrelude,
   projectToCssSelectorBranchFact,
 } from "../selector-parsing/index.js";
+import { splitTopLevelSelectorList } from "../selector-parsing/splitTopLevelSelectorList.js";
 
 const DECLARATION_ONLY_AT_RULES = new Set([
   "font-face",
@@ -29,6 +30,7 @@ function parseRuleList(
   endIndex: number,
   atRuleContext: CssAtRuleContextFact[],
   filePath: string | undefined,
+  parentSelectorPrelude?: string,
 ): CssStyleRuleFact[] {
   const styleRules: CssStyleRuleFact[] = [];
   let index = startIndex;
@@ -68,8 +70,11 @@ function parseRuleList(
         );
       }
     } else {
+      const selectorPrelude = parentSelectorPrelude
+        ? expandNestedSelectorPrelude(parentSelectorPrelude, rawPrelude)
+        : rawPrelude;
       const selectorEntries = extractParsedSelectorEntriesFromSelectorPrelude({
-        selectorPrelude: rawPrelude,
+        selectorPrelude,
         preludeStartIndex: prelude.startOffset,
         sourceText: content,
         filePath,
@@ -81,7 +86,7 @@ function parseRuleList(
           })),
       });
       styleRules.push({
-        selector: rawPrelude,
+        selector: selectorPrelude,
         selectorEntries,
         selectorBranches: selectorEntries.map((entry) =>
           projectToCssSelectorBranchFact(entry.parsedBranch),
@@ -90,12 +95,44 @@ function parseRuleList(
         line: getLineNumberAtOffset(content, prelude.startOffset),
         atRuleContext: [...atRuleContext],
       });
+      styleRules.push(
+        ...parseRuleList(
+          content,
+          blockStartIndex,
+          blockEndIndex,
+          atRuleContext,
+          filePath,
+          selectorPrelude,
+        ),
+      );
     }
 
     index = blockEndIndex + 1;
   }
 
   return styleRules;
+}
+
+function expandNestedSelectorPrelude(parentPrelude: string, nestedPrelude: string): string {
+  const parentSelectors = splitTopLevelSelectorList(parentPrelude);
+  const nestedSelectors = splitTopLevelSelectorList(nestedPrelude);
+  const expanded: string[] = [];
+
+  for (const parentSelector of parentSelectors) {
+    for (const nestedSelector of nestedSelectors) {
+      expanded.push(expandNestedSelector(parentSelector, nestedSelector));
+    }
+  }
+
+  return expanded.join(", ");
+}
+
+function expandNestedSelector(parentSelector: string, nestedSelector: string): string {
+  if (nestedSelector.includes("&")) {
+    return nestedSelector.replace(/&/g, parentSelector);
+  }
+
+  return `${parentSelector} ${nestedSelector}`;
 }
 
 function parseAtRulePrelude(prelude: string): CssAtRuleContextFact {

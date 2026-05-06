@@ -153,6 +153,9 @@ export function buildSelectorReachability(
       requirement,
       subject: {
         requiredClassNames: uniqueSorted(branch.subjectClassNames),
+        classAttributePredicates: branch.classAttributePredicates.map((predicate) => ({
+          ...predicate,
+        })),
         unsupportedParts: branchDiagnostics.map((diagnostic) => ({
           reason: diagnostic.message,
           ...(diagnostic.location ? { location: diagnostic.location } : {}),

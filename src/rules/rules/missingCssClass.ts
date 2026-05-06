@@ -5,6 +5,7 @@ import {
   getClassDefinitionsByClassName,
   getClassReferences,
   getComponentById,
+  getSelectorBranches,
   hasProviderSatisfactionForReferenceClass,
 } from "../analysisQueries.js";
 
@@ -44,6 +45,10 @@ function runMissingCssClassRule(context: RuleContext): UnresolvedFinding[] {
         continue;
       }
 
+      if (hasClassAttributePredicateContext(context, className)) {
+        continue;
+      }
+
       const inputs = findingInputsByClassName.get(className);
       if (inputs) {
         inputs.push({ reference, className });
@@ -56,6 +61,16 @@ function runMissingCssClassRule(context: RuleContext): UnresolvedFinding[] {
   return [...findingInputsByClassName.entries()]
     .map(([className, inputs]) => buildMissingClassFinding(context, className, inputs))
     .sort((left, right) => left.id.localeCompare(right.id));
+}
+
+function hasClassAttributePredicateContext(context: RuleContext, className: string): boolean {
+  return getSelectorBranches(context.analysisEvidence).some((branch) =>
+    (branch.classAttributePredicates ?? []).some((predicate) =>
+      predicate.operator === "prefix"
+        ? className.startsWith(predicate.value)
+        : className.includes(predicate.value),
+    ),
+  );
 }
 
 function getReportableClassNames(reference: ClassReferenceAnalysis): string[] {
