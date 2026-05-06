@@ -565,6 +565,26 @@ test("language frontends annotate render sites with semantic repetition metadata
   );
 });
 
+test("language frontends annotate finite map callback parameter string values", () => {
+  const file = buildSingleSourceFrontendFile(
+    "src/App.tsx",
+    [
+      'const items = ["primary", "secondary"] as const;',
+      "export function App() {",
+      "  return <>{items.map((tone) => <button className={`btn-${tone}`} />)}</>;",
+      "}",
+      "",
+    ].join("\n"),
+  );
+
+  const toneIdentifier = file.expressionSyntax.find(
+    (expression) => expression.expressionKind === "identifier" && expression.name === "tone",
+  );
+
+  assert.ok(toneIdentifier);
+  assert.deepEqual(toneIdentifier.possibleStringValues, ["primary", "secondary"]);
+});
+
 test("language frontends expose CSS Module syntax collectors", () => {
   const file = buildSingleSourceFrontendFile(
     "src/Button.tsx",

@@ -544,7 +544,10 @@ function inferParameterIdentifierStringValues(input: {
   sourceFile: ts.SourceFile;
 }): string[] {
   if (ts.isIdentifier(input.parameter.name) && input.parameter.name.text === input.identifierName) {
-    return resolveStringLiteralTypeValues(input.parameter.type, input.sourceFile);
+    return uniqueSortedStrings([
+      ...resolveStringLiteralTypeValues(input.parameter.type, input.sourceFile),
+      ...inferFiniteMapCallbackParameterValues(input.parameter, input.sourceFile),
+    ]);
   }
 
   if (!ts.isObjectBindingPattern(input.parameter.name) || !input.parameter.type) {
@@ -567,6 +570,119 @@ function inferParameterIdentifierStringValues(input: {
     findPropertyTypeNode(input.parameter.type, propertyName, input.sourceFile),
     input.sourceFile,
   );
+}
+
+function inferFiniteMapCallbackParameterValues(
+  parameter: ts.ParameterDeclaration,
+  sourceFile: ts.SourceFile,
+): string[] {
+  const callback = parameter.parent;
+  if (!ts.isArrowFunction(callback) && !ts.isFunctionExpression(callback)) {
+    return [];
+  }
+
+  const call = callback.parent;
+  if (!ts.isCallExpression(call)) {
+    return [];
+  }
+
+  const callbackIndex = call.arguments.findIndex((argument) => argument === callback);
+  if (callbackIndex < 0 || callbackIndex !== callback.parameters.indexOf(parameter)) {
+    return [];
+  }
+
+  if (!ts.isPropertyAccessExpression(call.expression) || call.expression.name.text !== "map") {
+    return [];
+  }
+
+  return resolveFiniteStringArrayExpression(call.expression.expression, sourceFile);
+}
+
+function resolveFiniteStringArrayExpression(
+  expression: ts.Expression,
+  sourceFile: ts.SourceFile,
+): string[] {
+  const unwrapped = unwrapExpressionForFiniteArray(expression);
+  if (ts.isArrayLiteralExpression(unwrapped)) {
+    return readStringArrayLiteralValues(unwrapped);
+  }
+
+  if (!ts.isIdentifier(unwrapped)) {
+    return [];
+  }
+
+  const bindings = findLocalArrayBindings({
+    sourceFile,
+    identifierName: unwrapped.text,
+    targetPosition: unwrapped.getStart(sourceFile),
+  });
+  for (const binding of bindings) {
+    const values = resolveFiniteStringArrayExpression(binding.initializer, sourceFile);
+    if (values.length > 0) {
+      return values;
+    }
+  }
+
+  return [];
+}
+
+function findLocalArrayBindings(input: {
+  sourceFile: ts.SourceFile;
+  identifierName: string;
+  targetPosition: number;
+}): Array<{ initializer: ts.Expression; position: number }> {
+  const bindings: Array<{ initializer: ts.Expression; position: number }> = [];
+
+  const visit = (node: ts.Node): void => {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.name.text === input.identifierName &&
+      node.initializer &&
+      node.getStart(input.sourceFile) <= input.targetPosition
+    ) {
+      bindings.push({
+        initializer: node.initializer,
+        position: node.getStart(input.sourceFile),
+      });
+    }
+
+    ts.forEachChild(node, visit);
+  };
+
+  visit(input.sourceFile);
+  return bindings.sort((left, right) => right.position - left.position);
+}
+
+function readStringArrayLiteralValues(array: ts.ArrayLiteralExpression): string[] {
+  const values: string[] = [];
+  for (const element of array.elements) {
+    const unwrapped = unwrapExpressionForFiniteArray(element);
+    if (ts.isStringLiteral(unwrapped) || ts.isNoSubstitutionTemplateLiteral(unwrapped)) {
+      values.push(unwrapped.text);
+      continue;
+    }
+    return [];
+  }
+  return uniqueSortedStrings(values);
+}
+
+function unwrapExpressionForFiniteArray(expression: ts.Expression): ts.Expression {
+  let current = expression;
+  while (
+    ts.isParenthesizedExpression(current) ||
+    ts.isAsExpression(current) ||
+    ts.isTypeAssertionExpression(current) ||
+    ts.isNonNullExpression(current) ||
+    ts.isSatisfiesExpression(current)
+  ) {
+    current = current.expression;
+  }
+  return current;
+}
+
+function uniqueSortedStrings(values: string[]): string[] {
+  return [...new Set(values)].sort((left, right) => left.localeCompare(right));
 }
 
 function getBindingElementPropertyName(element: ts.BindingElement): string | undefined {

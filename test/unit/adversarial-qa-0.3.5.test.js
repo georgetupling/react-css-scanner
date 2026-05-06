@@ -273,7 +273,7 @@ test("QA 0.3.5: const false conditional render classes are unused", async () => 
   }
 });
 
-test.todo("QA 0.3.5: finite mapped template variants report missing classes", async () => {
+test("QA 0.3.5: finite mapped template variants report missing classes", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(
       "src/App.tsx",
