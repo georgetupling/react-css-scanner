@@ -3412,3 +3412,169 @@ test("unused-css-class treats function-valued className props as used", async ()
     await project.cleanup();
   }
 });
+
+test("unused-css-class treats imported class constants as render evidence", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        'import { rootClass } from "./classes";',
+        "export function App() { return <main className={rootClass}>Hello</main>; }",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile("src/classes.ts", 'export const rootClass = "root";\n')
+    .withCssFile("src/App.css", ".root { color: green; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "css-class-unreachable", ["root"]);
+    assertNoClassFindings(result, "missing-css-class", ["root"]);
+    assertNoClassFindings(result, "unused-css-class", ["root"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unused-css-class treats imported object property class constants as used", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        'import { classes } from "./classes";',
+        "export function App() { return <main className={classes.root}>Hello</main>; }",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/classes.ts",
+      ["export const classes = {", '  root: "root",', "} as const;", ""].join("\n"),
+    )
+    .withCssFile("src/App.css", ".root { color: green; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", ["root"]);
+    assertNoClassFindings(result, "missing-css-class", ["root"]);
+    assertNoClassFindings(result, "css-class-unreachable", ["root"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unused-css-class treats imported default object property class constants as used", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        'import classes from "./classes";',
+        "export function App() { return <main className={classes.root}>Hello</main>; }",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/classes.ts",
+      ["const classes = {", '  root: "root",', "} as const;", "export default classes;", ""].join(
+        "\n",
+      ),
+    )
+    .withCssFile("src/App.css", ".root { color: green; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", ["root"]);
+    assertNoClassFindings(result, "missing-css-class", ["root"]);
+    assertNoClassFindings(result, "css-class-unreachable", ["root"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unused-css-class treats imported const tuple joins as finite references", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        'import { classes } from "./classes";',
+        'export function App() { return <main className={classes.join(" ")}>Hello</main>; }',
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile("src/classes.ts", 'export const classes = ["root", "elevated"] as const;\n')
+    .withCssFile(
+      "src/App.css",
+      ".root { color: green; }\n.elevated { box-shadow: 0 0 2px black; }\n",
+    )
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", ["root", "elevated"]);
+    assertNoClassFindings(result, "missing-css-class", ["root", "elevated"]);
+    assertNoClassFindings(result, "css-class-unreachable", ["root", "elevated"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unused-css-class reports statically truthy logical-or fallback classes", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        "export function App() {",
+        '  const className = "actual" || "fallback";',
+        "  return <div className={className}>Hello</div>;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".actual { color: green; }\n.fallback { color: red; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", ["actual"]);
+    assert.equal(hasClassFinding(result, "unused-css-class", "fallback"), true);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unused-css-class reports const false conditional render classes", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        "const enabled = false;",
+        "export function App() {",
+        '  return <>{enabled && <div className="never">Never</div>}</>;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".never { color: red; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assert.equal(hasClassFinding(result, "unused-css-class", "never"), true);
+  } finally {
+    await project.cleanup();
+  }
+});

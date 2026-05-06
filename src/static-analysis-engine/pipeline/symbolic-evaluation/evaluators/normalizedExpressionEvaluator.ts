@@ -15,8 +15,13 @@ import {
 } from "./canonicalClassExpressionBuilder.js";
 import type { ExpressionSyntaxNode } from "../../fact-graph/index.js";
 import { evaluateStaticTruthiness } from "../../static-truthiness.js";
-import { conditionId, externalContributionId } from "../ids.js";
-import type { ExternalClassContribution } from "../types.js";
+import {
+  conditionId,
+  cssModuleContributionId,
+  externalContributionId,
+  tokenAlternativeId,
+} from "../ids.js";
+import type { CssModuleClassContribution, ExternalClassContribution } from "../types.js";
 import type { SymbolicExpressionEvaluator, SymbolicExpressionEvaluatorInput } from "../types.js";
 
 const MAX_STRING_COMBINATIONS = 32;
@@ -57,6 +62,42 @@ export const normalizedClassExpressionEvaluator: SymbolicExpressionEvaluator = {
       expression,
       syntax: input.expressionSyntax,
     });
+    const cssModuleContribution = buildCssModuleContributionFromDestructuredIdentifier({
+      input,
+      expressionId: expression.id,
+      syntax: input.expressionSyntax,
+    });
+    if (cssModuleContribution) {
+      expression.expressionKind = "css-module-class";
+      expression.certainty = {
+        kind: "exact",
+        summary: "one complete token set",
+      };
+      expression.confidence = "high";
+      expression.tokens = [
+        {
+          id: tokenAlternativeId({
+            expressionId: expression.id,
+            token: cssModuleContribution.exportName,
+            index: 0,
+          }),
+          token: cssModuleContribution.exportName,
+          tokenKind: "css-module-export",
+          presence: "always",
+          conditionId: cssModuleContribution.conditionId,
+          sourceAnchor: cssModuleContribution.sourceAnchor,
+          confidence: "high",
+          contributionId: cssModuleContribution.id,
+        },
+      ];
+      expression.emissionVariants = [];
+      expression.externalContributions = [];
+      expression.cssModuleContributions = [cssModuleContribution];
+      expression.unsupported = [];
+      expression.tokenAnchors = {
+        [cssModuleContribution.exportName]: [cssModuleContribution.sourceAnchor],
+      };
+    }
 
     return {
       expression,
@@ -814,6 +855,114 @@ function buildExternalContributionFromLocalBinding(input: {
       reason: `component prop "${input.localBinding.propertyName}" via local destructuring`,
     },
   };
+}
+
+function buildCssModuleContributionFromDestructuredIdentifier(input: {
+  input: SymbolicExpressionEvaluatorInput;
+  expressionId: string;
+  syntax: ExpressionSyntaxNode;
+}): CssModuleClassContribution | undefined {
+  if (input.syntax.expressionKind !== "identifier") {
+    return undefined;
+  }
+
+  const rootOwnerNodeId = input.input.classExpressionSite.emittingComponentNodeId;
+  if (!rootOwnerNodeId) {
+    return undefined;
+  }
+
+  const localBindings = resolveLocalValueBindingsForIdentifier({
+    input: input.input,
+    rootOwnerNodeId,
+    identifierName: input.syntax.name,
+    targetLocation: input.syntax.location,
+  });
+
+  for (const binding of localBindings) {
+    if (
+      binding.bindingKind !== "destructured-property" ||
+      !binding.propertyName ||
+      !binding.objectExpressionId
+    ) {
+      continue;
+    }
+
+    const objectExpression = getExpressionSyntax(input.input, binding.objectExpressionId);
+    if (!objectExpression || objectExpression.expressionKind !== "identifier") {
+      continue;
+    }
+
+    const cssModuleImport = resolveCssModuleImportForNamespace({
+      input: input.input,
+      sourceFilePath: input.syntax.filePath,
+      localName: objectExpression.name,
+    });
+    if (!cssModuleImport) {
+      continue;
+    }
+
+    return {
+      id: cssModuleContributionId({
+        expressionId: input.expressionId,
+        exportName: binding.propertyName,
+        index: 0,
+      }),
+      ...(cssModuleImport.stylesheetNodeId
+        ? { stylesheetNodeId: cssModuleImport.stylesheetNodeId }
+        : {}),
+      ...(cssModuleImport.stylesheetFilePath
+        ? { stylesheetFilePath: cssModuleImport.stylesheetFilePath }
+        : {}),
+      localName: binding.localName,
+      originLocalName: objectExpression.name,
+      exportName: binding.propertyName,
+      accessKind: "destructured-binding",
+      conditionId: conditionId({ expressionId: input.expressionId, conditionKey: "always" }),
+      sourceAnchor: input.syntax.location,
+      confidence: "high",
+      traces: [],
+    };
+  }
+
+  return undefined;
+}
+
+function resolveCssModuleImportForNamespace(input: {
+  input: SymbolicExpressionEvaluatorInput;
+  sourceFilePath: string;
+  localName: string;
+}): { stylesheetNodeId?: string; stylesheetFilePath?: string } | undefined {
+  const importEdge = input.input.graph.edges.imports.find(
+    (edge) =>
+      edge.importerKind === "source" &&
+      edge.importKind === "css" &&
+      normalizePath(edge.importerFilePath) === normalizePath(input.sourceFilePath) &&
+      edge.resolutionStatus === "resolved" &&
+      edge.resolvedFilePath &&
+      edge.importNames?.some((importName) => importName.localName === input.localName),
+  );
+  if (!importEdge?.resolvedFilePath) {
+    return undefined;
+  }
+
+  const stylesheetNode = input.input.graph.nodes.stylesheets.find(
+    (node) =>
+      node.filePath &&
+      normalizePath(node.filePath) === normalizePath(importEdge.resolvedFilePath) &&
+      node.cssKind === "css-module",
+  );
+  if (!stylesheetNode) {
+    return undefined;
+  }
+
+  return {
+    stylesheetNodeId: stylesheetNode.id,
+    stylesheetFilePath: stylesheetNode.filePath,
+  };
+}
+
+function normalizePath(filePath: string): string {
+  return filePath.replace(/\\/g, "/");
 }
 
 function getLocalBindingExpressionSyntax(

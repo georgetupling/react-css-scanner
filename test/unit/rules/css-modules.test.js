@@ -178,7 +178,8 @@ test("CSS Module rules support Less module imports", async () => {
       result.findings.filter(
         (finding) =>
           finding.ruleId === "missing-css-module-class" ||
-          finding.ruleId === "unused-css-module-class",
+          finding.ruleId === "unused-css-module-class" ||
+          finding.ruleId === "dynamic-class-reference",
       ),
       [],
     );
@@ -266,6 +267,39 @@ test("CSS Module rules treat destructured bindings as module member usage", asyn
         (finding) =>
           finding.ruleId === "missing-css-module-class" ||
           finding.ruleId === "unused-css-module-class",
+      ),
+      [],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("CSS Module rules treat destructured bindings inside components as module usage", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import styles from "./App.module.css";',
+        "export function App() {",
+        "  const { used } = styles;",
+        "  return <div className={used}>Hello</div>;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.module.css", ".used { color: green; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assert.deepEqual(
+      result.findings.filter(
+        (finding) =>
+          finding.ruleId === "dynamic-class-reference" ||
+          finding.ruleId === "unused-css-module-class" ||
+          finding.ruleId === "missing-css-module-class",
       ),
       [],
     );

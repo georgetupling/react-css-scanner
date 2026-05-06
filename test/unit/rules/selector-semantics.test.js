@@ -705,6 +705,33 @@ test("selector analysis follows custom class props and renderable slot children"
   }
 });
 
+test("unsatisfiable-selector treats slotted children as adjacent sibling blockers", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        "function Shell({ children }: { children: React.ReactNode }) {",
+        '  return <><span className="first">One</span>{children}<span className="second">Two</span></>;',
+        "}",
+        "export function App() {",
+        "  return <Shell><em>gap</em></Shell>;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".first + .second { margin-left: 0.5rem; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assert.equal(hasSelectorFinding(result, "unsatisfiable-selector", ".first + .second"), true);
+  } finally {
+    await project.cleanup();
+  }
+});
+
 function assertNoClassFindings(result, ruleId, classNames) {
   assert.deepEqual(
     result.findings

@@ -1292,6 +1292,108 @@ test("missing-css-class aggregates multiple references for the same missing clas
   }
 });
 
+test("missing-css-class accepts prefix class attribute selectors", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./App.css";\nexport function App() { return <div className="icon-save">Save</div>; }\n',
+    )
+    .withCssFile("src/App.css", '[class^="icon-"] { color: green; }\n')
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "missing-css-class", ["icon-save"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("missing-css-class accepts substring class attribute selectors", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./App.css";\nexport function App() { return <div className="btn-primary">Save</div>; }\n',
+    )
+    .withCssFile("src/App.css", '[class*="btn-"] { color: green; }\n')
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "missing-css-class", ["btn-primary"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("missing-css-class accepts native CSS nesting descendant selectors", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        'export function App() { return <section className="card"><h2 className="title">Title</h2></section>; }',
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".card {\n  & .title {\n    color: green;\n  }\n}\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "missing-css-class", ["title"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("missing-css-class accepts native CSS nesting compound self selectors", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./App.css";\nexport function App() { return <section className="card active">Hello</section>; }\n',
+    )
+    .withCssFile("src/App.css", ".card {\n  &.active {\n    color: green;\n  }\n}\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "missing-css-class", ["active"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("missing-css-class reports unresolved finite mapped template variants", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        'const items = ["primary", "secondary"] as const;',
+        "export function App() {",
+        "  return <>{items.map((tone) => <button className={`btn-${tone}`} key={tone}>Save</button>)}</>;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".btn-primary { color: blue; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "missing-css-class", ["btn-primary"]);
+    assert.equal(hasClassFinding(result, "missing-css-class", "btn-secondary"), true);
+  } finally {
+    await project.cleanup();
+  }
+});
+
 function assertNoClassFindings(result, ruleId, classNames) {
   assert.deepEqual(
     result.findings
