@@ -16,11 +16,15 @@ export const unusedCssModuleClassRule: RuleDefinition = {
 };
 
 function runUnusedCssModuleClassRule(context: RuleContext): UnresolvedFinding[] {
-  const usedDefinitionKeys = new Set(
-    getCssModuleMemberMatches(context.analysisEvidence)
-      .filter((match) => match.status === "matched")
-      .map((match) => createDefinitionKey(match.stylesheetId, match.className)),
-  );
+  const classDefinitions = getClassDefinitions(context.analysisEvidence);
+  const usedDefinitionKeys = expandUsedCssModuleDefinitionKeys({
+    definitions: classDefinitions,
+    initialUsedDefinitionKeys: new Set(
+      getCssModuleMemberMatches(context.analysisEvidence)
+        .filter((match) => match.status === "matched")
+        .map((match) => createDefinitionKey(match.stylesheetId, match.className)),
+    ),
+  });
   const stylesheetsWithComputedModuleReads = new Set(
     getCssModuleReferenceDiagnostics(context.analysisEvidence)
       .filter((diagnostic) => diagnostic.reason === "computed-css-module-member")
@@ -34,7 +38,7 @@ function runUnusedCssModuleClassRule(context: RuleContext): UnresolvedFinding[] 
     }>
   >();
 
-  for (const definition of getClassDefinitions(context.analysisEvidence)) {
+  for (const definition of classDefinitions) {
     if (!definition.isCssModule) {
       continue;
     }
@@ -64,6 +68,95 @@ function runUnusedCssModuleClassRule(context: RuleContext): UnresolvedFinding[] 
   return [...definitionsByClassAndStylesheet.values()]
     .map((definitions) => buildUnusedCssModuleClassFinding({ context, definitions }))
     .sort((left, right) => left.id.localeCompare(right.id));
+}
+
+function expandUsedCssModuleDefinitionKeys(input: {
+  definitions: ClassDefinitionAnalysis[];
+  initialUsedDefinitionKeys: Set<string>;
+}): Set<string> {
+  const usedDefinitionKeys = new Set(input.initialUsedDefinitionKeys);
+  const composedClassNamesByDefinitionKey = new Map<string, string[]>();
+  const classNamesByStylesheetId = new Map<string, Set<string>>();
+
+  for (const definition of input.definitions) {
+    if (!definition.isCssModule) {
+      continue;
+    }
+
+    const classNames = classNamesByStylesheetId.get(definition.stylesheetId) ?? new Set<string>();
+    classNames.add(definition.className);
+    classNamesByStylesheetId.set(definition.stylesheetId, classNames);
+
+    const composedClassNames = getLocalComposedClassNames(definition);
+    if (composedClassNames.length > 0) {
+      composedClassNamesByDefinitionKey.set(
+        createDefinitionKey(definition.stylesheetId, definition.className),
+        composedClassNames,
+      );
+    }
+  }
+
+  const queue = [...usedDefinitionKeys].sort((left, right) => left.localeCompare(right));
+  while (queue.length > 0) {
+    const definitionKey = queue.shift();
+    if (!definitionKey) {
+      continue;
+    }
+
+    const { stylesheetId } = parseDefinitionKey(definitionKey);
+    const stylesheetClassNames = classNamesByStylesheetId.get(stylesheetId);
+    if (!stylesheetClassNames) {
+      continue;
+    }
+
+    for (const composedClassName of composedClassNamesByDefinitionKey.get(definitionKey) ?? []) {
+      if (!stylesheetClassNames.has(composedClassName)) {
+        continue;
+      }
+
+      const composedDefinitionKey = createDefinitionKey(stylesheetId, composedClassName);
+      if (usedDefinitionKeys.has(composedDefinitionKey)) {
+        continue;
+      }
+
+      usedDefinitionKeys.add(composedDefinitionKey);
+      queue.push(composedDefinitionKey);
+      queue.sort((left, right) => left.localeCompare(right));
+    }
+  }
+
+  return usedDefinitionKeys;
+}
+
+function getLocalComposedClassNames(definition: ClassDefinitionAnalysis): string[] {
+  return [
+    ...new Set(
+      definition.sourceDefinition.declarationDetails
+        .filter((declaration) => declaration.property.toLowerCase() === "composes")
+        .flatMap((declaration) => parseLocalComposesValue(declaration.value)),
+    ),
+  ].sort((left, right) => left.localeCompare(right));
+}
+
+function parseLocalComposesValue(value: string): string[] {
+  const localValue = value.split(/\s+from\s+/iu)[0]?.trim() ?? "";
+  if (!localValue) {
+    return [];
+  }
+
+  return localValue
+    .split(/\s+/u)
+    .map((token) => token.trim())
+    .filter((token) => /^[A-Za-z_-][\w-]*$/u.test(token))
+    .sort((left, right) => left.localeCompare(right));
+}
+
+function parseDefinitionKey(definitionKey: string): { stylesheetId: string; className: string } {
+  const separatorIndex = definitionKey.lastIndexOf(":");
+  return {
+    stylesheetId: definitionKey.slice(0, separatorIndex),
+    className: definitionKey.slice(separatorIndex + 1),
+  };
 }
 
 function createDefinitionKey(stylesheetId: string, className: string): string {

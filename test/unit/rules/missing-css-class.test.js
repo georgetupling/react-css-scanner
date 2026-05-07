@@ -1416,6 +1416,28 @@ test("missing-css-class accepts native CSS nesting descendant selectors", async 
   }
 });
 
+test("missing-css-class accepts context classes nested in :has(:where()) selectors", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        'export function App() { return <section className="card"><h2 className="title">Title</h2></section>; }',
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".card:has(:where(.title)) { border: 1px solid; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "missing-css-class", ["title"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("missing-css-class accepts native CSS nesting compound self selectors", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(

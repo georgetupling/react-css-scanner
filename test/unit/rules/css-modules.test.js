@@ -58,6 +58,37 @@ test("CSS Module member access does not report dynamic class references", async 
   }
 });
 
+test("unused-css-module-class treats locally composed module classes as used", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import styles from "./App.module.css";\nexport function App() { return <button className={styles.button}>Save</button>; }\n',
+    )
+    .withCssFile(
+      "src/App.module.css",
+      ".base { border: 0; }\n.button { composes: base; color: green; }\n",
+    )
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
+      cssFilePaths: ["src/App.module.css"],
+    });
+
+    assert.deepEqual(
+      result.findings.filter(
+        (finding) =>
+          finding.ruleId === "unused-css-module-class" && finding.data?.className === "base",
+      ),
+      [],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("missing-css-module-class reports missing module members", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(

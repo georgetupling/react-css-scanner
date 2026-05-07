@@ -303,6 +303,29 @@ test("unused-css-class accepts finite Object.values(...).join class composition"
   }
 });
 
+test("unused-css-class accepts finite array concat join class composition", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        'export function App() { return <button className={["btn"].concat("primary").join(" ")}>Save</button>; }',
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".btn { display: inline-block; }\n.primary { color: blue; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", ["btn", "primary"]);
+    assertNoClassFindings(result, "missing-css-class", ["btn", "primary"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("unused-css-class preserves className flow through forwardRef wrappers", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(

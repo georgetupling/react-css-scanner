@@ -208,6 +208,50 @@ test("css-class-unreachable treats app-shell global CSS as reachable from render
   }
 });
 
+test("css-class-unreachable treats rendered sibling CSS imports as reachable in the app shell", async () => {
+  const project = await new TestProjectBuilder()
+    .withConfig({
+      failOnSeverity: "error",
+      rules: {
+        "single-component-style-not-colocated": "warn",
+        "style-used-outside-owner": "warn",
+        "style-shared-without-shared-owner": "warn",
+      },
+    })
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import { Card } from "./Card";',
+        'import { SidebarCard } from "./SidebarCard";',
+        "export function App() { return <><Card /><SidebarCard /></>; }",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/Card.tsx",
+      [
+        'import "./Card.css";',
+        'export function Card() { return <section className="card">Card</section>; }',
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/SidebarCard.tsx",
+      'export function SidebarCard() { return <aside className="card">Sidebar</aside>; }\n',
+    )
+    .withCssFile("src/Card.css", ".card { padding: 1rem; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "css-class-unreachable", ["card"]);
+    assertNoClassFindings(result, "missing-css-class", ["card"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("css-class-unreachable keeps inferred app-shell CSS inside its static app shell", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(

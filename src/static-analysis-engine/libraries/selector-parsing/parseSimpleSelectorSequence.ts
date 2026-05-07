@@ -229,6 +229,17 @@ function parseHasClassRelations(value: string): ParsedHasClassRelation[] | undef
       trimmed = trimmed.slice(1).trim();
     }
 
+    const unwrappedClassNames = unwrapClassSelectorListPseudo(trimmed);
+    if (unwrappedClassNames) {
+      relations.push(
+        ...unwrappedClassNames.map((className) => ({
+          relation,
+          className,
+        })),
+      );
+      continue;
+    }
+
     if (!trimmed.startsWith(".")) {
       return undefined;
     }
@@ -242,6 +253,20 @@ function parseHasClassRelations(value: string): ParsedHasClassRelation[] | undef
   }
 
   return relations;
+}
+
+function unwrapClassSelectorListPseudo(selector: string): string[] | undefined {
+  const match = /^:(is|where)\(/iu.exec(selector);
+  if (!match) {
+    return undefined;
+  }
+
+  const inner = readParenthesizedContent(selector, match[0].length - 1);
+  if (inner.nextIndex !== selector.length) {
+    return undefined;
+  }
+
+  return parseRequiredClassNames(inner.content);
 }
 
 function parseNegatedClassNames(value: string): string[] | undefined {

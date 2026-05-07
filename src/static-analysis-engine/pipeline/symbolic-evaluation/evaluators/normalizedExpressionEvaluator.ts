@@ -2531,6 +2531,11 @@ function getClassArrayJoinTarget(
     if (objectValuesTarget) {
       return objectValuesTarget;
     }
+
+    const concatTarget = getArrayConcatTarget(input, unwrapped);
+    if (concatTarget) {
+      return concatTarget;
+    }
   }
 
   if (unwrapped.expressionKind !== "call" || !isBooleanFilterCall(input, unwrapped)) {
@@ -2544,6 +2549,57 @@ function getClassArrayJoinTarget(
 
   const filterTarget = getExpressionSyntax(input.input, filterCallee.objectExpressionId);
   return filterTarget ? getClassArrayJoinTarget(input, filterTarget) : undefined;
+}
+
+function getArrayConcatTarget(
+  input: {
+    input: SymbolicExpressionEvaluatorInput;
+    depth: number;
+    seenExpressionIds: Set<string>;
+    helperBindings?: Map<string, AbstractValue>;
+  },
+  expression: Extract<ExpressionSyntaxNode, { expressionKind: "call" }>,
+): ClassArrayJoinTarget | undefined {
+  if (expression.hasSpreadArgument) {
+    return undefined;
+  }
+
+  const callee = getExpressionSyntax(input.input, expression.calleeExpressionId);
+  if (!callee || callee.expressionKind !== "member-access" || callee.propertyName !== "concat") {
+    return undefined;
+  }
+
+  const target = getExpressionSyntax(input.input, callee.objectExpressionId);
+  const baseTarget = target ? getClassArrayJoinTarget(input, target) : undefined;
+  if (!baseTarget) {
+    return undefined;
+  }
+
+  let hasSpreadElement = baseTarget.hasSpreadElement;
+  let hasOmittedElement = baseTarget.hasOmittedElement;
+  const elementExpressionIds = [...baseTarget.elementExpressionIds];
+
+  for (const argumentExpressionId of expression.argumentExpressionIds) {
+    const argument = getExpressionSyntax(input.input, argumentExpressionId);
+    const argumentArray =
+      argument?.expressionKind === "array-literal"
+        ? getClassArrayJoinTarget(input, argument)
+        : undefined;
+    if (argumentArray) {
+      elementExpressionIds.push(...argumentArray.elementExpressionIds);
+      hasSpreadElement ||= argumentArray.hasSpreadElement;
+      hasOmittedElement ||= argumentArray.hasOmittedElement;
+      continue;
+    }
+
+    elementExpressionIds.push(argumentExpressionId);
+  }
+
+  return {
+    elementExpressionIds,
+    hasSpreadElement,
+    hasOmittedElement,
+  };
 }
 
 function isBooleanFilterCall(
