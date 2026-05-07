@@ -68,7 +68,9 @@ function hasClassAttributePredicateContext(context: RuleContext, className: stri
     (branch.classAttributePredicates ?? []).some((predicate) =>
       predicate.operator === "prefix"
         ? className.startsWith(predicate.value)
-        : className.includes(predicate.value),
+        : predicate.operator === "suffix"
+          ? className.endsWith(predicate.value)
+          : className.includes(predicate.value),
     ),
   );
 }

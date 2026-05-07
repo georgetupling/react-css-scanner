@@ -153,7 +153,7 @@ export function buildRuntimeCssLoading(input: {
       sourceDynamicallyImportedStylesheetsBySourcePath,
       unresolvedDynamicImportSpecifiersBySourcePath,
       allStylesheetFilePaths,
-      availabilityReason: "stylesheet is loaded by the same HTML app entry bundle",
+      availabilityReason: getInitialStylesheetAvailabilityReason(entry),
     });
 
     if (selectedBundlerProfile.cssLoading === "single-initial-stylesheet") {
@@ -186,7 +186,7 @@ export function buildRuntimeCssLoading(input: {
         sourceDynamicallyImportedStylesheetsBySourcePath,
         unresolvedDynamicImportSpecifiersBySourcePath,
         allStylesheetFilePaths,
-        availabilityReason: "stylesheet is loaded by the same HTML app entry bundle",
+        availabilityReason: getInitialStylesheetAvailabilityReason(entry),
       });
       continue;
     }
@@ -338,6 +338,19 @@ function buildRuntimeCssDiagnostics(input: {
     });
   }
 
+  for (const entry of input.entries) {
+    if (entry.kind !== "inferred-app-shell-entry") {
+      continue;
+    }
+    diagnostics.push({
+      code: "runtime-css-inferred-app-shell-entry",
+      severity: "debug",
+      message: `Runtime CSS entry was inferred from app-shell source module ${entry.entrySourceFilePath} because no configured, HTML, or conventional entry was available.`,
+      filePath: entry.entrySourceFilePath,
+      evidence: [entry.entrySourceFilePath],
+    });
+  }
+
   for (const [sourceFilePath, specifiers] of input.unresolvedDynamicImportSpecifiersBySourcePath) {
     diagnostics.push({
       code: "runtime-css-unresolved-dynamic-import",
@@ -352,6 +365,18 @@ function buildRuntimeCssDiagnostics(input: {
   }
 
   return diagnostics.sort(compareRuntimeCssDiagnostics);
+}
+
+function getInitialStylesheetAvailabilityReason(
+  entry: RuntimeCssEntry,
+): Extract<
+  RuntimeCssAvailability["reason"],
+  | "stylesheet is loaded by the same HTML app entry bundle"
+  | "stylesheet is loaded by the same inferred app-shell bundle"
+> {
+  return entry.kind === "inferred-app-shell-entry"
+    ? "stylesheet is loaded by the same inferred app-shell bundle"
+    : "stylesheet is loaded by the same HTML app entry bundle";
 }
 
 function createRuntimeCssEntry(input: {

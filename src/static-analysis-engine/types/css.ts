@@ -18,7 +18,7 @@ export type CssSelectorBranchFact = {
 };
 
 export type CssClassAttributePredicateFact = {
-  operator: "prefix" | "substring";
+  operator: "prefix" | "suffix" | "substring";
   value: string;
 };
 

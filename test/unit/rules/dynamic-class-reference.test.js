@@ -208,6 +208,142 @@ test("broad template classes expose missing and unused dynamic variants", async 
   }
 });
 
+test("dynamic-class-reference does not report finite TypeScript enum template literals", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        "enum Tone {",
+        '  Primary = "primary",',
+        '  Secondary = "secondary",',
+        "}",
+        "export function App({ tone }: { tone: Tone }) {",
+        "  return <button className={`btn-${tone}`}>Save</button>;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile(
+      "src/App.css",
+      ".btn-primary { color: blue; }\n.btn-secondary { color: purple; }\n",
+    )
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assert.deepEqual(
+      result.findings.filter((finding) => finding.ruleId === "dynamic-class-reference"),
+      [],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("dynamic-class-reference resolves const enum aliases through interface props", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        "const enum Tone {",
+        '  Primary = "primary",',
+        '  Secondary = "secondary",',
+        "}",
+        "type ButtonTone = Tone;",
+        "interface AppProps {",
+        "  tone: ButtonTone;",
+        "}",
+        "export function App({ tone }: AppProps) {",
+        "  return <button className={`btn-${tone}`}>Save</button>;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile(
+      "src/App.css",
+      ".btn-primary { color: blue; }\n.btn-secondary { color: purple; }\n",
+    )
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assert.deepEqual(
+      result.findings.filter((finding) => finding.ruleId === "dynamic-class-reference"),
+      [],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("dynamic-class-reference does not report bounded let assignment class values", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        "export function App({ active }: { active: boolean }) {",
+        '  let className = "inactive";',
+        "  if (active) {",
+        '    className = "active";',
+        "  }",
+        "  return <button className={className}>Toggle</button>;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".active { color: green; }\n.inactive { color: gray; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assert.deepEqual(
+      result.findings.filter((finding) => finding.ruleId === "dynamic-class-reference"),
+      [],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("dynamic-class-reference does not report bounded if-else let assignment class values", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        "export function App({ active }: { active: boolean }) {",
+        "  let className = '';",
+        "  if (active) {",
+        '    className = "active";',
+        "  } else {",
+        '    className = "inactive";',
+        "  }",
+        "  return <button className={className}>Toggle</button>;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".active { color: green; }\n.inactive { color: gray; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assert.deepEqual(
+      result.findings.filter((finding) => finding.ruleId === "dynamic-class-reference"),
+      [],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("dynamic-class-reference does not report common local and imported class helper patterns", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(

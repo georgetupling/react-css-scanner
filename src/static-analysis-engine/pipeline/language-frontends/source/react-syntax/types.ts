@@ -103,6 +103,7 @@ export type ReactComponentPropBindingFact = {
   location: SourceAnchor;
   bindingKind: "none" | "props-identifier" | "destructured-props" | "unsupported";
   identifierName?: string;
+  restPropertyName?: string;
   properties: ReactDestructuredBindingPropertyFact[];
   unsupportedReason?: ReactUnsupportedBindingReason;
 };
@@ -123,11 +124,18 @@ export type ReactLocalValueBindingFact = {
   scopeLocation: SourceAnchor;
   localName: string;
   location: SourceAnchor;
-  bindingKind: "const-identifier" | "destructured-property";
+  bindingKind: "const-identifier" | "let-identifier" | "destructured-property";
   expressionId?: string;
+  assignments?: ReactLocalValueAssignmentFact[];
   objectExpressionId?: string;
   propertyName?: string;
   initializerExpressionId?: string;
+};
+
+export type ReactLocalValueAssignmentFact = {
+  assignmentKind: "replace" | "append";
+  expressionId: string;
+  location: SourceAnchor;
 };
 
 export type ReactHelperDefinitionFact = {

@@ -1,5 +1,8 @@
 import type { AnalysisTrace } from "../../types/analysis.js";
-import type { ParsedSelectorBranch } from "../../libraries/selector-parsing/types.js";
+import type {
+  ParsedHasClassRelation,
+  ParsedSelectorBranch,
+} from "../../libraries/selector-parsing/types.js";
 import type { SelectorBranchRequirement, SelectorRequirementStep } from "./types.js";
 
 const UNSUPPORTED_SELECTOR_REASON =
@@ -21,6 +24,7 @@ export function projectSelectorBranchRequirement(
   if (
     parsedBranch.hasUnknownSemantics ||
     (parsedBranch.hasSubjectModifiers &&
+      !parsedBranch.steps.some((step) => step.selector.hasClassRelations.length > 0) &&
       parsedBranch.hasDescendantClassNames.length === 0 &&
       parsedBranch.negativeClassNames.length === 0)
   ) {
@@ -40,29 +44,12 @@ export function projectSelectorBranchRequirement(
 
   if (parsedBranch.steps.length === 1) {
     const requiredClasses = parsedBranch.steps[0].selector.requiredClasses;
-    const hasDescendantClasses = parsedBranch.steps[0].selector.hasDescendantClasses;
-    if (requiredClasses.length === 1 && hasDescendantClasses.length === 1) {
-      return {
-        kind: "has-descendant",
+    const hasClassRelations = parsedBranch.steps[0].selector.hasClassRelations;
+    if (requiredClasses.length === 1 && hasClassRelations.length === 1) {
+      return projectHasClassRelationRequirement({
         subjectClassName: requiredClasses[0],
-        descendantClassName: hasDescendantClasses[0],
-        normalizedSteps: [
-          {
-            combinatorFromPrevious: null,
-            requiredClasses: [requiredClasses[0]],
-          },
-          {
-            combinatorFromPrevious: "descendant",
-            requiredClasses: [hasDescendantClasses[0]],
-          },
-        ],
-        parseNotes: [
-          "normalized selector into a simple :has() descendant class relationship",
-          `subject class: ${requiredClasses[0]}`,
-          `descendant class: ${hasDescendantClasses[0]}`,
-        ],
-        traces: [],
-      };
+        relation: hasClassRelations[0],
+      });
     }
 
     if (requiredClasses.length < 2) {
@@ -241,6 +228,68 @@ function createUnsupportedRequirement(input: {
           }),
         ]
       : [],
+  };
+}
+
+function projectHasClassRelationRequirement(input: {
+  subjectClassName: string;
+  relation: ParsedHasClassRelation;
+}): SelectorBranchRequirement {
+  const normalizedSteps: SelectorRequirementStep[] = [
+    {
+      combinatorFromPrevious: null,
+      requiredClasses: [input.subjectClassName],
+    },
+    {
+      combinatorFromPrevious: input.relation.relation,
+      requiredClasses: [input.relation.className],
+    },
+  ];
+
+  if (input.relation.relation === "descendant") {
+    return {
+      kind: "has-descendant",
+      subjectClassName: input.subjectClassName,
+      descendantClassName: input.relation.className,
+      normalizedSteps,
+      parseNotes: [
+        "normalized selector into a simple :has() descendant class relationship",
+        `subject class: ${input.subjectClassName}`,
+        `descendant class: ${input.relation.className}`,
+      ],
+      traces: [],
+    };
+  }
+
+  if (input.relation.relation === "child") {
+    return {
+      kind: "parent-child",
+      parentClassName: input.subjectClassName,
+      childClassName: input.relation.className,
+      normalizedSteps,
+      parseNotes: [
+        "normalized selector into a simple :has() child class relationship",
+        `subject class: ${input.subjectClassName}`,
+        `child class: ${input.relation.className}`,
+      ],
+      traces: [],
+    };
+  }
+
+  return {
+    kind: "sibling",
+    relation: input.relation.relation === "adjacent-sibling" ? "adjacent" : "general",
+    leftClassName: input.subjectClassName,
+    rightClassName: input.relation.className,
+    normalizedSteps,
+    parseNotes: [
+      `normalized selector into a simple :has() ${
+        input.relation.relation === "adjacent-sibling" ? "adjacent" : "general"
+      } sibling class relationship`,
+      `subject class: ${input.subjectClassName}`,
+      `sibling class: ${input.relation.className}`,
+    ],
+    traces: [],
   };
 }
 

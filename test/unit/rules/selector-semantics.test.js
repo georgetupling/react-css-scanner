@@ -120,6 +120,106 @@ test(":has() selectors model argument classes and reachability", async () => {
   }
 });
 
+test(":has() selectors model direct-child argument classes and reachability", async () => {
+  const matchingProject = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        "export function App() {",
+        '  return <section className="card"><h2 className="title">Title</h2></section>;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".card:has(> .title) { border: 1px solid; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: matchingProject.rootDir });
+
+    assertNoClassFindings(result, "missing-css-class", ["title"]);
+    assert.equal(
+      hasSelectorFinding(result, "unsatisfiable-selector", ".card:has(> .title)"),
+      false,
+    );
+  } finally {
+    await matchingProject.cleanup();
+  }
+
+  const impossibleProject = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        "export function App() {",
+        '  return <section className="card"><div><h2 className="title">Title</h2></div></section>;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".card:has(> .title) { border: 1px solid; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: impossibleProject.rootDir });
+
+    assert.equal(hasSelectorFinding(result, "unsatisfiable-selector", ".card:has(> .title)"), true);
+  } finally {
+    await impossibleProject.cleanup();
+  }
+});
+
+test(":has() selectors model adjacent-sibling argument classes and reachability", async () => {
+  const matchingProject = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        "export function App() {",
+        '  return <><section className="card">Card</section><aside className="aside">Aside</aside></>;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".card:has(+ .aside) { border: 1px solid; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: matchingProject.rootDir });
+
+    assertNoClassFindings(result, "missing-css-class", ["aside"]);
+    assert.equal(
+      hasSelectorFinding(result, "unsatisfiable-selector", ".card:has(+ .aside)"),
+      false,
+    );
+  } finally {
+    await matchingProject.cleanup();
+  }
+
+  const impossibleProject = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        "export function App() {",
+        '  return <><section className="card">Card</section><div>Gap</div><aside className="aside">Aside</aside></>;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".card:has(+ .aside) { border: 1px solid; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: impossibleProject.rootDir });
+
+    assert.equal(hasSelectorFinding(result, "unsatisfiable-selector", ".card:has(+ .aside)"), true);
+  } finally {
+    await impossibleProject.cleanup();
+  }
+});
+
 test(":not() selectors do not define negated classes and can be unsatisfiable", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(

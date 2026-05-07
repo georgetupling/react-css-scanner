@@ -50,6 +50,7 @@ function getUnsupportedSelectorReason(input: {
   if (
     parsedBranch.hasSubjectModifiers &&
     input.requirement.kind !== "has-descendant" &&
+    !isHasStructuralRequirement(input) &&
     input.requirement.kind !== "same-node-class-conjunction"
   ) {
     return "selector branch contains subject modifiers outside bounded selector reachability";
@@ -75,4 +76,18 @@ function getUnsupportedSelectorReason(input: {
   }
 
   return undefined;
+}
+
+function isHasStructuralRequirement(input: {
+  parsedBranch: ParsedSelectorBranch | undefined;
+  requirement: SelectorBranchRequirement;
+}): boolean {
+  if (input.requirement.kind !== "parent-child" && input.requirement.kind !== "sibling") {
+    return false;
+  }
+
+  return (
+    input.parsedBranch?.steps.length === 1 &&
+    input.parsedBranch.steps[0]?.selector.hasClassRelations.length === 1
+  );
 }

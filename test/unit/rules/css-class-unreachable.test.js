@@ -175,6 +175,87 @@ test("css-class-unreachable treats app-entry imported CSS as reachable from rout
   }
 });
 
+test("css-class-unreachable treats app-shell global CSS as reachable from rendered child modules", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./styles/global.css";',
+        'import { Header } from "./Header";',
+        'import { Footer } from "./Footer";',
+        "export function App() { return <><Header /><Footer /></>; }",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/Header.tsx",
+      'export function Header() { return <h1 className="layout-text">Title</h1>; }\n',
+    )
+    .withSourceFile(
+      "src/Footer.tsx",
+      'export function Footer() { return <footer className="layout-text">Footer</footer>; }\n',
+    )
+    .withCssFile("src/styles/global.css", ".layout-text { color: gray; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "css-class-unreachable", ["layout-text"]);
+    assertNoClassFindings(result, "missing-css-class", ["layout-text"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("css-class-unreachable keeps inferred app-shell CSS inside its static app shell", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "apps/admin/src/App.tsx",
+      [
+        'import "./admin.css";',
+        'import { Header } from "./Header";',
+        "export function App() { return <Header />; }",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "apps/admin/src/Header.tsx",
+      'export function Header() { return <h1 className="admin-shell">Admin</h1>; }\n',
+    )
+    .withCssFile("apps/admin/src/admin.css", ".admin-shell { color: red; }\n")
+    .withSourceFile(
+      "apps/web/src/App.tsx",
+      [
+        'import "./web.css";',
+        'import { Header } from "./Header";',
+        "export function App() { return <Header />; }",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "apps/web/src/Header.tsx",
+      'export function Header() { return <h1 className="admin-shell">Web</h1>; }\n',
+    )
+    .withCssFile("apps/web/src/web.css", ".web-shell { color: blue; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    const finding = result.findings.find(
+      (candidate) =>
+        candidate.ruleId === "css-class-unreachable" &&
+        candidate.location?.filePath === "apps/web/src/Header.tsx" &&
+        candidate.data?.className === "admin-shell",
+    );
+
+    assert.ok(finding);
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("css-class-unreachable treats eager route bundle CSS as reachable within the app entry", async () => {
   const project = await new TestProjectBuilder()
     .withFile("index.html", '<script type="module" src="/src/main.tsx"></script>\n')

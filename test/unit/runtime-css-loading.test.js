@@ -227,6 +227,65 @@ test("runtime CSS loading marks dynamic CSS imports possible", async () => {
   }
 });
 
+test("runtime CSS loading infers CSS-importing App modules as app-shell entries", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./styles/global.css";',
+        'import { Header } from "./Header";',
+        'import { Footer } from "./Footer";',
+        "export function App() { return <><Header /><Footer /></>; }",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile("src/Header.tsx", "export function Header() { return null; }\n")
+    .withSourceFile("src/Footer.tsx", "export function Footer() { return null; }\n")
+    .withCssFile("src/styles/global.css", ".layout-text {}\n")
+    .build();
+
+  try {
+    const result = await buildRuntimeCssLoadingForProject(project, {
+      sourceFilePaths: ["src/App.tsx", "src/Header.tsx", "src/Footer.tsx"],
+      cssFilePaths: ["src/styles/global.css"],
+    });
+
+    assert.deepEqual(
+      result.entries.map((entry) => ({
+        kind: entry.kind,
+        entrySourceFilePath: entry.entrySourceFilePath,
+      })),
+      [
+        {
+          kind: "inferred-app-shell-entry",
+          entrySourceFilePath: "src/App.tsx",
+        },
+      ],
+    );
+    assert.deepEqual(result.chunks[0].sourceFilePaths, [
+      "src/App.tsx",
+      "src/Footer.tsx",
+      "src/Header.tsx",
+    ]);
+    assert.deepEqual(result.chunks[0].stylesheetFilePaths, ["src/styles/global.css"]);
+    assert.ok(
+      result.availability.some(
+        (availability) =>
+          availability.stylesheetFilePath === "src/styles/global.css" &&
+          availability.sourceFilePath === "src/Header.tsx" &&
+          availability.reason === "stylesheet is loaded by the same inferred app-shell bundle",
+      ),
+    );
+    assert.ok(
+      result.diagnostics.some(
+        (diagnostic) => diagnostic.code === "runtime-css-inferred-app-shell-entry",
+      ),
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("runtime CSS loading treats Vite cssCodeSplit false CSS as initial", async () => {
   const project = await new TestProjectBuilder()
     .withFile("index.html", '<script type="module" src="/src/main.tsx"></script>\n')

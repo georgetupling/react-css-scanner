@@ -15,7 +15,8 @@ export type RuntimeCssEntry = {
     | "webpack-entry"
     | "next-app-entry"
     | "next-pages-entry"
-    | "conventional-entry";
+    | "conventional-entry"
+    | "inferred-app-shell-entry";
   entrySourceFilePath: string;
   htmlFilePath?: string;
   confidence: "high" | "medium";
@@ -46,6 +47,7 @@ export type RuntimeCssAvailability = {
   confidence: RuntimeCssBundlerProfile["confidence"];
   reason:
     | "stylesheet is loaded by the same HTML app entry bundle"
+    | "stylesheet is loaded by the same inferred app-shell bundle"
     | "stylesheet is loaded by the same lazy runtime CSS chunk"
     | "stylesheet may be loaded by a dynamic CSS import"
     | "stylesheet may be loaded by an unresolved dynamic import"
@@ -57,6 +59,7 @@ export type RuntimeCssDiagnostic = {
     | "runtime-css-unknown-bundler"
     | "runtime-css-package-bundler-inference"
     | "runtime-css-conventional-entry"
+    | "runtime-css-inferred-app-shell-entry"
     | "runtime-css-generic-chunk-semantics"
     | "runtime-css-unresolved-dynamic-import";
   severity: "debug" | "info" | "warning";

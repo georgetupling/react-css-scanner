@@ -143,7 +143,7 @@ export type SelectorRequirementStep = {
 
 export type SelectorSubjectRequirement = {
   requiredClassNames: string[];
-  classAttributePredicates: Array<{ operator: "prefix" | "substring"; value: string }>;
+  classAttributePredicates: Array<{ operator: "prefix" | "suffix" | "substring"; value: string }>;
   unsupportedParts: UnsupportedSelectorPart[];
 };
 

@@ -703,9 +703,12 @@ function findPropertyTypeNode(
   sourceFile: ts.SourceFile,
 ): ts.TypeNode | undefined {
   const resolvedTypeNode = typeNode
-    ? (resolveTypeReference(typeNode, sourceFile) ?? typeNode)
+    ? (resolveObjectPropertyContainerTypeNode(typeNode, sourceFile) ?? typeNode)
     : undefined;
-  if (!resolvedTypeNode || !ts.isTypeLiteralNode(resolvedTypeNode)) {
+  if (
+    !resolvedTypeNode ||
+    (!ts.isTypeLiteralNode(resolvedTypeNode) && !ts.isInterfaceDeclaration(resolvedTypeNode))
+  ) {
     return undefined;
   }
 
@@ -725,9 +728,30 @@ function findPropertyTypeNode(
 function resolveStringLiteralTypeValues(
   typeNode: ts.TypeNode | undefined,
   sourceFile: ts.SourceFile,
+  seenTypeNames = new Set<string>(),
 ): string[] {
   if (!typeNode) {
     return [];
+  }
+
+  if (ts.isTypeReferenceNode(typeNode) && ts.isIdentifier(typeNode.typeName)) {
+    const typeName = typeNode.typeName.text;
+    if (seenTypeNames.has(typeName)) {
+      return [];
+    }
+
+    const nextSeenTypeNames = new Set(seenTypeNames);
+    nextSeenTypeNames.add(typeName);
+
+    const alias = findTypeAliasDeclaration(sourceFile, typeName);
+    if (alias) {
+      return resolveStringLiteralTypeValues(alias.type, sourceFile, nextSeenTypeNames);
+    }
+
+    const enumDeclaration = findEnumDeclaration(sourceFile, typeName);
+    if (enumDeclaration) {
+      return readStringEnumValues(enumDeclaration);
+    }
   }
 
   const resolvedTypeNode = resolveTypeReference(typeNode, sourceFile) ?? typeNode;
@@ -735,7 +759,7 @@ function resolveStringLiteralTypeValues(
     return [
       ...new Set(
         resolvedTypeNode.types.flatMap((member) =>
-          resolveStringLiteralTypeValues(member, sourceFile),
+          resolveStringLiteralTypeValues(member, sourceFile, seenTypeNames),
         ),
       ),
     ].sort((left, right) => left.localeCompare(right));
@@ -752,6 +776,35 @@ function resolveStringLiteralTypeValues(
   return [];
 }
 
+function resolveObjectPropertyContainerTypeNode(
+  typeNode: ts.TypeNode,
+  sourceFile: ts.SourceFile,
+  seenTypeNames = new Set<string>(),
+): ts.TypeLiteralNode | ts.InterfaceDeclaration | undefined {
+  if (ts.isTypeLiteralNode(typeNode)) {
+    return typeNode;
+  }
+
+  if (!ts.isTypeReferenceNode(typeNode) || !ts.isIdentifier(typeNode.typeName)) {
+    return undefined;
+  }
+
+  const typeName = typeNode.typeName.text;
+  if (seenTypeNames.has(typeName)) {
+    return undefined;
+  }
+
+  const nextSeenTypeNames = new Set(seenTypeNames);
+  nextSeenTypeNames.add(typeName);
+
+  const alias = findTypeAliasDeclaration(sourceFile, typeName);
+  if (alias) {
+    return resolveObjectPropertyContainerTypeNode(alias.type, sourceFile, nextSeenTypeNames);
+  }
+
+  return findInterfaceDeclaration(sourceFile, typeName);
+}
+
 function resolveTypeReference(
   typeNode: ts.TypeNode,
   sourceFile: ts.SourceFile,
@@ -760,13 +813,63 @@ function resolveTypeReference(
     return undefined;
   }
 
+  return findTypeAliasDeclaration(sourceFile, typeNode.typeName.text)?.type;
+}
+
+function findTypeAliasDeclaration(
+  sourceFile: ts.SourceFile,
+  typeName: string,
+): ts.TypeAliasDeclaration | undefined {
   for (const statement of sourceFile.statements) {
-    if (ts.isTypeAliasDeclaration(statement) && statement.name.text === typeNode.typeName.text) {
-      return statement.type;
+    if (ts.isTypeAliasDeclaration(statement) && statement.name.text === typeName) {
+      return statement;
     }
   }
 
   return undefined;
+}
+
+function findInterfaceDeclaration(
+  sourceFile: ts.SourceFile,
+  typeName: string,
+): ts.InterfaceDeclaration | undefined {
+  for (const statement of sourceFile.statements) {
+    if (ts.isInterfaceDeclaration(statement) && statement.name.text === typeName) {
+      return statement;
+    }
+  }
+
+  return undefined;
+}
+
+function findEnumDeclaration(
+  sourceFile: ts.SourceFile,
+  enumName: string,
+): ts.EnumDeclaration | undefined {
+  for (const statement of sourceFile.statements) {
+    if (ts.isEnumDeclaration(statement) && statement.name.text === enumName) {
+      return statement;
+    }
+  }
+
+  return undefined;
+}
+
+function readStringEnumValues(enumDeclaration: ts.EnumDeclaration): string[] {
+  const values: string[] = [];
+  for (const member of enumDeclaration.members) {
+    if (
+      !member.initializer ||
+      (!ts.isStringLiteral(member.initializer) &&
+        !ts.isNoSubstitutionTemplateLiteral(member.initializer))
+    ) {
+      return [];
+    }
+
+    values.push(member.initializer.text);
+  }
+
+  return uniqueSortedStrings(values);
 }
 
 function getPropertyNameText(name: ts.PropertyName): string | undefined {

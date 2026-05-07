@@ -320,7 +320,7 @@ export type SelectorBranchNode = FactNodeBase & {
   ruleKey: string;
   requiredClassNames: string[];
   subjectClassNames: string[];
-  classAttributePredicates: Array<{ operator: "prefix" | "substring"; value: string }>;
+  classAttributePredicates: Array<{ operator: "prefix" | "suffix" | "substring"; value: string }>;
   contextClassNames: string[];
   negativeClassNames: string[];
   hasDescendantClassNames: string[];

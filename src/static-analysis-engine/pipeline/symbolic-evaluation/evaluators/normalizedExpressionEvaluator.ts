@@ -262,6 +262,7 @@ function summarizeIdentifierExpressionSyntax(input: {
       depth: input.depth,
       seenExpressionIds: input.seenExpressionIds,
       helperBindings: input.helperBindings,
+      targetLocation: input.expression.location,
     });
     if (bindingValue) {
       return bindingValue;
@@ -429,7 +430,12 @@ function summarizeLocalBindingValue(input: {
   depth: number;
   seenExpressionIds: Set<string>;
   helperBindings?: Map<string, AbstractValue>;
+  targetLocation: ExpressionSyntaxNode["location"];
 }): AbstractValue | undefined {
+  if (input.binding.bindingKind === "let-identifier" && input.binding.expressionId) {
+    return summarizeMutableLocalBindingValue(input);
+  }
+
   if (input.binding.bindingKind !== "destructured-property" || !input.binding.objectExpressionId) {
     return undefined;
   }
@@ -488,6 +494,66 @@ function summarizeLocalBindingValue(input: {
     return objectValue;
   }
   return mergeClassSets([objectValue, fallbackValue], "destructured property fallback");
+}
+
+function summarizeMutableLocalBindingValue(input: {
+  input: SymbolicExpressionEvaluatorInput;
+  binding: SymbolicExpressionEvaluatorInput["graph"]["nodes"]["localValueBindings"][number];
+  depth: number;
+  seenExpressionIds: Set<string>;
+  helperBindings?: Map<string, AbstractValue>;
+  targetLocation: ExpressionSyntaxNode["location"];
+}): AbstractValue | undefined {
+  const values: string[] = [];
+  let currentValues = getStringCandidates(
+    getExpressionValue(
+      {
+        input: input.input,
+        depth: input.depth,
+        seenExpressionIds: input.seenExpressionIds,
+        helperBindings: input.helperBindings,
+      },
+      input.binding.expressionId!,
+    ),
+  );
+  if (!currentValues) {
+    return undefined;
+  }
+  values.push(...currentValues);
+
+  for (const assignment of input.binding.assignments ?? []) {
+    if (
+      !isAnchorAtOrBefore({
+        candidate: assignment.location,
+        target: input.targetLocation,
+      })
+    ) {
+      continue;
+    }
+
+    const assignedValues = getStringCandidates(
+      getExpressionValue(
+        {
+          input: input.input,
+          depth: input.depth,
+          seenExpressionIds: input.seenExpressionIds,
+          helperBindings: input.helperBindings,
+        },
+        assignment.expressionId,
+      ),
+    );
+    if (!assignedValues) {
+      return undefined;
+    }
+
+    currentValues =
+      assignment.assignmentKind === "append"
+        ? combineStrings(currentValues, assignedValues)
+        : assignedValues;
+    values.push(...currentValues);
+  }
+
+  return toStringValue(uniqueSorted(values));
 }
 
 function collectOwnerNodeIds(
@@ -652,6 +718,28 @@ function buildExternalContributions(input: {
       bindingNode.bindingKind === "destructured-props" &&
       current.expressionKind === "identifier"
     ) {
+      if (
+        bindingNode.restPropertyName === current.name &&
+        input.input.classExpressionSite.componentPropName
+      ) {
+        const propName = input.input.classExpressionSite.componentPropName;
+        const contributionKey = `${propName}:${current.location.startLine}:${current.location.startColumn}`;
+        contributionsByKey.set(contributionKey, {
+          id: externalContributionId({
+            expressionId: input.expression.id,
+            contributionKey,
+            index: 0,
+          }),
+          contributionKind: "component-prop",
+          localName: current.name,
+          propertyName: propName,
+          sourceAnchor: current.location,
+          conditionId: conditionId({ expressionId: input.expression.id, conditionKey: "always" }),
+          confidence: "medium",
+          reason: `component prop "${propName}" via rest-prop spread`,
+        });
+      }
+
       const property = bindingNode.properties.find(
         (candidate) => candidate.localName === current.name,
       );
@@ -672,6 +760,31 @@ function buildExternalContributions(input: {
           reason: `component prop "${property.propertyName}" via destructured binding`,
         });
       }
+    }
+
+    if (
+      bindingNode.bindingKind === "props-identifier" &&
+      current.expressionKind === "identifier" &&
+      current.name === bindingNode.identifierName &&
+      input.input.classExpressionSite.componentPropName &&
+      !isComponentPropIdentifierShadowedByRepeatedRenderCallback(input.input, current)
+    ) {
+      const propName = input.input.classExpressionSite.componentPropName;
+      const contributionKey = `${propName}:${current.location.startLine}:${current.location.startColumn}`;
+      contributionsByKey.set(contributionKey, {
+        id: externalContributionId({
+          expressionId: input.expression.id,
+          contributionKey,
+          index: 0,
+        }),
+        contributionKind: "component-prop",
+        localName: bindingNode.identifierName,
+        propertyName: propName,
+        sourceAnchor: current.location,
+        conditionId: conditionId({ expressionId: input.expression.id, conditionKey: "always" }),
+        confidence: "medium",
+        reason: `component prop "${propName}" via props spread`,
+      });
     }
 
     if (

@@ -329,6 +329,56 @@ test("unused-css-class preserves className flow through forwardRef wrappers", as
   }
 });
 
+test("unused-css-class treats classes forwarded through rest props as used", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        "function Box({ children, ...props }: React.HTMLAttributes<HTMLDivElement>) {",
+        "  return <div {...props}>{children}</div>;",
+        "}",
+        'export function App() { return <Box className="panel">Content</Box>; }',
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".panel { padding: 1rem; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", ["panel"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unused-css-class treats classes forwarded through props-object spreads as used", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        "function Box(props: React.HTMLAttributes<HTMLDivElement>) {",
+        "  return <div {...props}>{props.children}</div>;",
+        "}",
+        'export function App() { return <Box className="panel">Content</Box>; }',
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".panel { padding: 1rem; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", ["panel"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("unused-css-class reports classes only referenced in literal unreachable render branches", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(
@@ -3574,6 +3624,62 @@ test("unused-css-class reports const false conditional render classes", async ()
     const result = await scanProject({ rootDir: project.rootDir });
 
     assert.equal(hasClassFinding(result, "unused-css-class", "never"), true);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unused-css-class treats bounded let assignments in if branches as used", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        "export function App({ active }: { active: boolean }) {",
+        '  let className = "inactive";',
+        "  if (active) {",
+        '    className = "active";',
+        "  }",
+        "  return <button className={className}>Toggle</button>;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".active { color: green; }\n.inactive { color: gray; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", ["active", "inactive"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unused-css-class treats bounded let append assignments as used", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        "export function App({ active }: { active: boolean }) {",
+        '  let className = "button";',
+        "  if (active) {",
+        '    className += " active";',
+        "  }",
+        "  return <button className={className}>Toggle</button>;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".button { color: gray; }\n.active { color: green; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", ["button", "active"]);
   } finally {
     await project.cleanup();
   }

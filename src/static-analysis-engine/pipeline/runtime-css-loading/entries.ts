@@ -60,14 +60,36 @@ export function collectAppEntries(input: {
   const validHtmlEntryEdges = htmlEntryEdges.filter((entry) =>
     moduleFilePathSet.has(entry.entrySourceFilePath),
   );
-  return validHtmlEntryEdges.length > 0
-    ? validHtmlEntryEdges
-    : collectConventionalEntrySourceFilePaths(input.moduleFilePaths).map((entrySourceFilePath) => ({
+  if (validHtmlEntryEdges.length > 0) {
+    return validHtmlEntryEdges;
+  }
+
+  const conventionalEntries = collectConventionalEntrySourceFilePaths(input.moduleFilePaths).map(
+    (entrySourceFilePath) =>
+      ({
         kind: "conventional-entry",
         entrySourceFilePath,
         confidence: "medium",
         reason: "No valid HTML module script entry resolved; inferred conventional main module",
-      }));
+      }) satisfies RuntimeCssEntryCandidate,
+  );
+  if (conventionalEntries.length > 0) {
+    return conventionalEntries;
+  }
+
+  return collectInferredAppShellEntrySourceFilePaths({
+    snapshotEdges: input.snapshotEdges,
+    moduleFilePaths: input.moduleFilePaths,
+  }).map(
+    (entrySourceFilePath) =>
+      ({
+        kind: "inferred-app-shell-entry",
+        entrySourceFilePath,
+        confidence: "medium",
+        reason:
+          "No configured or conventional runtime entry resolved; inferred CSS-importing app shell module",
+      }) satisfies RuntimeCssEntryCandidate,
+  );
 }
 
 function collectConventionalEntrySourceFilePaths(moduleFilePaths: string[]): string[] {
@@ -84,4 +106,60 @@ function collectConventionalEntrySourceFilePaths(moduleFilePaths: string[]): str
   return moduleFilePaths
     .filter((filePath) => entryFileNames.has(getBaseName(filePath).toLowerCase()))
     .sort((left, right) => left.localeCompare(right));
+}
+
+function collectInferredAppShellEntrySourceFilePaths(input: {
+  snapshotEdges: ProjectResourceEdge[];
+  moduleFilePaths: string[];
+}): string[] {
+  const moduleFilePathSet = new Set(input.moduleFilePaths);
+  const sourceImportsByImporterPath = new Map<string, string[]>();
+  const cssImportsByImporterPath = new Map<string, string[]>();
+
+  for (const edge of input.snapshotEdges) {
+    if (
+      edge.kind !== "source-import" ||
+      edge.importLoading !== "static" ||
+      !edge.resolvedFilePath
+    ) {
+      continue;
+    }
+
+    const importerPath = normalizeProjectPath(edge.importerFilePath);
+    const importedPath = normalizeProjectPath(edge.resolvedFilePath);
+    if (!moduleFilePathSet.has(importerPath)) {
+      continue;
+    }
+
+    if (edge.importKind === "source" && moduleFilePathSet.has(importedPath)) {
+      pushMapValue(sourceImportsByImporterPath, importerPath, importedPath);
+      continue;
+    }
+
+    if (edge.importKind === "css") {
+      pushMapValue(cssImportsByImporterPath, importerPath, importedPath);
+    }
+  }
+
+  return input.moduleFilePaths
+    .filter((filePath) => isConventionalAppShellFile(filePath))
+    .filter((filePath) => (cssImportsByImporterPath.get(filePath) ?? []).length > 0)
+    .filter((filePath) => (sourceImportsByImporterPath.get(filePath) ?? []).length > 0)
+    .sort((left, right) => left.localeCompare(right));
+}
+
+function isConventionalAppShellFile(filePath: string): boolean {
+  const baseName = getBaseName(filePath).toLowerCase();
+  return (
+    baseName === "app.jsx" ||
+    baseName === "app.js" ||
+    baseName === "app.ts" ||
+    baseName === "app.tsx"
+  );
+}
+
+function pushMapValue<Key, Value>(map: Map<Key, Value[]>, key: Key, value: Value): void {
+  const values = map.get(key) ?? [];
+  values.push(value);
+  map.set(key, values);
 }

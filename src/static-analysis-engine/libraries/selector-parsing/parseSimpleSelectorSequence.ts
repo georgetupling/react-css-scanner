@@ -5,13 +5,18 @@ import {
   skipTypeOrNamespaceToken,
 } from "./readCssIdentifier.js";
 import { splitTopLevelSelectorList } from "./splitTopLevelSelectorList.js";
-import type { ParsedClassAttributePredicate, ParsedSimpleSelectorSequence } from "./types.js";
+import type {
+  ParsedClassAttributePredicate,
+  ParsedHasClassRelation,
+  ParsedSimpleSelectorSequence,
+} from "./types.js";
 
 export function parseSimpleSelectorSequence(segment: string): ParsedSimpleSelectorSequence {
   const requiredClasses: string[] = [];
   const classAttributePredicates: ParsedClassAttributePredicate[] = [];
   const negativeClasses: string[] = [];
   const hasDescendantClasses: string[] = [];
+  const hasClassRelations: ParsedHasClassRelation[] = [];
   let hasUnknownSemantics = false;
   let hasSubjectModifiers = false;
   let hasTypeOrIdConstraint = false;
@@ -95,9 +100,14 @@ export function parseSimpleSelectorSequence(segment: string): ParsedSimpleSelect
       }
 
       if (normalizedPseudoName === "has") {
-        const parsedHasClasses = parseRequiredClassNames(inner.content);
-        if (parsedHasClasses) {
-          hasDescendantClasses.push(...parsedHasClasses);
+        const parsedHasRelations = parseHasClassRelations(inner.content);
+        if (parsedHasRelations) {
+          hasClassRelations.push(...parsedHasRelations);
+          hasDescendantClasses.push(
+            ...parsedHasRelations
+              .filter((relation) => relation.relation === "descendant")
+              .map((relation) => relation.className),
+          );
           continue;
         }
       }
@@ -135,6 +145,7 @@ export function parseSimpleSelectorSequence(segment: string): ParsedSimpleSelect
     classAttributePredicates: uniqueClassAttributePredicates(classAttributePredicates),
     negativeClasses: unique(negativeClasses),
     hasDescendantClasses: unique(hasDescendantClasses),
+    hasClassRelations: uniqueHasClassRelations(hasClassRelations),
     hasUnknownSemantics,
     hasSubjectModifiers,
     hasTypeOrIdConstraint,
@@ -146,19 +157,26 @@ function readAttributeClassToken(
   startIndex: number,
 ):
   | {
-      operator: "token" | "prefix" | "substring";
+      operator: "token" | "prefix" | "suffix" | "substring";
       value: string;
       nextIndex: number;
     }
   | undefined {
   const endIndex = skipBalancedSection(segment, startIndex, "[", "]");
   const rawAttribute = segment.slice(startIndex + 1, Math.max(startIndex + 1, endIndex - 1)).trim();
-  const match = /^class\s*(~=|\^=|\*=)\s*(["'])(.*?)\2$/u.exec(rawAttribute);
+  const match = /^class\s*(~=|\^=|\$=|\*=)\s*(["'])(.*?)\2$/u.exec(rawAttribute);
   if (!match?.[3]) {
     return undefined;
   }
 
-  const operator = match[1] === "~=" ? "token" : match[1] === "^=" ? "prefix" : "substring";
+  const operator =
+    match[1] === "~="
+      ? "token"
+      : match[1] === "^="
+        ? "prefix"
+        : match[1] === "$="
+          ? "suffix"
+          : "substring";
   return {
     operator,
     value: match[3],
@@ -188,6 +206,42 @@ function parseRequiredClassNames(value: string): string[] | undefined {
   }
 
   return classNames;
+}
+
+function parseHasClassRelations(value: string): ParsedHasClassRelation[] | undefined {
+  const selectors = splitTopLevelSelectorList(value);
+  if (selectors.length === 0) {
+    return undefined;
+  }
+
+  const relations: ParsedHasClassRelation[] = [];
+  for (const selector of selectors) {
+    let trimmed = selector.trim();
+    let relation: ParsedHasClassRelation["relation"] = "descendant";
+    const firstCharacter = trimmed[0];
+    if (firstCharacter === ">" || firstCharacter === "+" || firstCharacter === "~") {
+      relation =
+        firstCharacter === ">"
+          ? "child"
+          : firstCharacter === "+"
+            ? "adjacent-sibling"
+            : "general-sibling";
+      trimmed = trimmed.slice(1).trim();
+    }
+
+    if (!trimmed.startsWith(".")) {
+      return undefined;
+    }
+
+    const identifier = readCssIdentifier(trimmed, 1);
+    if (!identifier || identifier.nextIndex !== trimmed.length) {
+      return undefined;
+    }
+
+    relations.push({ relation, className: identifier.value });
+  }
+
+  return relations;
 }
 
 function parseNegatedClassNames(value: string): string[] | undefined {
@@ -224,6 +278,14 @@ function uniqueClassAttributePredicates(
   return [
     ...new Map(
       predicates.map((predicate) => [`${predicate.operator}:${predicate.value}`, predicate]),
+    ).values(),
+  ];
+}
+
+function uniqueHasClassRelations(relations: ParsedHasClassRelation[]): ParsedHasClassRelation[] {
+  return [
+    ...new Map(
+      relations.map((relation) => [`${relation.relation}:${relation.className}`, relation]),
     ).values(),
   ];
 }

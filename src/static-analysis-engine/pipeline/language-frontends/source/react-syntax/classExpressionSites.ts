@@ -6,6 +6,7 @@ import { createSiteKey } from "./keys.js";
 import { getJsxTagName, isIntrinsicTagName, unwrapJsxAttributeInitializer } from "./jsxUtils.js";
 import type {
   ReactClassExpressionSiteFact,
+  ReactComponentPropBindingFact,
   ReactElementTemplateFact,
   ReactRenderSiteFact,
 } from "./types.js";
@@ -23,6 +24,7 @@ export function createJsxClassExpressionSites(input: {
   renderSite?: ReactRenderSiteFact;
   template?: ReactElementTemplateFact;
   emittingComponentKey?: string;
+  componentPropBinding?: ReactComponentPropBindingFact;
 }): CreatedReactClassExpressionSite[] {
   if (!ts.isJsxElement(input.node) && !ts.isJsxSelfClosingElement(input.node)) {
     return [];
@@ -37,6 +39,7 @@ export function createJsxClassExpressionSites(input: {
     attributes,
     sourceFile: input.sourceFile,
     intrinsicTag,
+    componentPropBinding: input.componentPropBinding,
   });
   if (classSiteInputs.length === 0) {
     return [];
@@ -75,7 +78,9 @@ export function createJsxClassExpressionSites(input: {
         rawExpressionText: anchorNode.getText(input.sourceFile),
         ...(emittingComponentKey ? { emittingComponentKey } : {}),
         ...(placementComponentKey ? { placementComponentKey } : {}),
-        ...(!intrinsicTag ? { componentPropName: attributeName } : {}),
+        ...(!intrinsicTag || classSiteInput.forwardedComponentPropName
+          ? { componentPropName: classSiteInput.forwardedComponentPropName ?? attributeName }
+          : {}),
         ...(input.renderSite ? { renderSiteKey: input.renderSite.siteKey } : {}),
         ...(input.template ? { elementTemplateKey: input.template.templateKey } : {}),
       },
@@ -90,12 +95,14 @@ type JsxClassSiteInput = {
   attributeName: string;
   initializer: ts.Node;
   expression?: ts.Expression;
+  forwardedComponentPropName?: string;
 };
 
 function collectEffectiveJsxClassSiteInputs(input: {
   attributes: ts.NodeArray<ts.JsxAttributeLike>;
   sourceFile: ts.SourceFile;
   intrinsicTag: boolean;
+  componentPropBinding?: ReactComponentPropBindingFact;
 }): JsxClassSiteInput[] {
   if (!input.intrinsicTag) {
     return input.attributes.flatMap((attribute) => {
@@ -138,10 +145,15 @@ function collectEffectiveJsxClassSiteInputs(input: {
     }
 
     if (ts.isJsxSpreadAttribute(attribute)) {
-      const spreadClassName = resolveSpreadClassName({
-        expression: attribute.expression,
-        sourceFile: input.sourceFile,
-      });
+      const spreadClassName =
+        resolveSpreadClassName({
+          expression: attribute.expression,
+          sourceFile: input.sourceFile,
+        }) ??
+        resolveForwardedComponentPropSpread({
+          expression: attribute.expression,
+          componentPropBinding: input.componentPropBinding,
+        });
       if (spreadClassName) {
         effectiveClassName = spreadClassName;
       }
@@ -149,6 +161,44 @@ function collectEffectiveJsxClassSiteInputs(input: {
   }
 
   return effectiveClassName ? [effectiveClassName] : [];
+}
+
+function resolveForwardedComponentPropSpread(input: {
+  expression: ts.Expression;
+  componentPropBinding?: ReactComponentPropBindingFact;
+}): JsxClassSiteInput | undefined {
+  const binding = input.componentPropBinding;
+  const unwrapped = unwrapExpression(input.expression);
+  if (!binding || !ts.isIdentifier(unwrapped)) {
+    return undefined;
+  }
+
+  if (binding.bindingKind === "props-identifier" && binding.identifierName === unwrapped.text) {
+    return {
+      attributeName: "className",
+      initializer: unwrapped,
+      expression: unwrapped,
+      forwardedComponentPropName: "className",
+    };
+  }
+
+  const destructuresClassName = binding.properties.some(
+    (property) => property.propertyName === "className",
+  );
+  if (
+    binding.bindingKind === "destructured-props" &&
+    binding.restPropertyName === unwrapped.text &&
+    !destructuresClassName
+  ) {
+    return {
+      attributeName: "className",
+      initializer: unwrapped,
+      expression: unwrapped,
+      forwardedComponentPropName: "className",
+    };
+  }
+
+  return undefined;
 }
 
 function resolveSpreadClassName(input: {

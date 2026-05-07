@@ -90,6 +90,9 @@ export function collectSourceReactSyntax(input: {
       ];
     }),
   ]);
+  const componentPropBindingByComponentKey = new Map(
+    bindingFacts.componentPropBindings.map((binding) => [binding.componentKey, binding] as const),
+  );
   const renderStack: ReactRenderSiteFact[] = [];
   const renderNodeStack: ts.Node[] = [];
   const componentStack: string[] = [];
@@ -186,6 +189,9 @@ export function collectSourceReactSyntax(input: {
       ...(renderSite ? { renderSite } : {}),
       ...(template ? { template } : {}),
       ...(currentComponentKey ? { emittingComponentKey: currentComponentKey } : {}),
+      ...(currentComponentKey
+        ? { componentPropBinding: componentPropBindingByComponentKey.get(currentComponentKey) }
+        : {}),
     });
     for (const classSite of jsxClassSites) {
       classExpressionSites.push(classSite.site);

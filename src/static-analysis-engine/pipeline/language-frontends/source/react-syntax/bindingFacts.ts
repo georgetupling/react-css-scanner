@@ -8,6 +8,7 @@ import type {
   ReactDestructuredBindingPropertyFact,
   ReactHelperDefinitionFact,
   ReactHelperParameterBindingFact,
+  ReactLocalValueAssignmentFact,
   ReactLocalValueBindingFact,
   ReactUnsupportedBindingReason,
 } from "./types.js";
@@ -99,6 +100,7 @@ export function collectTopLevelHelperBindingFacts(input: {
         collectLocalBindingFactFromDeclaration({
           declaration,
           scope,
+          statements: input.sourceFile.statements,
           ownerKind: "source-file",
           ownerKey: input.filePath,
           filePath: input.filePath,
@@ -210,6 +212,7 @@ function collectComponentPropBinding(input: {
   }
 
   if (ts.isObjectBindingPattern(parameter.name)) {
+    const restPropertyName = getObjectBindingRestPropertyName(parameter.name);
     const properties = collectDestructuredBindingProperties({
       pattern: parameter.name,
       filePath: input.filePath,
@@ -232,6 +235,7 @@ function collectComponentPropBinding(input: {
       location: toSourceAnchor(parameter.name, input.sourceFile, input.filePath),
       bindingKind: "destructured-props",
       properties,
+      ...(restPropertyName ? { restPropertyName } : {}),
     };
   }
 
@@ -310,7 +314,7 @@ function collectLocalBindingFactsFromStatements(input: {
       continue;
     }
 
-    if (!ts.isVariableStatement(statement) || !isConstDeclarationList(statement.declarationList)) {
+    if (!ts.isVariableStatement(statement)) {
       collectLocalBindingFactsFromNestedCallbacks({
         ...input,
         node: statement,
@@ -322,6 +326,7 @@ function collectLocalBindingFactsFromStatements(input: {
       collectLocalBindingFactFromDeclaration({
         declaration,
         scope: input.scope,
+        statements: input.statements,
         ownerKind: input.ownerKind,
         ownerKey: input.ownerKey,
         filePath: input.filePath,
@@ -339,6 +344,7 @@ function collectLocalBindingFactsFromStatements(input: {
 function collectLocalBindingFactFromDeclaration(input: {
   declaration: ts.VariableDeclaration;
   scope: LocalBindingScope;
+  statements: readonly ts.Statement[];
   ownerKind: "source-file" | "component" | "helper";
   ownerKey: string;
   filePath: string;
@@ -350,6 +356,10 @@ function collectLocalBindingFactFromDeclaration(input: {
   }
 
   if (ts.isIdentifier(input.declaration.name)) {
+    if (!isConstDeclaration(input.declaration) && !isLetDeclaration(input.declaration)) {
+      return;
+    }
+
     const unwrapped = unwrapExpression(input.declaration.initializer);
     if (ts.isArrowFunction(unwrapped) || ts.isFunctionExpression(unwrapped)) {
       collectHelperDefinitionFromFunctionLike({
@@ -386,8 +396,19 @@ function collectLocalBindingFactFromDeclaration(input: {
       scopeLocation: input.scope.scopeLocation,
       localName: input.declaration.name.text,
       location,
-      bindingKind: "const-identifier",
+      bindingKind: isLetDeclaration(input.declaration) ? "let-identifier" : "const-identifier",
       expressionId: expression.rootExpressionId,
+      ...(isLetDeclaration(input.declaration)
+        ? {
+            assignments: collectMutableLocalAssignments({
+              localName: input.declaration.name.text,
+              statements: input.statements,
+              filePath: input.filePath,
+              sourceFile: input.sourceFile,
+              collected: input.collected,
+            }),
+          }
+        : {}),
     });
     return;
   }
@@ -678,6 +699,84 @@ function collectDestructuredBindingProperties(input: {
   return properties;
 }
 
+function getObjectBindingRestPropertyName(pattern: ts.ObjectBindingPattern): string | undefined {
+  const restElement = pattern.elements.find(
+    (element) => element.dotDotDotToken && ts.isIdentifier(element.name),
+  );
+  return restElement && ts.isIdentifier(restElement.name) ? restElement.name.text : undefined;
+}
+
+function collectMutableLocalAssignments(input: {
+  localName: string;
+  statements: readonly ts.Statement[];
+  filePath: string;
+  sourceFile: ts.SourceFile;
+  collected: CollectedReactBindingFacts;
+}): ReactLocalValueAssignmentFact[] {
+  const assignments: ReactLocalValueAssignmentFact[] = [];
+
+  const visit = (node: ts.Node): void => {
+    if (
+      ts.isFunctionDeclaration(node) ||
+      ts.isArrowFunction(node) ||
+      ts.isFunctionExpression(node) ||
+      ts.isClassDeclaration(node)
+    ) {
+      return;
+    }
+
+    if (ts.isBinaryExpression(node) && ts.isIdentifier(node.left)) {
+      const assignmentKind = getSupportedAssignmentKind(node.operatorToken.kind);
+      if (assignmentKind && node.left.text === input.localName) {
+        const expression = collectExpressionSyntaxForNode({
+          node: node.right,
+          filePath: input.filePath,
+          sourceFile: input.sourceFile,
+        });
+        input.collected.expressionSyntax.push(...expression.expressions);
+        assignments.push({
+          assignmentKind,
+          expressionId: expression.rootExpressionId,
+          location: toSourceAnchor(node, input.sourceFile, input.filePath),
+        });
+      }
+    }
+
+    ts.forEachChild(node, visit);
+  };
+
+  for (const statement of input.statements) {
+    visit(statement);
+  }
+
+  return assignments.sort((left, right) => compareSourceAnchors(left.location, right.location));
+}
+
+function getSupportedAssignmentKind(
+  kind: ts.SyntaxKind,
+): ReactLocalValueAssignmentFact["assignmentKind"] | undefined {
+  if (kind === ts.SyntaxKind.EqualsToken) {
+    return "replace";
+  }
+  if (kind === ts.SyntaxKind.PlusEqualsToken) {
+    return "append";
+  }
+  return undefined;
+}
+
+function compareSourceAnchors(
+  left: ReturnType<typeof toSourceAnchor>,
+  right: ReturnType<typeof toSourceAnchor>,
+): number {
+  return (
+    left.filePath.localeCompare(right.filePath) ||
+    left.startLine - right.startLine ||
+    left.startColumn - right.startColumn ||
+    (left.endLine ?? 0) - (right.endLine ?? 0) ||
+    (left.endColumn ?? 0) - (right.endColumn ?? 0)
+  );
+}
+
 function getBindingElementPropertyName(element: ts.BindingElement): string | undefined {
   if (!element.propertyName) {
     return element.name.getText(element.getSourceFile());
@@ -766,6 +865,18 @@ function getRestParameterName(parameters: readonly ts.ParameterDeclaration[]): s
 
 function isConstDeclarationList(declarationList: ts.VariableDeclarationList): boolean {
   return (declarationList.flags & ts.NodeFlags.Const) !== 0;
+}
+
+function isConstDeclaration(declaration: ts.VariableDeclaration): boolean {
+  return ts.isVariableDeclarationList(declaration.parent)
+    ? (declaration.parent.flags & ts.NodeFlags.Const) !== 0
+    : false;
+}
+
+function isLetDeclaration(declaration: ts.VariableDeclaration): boolean {
+  return ts.isVariableDeclarationList(declaration.parent)
+    ? (declaration.parent.flags & ts.NodeFlags.Let) !== 0
+    : false;
 }
 
 function unwrapExpression(expression: ts.Expression): ts.Expression {

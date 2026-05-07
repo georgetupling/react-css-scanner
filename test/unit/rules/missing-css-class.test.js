@@ -1081,6 +1081,54 @@ test("missing-css-class reports prop-passed classes from the call site", async (
   }
 });
 
+test("missing-css-class reports classes forwarded through rest props", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        "function Box({ children, ...props }: React.HTMLAttributes<HTMLDivElement>) {",
+        "  return <div {...props}>{children}</div>;",
+        "}",
+        'export function App() { return <Box className="missing">Content</Box>; }',
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".other { color: red; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assert.equal(hasClassFinding(result, "missing-css-class", "missing"), true);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("missing-css-class reports classes forwarded through props-object spreads", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        "function Box(props: React.HTMLAttributes<HTMLDivElement>) {",
+        "  return <div {...props}>{props.children}</div>;",
+        "}",
+        'export function App() { return <Box className="missing">Content</Box>; }',
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".other { color: red; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assert.equal(hasClassFinding(result, "missing-css-class", "missing"), true);
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("missing-css-class reports renderable prop classes from the call site", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(
@@ -1328,6 +1376,24 @@ test("missing-css-class accepts substring class attribute selectors", async () =
   }
 });
 
+test("missing-css-class accepts suffix class attribute selectors", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./App.css";\nexport function App() { return <div className="btn-primary">Save</div>; }\n',
+    )
+    .withCssFile("src/App.css", '[class$="-primary"] { color: green; }\n')
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "missing-css-class", ["btn-primary"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("missing-css-class accepts native CSS nesting descendant selectors", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(
@@ -1377,6 +1443,35 @@ test("missing-css-class reports unresolved finite mapped template variants", asy
         'const items = ["primary", "secondary"] as const;',
         "export function App() {",
         "  return <>{items.map((tone) => <button className={`btn-${tone}`} key={tone}>Save</button>)}</>;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".btn-primary { color: blue; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "missing-css-class", ["btn-primary"]);
+    assert.equal(hasClassFinding(result, "missing-css-class", "btn-secondary"), true);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("missing-css-class reports unresolved TypeScript enum template variants", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        "enum Tone {",
+        '  Primary = "primary",',
+        '  Secondary = "secondary",',
+        "}",
+        "export function App({ tone }: { tone: Tone }) {",
+        "  return <button className={`btn-${tone}`}>Save</button>;",
         "}",
         "",
       ].join("\n"),
