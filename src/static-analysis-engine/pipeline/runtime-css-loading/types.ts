@@ -16,7 +16,8 @@ export type RuntimeCssEntry = {
     | "next-app-entry"
     | "next-pages-entry"
     | "conventional-entry"
-    | "inferred-app-shell-entry";
+    | "inferred-app-shell-entry"
+    | "rendered-app-shell-entry";
   entrySourceFilePath: string;
   htmlFilePath?: string;
   confidence: "high" | "medium";
@@ -48,6 +49,7 @@ export type RuntimeCssAvailability = {
   reason:
     | "stylesheet is loaded by the same HTML app entry bundle"
     | "stylesheet is loaded by the same inferred app-shell bundle"
+    | "stylesheet is loaded by the same rendered app-shell bundle"
     | "stylesheet is loaded by the same lazy runtime CSS chunk"
     | "stylesheet may be loaded by a dynamic CSS import"
     | "stylesheet may be loaded by an unresolved dynamic import"

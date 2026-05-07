@@ -4,7 +4,9 @@ import test from "node:test";
 import {
   buildFactGraph,
   buildLanguageFrontends,
+  buildRenderStructure,
   buildRuntimeCssLoading,
+  evaluateSymbolicExpressions,
 } from "../../dist/static-analysis-engine.js";
 import { buildProjectSnapshot } from "../../dist/static-analysis-engine/pipeline/workspace-discovery/buildProjectSnapshot.js";
 import { TestProjectBuilder } from "../support/TestProjectBuilder.js";
@@ -279,6 +281,63 @@ test("runtime CSS loading infers CSS-importing App modules as app-shell entries"
     assert.ok(
       result.diagnostics.some(
         (diagnostic) => diagnostic.code === "runtime-css-inferred-app-shell-entry",
+      ),
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("runtime CSS loading infers rendered App modules with descendant CSS imports as app-shell entries", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import { Card } from "./Card";',
+        'import { SidebarCard } from "./SidebarCard";',
+        "export function App() { return <><Card /><SidebarCard /></>; }",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/Card.tsx",
+      [
+        'import "./Card.css";',
+        'export function Card() { return <section className="card">Card</section>; }',
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/SidebarCard.tsx",
+      'export function SidebarCard() { return <aside className="card">Sidebar</aside>; }\n',
+    )
+    .withCssFile("src/Card.css", ".card { padding: 1rem; }\n")
+    .build();
+
+  try {
+    const result = await buildRuntimeCssLoadingForProject(project, {
+      sourceFilePaths: ["src/App.tsx", "src/Card.tsx", "src/SidebarCard.tsx"],
+      cssFilePaths: ["src/Card.css"],
+    });
+
+    assert.deepEqual(
+      result.entries.map((entry) => ({
+        kind: entry.kind,
+        entrySourceFilePath: entry.entrySourceFilePath,
+      })),
+      [
+        {
+          kind: "rendered-app-shell-entry",
+          entrySourceFilePath: "src/App.tsx",
+        },
+      ],
+    );
+    assert.ok(
+      result.availability.some(
+        (availability) =>
+          availability.stylesheetFilePath === "src/Card.css" &&
+          availability.sourceFilePath === "src/SidebarCard.tsx" &&
+          availability.reason === "stylesheet is loaded by the same rendered app-shell bundle",
       ),
     );
   } finally {
@@ -717,5 +776,10 @@ async function buildRuntimeCssLoadingForProject(project, scanInput) {
   });
   const frontends = buildLanguageFrontends({ snapshot });
   const factGraph = buildFactGraph({ snapshot, frontends });
-  return buildRuntimeCssLoading({ factGraph });
+  const symbolicEvaluation = evaluateSymbolicExpressions({ graph: factGraph.graph });
+  const renderStructure = buildRenderStructure({
+    graph: factGraph.graph,
+    symbolicEvaluation,
+  });
+  return buildRuntimeCssLoading({ factGraph, renderModel: renderStructure.renderModel });
 }

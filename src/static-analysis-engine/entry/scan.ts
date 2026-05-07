@@ -83,7 +83,13 @@ export async function runAnalysisPipeline(input: {
     progress,
     "runtime-css-loading",
     "Building runtime CSS loading model",
-    () => ({ runtimeCssLoading: buildRuntimeCssLoading({ factGraph }) }),
+    () =>
+      ({
+        runtimeCssLoading: buildRuntimeCssLoading({
+          factGraph,
+          renderModel: renderStructureStage.renderModel,
+        }),
+      }) satisfies { runtimeCssLoading: ReturnType<typeof buildRuntimeCssLoading> },
   );
   const projectEvidenceStage = runAnalysisStage(
     progress,

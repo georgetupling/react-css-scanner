@@ -1,4 +1,5 @@
 import type { FactGraphResult } from "../fact-graph/index.js";
+import type { RenderModel } from "../render-structure/index.js";
 import { collectNextRuntimeSourceFilePaths, isNextEntry } from "./adapters/next.js";
 import {
   detectRuntimeCssBundlerProfiles,
@@ -24,6 +25,7 @@ import type {
 
 export function buildRuntimeCssLoading(input: {
   factGraph: FactGraphResult;
+  renderModel?: RenderModel;
 }): RuntimeCssLoadingResult {
   const graph = input.factGraph.graph;
   const moduleFilePaths = graph.nodes.modules
@@ -109,6 +111,7 @@ export function buildRuntimeCssLoading(input: {
     bundlerConfigFiles: input.factGraph.snapshot.files.bundlerConfigFiles,
     packageJsonFiles: input.factGraph.snapshot.files.packageJsonFiles,
     moduleFilePaths,
+    renderModel: input.renderModel,
   });
   const selectedBundlerProfile = selectRuntimeCssBundlerProfile(bundlerProfiles);
   const entries = appEntries.map(createRuntimeCssEntry).sort(compareRuntimeCssEntries);
@@ -339,7 +342,7 @@ function buildRuntimeCssDiagnostics(input: {
   }
 
   for (const entry of input.entries) {
-    if (entry.kind !== "inferred-app-shell-entry") {
+    if (entry.kind !== "inferred-app-shell-entry" && entry.kind !== "rendered-app-shell-entry") {
       continue;
     }
     diagnostics.push({
@@ -373,10 +376,17 @@ function getInitialStylesheetAvailabilityReason(
   RuntimeCssAvailability["reason"],
   | "stylesheet is loaded by the same HTML app entry bundle"
   | "stylesheet is loaded by the same inferred app-shell bundle"
+  | "stylesheet is loaded by the same rendered app-shell bundle"
 > {
-  return entry.kind === "inferred-app-shell-entry"
-    ? "stylesheet is loaded by the same inferred app-shell bundle"
-    : "stylesheet is loaded by the same HTML app entry bundle";
+  if (entry.kind === "inferred-app-shell-entry") {
+    return "stylesheet is loaded by the same inferred app-shell bundle";
+  }
+
+  if (entry.kind === "rendered-app-shell-entry") {
+    return "stylesheet is loaded by the same rendered app-shell bundle";
+  }
+
+  return "stylesheet is loaded by the same HTML app entry bundle";
 }
 
 function createRuntimeCssEntry(input: {

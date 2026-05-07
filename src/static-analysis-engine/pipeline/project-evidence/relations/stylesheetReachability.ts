@@ -170,8 +170,6 @@ function collectStylesheetReachabilityEvidence(input: ProjectEvidenceBuildInput)
     runtimeCssLoading: input.runtimeCssLoading,
   });
   const selectorDerivedByStylesheetPath = collectSelectorDerivedStylesheetContexts(input);
-  const appShellDescendantsBySourcePath =
-    buildRenderedDescendantSourcePathsByAppShellSourcePath(input);
 
   return graph.nodes.stylesheets.map((stylesheet) => {
     const cssFilePath = stylesheet.filePath ? normalizeProjectPath(stylesheet.filePath) : undefined;
@@ -191,18 +189,6 @@ function collectStylesheetReachabilityEvidence(input: ProjectEvidenceBuildInput)
           derivations: [{ kind: "source-file-direct-import" }],
           traces: [],
         });
-
-        for (const descendantSourceFilePath of appShellDescendantsBySourcePath.get(
-          sourceFilePath,
-        ) ?? []) {
-          contexts.push({
-            context: { kind: "source-file", filePath: descendantSourceFilePath },
-            availability: "definite",
-            reasons: ["stylesheet is loaded by a rendered app-shell sibling"],
-            derivations: [{ kind: "source-file-direct-import" }],
-            traces: [],
-          });
-        }
       }
 
       contexts.push(...(entryBundleContextsByStylesheetPath.get(cssFilePath) ?? []));
@@ -242,82 +228,6 @@ function collectStylesheetReachabilityEvidence(input: ProjectEvidenceBuildInput)
       traces: [],
     };
   });
-}
-
-function buildRenderedDescendantSourcePathsByAppShellSourcePath(
-  input: ProjectEvidenceBuildInput,
-): Map<string, string[]> {
-  const childPathsBySourcePath = new Map<string, string[]>();
-  for (const edge of input.renderModel.renderGraph.edges) {
-    if (edge.resolution !== "resolved" || !edge.toFilePath) {
-      continue;
-    }
-
-    pushMapValue(
-      childPathsBySourcePath,
-      normalizeProjectPath(edge.fromFilePath),
-      normalizeProjectPath(edge.toFilePath),
-    );
-  }
-
-  const descendantsBySourcePath = new Map<string, string[]>();
-  for (const sourcePath of childPathsBySourcePath.keys()) {
-    if (!isConventionalAppShellSourcePath(sourcePath)) {
-      continue;
-    }
-
-    descendantsBySourcePath.set(
-      sourcePath,
-      collectTransitiveDescendantSourcePaths(sourcePath, childPathsBySourcePath),
-    );
-  }
-
-  return descendantsBySourcePath;
-}
-
-function collectTransitiveDescendantSourcePaths(
-  sourcePath: string,
-  childPathsBySourcePath: Map<string, string[]>,
-): string[] {
-  const descendants = new Set<string>();
-  const queue = (childPathsBySourcePath.get(sourcePath) ?? [])
-    .slice()
-    .sort((left, right) => left.localeCompare(right));
-  const queued = new Set(queue);
-
-  while (queue.length > 0) {
-    const currentPath = queue.shift();
-    if (!currentPath) {
-      continue;
-    }
-    queued.delete(currentPath);
-
-    if (descendants.has(currentPath)) {
-      continue;
-    }
-    descendants.add(currentPath);
-
-    for (const childPath of (childPathsBySourcePath.get(currentPath) ?? [])
-      .slice()
-      .sort((left, right) => left.localeCompare(right))) {
-      if (!descendants.has(childPath) && !queued.has(childPath)) {
-        queue.push(childPath);
-        queued.add(childPath);
-      }
-    }
-  }
-
-  return [...descendants].sort((left, right) => left.localeCompare(right));
-}
-
-function isConventionalAppShellSourcePath(sourcePath: string): boolean {
-  const baseName = sourcePath.split("/").at(-1)?.toLowerCase();
-  return (
-    baseName === "app.jsx" ||
-    baseName === "app.js" ||
-    baseName === "app.ts" ||
-    baseName === "app.tsx"
-  );
 }
 
 function buildTransitiveSourceContextsByStylesheetPath(input: {
