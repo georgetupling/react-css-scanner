@@ -36,7 +36,7 @@ async function fetchRemoteCssSource(input: {
   if (typeof globalThis.fetch !== "function") {
     input.diagnostics.push({
       code: "loading.remote-css-fetch-unavailable",
-      severity: "warning",
+      severity: "debug",
       phase: "loading",
       filePath: input.stylesheetLink.filePath,
       message: `failed to fetch remote CSS "${input.stylesheetLink.href}" from ${input.stylesheetLink.filePath}: fetch is not available in this runtime`,
@@ -53,7 +53,7 @@ async function fetchRemoteCssSource(input: {
     if (!response.ok) {
       input.diagnostics.push({
         code: "loading.remote-css-fetch-failed",
-        severity: "warning",
+        severity: "debug",
         phase: "loading",
         filePath: input.stylesheetLink.filePath,
         message: `failed to fetch remote CSS "${input.stylesheetLink.href}" from ${input.stylesheetLink.filePath}: HTTP ${response.status}`,
@@ -71,7 +71,7 @@ async function fetchRemoteCssSource(input: {
         error instanceof Error && error.name === "AbortError"
           ? "loading.remote-css-fetch-timeout"
           : "loading.remote-css-fetch-failed",
-      severity: "warning",
+      severity: "debug",
       phase: "loading",
       filePath: input.stylesheetLink.filePath,
       message: `failed to fetch remote CSS "${input.stylesheetLink.href}" from ${input.stylesheetLink.filePath}: ${error instanceof Error ? error.message : String(error)}`,

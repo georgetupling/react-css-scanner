@@ -68,7 +68,7 @@ export async function discoverProjectFileRecords(input: {
   if (sourceFiles.length === 0) {
     diagnostics.push({
       code: "discovery.no-source-files",
-      severity: "warning",
+      severity: "debug",
       phase: "discovery",
       message: "no source files were discovered for analysis",
     });
@@ -236,9 +236,13 @@ function isJsonDataFilePath(filePath: string): boolean {
   return (
     baseName !== "package.json" &&
     baseName !== "package-lock.json" &&
-    baseName !== "tsconfig.json" &&
+    !isTypeScriptConfigFileName(baseName) &&
     baseName !== "scan-react-css.json"
   );
+}
+
+function isTypeScriptConfigFileName(baseName: string): boolean {
+  return /^tsconfig(?:\..*)?\.json$/.test(baseName);
 }
 
 function globToRegExp(glob: string): RegExp {

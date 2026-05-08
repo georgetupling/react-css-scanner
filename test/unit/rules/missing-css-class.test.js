@@ -492,7 +492,7 @@ test("missing-css-class emits diagnostics for missing imported package CSS", asy
 
     assert.equal(result.diagnostics.length, 1);
     assert.equal(result.diagnostics[0].code, "loading.package-css-import-read-failed");
-    assert.equal(result.diagnostics[0].severity, "warning");
+    assert.equal(result.diagnostics[0].severity, "debug");
     assert.equal(result.diagnostics[0].filePath, "src/App.tsx");
     assert.match(result.diagnostics[0].message, /library\/missing\.css/);
     assert.ok(
@@ -639,7 +639,7 @@ test("missing-css-class emits diagnostics for missing CSS package imports", asyn
 
     assert.equal(result.diagnostics.length, 1);
     assert.equal(result.diagnostics[0].code, "loading.package-css-import-read-failed");
-    assert.equal(result.diagnostics[0].severity, "warning");
+    assert.equal(result.diagnostics[0].severity, "debug");
     assert.equal(result.diagnostics[0].filePath, "src/App.css");
     assert.match(result.diagnostics[0].message, /library\/missing\.css/);
     assert.ok(
@@ -805,7 +805,7 @@ test("missing-css-class emits diagnostics for remote CSS fetch failures", async 
 
     assert.equal(result.diagnostics.length, 1);
     assert.equal(result.diagnostics[0].code, "loading.remote-css-fetch-failed");
-    assert.equal(result.diagnostics[0].severity, "warning");
+    assert.equal(result.diagnostics[0].severity, "debug");
     assert.equal(result.diagnostics[0].filePath, "index.html");
     assert.match(result.diagnostics[0].message, /HTTP 404/);
     assert.ok(

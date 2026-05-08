@@ -10,6 +10,7 @@ test("discoverProjectFileRecords scans source, CSS, and HTML under a root direct
     .withSourceFile("src/components/Card.tsx", "export function Card() { return <div />; }\n")
     .withCssFile("src/components/Card.css", ".card {}\n")
     .withFile("src/tokens.json", '{ "button": "btn" }\n')
+    .withFile("tsconfig.app.json", "{\n  // JSONC-style TypeScript config\n}\n")
     .withFile("index.html", '<link rel="stylesheet" href="/assets/app.css">\n')
     .withFile("public/nested/page.html", "<main></main>\n")
     .withSourceFile("dist/generated.tsx", "export const ignored = true;\n")
@@ -81,6 +82,49 @@ test("buildProjectSnapshot resolves local JSON source imports", async () => {
       ],
     );
     assert(snapshot.edges.some(isLocalJsonSourceImportEdge));
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("buildProjectSnapshot ignores TypeScript config variants as data JSON", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile("src/App.tsx", "export function App() { return null; }\n")
+    .withFile(
+      "tsconfig.app.json",
+      [
+        "{",
+        '  "compilerOptions": {',
+        '    "moduleResolution": "bundler",',
+        "    /* JSONC comments are valid in tsconfig files */",
+        '    "noEmit": true,',
+        "  }",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withFile(
+      "apps/web/tsconfig.node.json",
+      ["{", '  "compilerOptions": {', '    "types": ["node"],', "  }", "}", ""].join("\n"),
+    )
+    .withFile("src/tokens.json", '{ "button": "btn" }\n')
+    .build();
+
+  try {
+    const snapshot = await buildProjectSnapshot({
+      scanInput: {
+        rootDir: project.rootDir,
+      },
+    });
+
+    assert.deepEqual(
+      snapshot.files.jsonFiles.map((file) => file.filePath),
+      ["src/tokens.json"],
+    );
+    assert.deepEqual(
+      snapshot.diagnostics.filter((diagnostic) => diagnostic.code === "loading.json-parse-failed"),
+      [],
+    );
   } finally {
     await project.cleanup();
   }

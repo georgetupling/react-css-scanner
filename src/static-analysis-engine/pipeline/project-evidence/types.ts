@@ -83,7 +83,7 @@ export type ProjectEvidenceDiagnostic = {
   id: ProjectEvidenceDiagnosticId;
   targetKind: ProjectEvidenceDiagnosticTargetKind;
   targetId?: ProjectEvidenceId | FactNodeId;
-  severity: "debug" | "warning";
+  severity: "debug" | "warn";
   code: ProjectEvidenceDiagnosticCode;
   message: string;
   traces: AnalysisTrace[];

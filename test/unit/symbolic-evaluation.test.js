@@ -93,7 +93,7 @@ test("symbolic evaluation reports missing expression syntax without dropping oth
     })),
     [
       {
-        severity: "warning",
+        severity: "debug",
         code: "missing-expression-syntax",
         classExpressionSiteNodeId: `${firstSite.id}:missing-expression`,
       },

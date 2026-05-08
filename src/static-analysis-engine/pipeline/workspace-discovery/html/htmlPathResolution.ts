@@ -26,7 +26,7 @@ export function resolveLocalHtmlScriptSources(input: {
     if (!isPathInsideRoot(input.rootDir, absolutePath)) {
       input.diagnostics.push({
         code: "loading.html-script-outside-root",
-        severity: "warning",
+        severity: "debug",
         phase: "loading",
         filePath: scriptSource.filePath,
         message: `HTML script source points outside the scan root and was ignored: ${scriptSource.src}`,
@@ -74,7 +74,7 @@ export function resolveLocalHtmlStylesheetLinks(input: {
     if (!isPathInsideRoot(input.rootDir, absolutePath)) {
       input.diagnostics.push({
         code: "loading.html-stylesheet-outside-root",
-        severity: "warning",
+        severity: "debug",
         phase: "loading",
         filePath: stylesheetLink.filePath,
         message: `HTML stylesheet link points outside the scan root and was ignored: ${stylesheetLink.href}`,

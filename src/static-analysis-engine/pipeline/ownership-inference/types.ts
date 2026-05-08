@@ -213,7 +213,7 @@ export type OwnershipInferenceDiagnostic = {
   id: OwnershipInferenceDiagnosticId;
   targetKind: OwnershipDiagnosticTargetKind;
   targetId: ProjectEvidenceId | FactNodeId;
-  severity: "debug" | "warning";
+  severity: "debug" | "warn";
   code: OwnershipInferenceDiagnosticCode;
   message: string;
   traces: AnalysisTrace[];

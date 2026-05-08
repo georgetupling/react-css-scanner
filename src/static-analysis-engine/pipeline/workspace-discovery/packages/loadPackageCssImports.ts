@@ -194,7 +194,7 @@ async function readPackageCssSource(input: {
   } catch (error) {
     input.diagnostics.push({
       code: "loading.package-css-import-read-failed",
-      severity: "warning",
+      severity: "debug",
       phase: "loading",
       filePath: input.importRecord.importerFilePath,
       message: `failed to load package CSS import "${input.importRecord.specifier}" from ${input.importRecord.importerFilePath} at ${input.importRecord.resolvedAbsolutePath}: ${error instanceof Error ? error.message : String(error)}`,

@@ -293,7 +293,7 @@ async function inferTsconfigAliases(input: {
     }
     input.diagnostics.push({
       code: "loading.tsconfig-read-failed",
-      severity: "warning",
+      severity: "debug",
       phase: "loading",
       filePath,
       message: `failed to read tsconfig.json for alias inference: ${
@@ -309,7 +309,7 @@ async function inferTsconfigAliases(input: {
   } catch (error) {
     input.diagnostics.push({
       code: "loading.tsconfig-parse-failed",
-      severity: "warning",
+      severity: "debug",
       phase: "loading",
       filePath,
       message: `failed to parse tsconfig.json for alias inference: ${
@@ -381,7 +381,7 @@ async function collectRootPackageJsonFiles(input: {
     }
     input.diagnostics.push({
       code: "loading.package-json-read-failed",
-      severity: "warning",
+      severity: "debug",
       phase: "loading",
       filePath,
       message: `failed to read package.json: ${
@@ -397,7 +397,7 @@ async function collectRootPackageJsonFiles(input: {
   } catch (error) {
     input.diagnostics.push({
       code: "loading.package-json-parse-failed",
-      severity: "warning",
+      severity: "debug",
       phase: "loading",
       filePath,
       message: `failed to parse package.json: ${
@@ -452,7 +452,7 @@ async function collectBundlerConfigFiles(input: {
       } catch (error) {
         input.diagnostics.push({
           code: "loading.bundler-config-read-failed",
-          severity: "warning",
+          severity: "debug",
           phase: "loading",
           filePath,
           message: `failed to read bundler config ${filePath}: ${
@@ -477,7 +477,7 @@ async function discoverBundlerConfigFileRecords(input: {
   } catch (error) {
     input.diagnostics.push({
       code: "discovery.bundler-config-read-failed",
-      severity: "warning",
+      severity: "debug",
       phase: "discovery",
       filePath: ".",
       message: `failed to inspect bundler config files: ${

@@ -70,7 +70,7 @@ export async function compileStylesheetSource(input: {
   } catch (error) {
     input.diagnostics.push({
       code: "loading.less-compile-failed",
-      severity: "warning",
+      severity: "debug",
       phase: "loading",
       filePath: input.filePath,
       message: `failed to compile Less stylesheet ${input.filePath}: ${
@@ -152,7 +152,7 @@ function parseLessSourceMap(input: {
   } catch (error) {
     input.diagnostics.push({
       code: "loading.less-sourcemap-invalid",
-      severity: "warning",
+      severity: "debug",
       phase: "loading",
       filePath: input.filePath,
       message: `failed to read Less source map for ${input.filePath}: ${
@@ -165,7 +165,7 @@ function parseLessSourceMap(input: {
   if (!isStylesheetSourceMap(parsed)) {
     input.diagnostics.push({
       code: "loading.less-sourcemap-invalid",
-      severity: "warning",
+      severity: "debug",
       phase: "loading",
       filePath: input.filePath,
       message: `failed to read Less source map for ${input.filePath}: source map had an unsupported shape`,

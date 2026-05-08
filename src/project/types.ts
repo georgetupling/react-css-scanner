@@ -31,7 +31,7 @@ export type ScanProgressEvent = {
 
 export type ScanProgressCallback = (event: ScanProgressEvent) => void;
 
-export type ScanDiagnosticSeverity = "debug" | "info" | "warning" | "error";
+export type ScanDiagnosticSeverity = "debug" | "info" | "warn" | "error";
 
 export type ScanDiagnosticPhase = "config" | "discovery" | "loading" | "analysis";
 

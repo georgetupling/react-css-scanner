@@ -124,7 +124,7 @@ function compareDiagnostics(left: ScanDiagnostic, right: ScanDiagnostic): number
 function diagnosticSeverityRank(severity: ScanDiagnostic["severity"]): number {
   return {
     error: 0,
-    warning: 1,
+    warn: 1,
     info: 2,
     debug: 3,
   }[severity];
@@ -205,7 +205,7 @@ function buildScanSummary(input: {
     diagnosticsBySeverity: {
       debug: countDiagnosticsBySeverity(input.diagnostics, "debug"),
       info: countDiagnosticsBySeverity(input.diagnostics, "info"),
-      warning: countDiagnosticsBySeverity(input.diagnostics, "warning"),
+      warn: countDiagnosticsBySeverity(input.diagnostics, "warn"),
       error: countDiagnosticsBySeverity(input.diagnostics, "error"),
     },
     classReferenceCount: input.classReferenceCount,

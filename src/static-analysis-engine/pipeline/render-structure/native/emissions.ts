@@ -1067,7 +1067,7 @@ function buildDiagnostic(input: {
   const location = normalizeAnchor(input.classSite.location);
   return {
     stage: "render-structure",
-    severity: "warning",
+    severity: "debug",
     code: input.code,
     message: input.message,
     filePath: normalizeProjectPath(input.classSite.filePath),

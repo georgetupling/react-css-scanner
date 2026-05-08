@@ -552,7 +552,7 @@ function ruleSeverityRank(severity: RuleSeverity): number {
 function diagnosticSeverityRank(severity: ScanDiagnostic["severity"]): number {
   return {
     error: 0,
-    warning: 1,
+    warn: 1,
     info: 2,
     debug: 3,
   }[severity];
@@ -569,7 +569,6 @@ function colorSeverity(
   const color = {
     error: "\u001b[31m",
     warn: "\u001b[38;5;208m",
-    warning: "\u001b[38;5;208m",
     info: "\u001b[36m",
     debug: "\u001b[90m",
   }[severity];
@@ -599,7 +598,7 @@ function withOutputCounts(
     diagnosticsBySeverity: {
       debug: countDiagnosticsBySeverity(diagnostics, "debug"),
       info: countDiagnosticsBySeverity(diagnostics, "info"),
-      warning: countDiagnosticsBySeverity(diagnostics, "warning"),
+      warn: countDiagnosticsBySeverity(diagnostics, "warn"),
       error: countDiagnosticsBySeverity(diagnostics, "error"),
     },
   };
@@ -615,7 +614,7 @@ function diagnosticSeverityMeetsRuleThreshold(
 function diagnosticSeverityRankForThreshold(severity: ScanDiagnostic["severity"]): number {
   return {
     error: 3,
-    warning: 2,
+    warn: 2,
     info: 1,
     debug: 0,
   }[severity];

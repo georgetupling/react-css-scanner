@@ -196,7 +196,7 @@ test("scanProject returns deterministic public summary from discovered files", a
       diagnosticsBySeverity: {
         debug: 0,
         info: 0,
-        warning: 0,
+        warn: 0,
         error: 0,
       },
       classReferenceCount: 1,

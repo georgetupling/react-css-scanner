@@ -64,7 +64,7 @@ export type RuntimeCssDiagnostic = {
     | "runtime-css-inferred-app-shell-entry"
     | "runtime-css-generic-chunk-semantics"
     | "runtime-css-unresolved-dynamic-import";
-  severity: "debug" | "info" | "warning";
+  severity: "debug" | "info" | "warn";
   message: string;
   filePath?: string;
   evidence: string[];

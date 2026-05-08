@@ -181,7 +181,7 @@ export type SelectorElementMatch = {
 export type SelectorReachabilityDiagnostic = {
   id: SelectorReachabilityDiagnosticId;
   selectorBranchNodeId: FactNodeId;
-  severity: "debug" | "warning";
+  severity: "debug" | "warn";
   code: "unsupported-selector-branch";
   message: string;
   location?: SourceAnchor;

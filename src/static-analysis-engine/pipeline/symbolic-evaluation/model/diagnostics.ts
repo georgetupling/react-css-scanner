@@ -23,7 +23,7 @@ export function missingExpressionSyntaxDiagnostic(
 ): SymbolicEvaluationDiagnostic {
   return {
     stage: "symbolic-evaluation",
-    severity: "warning",
+    severity: "debug",
     code: "missing-expression-syntax",
     message: `Class expression site ${site.id} does not have a matching expression syntax node`,
     filePath: site.filePath,
@@ -43,7 +43,7 @@ export function unresolvedClassExpressionSiteDiagnostic(
 ): SymbolicEvaluationDiagnostic {
   return {
     stage: "symbolic-evaluation",
-    severity: "warning",
+    severity: "debug",
     code: "unresolved-class-expression-site",
     message: `Class expression site ${site.id} was not evaluated by any symbolic evaluator`,
     filePath: site.filePath,

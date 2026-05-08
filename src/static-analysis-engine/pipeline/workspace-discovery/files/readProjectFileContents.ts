@@ -163,7 +163,7 @@ function parseJsonStaticValue(input: {
   } catch (error) {
     input.diagnostics.push({
       code: "loading.json-parse-failed",
-      severity: "warning",
+      severity: "debug",
       phase: "loading",
       filePath: input.filePath,
       message: `failed to parse JSON file ${input.filePath}: ${
