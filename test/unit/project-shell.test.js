@@ -10,6 +10,9 @@ const ZERO_FINDINGS_BY_RULE = {
   "unused-css-class": 0,
   "missing-css-module-class": 0,
   "unused-css-module-class": 0,
+  "css-module-import-not-used": 0,
+  "orphan-css-file": 0,
+  "duplicate-class-definition": 0,
   "unsatisfiable-selector": 0,
   "compound-selector-never-matched": 0,
   "unused-compound-selector-branch": 0,
@@ -975,9 +978,11 @@ test("scanProject suppresses ignored unused generated classes", async () => {
       cssFilePaths: ["src/App.css"],
     });
 
-    assert.equal(result.summary.ignoredFindingCount, 1);
+    assert.equal(result.summary.ignoredFindingCount, 2);
     assert.deepEqual(
-      result.findings.map((finding) => finding.data.className),
+      result.findings
+        .filter((finding) => finding.ruleId === "unused-css-class")
+        .map((finding) => finding.data.className),
       ["unused"],
     );
   } finally {

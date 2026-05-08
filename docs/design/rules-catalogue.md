@@ -125,6 +125,60 @@ Config:
 - uses configured `cssModules.localsConvention`
 - may support ignore patterns for classes consumed by tests, stories, or generated code
 
+#### `css-module-import-not-used`
+
+Default severity: `warn`
+
+Triggers when a CSS Module import is present, but no known member read, destructured binding, alias,
+computed access diagnostic, or module member match uses that import.
+
+Meaning:
+
+- the source file imports a module stylesheet object that appears unused
+- this is usually stale import wiring after deleting or moving class usage
+- computed/dynamic module reads suppress this rule because the import is still semantically used
+
+Config:
+
+- uses the same CSS Module import detection and locals convention inputs as the module class rules
+
+#### `orphan-css-file`
+
+Default severity: `warn`
+
+Triggers when a project stylesheet defines classes but has no reachable source, component, or render
+context and does not look intentionally shared.
+
+Meaning:
+
+- the CSS file appears detached from the analyzed React project
+- this usually means an old stylesheet can be deleted, or a missing import/link should be restored
+- intentionally shared/global stylesheets are ignored through configured `ownership.sharedCss` and
+  built-in broad stylesheet path conventions
+
+Config:
+
+- respects `ownership.sharedCss`
+- ignores provider-backed/vendor stylesheets whose unused classes are intentionally suppressed
+
+#### `duplicate-class-definition`
+
+Default severity: `info`
+
+Triggers when the same class is defined by the same selector more than once in the same stylesheet
+and at-rule context.
+
+Meaning:
+
+- the stylesheet has duplicate selector blocks that can usually be collapsed
+- differing declaration blocks are highlighted in finding data, but this rule deliberately avoids
+  broader cascade or import-order claims
+- pseudo-state variants and at-rule-separated selectors are not treated as duplicates
+
+Config:
+
+- future cascade-aware versions may expand this beyond exact same-scope duplicate selectors
+
 ### Ownership And Architecture
 
 Ownership rules should be convention-aware and conservative by default.
@@ -327,7 +381,6 @@ These are currently documented but not yet implemented:
 
 - `unused-external-css-import`: external CSS import has no observed satisfying references
 - `unused-external-css-provider`: configured provider is never used
-- `orphan-css-file`: stylesheet has no meaningful path to renderable usage
 - `dead-css-subtree`: a whole stylesheet region is unreachable or unused
 - `css-class-defined-only-in-unreachable-context`: class exists only where it cannot apply
 
@@ -349,7 +402,6 @@ These are currently documented but not yet implemented:
 
 ### CSS Modules
 
-- `css-module-import-not-used`: module import exists but none of its members are consumed
 - `dynamic-css-module-reference`: module member access cannot be resolved statically
 - `css-module-composition-missing-target`: `composes` references a missing class
 - `css-module-owner-mismatch`: CSS Module is mostly consumed outside its expected owner
@@ -364,7 +416,6 @@ These are currently documented but not yet implemented:
 
 ### Cleanup And Abstraction
 
-- `duplicate-class-definition`: same class is defined multiple times in comparable scopes
 - `empty-css-rule`: CSS rule has no declarations
 - `redundant-css-declaration-block`: two definitions repeat the same declaration block
 - `repeated-style-pattern`: repeated declaration pattern suggests extraction

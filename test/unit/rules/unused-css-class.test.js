@@ -17,14 +17,15 @@ test("unused-css-class reports unreferenced local CSS classes", async () => {
       cssFilePaths: ["src/App.css"],
     });
 
-    assert.equal(result.findings.length, 1);
-    assert.equal(result.findings[0].ruleId, "unused-css-class");
-    assert.equal(result.findings[0].severity, "warn");
-    assert.equal(result.findings[0].confidence, "high");
-    assert.equal(result.findings[0].data?.className, "unused");
-    assert.equal(result.findings[0].subject.kind, "class-definition");
-    assert.equal(result.findings[0].evidence[0].kind, "stylesheet");
-    assert.equal(result.findings[0].traces[0].category, "rule-evaluation");
+    const finding = result.findings.find((candidate) => candidate.ruleId === "unused-css-class");
+
+    assert.ok(finding);
+    assert.equal(finding.severity, "warn");
+    assert.equal(finding.confidence, "high");
+    assert.equal(finding.data?.className, "unused");
+    assert.equal(finding.subject.kind, "class-definition");
+    assert.equal(finding.evidence[0].kind, "stylesheet");
+    assert.equal(finding.traces[0].category, "rule-evaluation");
   } finally {
     await project.cleanup();
   }

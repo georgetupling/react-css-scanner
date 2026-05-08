@@ -2,7 +2,10 @@ import { missingCssClassRule } from "./rules/missingCssClass.js";
 import { cssClassUnreachableRule } from "./rules/cssClassUnreachable.js";
 import { compoundSelectorNeverMatchedRule } from "./rules/compoundSelectorNeverMatched.js";
 import { dynamicClassReferenceRule } from "./rules/dynamicClassReference.js";
+import { duplicateClassDefinitionRule } from "./rules/duplicateClassDefinition.js";
+import { cssModuleImportNotUsedRule } from "./rules/cssModuleImportNotUsed.js";
 import { missingCssModuleClassRule } from "./rules/missingCssModuleClass.js";
+import { orphanCssFileRule } from "./rules/orphanCssFile.js";
 import { selectorOnlyMatchesInUnknownContextsRule } from "./rules/selectorOnlyMatchesInUnknownContexts.js";
 import { singleComponentStyleNotColocatedRule } from "./rules/singleComponentStyleNotColocated.js";
 import { styleSharedWithoutSharedOwnerRule } from "./rules/styleSharedWithoutSharedOwner.js";
@@ -21,6 +24,9 @@ export const RULE_DEFINITIONS: RuleDefinition[] = [
   unusedCssClassRule,
   missingCssModuleClassRule,
   unusedCssModuleClassRule,
+  cssModuleImportNotUsedRule,
+  orphanCssFileRule,
+  duplicateClassDefinitionRule,
   unsatisfiableSelectorRule,
   compoundSelectorNeverMatchedRule,
   unusedCompoundSelectorBranchRule,
@@ -38,6 +44,9 @@ export const DEFAULT_RULE_SEVERITIES: Record<RuleId, RuleConfigSeverity> = {
   "unused-css-class": "warn",
   "missing-css-module-class": "error",
   "unused-css-module-class": "warn",
+  "css-module-import-not-used": "warn",
+  "orphan-css-file": "warn",
+  "duplicate-class-definition": "info",
   "unsatisfiable-selector": "warn",
   "compound-selector-never-matched": "warn",
   "unused-compound-selector-branch": "warn",
