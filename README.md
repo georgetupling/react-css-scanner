@@ -157,7 +157,9 @@ Default checks include:
 
 - missing class references (`missing-css-class`, `missing-css-module-class`)
 - unreachable or unsatisfiable selectors (`css-class-unreachable`, `unsatisfiable-selector`)
-- dead CSS (`unused-css-class`, `unused-css-module-class`, unused compound selector branches)
+- dead CSS (`unused-css-class`, `unused-css-module-class`, `orphan-css-file`, unused compound selector branches)
+- stale CSS Module imports (`css-module-import-not-used`)
+- duplicate same-scope class definitions (`duplicate-class-definition`)
 - style ownership risks (`style-used-outside-owner`, `style-shared-without-shared-owner`)
 - bounded-analysis uncertainty surfaced as debug (`dynamic-class-reference`, `unsupported-syntax-affecting-analysis`)
 
