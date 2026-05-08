@@ -25,9 +25,13 @@ export function parseSelectorBranch(branch: string): ParsedSelectorBranch | unde
       .slice(0, -1)
       .flatMap((step) => [
         ...step.selector.requiredClasses,
+        ...step.selector.contextOnlyClasses,
         ...step.selector.hasClassRelations.map((relation) => relation.className),
       ])
-      .concat(subjectStep.selector.hasClassRelations.map((relation) => relation.className)),
+      .concat([
+        ...subjectStep.selector.contextOnlyClasses,
+        ...subjectStep.selector.hasClassRelations.map((relation) => relation.className),
+      ]),
   );
   const negativeClassNames = unique(subjectStep.selector.negativeClasses);
   const hasDescendantClassNames = unique(subjectStep.selector.hasDescendantClasses);

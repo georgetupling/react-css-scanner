@@ -195,6 +195,9 @@ function collectStylesheetReachabilityEvidence(input: ProjectEvidenceBuildInput)
 
       if (projectWideStylesheets.has(cssFilePath)) {
         for (const moduleNode of graph.nodes.modules) {
+          if (moduleNode.moduleKind !== "source") {
+            continue;
+          }
           contexts.push({
             context: { kind: "source-file", filePath: normalizeProjectPath(moduleNode.filePath) },
             availability: "definite",

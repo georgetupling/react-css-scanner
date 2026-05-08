@@ -6,6 +6,7 @@ export type ProjectFileDiscoveryResult = {
   sourceFiles: ProjectFileRecord[];
   cssFiles: ProjectFileRecord[];
   htmlFiles: ProjectFileRecord[];
+  jsonFiles: ProjectFileRecord[];
   diagnostics: ScanDiagnostic[];
 };
 
@@ -17,6 +18,7 @@ export type ProjectSnapshot = {
     sourceFiles: ProjectFileRecord[];
     cssFiles: ProjectFileRecord[];
     htmlFiles: ProjectFileRecord[];
+    jsonFiles: ProjectFileRecord[];
   };
   boundaries: ProjectBoundary[];
   edges: ProjectResourceEdge[];
@@ -28,6 +30,7 @@ export type ProjectSnapshotFiles = {
   sourceFiles: ProjectSourceFile[];
   stylesheets: ProjectStylesheetFile[];
   htmlFiles: ProjectHtmlFile[];
+  jsonFiles: ProjectJsonFile[];
   configFiles: ProjectConfigFile[];
   bundlerConfigFiles: ProjectBundlerConfigFile[];
   packageJsonFiles: ProjectPackageJsonFile[];
@@ -92,7 +95,7 @@ export type StylesheetImportFact = {
   resolvedFilePath: string;
 };
 
-export type SourceImportKind = "source" | "css" | "external-css" | "type-only" | "unknown";
+export type SourceImportKind = "source" | "css" | "json" | "external-css" | "type-only" | "unknown";
 export type SourceImportLoading = "static" | "dynamic";
 
 export type SourceImportFact = {
@@ -115,6 +118,23 @@ export type ProjectHtmlFile = {
   filePath: string;
   absolutePath: string;
   htmlText: string;
+};
+
+export type JsonStaticValue =
+  | { kind: "string"; value: string }
+  | { kind: "number"; value: number }
+  | { kind: "boolean"; value: boolean }
+  | { kind: "null" }
+  | { kind: "array"; elements: JsonStaticValue[]; truncated?: boolean }
+  | { kind: "object"; properties: Record<string, JsonStaticValue>; truncated?: boolean }
+  | { kind: "unknown"; reason: string };
+
+export type ProjectJsonFile = {
+  kind: "json";
+  filePath: string;
+  absolutePath: string;
+  sourceText: string;
+  parsedValue?: JsonStaticValue;
 };
 
 export type ProjectConfigFile = {

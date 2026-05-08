@@ -1511,6 +1511,127 @@ test("missing-css-class reports unresolved TypeScript enum template variants", a
   }
 });
 
+test("missing-css-class sees className from conditional JSX spread object literals", async () => {
+  const usedProject = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        "",
+        "export function App({ active }: { active: boolean }) {",
+        '  return <button {...(active ? { className: "active" } : { className: "inactive" })}>Save</button>;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".active { color: green; }\n.inactive { color: gray; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: usedProject.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", ["active", "inactive"]);
+    assertNoClassFindings(result, "missing-css-class", ["active", "inactive"]);
+  } finally {
+    await usedProject.cleanup();
+  }
+
+  const missingProject = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        "",
+        "export function App({ active }: { active: boolean }) {",
+        '  return <button {...(active ? { className: "active" } : { className: "missing" })}>Save</button>;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".active { color: green; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: missingProject.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", ["active"]);
+    assert.equal(hasClassFinding(result, "missing-css-class", "missing"), true);
+  } finally {
+    await missingProject.cleanup();
+  }
+});
+
+test("missing-css-class accepts context classes nested in :has(:not()) selectors", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        'export function App() { return <section className="card"><h2 className="title">Title</h2></section>; }',
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".card:has(:not(.title)) { border: 1px solid; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "missing-css-class", ["title"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("missing-css-class reports missing default JSON object property class tokens", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        'import tokens from "./tokens.json";',
+        "export function App() { return <main className={tokens.button}>Hello</main>; }",
+        "",
+      ].join("\n"),
+    )
+    .withFile("src/tokens.json", '{ "button": "missing" }\n')
+    .withCssFile("src/App.css", ".other { color: green; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assert.equal(hasClassFinding(result, "missing-css-class", "missing"), true);
+    assertNoClassFindings(result, "unused-css-class", ["missing"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("missing-css-class reports missing bracket-access JSON class tokens", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        'import tokens from "./tokens.json";',
+        'export function App() { return <main className={tokens["button"]}>Hello</main>; }',
+        "",
+      ].join("\n"),
+    )
+    .withFile("src/tokens.json", '{ "button": "missing" }\n')
+    .withCssFile("src/App.css", ".other { color: green; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assert.equal(hasClassFinding(result, "missing-css-class", "missing"), true);
+  } finally {
+    await project.cleanup();
+  }
+});
+
 function assertNoClassFindings(result, ruleId, classNames) {
   assert.deepEqual(
     result.findings

@@ -292,6 +292,15 @@ function buildExpressionSyntaxFact(
     }
   }
 
+  if (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) {
+    return {
+      ...base,
+      expressionKind: "function",
+      parameterCount: node.parameters.length,
+      returnExpressionIds: collectFunctionReturnExpressionIds(node, expressionsById, context),
+    };
+  }
+
   if (ts.isParenthesizedExpression(node)) {
     return buildWrapperExpressionSyntax(
       "parenthesized",
@@ -695,6 +704,27 @@ function getBindingElementPropertyName(element: ts.BindingElement): string | und
   }
 
   return undefined;
+}
+
+function collectFunctionReturnExpressionIds(
+  node: ts.ArrowFunction | ts.FunctionExpression,
+  expressionsById: Map<string, SourceExpressionSyntaxFact>,
+  context: {
+    filePath: string;
+    sourceFile: ts.SourceFile;
+  },
+): string[] {
+  if (!ts.isBlock(node.body)) {
+    return [collectExpression(node.body, expressionsById, context)];
+  }
+
+  const returnExpressionIds: string[] = [];
+  for (const statement of node.body.statements) {
+    if (ts.isReturnStatement(statement) && statement.expression) {
+      returnExpressionIds.push(collectExpression(statement.expression, expressionsById, context));
+    }
+  }
+  return returnExpressionIds;
 }
 
 function findPropertyTypeNode(

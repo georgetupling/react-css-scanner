@@ -14,7 +14,12 @@ import type {
 import { collectProjectBoundaries } from "./boundaries/collectProjectBoundaries.js";
 import { collectProjectResourceEdges } from "./edges/collectResourceEdges.js";
 import { discoverProjectFileRecords } from "./files/discoverProjectFileRecords.js";
-import { readCssFiles, readHtmlFiles, readSourceFiles } from "./files/readProjectFileContents.js";
+import {
+  readCssFiles,
+  readHtmlFiles,
+  readJsonFiles,
+  readSourceFiles,
+} from "./files/readProjectFileContents.js";
 import { mergeStylesheets, toCssSources, toStylesheetFiles } from "./files/stylesheetInventory.js";
 import { collectHtmlResources } from "./html/htmlLinks.js";
 import { collectLinkedCssFiles } from "./html/htmlPathResolution.js";
@@ -64,7 +69,7 @@ export async function buildProjectSnapshot(input: {
     discovered.cssFiles.map((cssFile) => cssFile.filePath),
   );
 
-  const [sourceFiles, cssFiles, htmlFiles] = await Promise.all([
+  const [sourceFiles, cssFiles, htmlFiles, jsonFiles] = await Promise.all([
     readSourceFiles(discovered.sourceFiles, diagnostics),
     readCssFiles(discovered.cssFiles, diagnostics, "project", {
       rootDir: discovered.rootDir,
@@ -72,6 +77,7 @@ export async function buildProjectSnapshot(input: {
       discovery,
     }),
     readHtmlFiles(discovered.htmlFiles, diagnostics),
+    readJsonFiles(discovered.jsonFiles, diagnostics),
   ]);
   const bundlerConfigFiles = hasRootDiscoveryError(discovered.diagnostics)
     ? []
@@ -138,6 +144,7 @@ export async function buildProjectSnapshot(input: {
   const sourceImports = collectSourceImports({
     sourceFiles,
     stylesheets,
+    jsonFiles,
     discovery,
   });
 
@@ -148,6 +155,7 @@ export async function buildProjectSnapshot(input: {
       sourceFiles,
       stylesheets,
       htmlFiles,
+      jsonFiles,
       configFiles: collectConfigFiles(config),
       bundlerConfigFiles,
       packageJsonFiles,
@@ -156,6 +164,7 @@ export async function buildProjectSnapshot(input: {
       sourceFiles: discovered.sourceFiles,
       cssFiles: discovered.cssFiles,
       htmlFiles: discovered.htmlFiles,
+      jsonFiles: discovered.jsonFiles,
     },
     boundaries: collectProjectBoundaries({
       rootDir: discovered.rootDir,

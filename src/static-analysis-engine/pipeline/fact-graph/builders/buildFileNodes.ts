@@ -46,6 +46,20 @@ export function buildFileNodes(input: FactGraphInput): FileResourceNode[] {
       }),
     }),
   );
+  const jsonFileNodes = input.snapshot.files.jsonFiles.map(
+    (file): FileResourceNode => ({
+      id: fileResourceNodeId(file.filePath),
+      kind: "file-resource",
+      filePath: file.filePath,
+      absolutePath: file.absolutePath,
+      fileKind: "json",
+      confidence: "high",
+      provenance: workspaceFileProvenance({
+        filePath: file.filePath,
+        summary: "Discovered JSON data file",
+      }),
+    }),
+  );
   const configFileNodes = input.snapshot.files.configFiles
     .filter((file): file is typeof file & { filePath: string } => Boolean(file.filePath))
     .map(
@@ -66,6 +80,7 @@ export function buildFileNodes(input: FactGraphInput): FileResourceNode[] {
     ...sourceFileNodes,
     ...stylesheetFileNodes,
     ...htmlFileNodes,
+    ...jsonFileNodes,
     ...configFileNodes,
   ]);
 }

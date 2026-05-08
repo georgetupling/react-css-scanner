@@ -10,7 +10,7 @@ import type {
   ReactLocalValueBindingFact,
 } from "../language-frontends/source/react-syntax/index.js";
 import type { RuntimeDomLibraryHint } from "../language-frontends/types.js";
-import type { ProjectSnapshot } from "../workspace-discovery/index.js";
+import type { JsonStaticValue, ProjectSnapshot } from "../workspace-discovery/index.js";
 
 export type FactGraphInput = {
   snapshot: ProjectSnapshot;
@@ -92,7 +92,7 @@ export type FactGraphNodes = {
   externalResources: ExternalResourceNode[];
 };
 
-export type FactImportKind = "source" | "css" | "external-css" | "type-only" | "unknown";
+export type FactImportKind = "source" | "css" | "json" | "external-css" | "type-only" | "unknown";
 export type FactImportLoading = "static" | "dynamic";
 export type FactImportResolutionStatus = "resolved" | "unresolved" | "external" | "unsupported";
 export type FactCssSemantics = "global" | "module";
@@ -137,7 +137,7 @@ export type FileResourceNode = FactNodeBase & {
   kind: "file-resource";
   filePath: string;
   absolutePath?: string;
-  fileKind: "source" | "stylesheet" | "html" | "config";
+  fileKind: "source" | "stylesheet" | "html" | "json" | "config";
 };
 
 export type ExternalResourceNode = FactNodeBase & {
@@ -150,9 +150,13 @@ export type ModuleNode = FactNodeBase & {
   kind: "module";
   filePath: string;
   absolutePath?: string;
-  moduleKind: "source";
-  languageKind: "js" | "jsx" | "ts" | "tsx";
+  moduleKind: "source" | "json";
+  languageKind?: "js" | "jsx" | "ts" | "tsx" | "json";
   moduleId?: string;
+  jsonExports?: Array<{
+    exportedName: "default";
+    value: JsonStaticValue;
+  }>;
 };
 
 export type ComponentNode = FactNodeBase & {

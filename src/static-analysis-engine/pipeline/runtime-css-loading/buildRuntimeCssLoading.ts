@@ -29,6 +29,7 @@ export function buildRuntimeCssLoading(input: {
 }): RuntimeCssLoadingResult {
   const graph = input.factGraph.graph;
   const moduleFilePaths = graph.nodes.modules
+    .filter((moduleNode) => moduleNode.moduleKind === "source")
     .map((moduleNode) => normalizeProjectPath(moduleNode.filePath))
     .sort((left, right) => left.localeCompare(right));
   const allStylesheetFilePaths = graph.nodes.stylesheets

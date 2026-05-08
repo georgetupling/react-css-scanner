@@ -21,6 +21,7 @@ export type LanguageFrontendsResult = {
   snapshot: ProjectSnapshot;
   source: SourceFrontendFacts;
   css: CssFrontendFacts;
+  json: JsonFrontendFacts;
 };
 
 export type SourceFrontendFacts = {
@@ -97,4 +98,21 @@ export type CssFrontendFile = {
   compiledFrom?: ProjectSnapshot["files"]["stylesheets"][number]["compiledFrom"];
   rules: CssStyleRuleFact[];
   selectorEntries: ExtractedSelectorQuery[];
+};
+
+export type JsonFrontendFacts = {
+  files: JsonFrontendFile[];
+  filesByPath: Map<string, JsonFrontendFile>;
+};
+
+export type JsonModuleExportFact = {
+  exportedName: "default";
+  value: ProjectSnapshot["files"]["jsonFiles"][number]["parsedValue"];
+};
+
+export type JsonFrontendFile = {
+  filePath: string;
+  absolutePath: string;
+  sourceText: string;
+  exports: JsonModuleExportFact[];
 };

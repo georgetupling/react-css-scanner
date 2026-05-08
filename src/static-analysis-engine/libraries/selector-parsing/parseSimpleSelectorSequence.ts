@@ -15,6 +15,7 @@ export function parseSimpleSelectorSequence(segment: string): ParsedSimpleSelect
   const requiredClasses: string[] = [];
   const classAttributePredicates: ParsedClassAttributePredicate[] = [];
   const negativeClasses: string[] = [];
+  const contextOnlyClasses: string[] = [];
   const hasDescendantClasses: string[] = [];
   const hasClassRelations: ParsedHasClassRelation[] = [];
   let hasUnknownSemantics = false;
@@ -100,11 +101,12 @@ export function parseSimpleSelectorSequence(segment: string): ParsedSimpleSelect
       }
 
       if (normalizedPseudoName === "has") {
-        const parsedHasRelations = parseHasClassRelations(inner.content);
-        if (parsedHasRelations) {
-          hasClassRelations.push(...parsedHasRelations);
+        const parsedHasClasses = parseHasClasses(inner.content);
+        if (parsedHasClasses) {
+          hasClassRelations.push(...parsedHasClasses.relations);
+          contextOnlyClasses.push(...parsedHasClasses.contextOnlyClassNames);
           hasDescendantClasses.push(
-            ...parsedHasRelations
+            ...parsedHasClasses.relations
               .filter((relation) => relation.relation === "descendant")
               .map((relation) => relation.className),
           );
@@ -144,6 +146,7 @@ export function parseSimpleSelectorSequence(segment: string): ParsedSimpleSelect
     requiredClasses: unique(requiredClasses),
     classAttributePredicates: uniqueClassAttributePredicates(classAttributePredicates),
     negativeClasses: unique(negativeClasses),
+    contextOnlyClasses: unique(contextOnlyClasses),
     hasDescendantClasses: unique(hasDescendantClasses),
     hasClassRelations: uniqueHasClassRelations(hasClassRelations),
     hasUnknownSemantics,
@@ -208,13 +211,19 @@ function parseRequiredClassNames(value: string): string[] | undefined {
   return classNames;
 }
 
-function parseHasClassRelations(value: string): ParsedHasClassRelation[] | undefined {
+function parseHasClasses(value: string):
+  | {
+      relations: ParsedHasClassRelation[];
+      contextOnlyClassNames: string[];
+    }
+  | undefined {
   const selectors = splitTopLevelSelectorList(value);
   if (selectors.length === 0) {
     return undefined;
   }
 
   const relations: ParsedHasClassRelation[] = [];
+  const contextOnlyClassNames: string[] = [];
   for (const selector of selectors) {
     let trimmed = selector.trim();
     let relation: ParsedHasClassRelation["relation"] = "descendant";
@@ -227,6 +236,12 @@ function parseHasClassRelations(value: string): ParsedHasClassRelation[] | undef
             ? "adjacent-sibling"
             : "general-sibling";
       trimmed = trimmed.slice(1).trim();
+    }
+
+    const contextClasses = unwrapContextOnlyClassSelectorListPseudo(trimmed);
+    if (contextClasses) {
+      contextOnlyClassNames.push(...contextClasses);
+      continue;
     }
 
     const unwrappedClassNames = unwrapClassSelectorListPseudo(trimmed);
@@ -252,7 +267,7 @@ function parseHasClassRelations(value: string): ParsedHasClassRelation[] | undef
     relations.push({ relation, className: identifier.value });
   }
 
-  return relations;
+  return { relations, contextOnlyClassNames };
 }
 
 function unwrapClassSelectorListPseudo(selector: string): string[] | undefined {
@@ -267,6 +282,20 @@ function unwrapClassSelectorListPseudo(selector: string): string[] | undefined {
   }
 
   return parseRequiredClassNames(inner.content);
+}
+
+function unwrapContextOnlyClassSelectorListPseudo(selector: string): string[] | undefined {
+  const match = /^:not\(/iu.exec(selector);
+  if (!match) {
+    return undefined;
+  }
+
+  const inner = readParenthesizedContent(selector, match[0].length - 1);
+  if (inner.nextIndex !== selector.length) {
+    return undefined;
+  }
+
+  return parseNegatedClassNames(inner.content);
 }
 
 function parseNegatedClassNames(value: string): string[] | undefined {

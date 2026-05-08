@@ -44,6 +44,7 @@ export async function discoverProjectFileRecords(input: {
       sourceFiles: [],
       cssFiles: [],
       htmlFiles: [],
+      jsonFiles: [],
       diagnostics,
     };
   }
@@ -62,6 +63,7 @@ export async function discoverProjectFileRecords(input: {
   const htmlFiles = input.htmlFilePaths
     ? normalizeExplicitFiles(rootDir, input.htmlFilePaths)
     : await discoverFilesByPredicate(rootDir, isHtmlFilePath);
+  const jsonFiles = await discoverFilesByPredicate(rootDir, isJsonDataFilePath);
 
   if (sourceFiles.length === 0) {
     diagnostics.push({
@@ -77,6 +79,7 @@ export async function discoverProjectFileRecords(input: {
     sourceFiles,
     cssFiles,
     htmlFiles,
+    jsonFiles,
     diagnostics,
   };
 }
@@ -221,6 +224,21 @@ function isStylesheetFilePath(
 
 function isHtmlFilePath(filePath: string): boolean {
   return path.extname(filePath) === ".html";
+}
+
+function isJsonDataFilePath(filePath: string): boolean {
+  const normalizedPath = normalizeProjectPath(filePath);
+  if (path.extname(normalizedPath) !== ".json") {
+    return false;
+  }
+
+  const baseName = path.posix.basename(normalizedPath);
+  return (
+    baseName !== "package.json" &&
+    baseName !== "package-lock.json" &&
+    baseName !== "tsconfig.json" &&
+    baseName !== "scan-react-css.json"
+  );
 }
 
 function globToRegExp(glob: string): RegExp {

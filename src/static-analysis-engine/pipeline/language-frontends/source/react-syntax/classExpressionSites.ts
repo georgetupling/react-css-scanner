@@ -128,7 +128,7 @@ function collectEffectiveJsxClassSiteInputs(input: {
     });
   }
 
-  let effectiveClassName: JsxClassSiteInput | undefined;
+  let effectiveClassNames: JsxClassSiteInput[] = [];
   for (const attribute of input.attributes) {
     if (
       ts.isJsxAttribute(attribute) &&
@@ -136,17 +136,19 @@ function collectEffectiveJsxClassSiteInputs(input: {
       attribute.name.text === "className" &&
       attribute.initializer
     ) {
-      effectiveClassName = {
-        attributeName: "className",
-        initializer: attribute.initializer,
-        expression: unwrapJsxAttributeInitializer(attribute.initializer),
-      };
+      effectiveClassNames = [
+        {
+          attributeName: "className",
+          initializer: attribute.initializer,
+          expression: unwrapJsxAttributeInitializer(attribute.initializer),
+        },
+      ];
       continue;
     }
 
     if (ts.isJsxSpreadAttribute(attribute)) {
-      const spreadClassName =
-        resolveSpreadClassName({
+      const spreadClassNames =
+        resolveSpreadClassNames({
           expression: attribute.expression,
           sourceFile: input.sourceFile,
         }) ??
@@ -154,32 +156,34 @@ function collectEffectiveJsxClassSiteInputs(input: {
           expression: attribute.expression,
           componentPropBinding: input.componentPropBinding,
         });
-      if (spreadClassName) {
-        effectiveClassName = spreadClassName;
+      if (spreadClassNames.length > 0) {
+        effectiveClassNames = spreadClassNames;
       }
     }
   }
 
-  return effectiveClassName ? [effectiveClassName] : [];
+  return effectiveClassNames;
 }
 
 function resolveForwardedComponentPropSpread(input: {
   expression: ts.Expression;
   componentPropBinding?: ReactComponentPropBindingFact;
-}): JsxClassSiteInput | undefined {
+}): JsxClassSiteInput[] {
   const binding = input.componentPropBinding;
   const unwrapped = unwrapExpression(input.expression);
   if (!binding || !ts.isIdentifier(unwrapped)) {
-    return undefined;
+    return [];
   }
 
   if (binding.bindingKind === "props-identifier" && binding.identifierName === unwrapped.text) {
-    return {
-      attributeName: "className",
-      initializer: unwrapped,
-      expression: unwrapped,
-      forwardedComponentPropName: "className",
-    };
+    return [
+      {
+        attributeName: "className",
+        initializer: unwrapped,
+        expression: unwrapped,
+        forwardedComponentPropName: "className",
+      },
+    ];
   }
 
   const destructuresClassName = binding.properties.some(
@@ -190,39 +194,68 @@ function resolveForwardedComponentPropSpread(input: {
     binding.restPropertyName === unwrapped.text &&
     !destructuresClassName
   ) {
-    return {
-      attributeName: "className",
-      initializer: unwrapped,
-      expression: unwrapped,
-      forwardedComponentPropName: "className",
-    };
+    return [
+      {
+        attributeName: "className",
+        initializer: unwrapped,
+        expression: unwrapped,
+        forwardedComponentPropName: "className",
+      },
+    ];
   }
 
-  return undefined;
+  return [];
 }
 
-function resolveSpreadClassName(input: {
+function resolveSpreadClassNames(input: {
   expression: ts.Expression;
   sourceFile: ts.SourceFile;
-}): JsxClassSiteInput | undefined {
-  const objectLiteral = resolveObjectLiteralExpression(input.expression, input.sourceFile);
+}): JsxClassSiteInput[] | undefined {
+  const objectLiterals = resolveObjectLiteralExpressions(input.expression, input.sourceFile);
+  if (!objectLiterals) {
+    return undefined;
+  }
+
+  const classNames: JsxClassSiteInput[] = [];
+  for (const objectLiteral of objectLiterals) {
+    const classNameProperty = objectLiteral.properties.find(
+      (property): property is ts.PropertyAssignment =>
+        ts.isPropertyAssignment(property) && getStaticPropertyName(property.name) === "className",
+    );
+    if (!classNameProperty) {
+      return undefined;
+    }
+
+    classNames.push({
+      attributeName: "className",
+      initializer: classNameProperty.initializer,
+      expression: classNameProperty.initializer,
+    });
+  }
+
+  return classNames;
+}
+
+function resolveObjectLiteralExpressions(
+  expression: ts.Expression,
+  sourceFile: ts.SourceFile,
+): ts.ObjectLiteralExpression[] | undefined {
+  const unwrapped = unwrapExpression(expression);
+  if (ts.isConditionalExpression(unwrapped)) {
+    const whenTrue = resolveObjectLiteralExpressions(unwrapped.whenTrue, sourceFile);
+    const whenFalse = resolveObjectLiteralExpressions(unwrapped.whenFalse, sourceFile);
+    if (!whenTrue || !whenFalse) {
+      return undefined;
+    }
+    return [...whenTrue, ...whenFalse];
+  }
+
+  const objectLiteral = resolveObjectLiteralExpression(unwrapped, sourceFile);
   if (!objectLiteral) {
     return undefined;
   }
 
-  const classNameProperty = objectLiteral.properties.find(
-    (property): property is ts.PropertyAssignment =>
-      ts.isPropertyAssignment(property) && getStaticPropertyName(property.name) === "className",
-  );
-  if (!classNameProperty) {
-    return undefined;
-  }
-
-  return {
-    attributeName: "className",
-    initializer: classNameProperty.initializer,
-    expression: classNameProperty.initializer,
-  };
+  return [objectLiteral];
 }
 
 function resolveObjectLiteralExpression(

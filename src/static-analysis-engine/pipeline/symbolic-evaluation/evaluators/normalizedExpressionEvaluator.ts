@@ -14,6 +14,7 @@ import {
   buildConditions,
 } from "./canonicalClassExpressionBuilder.js";
 import type { ExpressionSyntaxNode } from "../../fact-graph/index.js";
+import type { JsonStaticValue } from "../../workspace-discovery/index.js";
 import { evaluateStaticTruthiness } from "../../static-truthiness.js";
 import {
   conditionId,
@@ -1429,12 +1430,23 @@ function summarizeCallExpressionSyntax(input: {
   if (helperCall) {
     return helperCall;
   }
+  const inlineFunctionCall = callee
+    ? summarizeInlineFunctionCall(input, callee, input.expression)
+    : undefined;
+  if (inlineFunctionCall) {
+    return inlineFunctionCall;
+  }
   if (callee && isClassNamesHelper(callee)) {
     return summarizeClassNamesHelperArgs(input, input.expression.argumentExpressionIds);
   }
 
   if (input.expression.hasSpreadArgument) {
     return { kind: "unknown", reason: "unsupported-call:spread-argument" };
+  }
+
+  const jsonArrayJoin = callee ? summarizeJsonArrayJoin(input, callee) : undefined;
+  if (jsonArrayJoin) {
+    return jsonArrayJoin;
   }
 
   const arrayJoinTarget = callee ? getArrayJoinTarget(input, callee) : undefined;
@@ -1452,6 +1464,52 @@ function summarizeCallExpressionSyntax(input: {
     kind: "unknown",
     reason: `unsupported-call:${callee?.rawText ?? input.expression.rawText}`,
   };
+}
+
+function summarizeInlineFunctionCall(
+  input: {
+    input: SymbolicExpressionEvaluatorInput;
+    expression: Extract<ExpressionSyntaxNode, { expressionKind: "call" }>;
+    depth: number;
+    seenExpressionIds: Set<string>;
+    helperBindings?: Map<string, AbstractValue>;
+  },
+  callee: ExpressionSyntaxNode,
+  callExpression: Extract<ExpressionSyntaxNode, { expressionKind: "call" }>,
+): AbstractValue | undefined {
+  const unwrappedCallee =
+    callee.expressionKind === "wrapper"
+      ? (getExpressionSyntax(input.input, callee.innerExpressionId) ?? callee)
+      : callee;
+  if (
+    unwrappedCallee.expressionKind !== "function" ||
+    unwrappedCallee.parameterCount > 0 ||
+    callExpression.argumentExpressionIds.length > 0 ||
+    callExpression.hasSpreadArgument ||
+    unwrappedCallee.returnExpressionIds.length === 0
+  ) {
+    return undefined;
+  }
+
+  const returnValues = uniqueSorted(unwrappedCallee.returnExpressionIds)
+    .map((returnExpressionId) => getExpressionSyntax(input.input, returnExpressionId))
+    .filter((expression): expression is ExpressionSyntaxNode => Boolean(expression))
+    .map((returnExpression) =>
+      summarizeNormalizedClassExpression({
+        input: input.input,
+        expression: returnExpression,
+        depth: input.depth + 1,
+        seenExpressionIds: input.seenExpressionIds,
+        helperBindings: input.helperBindings,
+      }),
+    );
+  if (returnValues.length === 0) {
+    return undefined;
+  }
+  if (returnValues.length === 1) {
+    return returnValues[0];
+  }
+  return mergeClassSets(returnValues, "inline function multi-return aggregation");
 }
 
 function summarizeClassNamesHelperArgs(
@@ -1592,6 +1650,15 @@ function summarizeMemberAccessExpressionSyntax(input: {
   seenExpressionIds: Set<string>;
   helperBindings?: Map<string, AbstractValue>;
 }): AbstractValue {
+  const jsonValue = resolveJsonStaticValueForExpression({
+    input: input.input,
+    expression: input.expression,
+    seenExpressionIds: input.seenExpressionIds,
+  });
+  if (jsonValue) {
+    return jsonStaticValueToAbstractValue(jsonValue);
+  }
+
   const objectExpression = getExpressionSyntax(input.input, input.expression.objectExpressionId);
   const objectLiteral = objectExpression
     ? resolveObjectLiteralExpressionSyntax({
@@ -1636,6 +1703,15 @@ function summarizeElementAccessExpressionSyntax(input: {
 }): AbstractValue {
   if (!input.expression.argumentExpressionId) {
     return { kind: "unknown", reason: "unresolved-element-access-key" };
+  }
+
+  const jsonValue = resolveJsonStaticValueForExpression({
+    input: input.input,
+    expression: input.expression,
+    seenExpressionIds: input.seenExpressionIds,
+  });
+  if (jsonValue) {
+    return jsonStaticValueToAbstractValue(jsonValue);
   }
 
   const objectExpression = getExpressionSyntax(input.input, input.expression.objectExpressionId);
@@ -1762,6 +1838,250 @@ function isDynamicElementAccessKeyUncertainty(argumentValue: AbstractValue): boo
     (argumentValue.reason === "class-name-resolution-cycle" ||
       argumentValue.reason === "class-name-resolution-budget-exceeded")
   );
+}
+
+function resolveJsonStaticValueForExpression(input: {
+  input: SymbolicExpressionEvaluatorInput;
+  expression: ExpressionSyntaxNode;
+  seenExpressionIds: Set<string>;
+}): JsonStaticValue | undefined {
+  const seenExpressionIds = new Set(input.seenExpressionIds);
+  seenExpressionIds.add(input.expression.expressionId);
+  const expression = unwrapExpressionSyntax({
+    input: input.input,
+    expression: input.expression,
+    depth: 0,
+    seenExpressionIds,
+  });
+
+  if (expression.expressionKind === "identifier") {
+    return resolveImportedJsonDefaultValue({
+      input: input.input,
+      expression,
+    });
+  }
+
+  if (expression.expressionKind === "element-access") {
+    return resolveJsonElementAccessValue({
+      input: input.input,
+      expression,
+      seenExpressionIds,
+    });
+  }
+
+  if (expression.expressionKind === "call") {
+    return resolveJsonArrayJoinCallValue({
+      input: input.input,
+      expression,
+      seenExpressionIds,
+    });
+  }
+
+  if (expression.expressionKind !== "member-access") {
+    return undefined;
+  }
+
+  const objectExpression = getExpressionSyntax(input.input, expression.objectExpressionId);
+  if (!objectExpression) {
+    return undefined;
+  }
+
+  const objectValue = resolveJsonStaticValueForExpression({
+    input: input.input,
+    expression: objectExpression,
+    seenExpressionIds,
+  });
+  if (!objectValue || objectValue.kind !== "object") {
+    return undefined;
+  }
+
+  return (
+    objectValue.properties[expression.propertyName] ??
+    (objectValue.truncated ? { kind: "unknown", reason: "json-object-truncated" } : undefined)
+  );
+}
+
+function resolveJsonElementAccessValue(input: {
+  input: SymbolicExpressionEvaluatorInput;
+  expression: Extract<ExpressionSyntaxNode, { expressionKind: "element-access" }>;
+  seenExpressionIds: Set<string>;
+}): JsonStaticValue | undefined {
+  if (!input.expression.argumentExpressionId) {
+    return undefined;
+  }
+
+  const objectExpression = getExpressionSyntax(input.input, input.expression.objectExpressionId);
+  if (!objectExpression) {
+    return undefined;
+  }
+
+  const objectValue = resolveJsonStaticValueForExpression({
+    input: input.input,
+    expression: objectExpression,
+    seenExpressionIds: input.seenExpressionIds,
+  });
+  if (!objectValue) {
+    return undefined;
+  }
+
+  const argumentValue = getExpressionValue(
+    {
+      input: input.input,
+      depth: 0,
+      seenExpressionIds: input.seenExpressionIds,
+    },
+    input.expression.argumentExpressionId,
+  );
+  const propertyNames = getStringCandidates(argumentValue);
+  if (!propertyNames || propertyNames.length === 0) {
+    return objectValue.kind === "object" && objectValue.truncated
+      ? { kind: "unknown", reason: "json-object-truncated" }
+      : undefined;
+  }
+
+  if (objectValue.kind !== "object") {
+    return undefined;
+  }
+
+  const values = propertyNames.map(
+    (propertyName) =>
+      objectValue.properties[propertyName] ??
+      (objectValue.truncated
+        ? ({ kind: "unknown", reason: "json-object-truncated" } satisfies JsonStaticValue)
+        : ({ kind: "unknown", reason: "unresolved-json-property" } satisfies JsonStaticValue)),
+  );
+  if (values.length === 1) {
+    return values[0];
+  }
+
+  return {
+    kind: "array",
+    elements: values,
+  };
+}
+
+function summarizeJsonArrayJoin(
+  input: {
+    input: SymbolicExpressionEvaluatorInput;
+    expression: Extract<ExpressionSyntaxNode, { expressionKind: "call" }>;
+    depth: number;
+    seenExpressionIds: Set<string>;
+    helperBindings?: Map<string, AbstractValue>;
+  },
+  callee: ExpressionSyntaxNode,
+): AbstractValue | undefined {
+  const jsonValue =
+    callee.expressionKind === "member-access" && callee.propertyName === "join"
+      ? resolveJsonArrayJoinCallValue({
+          input: input.input,
+          expression: input.expression,
+          seenExpressionIds: input.seenExpressionIds,
+        })
+      : undefined;
+  return jsonValue ? jsonStaticValueToAbstractValue(jsonValue) : undefined;
+}
+
+function resolveJsonArrayJoinCallValue(input: {
+  input: SymbolicExpressionEvaluatorInput;
+  expression: Extract<ExpressionSyntaxNode, { expressionKind: "call" }>;
+  seenExpressionIds: Set<string>;
+}): JsonStaticValue | undefined {
+  const callee = getExpressionSyntax(input.input, input.expression.calleeExpressionId);
+  if (!callee || callee.expressionKind !== "member-access" || callee.propertyName !== "join") {
+    return undefined;
+  }
+
+  const targetExpression = getExpressionSyntax(input.input, callee.objectExpressionId);
+  if (!targetExpression) {
+    return undefined;
+  }
+
+  const targetValue = resolveJsonStaticValueForExpression({
+    input: input.input,
+    expression: targetExpression,
+    seenExpressionIds: input.seenExpressionIds,
+  });
+  if (!targetValue || targetValue.kind !== "array") {
+    return undefined;
+  }
+
+  const separator = getJoinSeparator(input.input, input.expression.argumentExpressionIds);
+  if (separator === undefined) {
+    return { kind: "unknown", reason: "unsupported-join-separator" };
+  }
+
+  if (targetValue.truncated) {
+    return { kind: "unknown", reason: "json-array-truncated" };
+  }
+
+  if (/^\s*$/.test(separator)) {
+    return targetValue;
+  }
+
+  const parts: string[] = [];
+  for (const element of targetValue.elements) {
+    if (element.kind !== "string") {
+      return { kind: "unknown", reason: "non-whitespace-json-join-element" };
+    }
+    parts.push(element.value);
+  }
+
+  return {
+    kind: "string",
+    value: parts.join(separator),
+  };
+}
+
+function resolveImportedJsonDefaultValue(input: {
+  input: SymbolicExpressionEvaluatorInput;
+  expression: Extract<ExpressionSyntaxNode, { expressionKind: "identifier" }>;
+}): JsonStaticValue | undefined {
+  const importEdge = input.input.graph.edges.imports.find(
+    (edge) =>
+      edge.importerKind === "source" &&
+      edge.importerFilePath === input.expression.filePath &&
+      edge.importKind === "json" &&
+      edge.resolutionStatus === "resolved" &&
+      edge.resolvedFilePath &&
+      edge.importNames?.some(
+        (importName) =>
+          importName.localName === input.expression.name &&
+          importName.bindingKind === "default" &&
+          importName.importedName === "default",
+      ),
+  );
+  if (!importEdge?.resolvedFilePath) {
+    return undefined;
+  }
+
+  const jsonModule = input.input.graph.nodes.modules.find(
+    (moduleNode) =>
+      moduleNode.moduleKind === "json" && moduleNode.filePath === importEdge.resolvedFilePath,
+  );
+  return jsonModule?.jsonExports?.find((exportFact) => exportFact.exportedName === "default")
+    ?.value;
+}
+
+function jsonStaticValueToAbstractValue(value: JsonStaticValue): AbstractValue {
+  switch (value.kind) {
+    case "string":
+      return { kind: "string-exact", value: value.value };
+    case "array":
+      return value.truncated
+        ? { kind: "unknown", reason: "json-array-truncated" }
+        : mergeClassSets(value.elements.map(jsonStaticValueToAbstractValue), "json array values");
+    case "object":
+      return value.truncated
+        ? { kind: "unknown", reason: "json-object-truncated" }
+        : mergeClassSets(
+            Object.values(value.properties).map(jsonStaticValueToAbstractValue),
+            "json object values",
+          );
+    case "unknown":
+      return { kind: "unknown", reason: value.reason };
+    default:
+      return { kind: "unknown", reason: `unsupported-json-${value.kind}-class-token` };
+  }
 }
 
 function resolveObjectLiteralExpressionSyntax(input: {

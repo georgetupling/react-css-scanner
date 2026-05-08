@@ -9,6 +9,7 @@ export type ParsedSimpleSelectorSequence = {
   requiredClasses: string[];
   classAttributePredicates: ParsedClassAttributePredicate[];
   negativeClasses: string[];
+  contextOnlyClasses: string[];
   hasDescendantClasses: string[];
   hasClassRelations: ParsedHasClassRelation[];
   hasUnknownSemantics: boolean;

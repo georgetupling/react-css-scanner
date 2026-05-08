@@ -26,7 +26,13 @@ import type {
 export type ProjectEvidenceId = string;
 export type CssModuleLocalsConvention = "asIs" | "camelCase" | "camelCaseOnly";
 
-export type ProjectImportKind = "source" | "css" | "external-css" | "type-only" | "unknown";
+export type ProjectImportKind =
+  | "source"
+  | "css"
+  | "json"
+  | "external-css"
+  | "type-only"
+  | "unknown";
 
 export type ExperimentalCssFileAnalysis = {
   filePath?: string;

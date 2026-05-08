@@ -110,6 +110,10 @@ function classifyImportKind(
     return "css";
   }
 
+  if (/\.json(?:[?#].*)?$/i.test(specifier)) {
+    return "json";
+  }
+
   if (specifier.startsWith("http://") || specifier.startsWith("https://")) {
     return "external-css";
   }

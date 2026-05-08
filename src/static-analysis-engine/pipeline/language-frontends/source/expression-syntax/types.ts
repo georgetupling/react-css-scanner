@@ -16,6 +16,7 @@ export type SourceExpressionSyntaxFact = SourceExpressionSyntaxBase &
     | SourceConditionalExpressionSyntax
     | SourceBinaryExpressionSyntax
     | SourcePrefixUnaryExpressionSyntax
+    | SourceFunctionExpressionSyntax
     | SourceWrapperExpressionSyntax
     | SourceUnsupportedExpressionSyntax
   );
@@ -130,6 +131,12 @@ export type SourcePrefixUnaryExpressionSyntax = {
   expressionKind: "prefix-unary";
   operator: "!" | "+" | "-" | "~";
   operandExpressionId: string;
+};
+
+export type SourceFunctionExpressionSyntax = {
+  expressionKind: "function";
+  parameterCount: number;
+  returnExpressionIds: string[];
 };
 
 export type SourceWrapperExpressionSyntax = {

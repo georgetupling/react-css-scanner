@@ -312,6 +312,7 @@ function resolveImportResourceKind(record: ImportRecord): "package" | "remote" |
 
   if (
     record.importKind === "css" ||
+    record.importKind === "json" ||
     record.importKind === "source" ||
     record.importKind === "type-only"
   ) {

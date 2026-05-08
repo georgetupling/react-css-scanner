@@ -9,6 +9,7 @@ test("discoverProjectFileRecords scans source, CSS, and HTML under a root direct
   const project = await new TestProjectBuilder()
     .withSourceFile("src/components/Card.tsx", "export function Card() { return <div />; }\n")
     .withCssFile("src/components/Card.css", ".card {}\n")
+    .withFile("src/tokens.json", '{ "button": "btn" }\n')
     .withFile("index.html", '<link rel="stylesheet" href="/assets/app.css">\n')
     .withFile("public/nested/page.html", "<main></main>\n")
     .withSourceFile("dist/generated.tsx", "export const ignored = true;\n")
@@ -33,7 +34,53 @@ test("discoverProjectFileRecords scans source, CSS, and HTML under a root direct
       discovered.htmlFiles.map((file) => file.filePath),
       ["index.html", "public/nested/page.html"],
     );
+    assert.deepEqual(
+      discovered.jsonFiles.map((file) => file.filePath),
+      ["src/tokens.json"],
+    );
     assert.deepEqual(discovered.diagnostics, []);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("buildProjectSnapshot resolves local JSON source imports", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import tokens from "./tokens.json";\nexport function App() { return <button className={tokens.button} />; }\n',
+    )
+    .withFile("src/tokens.json", '{ "button": "btn" }\n')
+    .build();
+
+  try {
+    const snapshot = await buildProjectSnapshot({
+      scanInput: {
+        rootDir: project.rootDir,
+      },
+    });
+
+    assert.deepEqual(
+      snapshot.files.jsonFiles.map((file) => ({
+        filePath: file.filePath,
+        parsedValue: file.parsedValue,
+      })),
+      [
+        {
+          filePath: "src/tokens.json",
+          parsedValue: {
+            kind: "object",
+            properties: {
+              button: {
+                kind: "string",
+                value: "btn",
+              },
+            },
+          },
+        },
+      ],
+    );
+    assert(snapshot.edges.some(isLocalJsonSourceImportEdge));
   } finally {
     await project.cleanup();
   }
@@ -742,6 +789,17 @@ function isLocalCssSourceImportEdge(edge) {
     edge.importKind === "css" &&
     edge.resolutionStatus === "resolved" &&
     edge.resolvedFilePath === "src/App.module.css"
+  );
+}
+
+function isLocalJsonSourceImportEdge(edge) {
+  return (
+    edge.kind === "source-import" &&
+    edge.importerFilePath === "src/App.tsx" &&
+    edge.specifier === "./tokens.json" &&
+    edge.importKind === "json" &&
+    edge.resolutionStatus === "resolved" &&
+    edge.resolvedFilePath === "src/tokens.json"
   );
 }
 

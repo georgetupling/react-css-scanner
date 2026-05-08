@@ -2902,6 +2902,62 @@ test("unused-css-class reports unreferenced local CSS linked by HTML", async () 
   }
 });
 
+test("unused-css-class treats literal classes returned by IIFEs as used", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        "",
+        "export function App() {",
+        '  return <button className={(() => "btn primary")()}>Save</button>;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".btn { display: inline-block; }\n.primary { color: blue; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", ["btn", "primary"]);
+    assertNoClassFindings(result, "missing-css-class", ["btn", "primary"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unused-css-class treats class tokens passed through slot prop objects as used", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        "",
+        "function Field({ children }: { children: (slot: { inputClassName: string }) => React.ReactNode }) {",
+        '  return <label>{children({ inputClassName: "field-input" })}</label>;',
+        "}",
+        "",
+        "export function App() {",
+        "  return <Field>{(slot) => <input className={slot.inputClassName} />}</Field>;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".field-input { border: 1px solid; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", ["field-input"]);
+    assertNoClassFindings(result, "missing-css-class", ["field-input"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
 function assertNoClassFindings(result, ruleId, classNames) {
   assert.deepEqual(
     result.findings
@@ -3567,6 +3623,150 @@ test("unused-css-class treats imported default object property class constants a
     assertNoClassFindings(result, "unused-css-class", ["root"]);
     assertNoClassFindings(result, "missing-css-class", ["root"]);
     assertNoClassFindings(result, "css-class-unreachable", ["root"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unused-css-class treats default JSON object property class tokens as used", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        'import tokens from "./tokens.json";',
+        "export function App() { return <main className={tokens.button}>Hello</main>; }",
+        "",
+      ].join("\n"),
+    )
+    .withFile("src/tokens.json", '{ "button": "btn" }\n')
+    .withCssFile("src/App.css", ".btn { color: green; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", ["btn"]);
+    assertNoClassFindings(result, "missing-css-class", ["btn"]);
+    assertNoClassFindings(result, "css-class-unreachable", ["btn"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unused-css-class resolves nested and bracket JSON class tokens", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        'import tokens from "./tokens.json";',
+        "export function App() {",
+        '  return <main className={`${tokens.components.button} ${tokens["state-active"]}`}>Hello</main>;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withFile(
+      "src/tokens.json",
+      '{ "components": { "button": "btn" }, "state-active": "active" }\n',
+    )
+    .withCssFile("src/App.css", ".btn { color: green; }\n.active { color: blue; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", ["btn", "active"]);
+    assertNoClassFindings(result, "missing-css-class", ["btn", "active"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unused-css-class resolves JSON array joins as finite class tokens", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        'import tokens from "./tokens.json";',
+        'export function App() { return <main className={tokens.button.join(" ")}>Hello</main>; }',
+        "",
+      ].join("\n"),
+    )
+    .withFile("src/tokens.json", '{ "button": ["btn", "primary"] }\n')
+    .withCssFile("src/App.css", ".btn { color: green; }\n.primary { color: blue; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", ["btn", "primary"]);
+    assertNoClassFindings(result, "missing-css-class", ["btn", "primary"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unused-css-class lowers confidence for invalid JSON class token imports", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        'import tokens from "./tokens.json";',
+        "export function App() { return <main className={tokens.button}>Hello</main>; }",
+        "",
+      ].join("\n"),
+    )
+    .withFile("src/tokens.json", '{ "button": "btn"\n')
+    .withCssFile("src/App.css", ".btn { color: green; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+    const unusedFinding = result.findings.find(
+      (finding) => finding.ruleId === "unused-css-class" && finding.data?.className === "btn",
+    );
+
+    assert.equal(unusedFinding?.confidence, "medium");
+    assert.equal(
+      result.diagnostics.some((diagnostic) => diagnostic.code === "loading.json-parse-failed"),
+      true,
+    );
+    assert.equal(hasClassFinding(result, "dynamic-class-reference", "btn"), false);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unused-css-class lowers confidence for truncated JSON class token imports", async () => {
+  const properties = Array.from(
+    { length: 205 },
+    (_, index) => `"token-${index}": "value-${index}"`,
+  );
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        'import tokens from "./tokens.json";',
+        'export function App() { return <main className={tokens["zzzz"]}>Hello</main>; }',
+        "",
+      ].join("\n"),
+    )
+    .withFile("src/tokens.json", `{ ${[...properties, '"zzzz": "target"'].join(", ")} }\n`)
+    .withCssFile("src/App.css", ".target { color: green; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+    const unusedFinding = result.findings.find(
+      (finding) => finding.ruleId === "unused-css-class" && finding.data?.className === "target",
+    );
+
+    assert.equal(unusedFinding?.confidence, "medium");
   } finally {
     await project.cleanup();
   }

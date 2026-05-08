@@ -102,6 +102,88 @@ test("language frontends consume ProjectSnapshot and expose target source facts"
   }
 });
 
+test("language frontends expose JSON module default export facts", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import tokens from "./tokens.json";\nexport function App() { return <button className={tokens.button} />; }\n',
+    )
+    .withFile("src/tokens.json", '{ "button": "btn", "nested": { "tone": "primary" } }\n')
+    .build();
+
+  try {
+    const snapshot = await buildProjectSnapshot({
+      scanInput: {
+        rootDir: project.rootDir,
+      },
+    });
+    const frontends = buildLanguageFrontends({ snapshot });
+
+    assert.deepEqual(
+      frontends.source.files
+        .find((file) => file.filePath === "src/App.tsx")
+        .moduleSyntax.imports.map((importRecord) => ({
+          specifier: importRecord.specifier,
+          importKind: importRecord.importKind,
+          importNames: importRecord.importNames.map((importName) => ({
+            kind: importName.kind,
+            importedName: importName.importedName,
+            localName: importName.localName,
+          })),
+        })),
+      [
+        {
+          specifier: "./tokens.json",
+          importKind: "json",
+          importNames: [
+            {
+              kind: "default",
+              importedName: "default",
+              localName: "tokens",
+            },
+          ],
+        },
+      ],
+    );
+    assert.deepEqual(
+      frontends.json.files.map((file) => ({
+        filePath: file.filePath,
+        exports: file.exports,
+      })),
+      [
+        {
+          filePath: "src/tokens.json",
+          exports: [
+            {
+              exportedName: "default",
+              value: {
+                kind: "object",
+                properties: {
+                  button: {
+                    kind: "string",
+                    value: "btn",
+                  },
+                  nested: {
+                    kind: "object",
+                    properties: {
+                      tone: {
+                        kind: "string",
+                        value: "primary",
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          ],
+        },
+      ],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("language frontends parse CSS into deterministic frontend facts", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile("src/App.tsx", "export function App() { return null; }\n")

@@ -578,3 +578,79 @@ test("CSS Module locals convention can require exact export names", async () => 
     await project.cleanup();
   }
 });
+
+test("CSS Module rules treat classnames bind keys as module member usage", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import classNames from "classnames/bind";',
+        'import styles from "./App.module.css";',
+        "",
+        "const cx = classNames.bind(styles);",
+        "",
+        "export function App({ active }: { active: boolean }) {",
+        '  return <button className={cx("button", { active })}>Save</button>;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.module.css", ".button { color: blue; }\n.active { color: green; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assert.deepEqual(
+      result.findings.filter(
+        (finding) =>
+          finding.ruleId === "unused-css-module-class" ||
+          finding.ruleId === "missing-css-module-class",
+      ),
+      [],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("missing-css-module-class reports missing classnames bind keys", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import classNames from "classnames/bind";',
+        'import styles from "./App.module.css";',
+        "",
+        "const cx = classNames.bind(styles);",
+        "",
+        "export function App() {",
+        '  return <button className={cx("missing")}>Save</button>;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.module.css", ".button { color: blue; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assert.equal(
+      result.findings.some(
+        (finding) =>
+          finding.ruleId === "missing-css-module-class" && finding.data?.memberName === "missing",
+      ),
+      true,
+    );
+    assert.equal(
+      result.findings.some(
+        (finding) =>
+          finding.ruleId === "unused-css-module-class" && finding.data?.className === "button",
+      ),
+      true,
+    );
+  } finally {
+    await project.cleanup();
+  }
+});

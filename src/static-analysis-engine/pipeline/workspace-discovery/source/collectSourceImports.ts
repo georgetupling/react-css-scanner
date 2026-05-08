@@ -4,6 +4,7 @@ import type { DiscoveryConfig } from "../../../../config/index.js";
 import type {
   ProjectSourceFile,
   ProjectStylesheetFile,
+  ProjectJsonFile,
   SourceImportFact,
   SourceImportKind,
 } from "../types.js";
@@ -13,12 +14,14 @@ import { resolveWorkspaceSpecifier } from "../resolution/index.js";
 export function collectSourceImports(input: {
   sourceFiles: ProjectSourceFile[];
   stylesheets: ProjectStylesheetFile[];
+  jsonFiles?: ProjectJsonFile[];
   discovery?: Pick<DiscoveryConfig, "aliases" | "stylesheetExtensions">;
 }): SourceImportFact[] {
   const knownSourceFilePaths = new Set(input.sourceFiles.map((sourceFile) => sourceFile.filePath));
   const knownStylesheetFilePaths = new Set(
     input.stylesheets.map((stylesheet) => stylesheet.filePath),
   );
+  const knownJsonFilePaths = new Set(input.jsonFiles?.map((jsonFile) => jsonFile.filePath) ?? []);
   const imports: SourceImportFact[] = [];
 
   for (const sourceFile of input.sourceFiles) {
@@ -46,6 +49,7 @@ export function collectSourceImports(input: {
             importLoading: "static",
             knownSourceFilePaths,
             knownStylesheetFilePaths,
+            knownJsonFilePaths,
             discovery: input.discovery,
           }),
         );
@@ -66,6 +70,7 @@ export function collectSourceImports(input: {
           importLoading: "static",
           knownSourceFilePaths,
           knownStylesheetFilePaths,
+          knownJsonFilePaths,
           discovery: input.discovery,
         }),
       );
@@ -87,6 +92,7 @@ export function collectSourceImports(input: {
             importLoading: "dynamic",
             knownSourceFilePaths,
             knownStylesheetFilePaths,
+            knownJsonFilePaths,
             discovery: input.discovery,
           }),
         );
@@ -107,6 +113,7 @@ function resolveImportFact(input: {
   importLoading: "static" | "dynamic";
   knownSourceFilePaths: ReadonlySet<string>;
   knownStylesheetFilePaths: ReadonlySet<string>;
+  knownJsonFilePaths: ReadonlySet<string>;
   discovery?: Pick<DiscoveryConfig, "aliases" | "stylesheetExtensions">;
 }): SourceImportFact {
   if (input.importKind === "external-css") {
@@ -135,6 +142,36 @@ function resolveImportFact(input: {
       specifier: input.specifier,
       targetKind: "stylesheet",
       knownStylesheetFilePaths: input.knownStylesheetFilePaths,
+      discovery: input.discovery,
+    });
+    return resolution.status === "resolved" && resolution.kind === "project"
+      ? {
+          importerFilePath: input.importerFilePath,
+          specifier: input.specifier,
+          importKind: input.importKind,
+          importLoading: input.importLoading,
+          resolutionStatus: "resolved",
+          resolvedFilePath: resolution.filePath,
+        }
+      : {
+          importerFilePath: input.importerFilePath,
+          specifier: input.specifier,
+          importKind: input.importKind,
+          importLoading: input.importLoading,
+          resolutionStatus:
+            resolution.status === "external" ||
+            (resolution.status === "resolved" && resolution.kind === "package")
+              ? "external"
+              : "unresolved",
+        };
+  }
+
+  if (input.importKind === "json") {
+    const resolution = resolveWorkspaceSpecifier({
+      importerFilePath: input.importerFilePath,
+      specifier: input.specifier,
+      targetKind: "json",
+      knownJsonFilePaths: input.knownJsonFilePaths,
       discovery: input.discovery,
     });
     return resolution.status === "resolved" && resolution.kind === "project"
@@ -220,6 +257,10 @@ function classifyModuleSpecifierKind(specifier: string): SourceImportKind {
     return "css";
   }
 
+  if (isJsonSpecifier(specifier)) {
+    return "json";
+  }
+
   if (specifier.startsWith("http://") || specifier.startsWith("https://")) {
     return "external-css";
   }
@@ -266,6 +307,10 @@ function getScriptKind(filePath: string): ts.ScriptKind {
 
 function isStylesheetSpecifier(specifier: string): boolean {
   return isStylesheetPath(specifier);
+}
+
+function isJsonSpecifier(specifier: string): boolean {
+  return /\.json(?:[?#].*)?$/i.test(specifier);
 }
 
 function compareSourceImportFacts(left: SourceImportFact, right: SourceImportFact): number {

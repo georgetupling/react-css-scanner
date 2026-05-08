@@ -12,6 +12,8 @@ import { remapCssStyleRuleLocations } from "./stylesheets/remapCssSourceLocation
 import type {
   CssFrontendFacts,
   CssFrontendFile,
+  JsonFrontendFacts,
+  JsonFrontendFile,
   LanguageFrontendsResult,
   ParsedProjectFile,
   SourceFrontendFacts,
@@ -32,11 +34,13 @@ export function buildLanguageFrontends(input: {
 }): LanguageFrontendsResult {
   const source = buildSourceFrontendFacts(input.snapshot);
   const css = buildCssFrontendFacts(input.snapshot);
+  const json = buildJsonFrontendFacts(input.snapshot);
 
   return {
     snapshot: input.snapshot,
     source,
     css,
+    json,
   };
 }
 
@@ -204,6 +208,29 @@ function buildCssFrontendFacts(snapshot: ProjectSnapshot): CssFrontendFacts {
         ),
       };
     });
+
+  return {
+    files,
+    filesByPath: new Map(files.map((file) => [file.filePath, file])),
+  };
+}
+
+function buildJsonFrontendFacts(snapshot: ProjectSnapshot): JsonFrontendFacts {
+  const files: JsonFrontendFile[] = [...snapshot.files.jsonFiles]
+    .sort((left, right) => left.filePath.localeCompare(right.filePath))
+    .map((jsonFile) => ({
+      filePath: jsonFile.filePath,
+      absolutePath: jsonFile.absolutePath,
+      sourceText: jsonFile.sourceText,
+      exports: jsonFile.parsedValue
+        ? [
+            {
+              exportedName: "default",
+              value: jsonFile.parsedValue,
+            },
+          ]
+        : [],
+    }));
 
   return {
     files,

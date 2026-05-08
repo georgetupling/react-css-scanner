@@ -6,7 +6,13 @@ export type SourceModuleSyntaxFacts = {
   declarations: SourceDeclarationSyntaxIndex;
 };
 
-export type SourceImportSyntaxKind = "source" | "css" | "external-css" | "type-only" | "unknown";
+export type SourceImportSyntaxKind =
+  | "source"
+  | "css"
+  | "json"
+  | "external-css"
+  | "type-only"
+  | "unknown";
 export type SourceImportLoading = "static" | "dynamic";
 
 export type SourceImportSyntaxName = {

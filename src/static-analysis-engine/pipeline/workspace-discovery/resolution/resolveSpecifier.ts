@@ -12,9 +12,10 @@ export type WorkspaceSpecifierResolution =
 export function resolveWorkspaceSpecifier(input: {
   importerFilePath: string;
   specifier: string;
-  targetKind: "source" | "stylesheet";
+  targetKind: "source" | "stylesheet" | "json";
   knownSourceFilePaths?: ReadonlySet<string>;
   knownStylesheetFilePaths?: ReadonlySet<string>;
+  knownJsonFilePaths?: ReadonlySet<string>;
   discovery?: Pick<DiscoveryConfig, "aliases" | "stylesheetExtensions">;
 }): WorkspaceSpecifierResolution {
   const normalizedSpecifier = normalizeProjectPath(stripUrlSuffix(input.specifier));
@@ -23,7 +24,11 @@ export function resolveWorkspaceSpecifier(input: {
   }
 
   const knownFilePaths =
-    input.targetKind === "source" ? input.knownSourceFilePaths : input.knownStylesheetFilePaths;
+    input.targetKind === "source"
+      ? input.knownSourceFilePaths
+      : input.targetKind === "stylesheet"
+        ? input.knownStylesheetFilePaths
+        : input.knownJsonFilePaths;
   const candidates = getProjectCandidatePaths({
     importerFilePath: input.importerFilePath,
     specifier: normalizedSpecifier,
@@ -60,7 +65,7 @@ export function resolveWorkspaceSpecifier(input: {
 export function getProjectCandidatePaths(input: {
   importerFilePath: string;
   specifier: string;
-  targetKind: "source" | "stylesheet";
+  targetKind: "source" | "stylesheet" | "json";
   discovery?: Pick<DiscoveryConfig, "aliases" | "stylesheetExtensions">;
 }): string[] {
   const normalizedSpecifier = normalizeProjectPath(stripUrlSuffix(input.specifier));
@@ -87,7 +92,7 @@ export function getProjectCandidatePaths(input: {
 
 function expandCandidateBase(
   base: string,
-  targetKind: "source" | "stylesheet",
+  targetKind: "source" | "stylesheet" | "json",
   discovery: Pick<DiscoveryConfig, "stylesheetExtensions"> | undefined,
 ): string[] {
   if (targetKind === "stylesheet") {
@@ -97,6 +102,10 @@ function expandCandidateBase(
     }
 
     return stylesheetExtensions.map((extension) => `${base}${extension}`);
+  }
+
+  if (targetKind === "json") {
+    return path.posix.extname(base).toLowerCase() === ".json" ? [base] : [`${base}.json`];
   }
 
   return [

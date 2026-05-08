@@ -48,6 +48,9 @@ export function buildSourceFiles(
   const sourcePaths = new Set<string>();
 
   for (const moduleNode of input.factGraph.graph.nodes.modules) {
+    if (moduleNode.moduleKind !== "source") {
+      continue;
+    }
     sourcePaths.add(normalizeProjectPath(moduleNode.filePath));
   }
 

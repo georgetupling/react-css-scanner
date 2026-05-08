@@ -753,10 +753,12 @@ function instantiateRenderPropCallbackEmissionSite(input: {
     return undefined;
   }
 
-  const parameterIndex = renderSite.callbackParameterNames.indexOf(
-    input.classSite.rawExpressionText,
-  );
-  if (parameterIndex < 0 || !renderSite.parentRenderSiteNodeId) {
+  const callbackArgumentAccess = resolveRenderPropCallbackArgumentAccess({
+    classSite: input.classSite,
+    renderSite,
+    expressionSyntaxById: input.expressionSyntaxById,
+  });
+  if (!callbackArgumentAccess || !renderSite.parentRenderSiteNodeId) {
     return undefined;
   }
 
@@ -772,18 +774,30 @@ function instantiateRenderPropCallbackEmissionSite(input: {
       candidate.componentNodeId === boundary.componentNodeId &&
       candidate.propName === renderSite.callbackPropName,
   );
-  const argumentExpressionId = invocation?.argumentExpressionNodeIds[parameterIndex];
-  if (!invocation || !argumentExpressionId) {
+  if (!invocation) {
     return undefined;
   }
 
-  const sourceExpression = input.expressionSyntaxById.get(argumentExpressionId);
+  const argumentExpressionId =
+    invocation.argumentExpressionNodeIds[callbackArgumentAccess.parameterIndex];
+  const sourceExpressionId = argumentExpressionId
+    ? resolveRenderPropSourceExpressionId({
+        argumentExpressionId,
+        propertyName: callbackArgumentAccess.propertyName,
+        expressionSyntaxById: input.expressionSyntaxById,
+      })
+    : undefined;
+  if (!sourceExpressionId) {
+    return undefined;
+  }
+
+  const sourceExpression = input.expressionSyntaxById.get(sourceExpressionId);
   if (!sourceExpression) {
     return undefined;
   }
 
   const classNames = collectStaticClassNamesFromExpressionSyntax({
-    expressionId: argumentExpressionId,
+    expressionId: sourceExpressionId,
     expressionSyntaxById: input.expressionSyntaxById,
     seen: new Set(),
   });
@@ -838,11 +852,97 @@ function instantiateRenderPropCallbackEmissionSite(input: {
     ...(suppliedByComponentNodeId ? { suppliedByComponentNodeId } : {}),
     tokenProvenance,
     tokens,
-    sourceExpressionIds: [input.expression.id, argumentExpressionId].sort(),
+    sourceExpressionIds: [input.expression.id, sourceExpressionId].sort(),
     unsupported: [],
     confidence: "medium",
     renderPathId: renderPathId({ terminalKind: "emission-site", terminalId: id }),
   };
+}
+
+function resolveRenderPropCallbackArgumentAccess(input: {
+  classSite: RenderStructureInput["graph"]["nodes"]["classExpressionSites"][number];
+  renderSite: Extract<
+    ReturnType<RenderStructureInput["graph"]["indexes"]["nodesById"]["get"]>,
+    { kind: "render-site" }
+  >;
+  expressionSyntaxById: Map<
+    string,
+    RenderStructureInput["graph"]["nodes"]["expressionSyntax"][number]
+  >;
+}): { parameterIndex: number; propertyName?: string } | undefined {
+  const rootExpression = input.expressionSyntaxById.get(input.classSite.expressionId);
+  if (!rootExpression) {
+    return undefined;
+  }
+
+  const directParameterName =
+    rootExpression.expressionKind === "identifier" ? rootExpression.name : undefined;
+  if (directParameterName) {
+    const parameterIndex = (input.renderSite.callbackParameterNames ?? []).indexOf(
+      directParameterName,
+    );
+    return parameterIndex >= 0 ? { parameterIndex } : undefined;
+  }
+
+  if (rootExpression.expressionKind !== "member-access") {
+    return undefined;
+  }
+
+  const objectExpression = input.expressionSyntaxById.get(rootExpression.objectExpressionId);
+  if (!objectExpression || objectExpression.expressionKind !== "identifier") {
+    return undefined;
+  }
+
+  const parameterIndex = (input.renderSite.callbackParameterNames ?? []).indexOf(
+    objectExpression.name,
+  );
+  return parameterIndex >= 0
+    ? { parameterIndex, propertyName: rootExpression.propertyName }
+    : undefined;
+}
+
+function resolveRenderPropSourceExpressionId(input: {
+  argumentExpressionId: string;
+  propertyName?: string;
+  expressionSyntaxById: Map<
+    string,
+    RenderStructureInput["graph"]["nodes"]["expressionSyntax"][number]
+  >;
+}): string | undefined {
+  if (!input.propertyName) {
+    return input.argumentExpressionId;
+  }
+
+  const argumentExpression = unwrapExpressionSyntaxNode({
+    expressionId: input.argumentExpressionId,
+    expressionSyntaxById: input.expressionSyntaxById,
+  });
+  if (!argumentExpression || argumentExpression.expressionKind !== "object-literal") {
+    return undefined;
+  }
+
+  const property = argumentExpression.properties.find(
+    (candidate) =>
+      candidate.propertyKind === "property" &&
+      candidate.keyKind !== "computed" &&
+      candidate.keyText === input.propertyName &&
+      Boolean(candidate.valueExpressionId),
+  );
+  return property?.valueExpressionId;
+}
+
+function unwrapExpressionSyntaxNode(input: {
+  expressionId: string;
+  expressionSyntaxById: Map<
+    string,
+    RenderStructureInput["graph"]["nodes"]["expressionSyntax"][number]
+  >;
+}): RenderStructureInput["graph"]["nodes"]["expressionSyntax"][number] | undefined {
+  let current = input.expressionSyntaxById.get(input.expressionId);
+  while (current?.expressionKind === "wrapper") {
+    current = input.expressionSyntaxById.get(current.innerExpressionId);
+  }
+  return current;
 }
 
 function collectStaticClassNamesFromExpressionSyntax(input: {
