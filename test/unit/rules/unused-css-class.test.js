@@ -6,7 +6,10 @@ import { TestProjectBuilder } from "../../support/TestProjectBuilder.js";
 
 test("unused-css-class reports unreferenced local CSS classes", async () => {
   const project = await new TestProjectBuilder()
-    .withSourceFile("src/App.tsx", "export function App() { return <main>Hello</main>; }\n")
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./App.css";\nexport function App() { return <main>Hello</main>; }\n',
+    )
     .withCssFile("src/App.css", ".unused { display: block; }\n")
     .build();
 
@@ -36,6 +39,7 @@ test("unused-css-class explains classes only referenced in statically skipped br
     .withSourceFile(
       "src/App.tsx",
       [
+        'import "./App.css";',
         "export function App() {",
         "  const unreadNotificationCount = 0;",
         "  const hasUnreadNotifications = unreadNotificationCount > 0;",
@@ -75,7 +79,7 @@ test("unused-css-class explains classes only referenced in statically skipped br
     assert.deepEqual(finding.data?.staticallySkippedReferenceLocations, [
       {
         filePath: "src/App.tsx",
-        startLine: 7,
+        startLine: 8,
         rawExpressionText: '"notification-count"',
         conditionSourceText: "hasUnreadNotifications",
         skippedBranch: "when-true",
@@ -89,7 +93,10 @@ test("unused-css-class explains classes only referenced in statically skipped br
 
 test("unused-css-class aggregates repeated definitions for the same class", async () => {
   const project = await new TestProjectBuilder()
-    .withSourceFile("src/App.tsx", "export function App() { return <main>Hello</main>; }\n")
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./Tag.css";\nexport function App() { return <main>Hello</main>; }\n',
+    )
     .withCssFile(
       "src/Tag.css",
       [
@@ -3409,7 +3416,7 @@ test("unused-css-class lowers confidence when dynamic class references exist", a
   const project = await new TestProjectBuilder()
     .withSourceFile(
       "src/App.tsx",
-      "export function App(props) { return <main className={props.className}>Hello</main>; }\n",
+      'import "./App.css";\nexport function App(props) { return <main className={props.className}>Hello</main>; }\n',
     )
     .withCssFile("src/App.css", ".maybe-used { display: block; }\n")
     .build();

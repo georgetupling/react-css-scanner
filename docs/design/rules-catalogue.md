@@ -67,6 +67,8 @@ Meaning:
 
 - the class is defined but appears unused by the analyzed React project
 - it may be dead CSS, or it may be referenced dynamically beyond current analysis
+- classes inside stylesheets reported by `orphan-css-file` are suppressed to avoid reporting the
+  same detached file as many individual dead classes
 
 Config:
 
@@ -118,6 +120,8 @@ Meaning:
 
 - the class exists in a local module stylesheet
 - no analyzed source uses that exported member
+- classes from a module stylesheet are suppressed when every known import of that stylesheet is
+  itself reported by `css-module-import-not-used`
 
 Config:
 

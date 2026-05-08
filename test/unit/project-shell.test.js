@@ -519,7 +519,7 @@ test("scanProject fails on unknown top-level config keys", async () => {
         global: ["src/global.css"],
       },
     })
-    .withSourceFile("src/App.tsx", "export function App() { return null; }\n")
+    .withSourceFile("src/App.tsx", 'import "./App.css";\nexport function App() { return null; }\n')
     .build();
 
   try {
@@ -542,7 +542,7 @@ test("scanProject fails on unknown rule ids in config", async () => {
         "legacy-rule-id": "off",
       },
     })
-    .withSourceFile("src/App.tsx", "export function App() { return null; }\n")
+    .withSourceFile("src/App.tsx", 'import "./App.css";\nexport function App() { return null; }\n')
     .build();
 
   try {
@@ -736,7 +736,10 @@ test("scanProject accepts discovery config", async () => {
 
 test("default test-source exclusions keep test-only CSS usage out of analysis", async () => {
   const project = await new TestProjectBuilder()
-    .withSourceFile("src/App.tsx", "export function App() { return <main />; }\n")
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./App.css";\nexport function App() { return <main />; }\n',
+    )
     .withSourceFile(
       "src/App.test.tsx",
       'export function AppTest() { return <main className="test-only" />; }\n',
@@ -815,7 +818,7 @@ test("scanProject fails on unknown discovery config keys", async () => {
         roots: ["src"],
       },
     })
-    .withSourceFile("src/App.tsx", "export function App() { return null; }\n")
+    .withSourceFile("src/App.tsx", 'import "./App.css";\nexport function App() { return null; }\n')
     .build();
 
   try {
@@ -964,7 +967,7 @@ test("scanProject suppresses ignored unused generated classes", async () => {
         classNames: ["generated-*"],
       },
     })
-    .withSourceFile("src/App.tsx", "export function App() { return null; }\n")
+    .withSourceFile("src/App.tsx", 'import "./App.css";\nexport function App() { return null; }\n')
     .withCssFile(
       "src/App.css",
       ".generated-token { display: block; }\n.unused { display: block; }\n",
@@ -978,7 +981,7 @@ test("scanProject suppresses ignored unused generated classes", async () => {
       cssFilePaths: ["src/App.css"],
     });
 
-    assert.equal(result.summary.ignoredFindingCount, 2);
+    assert.equal(result.summary.ignoredFindingCount, 1);
     assert.deepEqual(
       result.findings
         .filter((finding) => finding.ruleId === "unused-css-class")

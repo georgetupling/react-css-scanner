@@ -7,6 +7,7 @@ import {
   getStylesheetById,
 } from "../analysisQueries.js";
 import type { RuleContext, RuleDefinition, UnresolvedFinding } from "../types.js";
+import { collectUsedCssModuleImportIds } from "./cssModuleImportNotUsed.js";
 
 export const unusedCssModuleClassRule: RuleDefinition = {
   id: "unused-css-module-class",
@@ -17,6 +18,7 @@ export const unusedCssModuleClassRule: RuleDefinition = {
 
 function runUnusedCssModuleClassRule(context: RuleContext): UnresolvedFinding[] {
   const classDefinitions = getClassDefinitions(context.analysisEvidence);
+  const usedImportIds = collectUsedCssModuleImportIds(context);
   const usedDefinitionKeys = expandUsedCssModuleDefinitionKeys({
     definitions: classDefinitions,
     initialUsedDefinitionKeys: new Set(
@@ -47,6 +49,15 @@ function runUnusedCssModuleClassRule(context: RuleContext): UnresolvedFinding[] 
     if (!stylesheet) {
       continue;
     }
+    if (
+      isCssModuleStylesheetOnlyImportedThroughUnusedImports({
+        context,
+        stylesheetId: definition.stylesheetId,
+        usedImportIds,
+      })
+    ) {
+      continue;
+    }
 
     const definitionKey = createDefinitionKey(definition.stylesheetId, definition.className);
     if (
@@ -68,6 +79,20 @@ function runUnusedCssModuleClassRule(context: RuleContext): UnresolvedFinding[] 
   return [...definitionsByClassAndStylesheet.values()]
     .map((definitions) => buildUnusedCssModuleClassFinding({ context, definitions }))
     .sort((left, right) => left.id.localeCompare(right.id));
+}
+
+function isCssModuleStylesheetOnlyImportedThroughUnusedImports(input: {
+  context: RuleContext;
+  stylesheetId: string;
+  usedImportIds: Set<string>;
+}): boolean {
+  const imports = getCssModuleImportsByStylesheetId(
+    input.context.analysisEvidence,
+    input.stylesheetId,
+  );
+  return (
+    imports.length > 0 && imports.every((importRecord) => !input.usedImportIds.has(importRecord.id))
+  );
 }
 
 function expandUsedCssModuleDefinitionKeys(input: {

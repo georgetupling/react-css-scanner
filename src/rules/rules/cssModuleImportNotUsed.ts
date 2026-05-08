@@ -17,7 +17,7 @@ function runCssModuleImportNotUsedRule(context: RuleContext): UnresolvedFinding[
     .sort((left, right) => left.id.localeCompare(right.id));
 }
 
-function collectUsedCssModuleImportIds(context: RuleContext): Set<string> {
+export function collectUsedCssModuleImportIds(context: RuleContext): Set<string> {
   const usedImportIds = new Set<string>();
   const entities = context.analysisEvidence.projectEvidence.entities;
 

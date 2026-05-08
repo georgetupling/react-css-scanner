@@ -32,6 +32,13 @@ function isReportableOrphanStylesheet(input: {
   context: RuleContext;
   stylesheet: StylesheetAnalysis;
 }): boolean {
+  return isOrphanCssFileStylesheet(input);
+}
+
+export function isOrphanCssFileStylesheet(input: {
+  context: RuleContext;
+  stylesheet: StylesheetAnalysis;
+}): boolean {
   if (input.stylesheet.origin !== "project-css") {
     return false;
   }
@@ -117,9 +124,9 @@ function buildOrphanCssFileFinding(input: {
       stylesheetId: input.stylesheet.id,
       stylesheetFilePath: input.stylesheet.filePath,
       classDefinitionCount: definitions.length,
-      classNames: [...new Set(definitions.map((definition) => definition.className))].sort(
-        (left, right) => left.localeCompare(right),
-      ),
+      sampleClassNames: [...new Set(definitions.map((definition) => definition.className))]
+        .sort((left, right) => left.localeCompare(right))
+        .slice(0, 20),
       reachabilityReasons: [...new Set(reachability.flatMap((relation) => relation.reasons))].sort(
         (left, right) => left.localeCompare(right),
       ),

@@ -17,6 +17,7 @@ import {
   getStylesheetReachabilityByStylesheetId,
 } from "../analysisQueries.js";
 import type { RuleContext, RuleDefinition, UnresolvedFinding } from "../types.js";
+import { isOrphanCssFileStylesheet } from "./orphanCssFile.js";
 
 export const unusedCssClassRule: RuleDefinition = {
   id: "unused-css-class",
@@ -40,6 +41,9 @@ function runUnusedCssClassRule(context: RuleContext): UnresolvedFinding[] {
   for (const definition of getClassDefinitions(context.analysisEvidence)) {
     const stylesheet = getStylesheetById(context.analysisEvidence, definition.stylesheetId);
     if (!stylesheet || stylesheet.origin === "external-import" || definition.isCssModule) {
+      continue;
+    }
+    if (isOrphanCssFileStylesheet({ context, stylesheet })) {
       continue;
     }
     if (

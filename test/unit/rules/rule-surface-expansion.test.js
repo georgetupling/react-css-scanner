@@ -22,7 +22,8 @@ test("orphan-css-file reports project stylesheets that cannot reach analyzed Rea
     assert.equal(finding.confidence, "high");
     assert.equal(finding.subject.kind, "stylesheet");
     assert.equal(finding.data?.stylesheetFilePath, "src/Dead.css");
-    assert.deepEqual(finding.data?.classNames, ["dead"]);
+    assert.deepEqual(finding.data?.sampleClassNames, ["dead"]);
+    assertNoRuleFinding(result, "unused-css-class");
   } finally {
     await project.cleanup();
   }
@@ -95,6 +96,32 @@ test("css-module-import-not-used reports unused CSS Module imports", async () =>
     assert.equal(finding.subject.kind, "css-module-import");
     assert.equal(finding.data?.localName, "styles");
     assert.equal(finding.data?.stylesheetFilePath, "src/Button.module.css");
+    assertNoRuleFinding(result, "unused-css-module-class");
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unused-css-module-class still reports unused classes when the module import is used", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/Button.tsx",
+      'import styles from "./Button.module.css";\nexport function Button() { return <button className={styles.root}>Save</button>; }\n',
+    )
+    .withCssFile("src/Button.module.css", ".root { color: green; }\n.unused { color: red; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoRuleFinding(result, "css-module-import-not-used");
+    assert.equal(
+      result.findings.some(
+        (finding) =>
+          finding.ruleId === "unused-css-module-class" && finding.data?.className === "unused",
+      ),
+      true,
+    );
   } finally {
     await project.cleanup();
   }
