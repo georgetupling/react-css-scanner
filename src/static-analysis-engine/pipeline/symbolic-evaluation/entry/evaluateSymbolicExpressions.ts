@@ -2,17 +2,17 @@ import {
   missingExpressionSyntaxDiagnostic,
   sortSymbolicEvaluationDiagnostics,
   unresolvedClassExpressionSiteDiagnostic,
-} from "./diagnostics.js";
-import { buildEvaluatedExpressionIndexes } from "./indexes.js";
+} from "../model/diagnostics.js";
+import { buildEvaluatedExpressionIndexes } from "../model/indexes.js";
 import { createDefaultSymbolicEvaluatorRegistry } from "./registry.js";
-import type { ClassExpressionSiteNode, ExpressionSyntaxNode } from "../fact-graph/index.js";
+import type { ClassExpressionSiteNode, ExpressionSyntaxNode } from "../../fact-graph/index.js";
 import type {
   CanonicalClassExpression,
   ConditionFact,
   SymbolicEvaluationDiagnostic,
   SymbolicEvaluationInput,
   SymbolicEvaluationResult,
-} from "./types.js";
+} from "../model/types.js";
 
 export function evaluateSymbolicExpressions(
   input: SymbolicEvaluationInput,

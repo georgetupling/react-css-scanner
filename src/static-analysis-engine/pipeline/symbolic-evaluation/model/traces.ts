@@ -1,5 +1,5 @@
-import type { AnalysisTrace } from "../../types/analysis.js";
-import type { SourceAnchor } from "../../types/core.js";
+import type { AnalysisTrace } from "../../../types/analysis.js";
+import type { SourceAnchor } from "../../../types/core.js";
 
 export function createSymbolicEvaluationTrace(input: {
   traceId: string;

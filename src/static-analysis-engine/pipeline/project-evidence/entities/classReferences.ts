@@ -1,6 +1,6 @@
-import type { ClassExpressionSummary } from "../../symbolic-evaluation/class-values/types.js";
-import { toClassExpressionSummary } from "../../symbolic-evaluation/adapters/classExpressionSummary.js";
-import type { CanonicalClassExpression } from "../../symbolic-evaluation/types.js";
+import type { ClassExpressionSummary } from "../../symbolic-evaluation/values/types.js";
+import { toClassExpressionSummary } from "../../symbolic-evaluation/canonical/classExpressionSummary.js";
+import type { CanonicalClassExpression } from "../../symbolic-evaluation/model/types.js";
 import type {
   EmissionSite,
   PlacementCondition,

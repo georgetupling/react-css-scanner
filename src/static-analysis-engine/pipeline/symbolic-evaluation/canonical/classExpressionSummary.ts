@@ -1,6 +1,6 @@
-import { toAbstractClassSet, uniqueSorted } from "../class-values/classValueOperations.js";
-import type { AbstractValue, ClassExpressionSummary } from "../class-values/types.js";
-import type { CanonicalClassExpression } from "../types.js";
+import { toAbstractClassSet, uniqueSorted } from "../values/classValueOperations.js";
+import type { AbstractValue, ClassExpressionSummary } from "../values/types.js";
+import type { CanonicalClassExpression } from "../model/types.js";
 
 export function toClassExpressionSummary(
   expression: CanonicalClassExpression,

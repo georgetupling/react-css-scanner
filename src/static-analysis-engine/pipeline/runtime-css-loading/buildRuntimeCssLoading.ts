@@ -12,8 +12,15 @@ import {
   collectReachableSourceFilePaths,
   enqueueDynamicImportTargets,
 } from "./graphTraversal.js";
+import { runtimeCssChunkId, runtimeCssEntryId } from "./ids.js";
 import { pushMapValue } from "./mapUtils.js";
 import { normalizeProjectPath } from "./pathUtils.js";
+import {
+  compareRuntimeCssAvailability,
+  compareRuntimeCssChunks,
+  compareRuntimeCssDiagnostics,
+  compareRuntimeCssEntries,
+} from "./sorting.js";
 import type {
   RuntimeCssAvailability,
   RuntimeCssBundlerProfile,
@@ -683,65 +690,4 @@ function pushAvailabilityRecord(input: {
   }
   input.availabilityKeys.add(key);
   input.availability.push(record);
-}
-
-function compareRuntimeCssEntries(left: RuntimeCssEntry, right: RuntimeCssEntry): number {
-  return left.id.localeCompare(right.id);
-}
-
-function compareRuntimeCssChunks(left: RuntimeCssChunk, right: RuntimeCssChunk): number {
-  return left.id.localeCompare(right.id);
-}
-
-function compareRuntimeCssAvailability(
-  left: RuntimeCssAvailability,
-  right: RuntimeCssAvailability,
-): number {
-  return (
-    left.stylesheetFilePath.localeCompare(right.stylesheetFilePath) ||
-    left.sourceFilePath.localeCompare(right.sourceFilePath) ||
-    left.entryId.localeCompare(right.entryId) ||
-    left.chunkId.localeCompare(right.chunkId) ||
-    left.entrySourceFilePath.localeCompare(right.entrySourceFilePath) ||
-    (left.htmlFilePath ?? "").localeCompare(right.htmlFilePath ?? "") ||
-    left.availability.localeCompare(right.availability) ||
-    left.reason.localeCompare(right.reason)
-  );
-}
-
-function compareRuntimeCssDiagnostics(
-  left: RuntimeCssDiagnostic,
-  right: RuntimeCssDiagnostic,
-): number {
-  return (
-    left.code.localeCompare(right.code) ||
-    (left.filePath ?? "").localeCompare(right.filePath ?? "") ||
-    left.message.localeCompare(right.message)
-  );
-}
-
-function runtimeCssEntryId(input: {
-  kind: RuntimeCssEntry["kind"];
-  entrySourceFilePath: string;
-  htmlFilePath?: string;
-}): string {
-  return [
-    "runtime-css-entry",
-    input.kind,
-    normalizeProjectPath(input.entrySourceFilePath),
-    input.htmlFilePath ? normalizeProjectPath(input.htmlFilePath) : "",
-  ].join(":");
-}
-
-function runtimeCssChunkId(input: {
-  entryId: string;
-  loading: RuntimeCssChunk["loading"];
-  rootSourceFilePath: string;
-}): string {
-  return [
-    "runtime-css-chunk",
-    input.entryId,
-    input.loading,
-    normalizeProjectPath(input.rootSourceFilePath),
-  ].join(":");
 }

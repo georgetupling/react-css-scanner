@@ -1,11 +1,15 @@
-import type { AnalysisConfidence, AnalysisSeverity, AnalysisTrace } from "../../types/analysis.js";
-import type { SourceAnchor } from "../../types/core.js";
+import type {
+  AnalysisConfidence,
+  AnalysisSeverity,
+  AnalysisTrace,
+} from "../../../types/analysis.js";
+import type { SourceAnchor } from "../../../types/core.js";
 import type {
   ClassExpressionSiteNode,
   ExpressionSyntaxNode,
   FactGraph,
   FactNodeId,
-} from "../fact-graph/index.js";
+} from "../../fact-graph/index.js";
 
 export type EvaluatedExpressionId = string;
 export type ConditionId = string;

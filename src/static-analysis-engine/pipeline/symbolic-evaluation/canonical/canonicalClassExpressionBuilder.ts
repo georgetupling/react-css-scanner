@@ -1,14 +1,14 @@
 import {
+  canonicalClassExpressionId,
   classEmissionVariantId,
   conditionId,
   tokenAlternativeId,
   unsupportedReasonId,
-} from "../ids.js";
-import { canonicalClassExpressionId } from "../ids.js";
-import { symbolicEvaluationProvenance } from "../diagnostics.js";
-import { buildClassExpressionTraces } from "../class-values/classExpressionTraces.js";
-import { toAbstractClassSet, tokenizeClassNames } from "../class-values/classValueOperations.js";
-import type { AbstractValue } from "../class-values/types.js";
+} from "../model/ids.js";
+import { symbolicEvaluationProvenance } from "../model/diagnostics.js";
+import { buildClassExpressionTraces } from "../values/classExpressionTraces.js";
+import { toAbstractClassSet, tokenizeClassNames } from "../values/classValueOperations.js";
+import type { AbstractValue } from "../values/types.js";
 import type {
   CanonicalClassExpression,
   CanonicalExpressionKind,
@@ -19,7 +19,7 @@ import type {
   TokenAlternative,
   UnsupportedReason,
   UnsupportedReasonCode,
-} from "../types.js";
+} from "../model/types.js";
 
 export function buildCanonicalClassExpressionFromValue(input: {
   input: SymbolicExpressionEvaluatorInput;

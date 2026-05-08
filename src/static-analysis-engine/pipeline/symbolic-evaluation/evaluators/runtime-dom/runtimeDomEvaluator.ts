@@ -1,8 +1,8 @@
 import {
   buildCanonicalClassExpressionFromValue,
   buildConditions,
-} from "./canonicalClassExpressionBuilder.js";
-import type { SymbolicExpressionEvaluator } from "../types.js";
+} from "../../canonical/canonicalClassExpressionBuilder.js";
+import type { SymbolicExpressionEvaluator } from "../../model/types.js";
 
 export const runtimeDomClassExpressionEvaluator: SymbolicExpressionEvaluator = {
   name: "runtime-dom-class-expression",

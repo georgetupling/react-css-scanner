@@ -2,9 +2,11 @@ import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 import type { ScanDiagnostic } from "../project/types.js";
 import type { ResolvedScannerConfig } from "./types.js";
-import { cloneScannerConfig, DEFAULT_SCANNER_CONFIG, parseConfig } from "./validation.js";
+import { cloneScannerConfig } from "./cloneConfig.js";
+import { DEFAULT_SCANNER_CONFIG } from "./defaults.js";
+import { parseConfig } from "./validation.js";
 
-export { DEFAULT_SCANNER_CONFIG } from "./validation.js";
+export { DEFAULT_SCANNER_CONFIG } from "./defaults.js";
 
 const CONFIG_FILE_NAME = "scan-react-css.json";
 const CONFIG_DIR_ENV_VAR = "SCAN_REACT_CSS_CONFIG_DIR";

@@ -1,12 +1,12 @@
-import { fallbackClassExpressionEvaluator } from "./evaluators/fallbackEvaluator.js";
-import { normalizedClassExpressionEvaluator } from "./evaluators/normalizedExpressionEvaluator.js";
-import { runtimeDomClassExpressionEvaluator } from "./evaluators/runtimeDomEvaluator.js";
+import { fallbackClassExpressionEvaluator } from "../evaluators/fallback/fallbackEvaluator.js";
+import { normalizedClassExpressionEvaluator } from "../evaluators/normalized/normalizedExpressionEvaluator.js";
+import { runtimeDomClassExpressionEvaluator } from "../evaluators/runtime-dom/runtimeDomEvaluator.js";
 import type {
   SymbolicEvaluatorRegistry,
   SymbolicExpressionEvaluator,
   SymbolicExpressionEvaluatorInput,
   SymbolicExpressionEvaluatorResult,
-} from "./types.js";
+} from "../model/types.js";
 
 export function createDefaultSymbolicEvaluatorRegistry(): SymbolicEvaluatorRegistry {
   return createSymbolicEvaluatorRegistry([

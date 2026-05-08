@@ -1,11 +1,11 @@
-import { canonicalClassExpressionId, unsupportedReasonId } from "../ids.js";
-import { symbolicEvaluationProvenance } from "../diagnostics.js";
-import { createSymbolicEvaluationTrace, traceList } from "../traces.js";
+import { canonicalClassExpressionId, unsupportedReasonId } from "../../model/ids.js";
+import { symbolicEvaluationProvenance } from "../../model/diagnostics.js";
+import { createSymbolicEvaluationTrace, traceList } from "../../model/traces.js";
 import type {
   CanonicalClassExpression,
   SymbolicExpressionEvaluator,
   SymbolicExpressionEvaluatorInput,
-} from "../types.js";
+} from "../../model/types.js";
 
 export const fallbackClassExpressionEvaluator: SymbolicExpressionEvaluator = {
   name: "fallback-class-expression",

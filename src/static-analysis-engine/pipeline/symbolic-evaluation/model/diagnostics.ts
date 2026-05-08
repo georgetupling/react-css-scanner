@@ -1,4 +1,4 @@
-import type { ClassExpressionSiteNode, FactNodeId } from "../fact-graph/index.js";
+import type { ClassExpressionSiteNode, FactNodeId } from "../../fact-graph/index.js";
 import type { SymbolicEvaluationDiagnostic, SymbolicEvaluationProvenance } from "./types.js";
 
 export function symbolicEvaluationProvenance(input: {

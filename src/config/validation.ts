@@ -8,6 +8,16 @@ import type {
   RuleConfigSeverity,
   ScannerConfig,
 } from "./types.js";
+import {
+  cloneDiscoveryConfig,
+  cloneExternalCssConfig,
+  cloneExternalCssGlobals,
+  cloneIgnoreConfig,
+  cloneOwnershipConfig,
+  cloneReportingConfig,
+  cloneScannerConfig,
+} from "./cloneConfig.js";
+import { DEFAULT_SCANNER_CONFIG } from "./defaults.js";
 
 const RULE_SEVERITIES = new Set<RuleSeverity>(["debug", "info", "warn", "error"]);
 const RULE_CONFIG_VALUES = new Set<RuleConfigSeverity>(["off", "debug", "info", "warn", "error"]);
@@ -60,157 +70,6 @@ const EXTERNAL_CSS_GLOBAL_CONFIG_KEYS = new Set([
 const EXTERNAL_CSS_STYLESHEET_ROLES = new Set(["external-global", "third-party-runtime"]);
 const RULE_IDS = new Set(Object.keys(DEFAULT_RULE_SEVERITIES));
 
-export const DEFAULT_EXTERNAL_CSS_GLOBALS: ExternalCssGlobalProviderConfig[] = [
-  {
-    provider: "font-awesome",
-    match: [
-      "**/@fortawesome/fontawesome-free/css/*.css",
-      "**/font-awesome/**/css/*.css",
-      "**/fontawesome/**/css/*.css",
-      "**/cdnjs.cloudflare.com/ajax/libs/font-awesome/**/css/*.css",
-      "**/use.fontawesome.com/**.css",
-    ],
-    classPrefixes: ["fa-"],
-    classNames: ["fa", "fa-solid", "fa-regular", "fa-brands", "fa-light", "fa-thin", "fa-duotone"],
-    stylesheetRole: "external-global",
-  },
-  {
-    provider: "material-design-icons",
-    match: [
-      "**/@mdi/font@*/css/materialdesignicons*.css",
-      "**/npm/@mdi/font@*/css/materialdesignicons*.css",
-      "**/unpkg.com/@mdi/font@*/css/materialdesignicons*.css",
-      "**/materialdesignicons*.css",
-    ],
-    classPrefixes: ["mdi-"],
-    classNames: ["mdi", "mdi-set"],
-    stylesheetRole: "external-global",
-  },
-  {
-    provider: "bootstrap-icons",
-    match: [
-      "**/bootstrap-icons@*/font/bootstrap-icons*.css",
-      "**/npm/bootstrap-icons@*/font/bootstrap-icons*.css",
-      "**/unpkg.com/bootstrap-icons@*/font/bootstrap-icons*.css",
-      "**/bootstrap-icons/font/bootstrap-icons*.css",
-    ],
-    classPrefixes: ["bi-"],
-    classNames: ["bi"],
-    stylesheetRole: "external-global",
-  },
-  {
-    provider: "animate.css",
-    match: [
-      "**/cdnjs.cloudflare.com/ajax/libs/animate.css/**/animate*.css",
-      "**/animate.css@*/animate*.css",
-      "**/npm/animate.css@*/animate*.css",
-      "**/animate.css/**/animate*.css",
-    ],
-    classPrefixes: ["animate__"],
-    classNames: ["animate__animated"],
-    stylesheetRole: "external-global",
-  },
-  {
-    provider: "uikit",
-    match: [
-      "**/uikit@*/dist/css/uikit*.css",
-      "**/npm/uikit@*/dist/css/uikit*.css",
-      "**/unpkg.com/uikit@*/dist/css/uikit*.css",
-      "**/uikit/dist/css/uikit*.css",
-    ],
-    classPrefixes: ["uk-"],
-    classNames: [],
-    stylesheetRole: "external-global",
-  },
-  {
-    provider: "pure.css",
-    match: [
-      "**/purecss@*/build/pure*.css",
-      "**/npm/purecss@*/build/pure*.css",
-      "**/unpkg.com/purecss@*/build/pure*.css",
-      "**/purecss/build/pure*.css",
-    ],
-    classPrefixes: ["pure-"],
-    classNames: [],
-    stylesheetRole: "external-global",
-  },
-  {
-    provider: "tinymce",
-    match: [
-      "**/tinymce/**/skin*.css",
-      "**/tinymce/**/content*.css",
-      "**/tinymce/skins/**/*.css",
-      "**/public/vendors/tinymce/**/*.css",
-      "**/node_modules/tinymce/**/*.css",
-    ],
-    classPrefixes: ["tox-", "mce-", "ephox-"],
-    classNames: ["tox", "mce-content-body"],
-    stylesheetRole: "third-party-runtime",
-  },
-  {
-    provider: "codemirror",
-    match: [
-      "**/codemirror/**/*.css",
-      "**/@codemirror/**/*.css",
-      "**/node_modules/codemirror/**/*.css",
-      "**/node_modules/@codemirror/**/*.css",
-    ],
-    classPrefixes: ["cm-", "CodeMirror-"],
-    classNames: ["CodeMirror", "cm-editor"],
-    stylesheetRole: "third-party-runtime",
-  },
-  {
-    provider: "prosemirror",
-    match: [
-      "**/prosemirror*/**/*.css",
-      "**/prosemirror-view/**/*.css",
-      "**/node_modules/prosemirror*/**/*.css",
-      "**/node_modules/prosemirror-view/**/*.css",
-    ],
-    classPrefixes: ["ProseMirror-"],
-    classNames: ["ProseMirror", "column-resize-handle", "selectedCell"],
-    stylesheetRole: "third-party-runtime",
-  },
-];
-
-export const DEFAULT_SCANNER_CONFIG: ScannerConfig = {
-  failOnSeverity: "error",
-  rules: {
-    ...DEFAULT_RULE_SEVERITIES,
-  },
-  cssModules: {
-    localsConvention: "camelCase",
-  },
-  externalCss: {
-    fetchRemote: false,
-    globals: cloneExternalCssGlobals(DEFAULT_EXTERNAL_CSS_GLOBALS),
-    remoteTimeoutMs: 5_000,
-  },
-  ownership: {
-    sharedCss: [],
-    sharingPolicy: "balanced",
-  },
-  discovery: {
-    sourceRoots: [],
-    exclude: [],
-    publicRoots: ["public"],
-    aliases: {},
-    stylesheetExtensions: [".css", ".less", ".sass", ".scss"],
-  },
-  ignore: {
-    classNames: [],
-    filePaths: [],
-  },
-  reporting: {
-    verbose: false,
-    json: false,
-    trace: false,
-    debugRuntimeCss: false,
-    outputDirectory: undefined,
-    overwriteOutput: false,
-  },
-};
-
 export function parseConfig(
   content: string,
   filePath: string,
@@ -262,19 +121,6 @@ export function parseConfig(
     discovery: parseDiscovery(parsed.discovery, filePath, diagnostics),
     ignore: parseIgnore(parsed.ignore, filePath, diagnostics),
     reporting: parseReporting(parsed.reporting, filePath, diagnostics),
-  };
-}
-
-export function cloneScannerConfig(config: ScannerConfig): ScannerConfig {
-  return {
-    failOnSeverity: config.failOnSeverity,
-    rules: { ...config.rules },
-    cssModules: { ...config.cssModules },
-    externalCss: cloneExternalCssConfig(config.externalCss),
-    ownership: cloneOwnershipConfig(config.ownership),
-    discovery: cloneDiscoveryConfig(config.discovery),
-    ignore: cloneIgnoreConfig(config.ignore),
-    reporting: cloneReportingConfig(config.reporting),
   };
 }
 
@@ -1020,65 +866,6 @@ function parseOptionalNonEmptyString(input: {
     message: input.message,
   });
   return undefined;
-}
-
-function cloneExternalCssConfig(
-  config: ScannerConfig["externalCss"],
-): ScannerConfig["externalCss"] {
-  return {
-    fetchRemote: config.fetchRemote,
-    globals: cloneExternalCssGlobals(config.globals),
-    remoteTimeoutMs: config.remoteTimeoutMs,
-  };
-}
-
-function cloneOwnershipConfig(config: ScannerConfig["ownership"]): ScannerConfig["ownership"] {
-  return {
-    sharedCss: [...config.sharedCss],
-    sharingPolicy: config.sharingPolicy,
-  };
-}
-
-function cloneDiscoveryConfig(config: ScannerConfig["discovery"]): ScannerConfig["discovery"] {
-  return {
-    sourceRoots: [...config.sourceRoots],
-    exclude: [...config.exclude],
-    publicRoots: [...config.publicRoots],
-    aliases: Object.fromEntries(
-      Object.entries(config.aliases).map(([key, values]) => [key, [...values]]),
-    ),
-    stylesheetExtensions: [...config.stylesheetExtensions],
-  };
-}
-
-function cloneIgnoreConfig(config: ScannerConfig["ignore"]): ScannerConfig["ignore"] {
-  return {
-    classNames: [...config.classNames],
-    filePaths: [...config.filePaths],
-  };
-}
-
-function cloneReportingConfig(config: ScannerConfig["reporting"]): ScannerConfig["reporting"] {
-  return {
-    verbose: config.verbose,
-    json: config.json,
-    trace: config.trace,
-    debugRuntimeCss: config.debugRuntimeCss,
-    outputDirectory: config.outputDirectory,
-    overwriteOutput: config.overwriteOutput,
-  };
-}
-
-function cloneExternalCssGlobals(
-  globals: ExternalCssGlobalProviderConfig[],
-): ExternalCssGlobalProviderConfig[] {
-  return globals.map((global) => ({
-    provider: global.provider,
-    match: [...global.match],
-    classPrefixes: [...global.classPrefixes],
-    classNames: [...global.classNames],
-    stylesheetRole: global.stylesheetRole,
-  }));
 }
 
 function parseAliases(

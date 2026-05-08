@@ -1,4 +1,4 @@
-import type { ClassExpressionSummary } from "../symbolic-evaluation/class-values/types.js";
+import type { ClassExpressionSummary } from "../symbolic-evaluation/values/types.js";
 import type {
   RenderGraphProjectionEdge,
   RenderModel,
@@ -11,7 +11,7 @@ import type {
 } from "../selector-reachability/index.js";
 import type { RuntimeCssLoadingResult } from "../runtime-css-loading/index.js";
 import type { FactGraphResult } from "../fact-graph/types.js";
-import type { SymbolicEvaluationResult } from "../symbolic-evaluation/types.js";
+import type { SymbolicEvaluationResult } from "../symbolic-evaluation/model/types.js";
 import type { AnalysisConfidence, AnalysisTrace } from "../../types/analysis.js";
 import type { SourceAnchor } from "../../types/core.js";
 import type { ResolvedCssModuleBindingDiagnosticReason } from "../language-frontends/source/css-module-syntax/types.js";

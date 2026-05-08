@@ -1,5 +1,5 @@
 import { emissionSiteId, renderPathId } from "../ids.js";
-import { conditionId } from "../../symbolic-evaluation/ids.js";
+import { conditionId } from "../../symbolic-evaluation/model/ids.js";
 import type {
   EmissionSite,
   EmissionTokenProvenance,

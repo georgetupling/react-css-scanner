@@ -13,7 +13,7 @@ export {
 } from "./pipeline/fact-graph/index.js";
 export { evaluateSymbolicExpressions } from "./pipeline/symbolic-evaluation/index.js";
 export { buildRenderStructure } from "./pipeline/render-structure/index.js";
-export { toAbstractClassSet } from "./pipeline/symbolic-evaluation/class-values/index.js";
+export { toAbstractClassSet } from "./pipeline/symbolic-evaluation/values/index.js";
 export { toClassExpressionSummary } from "./pipeline/symbolic-evaluation/index.js";
 export {
   buildSelectorReachability,

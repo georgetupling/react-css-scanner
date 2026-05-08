@@ -1,4 +1,4 @@
-export { evaluateSymbolicExpressions } from "./evaluateSymbolicExpressions.js";
+export { evaluateSymbolicExpressions } from "./entry/evaluateSymbolicExpressions.js";
 export {
   buildClassExpressionTraces,
   combineStrings,
@@ -6,8 +6,8 @@ export {
   toAbstractClassSet,
   tokenizeClassNames,
   uniqueSorted,
-} from "./class-values/index.js";
-export { toClassExpressionSummary } from "./adapters/classExpressionSummary.js";
+} from "./values/index.js";
+export { toClassExpressionSummary } from "./canonical/classExpressionSummary.js";
 export {
   canonicalClassExpressionId,
   classEmissionVariantId,
@@ -16,29 +16,29 @@ export {
   externalContributionId,
   tokenAlternativeId,
   unsupportedReasonId,
-} from "./ids.js";
-export { buildEvaluatedExpressionIndexes } from "./indexes.js";
+} from "./model/ids.js";
+export { buildEvaluatedExpressionIndexes } from "./model/indexes.js";
 export {
   createDefaultSymbolicEvaluatorRegistry,
   createSymbolicEvaluatorRegistry,
   fallbackClassExpressionEvaluator,
   normalizedClassExpressionEvaluator,
   runtimeDomClassExpressionEvaluator,
-} from "./registry.js";
-export { createSymbolicEvaluationTrace, traceList } from "./traces.js";
+} from "./entry/registry.js";
+export { createSymbolicEvaluationTrace, traceList } from "./model/traces.js";
 export {
   duplicateEvaluatedExpressionIdDiagnostic,
   missingExpressionSyntaxDiagnostic,
   sortSymbolicEvaluationDiagnostics,
   symbolicEvaluationProvenance,
   unresolvedClassExpressionSiteDiagnostic,
-} from "./diagnostics.js";
+} from "./model/diagnostics.js";
 export type {
   AbstractClassSet,
   AbstractValue,
   ClassDerivationStep,
   ClassExpressionSummary,
-} from "./class-values/index.js";
+} from "./values/index.js";
 export type {
   CanonicalClassExpression,
   CanonicalExpressionKind,
@@ -63,4 +63,4 @@ export type {
   TokenAlternative,
   UnsupportedReason,
   UnsupportedReasonCode,
-} from "./types.js";
+} from "./model/types.js";

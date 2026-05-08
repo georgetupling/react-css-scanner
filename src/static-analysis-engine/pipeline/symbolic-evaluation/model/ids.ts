@@ -1,5 +1,5 @@
-import type { FactNodeId } from "../fact-graph/index.js";
-import { normalizeIdPart } from "../fact-graph/ids.js";
+import type { FactNodeId } from "../../fact-graph/index.js";
+import { normalizeIdPart } from "../../fact-graph/ids.js";
 import type { EvaluatedExpressionId, UnsupportedReasonCode } from "./types.js";
 
 export function canonicalClassExpressionId(siteNodeId: FactNodeId): EvaluatedExpressionId {
