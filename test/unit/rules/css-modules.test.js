@@ -383,6 +383,69 @@ test("CSS Module rules treat destructured bindings as module member usage", asyn
   }
 });
 
+test("CSS Module rules resolve top-level destructured bindings as static module classes", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import styles from "./App.module.css";',
+        "const { button } = styles;",
+        "export function App() {",
+        "  return <button className={button}>Save</button>;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.module.css", ".button { color: blue; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assert.deepEqual(
+      result.findings.filter(
+        (finding) =>
+          finding.ruleId === "dynamic-class-reference" ||
+          finding.ruleId === "unused-css-module-class" ||
+          finding.ruleId === "missing-css-module-class",
+      ),
+      [],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("missing-css-module-class for top-level destructured bindings has no dynamic debug noise", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import styles from "./App.module.css";',
+        "const { missing } = styles;",
+        "export function App() {",
+        "  return <button className={missing}>Save</button>;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.module.css", ".button { color: blue; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assert.equal(hasModuleFinding(result, "missing-css-module-class", "missing"), true);
+    assert.equal(hasModuleFinding(result, "unused-css-module-class", "button"), true);
+    assert.deepEqual(
+      result.findings.filter((finding) => finding.ruleId === "dynamic-class-reference"),
+      [],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("CSS Module rules treat destructured bindings inside components as module usage", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(

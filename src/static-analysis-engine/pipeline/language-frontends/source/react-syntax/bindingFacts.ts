@@ -91,7 +91,21 @@ export function collectTopLevelHelperBindingFacts(input: {
       node: input.sourceFile,
     });
     for (const declaration of statement.declarationList.declarations) {
-      if (!ts.isIdentifier(declaration.name) || !declaration.initializer) {
+      if (!declaration.initializer) {
+        continue;
+      }
+
+      if (!ts.isIdentifier(declaration.name)) {
+        collectLocalBindingFactFromDeclaration({
+          declaration,
+          scope,
+          statements: input.sourceFile.statements,
+          ownerKind: "source-file",
+          ownerKey: input.filePath,
+          filePath: input.filePath,
+          sourceFile: input.sourceFile,
+          collected,
+        });
         continue;
       }
 
