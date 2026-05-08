@@ -16,10 +16,6 @@ export function parseSelectorBranch(branch: string): ParsedSelectorBranch | unde
   const subjectStep = steps[subjectStepIndex];
   const subjectClassNames = subjectStep.selector.requiredClasses;
   const classAttributePredicates = subjectStep.selector.classAttributePredicates;
-  if (subjectClassNames.length === 0 && classAttributePredicates.length === 0) {
-    return undefined;
-  }
-
   const contextClassNames = unique(
     steps
       .slice(0, -1)
@@ -36,6 +32,15 @@ export function parseSelectorBranch(branch: string): ParsedSelectorBranch | unde
   const negativeClassNames = unique(subjectStep.selector.negativeClasses);
   const hasDescendantClassNames = unique(subjectStep.selector.hasDescendantClasses);
   const hasUnknownSemantics = steps.some((step) => step.selector.hasUnknownSemantics);
+  if (
+    subjectClassNames.length === 0 &&
+    classAttributePredicates.length === 0 &&
+    contextClassNames.length === 0 &&
+    negativeClassNames.length === 0
+  ) {
+    return undefined;
+  }
+
   const hasCombinators = steps.length > 1;
   const hasSubjectModifiers =
     subjectStep.selector.hasSubjectModifiers || subjectStep.selector.hasTypeOrIdConstraint;

@@ -572,6 +572,37 @@ test("compound-selector-never-matched does not report matched same-node class co
   }
 });
 
+test("compound-selector-never-matched allows cloneElement slot class merges", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import React from "react";',
+        'import "./App.css";',
+        "",
+        "function Slot({ children, className }: { children: React.ReactElement<{ className?: string }>; className: string }) {",
+        "  return React.cloneElement(children, {",
+        '    className: [children.props.className, className].filter(Boolean).join(" "),',
+        "  });",
+        "}",
+        "",
+        'export function App() { return <Slot className="trigger"><button className="button">Save</button></Slot>; }',
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".button.trigger { color: blue; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoSelectorFindings(result, "compound-selector-never-matched", [".button.trigger"]);
+    assertNoClassFindings(result, "unused-css-class", ["trigger"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("compound-selector-never-matched does not report non-local package CSS selectors", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(
@@ -827,6 +858,34 @@ test("unsatisfiable-selector treats slotted children as adjacent sibling blocker
     const result = await scanProject({ rootDir: project.rootDir });
 
     assert.equal(hasSelectorFinding(result, "unsatisfiable-selector", ".first + .second"), true);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unsatisfiable-selector allows array children passed through wrappers", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        "function Card({ children }: { children: React.ReactNode }) {",
+        '  return <section className="card">{children}</section>;',
+        "}",
+        "export function App() {",
+        '  const children = [<h2 key="title" className="title">Title</h2>];',
+        "  return <Card>{children}</Card>;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".card .title { color: blue; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoSelectorFindings(result, "unsatisfiable-selector", [".card .title"]);
   } finally {
     await project.cleanup();
   }

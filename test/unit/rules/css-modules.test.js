@@ -121,6 +121,53 @@ test("missing-css-module-class reports missing module members", async () => {
   }
 });
 
+test("missing-css-module-class reports missing computed literal module members", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import styles from "./App.module.css";',
+        'const key = "missing";',
+        "export function App() { return <button className={styles[key]}>Save</button>; }",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.module.css", ".button { color: blue; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assert.equal(hasModuleFinding(result, "missing-css-module-class", "missing"), true);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("missing-css-module-class reports missing finite template module variants", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import styles from "./App.module.css";',
+        'export function App({ tone }: { tone: "Primary" | "Danger" }) {',
+        "  return <button className={styles[`button${tone}`]}>Save</button>;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.module.css", ".buttonPrimary { color: blue; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assert.equal(hasModuleFinding(result, "missing-css-module-class", "buttonDanger"), true);
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("unused-css-module-class reports exported module classes without member usage", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(
@@ -180,6 +227,28 @@ test("CSS Module rules support string-literal element access", async () => {
   }
 });
 
+test("CSS Module rules export local classes before global descendants", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import styles from "./App.module.css";',
+        'export function App() { return <div className={styles.card}><span className="badge">New</span></div>; }',
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.module.css", ".card :global(.badge) { color: green; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assert.equal(hasModuleFinding(result, "missing-css-module-class", "card"), false);
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("CSS Module rules support Less module imports", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(
@@ -218,6 +287,14 @@ test("CSS Module rules support Less module imports", async () => {
     await project.cleanup();
   }
 });
+
+function hasModuleFinding(result, ruleId, memberName) {
+  return result.findings.some(
+    (finding) =>
+      finding.ruleId === ruleId &&
+      (finding.data?.memberName === memberName || finding.data?.className === memberName),
+  );
+}
 
 test("CSS Module rules ignore classes from imported Less partials", async () => {
   const project = await new TestProjectBuilder()

@@ -1583,6 +1583,28 @@ test("missing-css-class accepts context classes nested in :has(:not()) selectors
   }
 });
 
+test("missing-css-class accepts classes inside nested :where(:not()) selector contexts", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        'export function App() { return <section className="card"><h2 className="title">Title</h2></section>; }',
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".card :where(:not(.title)) { color: gray; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "missing-css-class", ["card", "title"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("missing-css-class reports missing default JSON object property class tokens", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(

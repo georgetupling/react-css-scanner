@@ -92,6 +92,14 @@ export function matchElementClassRequirement(input: {
     };
   }
 
+  if (input.indexes.unknownClassElementIds.includes(input.elementId)) {
+    return {
+      certainty: "unknown-context",
+      supportingEmissionSiteIds: uniqueSorted(supportingEmissionSiteIds),
+      matchedClassNames: [],
+    };
+  }
+
   return noMatch(input.classNames);
 }
 

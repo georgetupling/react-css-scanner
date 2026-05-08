@@ -2856,6 +2856,11 @@ function getClassArrayJoinTarget(
     if (concatTarget) {
       return concatTarget;
     }
+
+    const mapTarget = getArrayMapTarget(input, unwrapped);
+    if (mapTarget) {
+      return mapTarget;
+    }
   }
 
   if (unwrapped.expressionKind !== "call" || !isBooleanFilterCall(input, unwrapped)) {
@@ -2920,6 +2925,48 @@ function getArrayConcatTarget(
     hasSpreadElement,
     hasOmittedElement,
   };
+}
+
+function getArrayMapTarget(
+  input: {
+    input: SymbolicExpressionEvaluatorInput;
+    depth: number;
+    seenExpressionIds: Set<string>;
+    helperBindings?: Map<string, AbstractValue>;
+  },
+  expression: Extract<ExpressionSyntaxNode, { expressionKind: "call" }>,
+): ClassArrayJoinTarget | undefined {
+  if (expression.hasSpreadArgument || expression.argumentExpressionIds.length !== 1) {
+    return undefined;
+  }
+
+  const callee = getExpressionSyntax(input.input, expression.calleeExpressionId);
+  if (!callee || callee.expressionKind !== "member-access" || callee.propertyName !== "map") {
+    return undefined;
+  }
+
+  const callback = getExpressionSyntax(input.input, expression.argumentExpressionIds[0]);
+  if (!callback || callback.expressionKind !== "function" || !isIdentityMapCallback(callback)) {
+    return undefined;
+  }
+
+  const target = getExpressionSyntax(input.input, callee.objectExpressionId);
+  return target ? getClassArrayJoinTarget(input, target) : undefined;
+}
+
+function isIdentityMapCallback(
+  callback: Extract<ExpressionSyntaxNode, { expressionKind: "function" }>,
+): boolean {
+  if (callback.parameterCount !== 1 || callback.returnExpressionIds.length !== 1) {
+    return false;
+  }
+
+  const match =
+    /^\(?\s*([_$a-zA-Z][_$\w]*)\s*\)?\s*=>\s*\1$/u.exec(callback.rawText) ??
+    /^function\s*\(\s*([_$a-zA-Z][_$\w]*)\s*\)\s*\{\s*return\s+\1\s*;?\s*\}$/u.exec(
+      callback.rawText,
+    );
+  return Boolean(match);
 }
 
 function isBooleanFilterCall(

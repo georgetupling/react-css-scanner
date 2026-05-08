@@ -224,10 +224,68 @@ export function buildStructuralMatches(input: {
     }
   }
 
+  if (
+    branchMatches.length === 0 &&
+    leftMatches.length > 0 &&
+    rightMatches.length > 0 &&
+    mayMatchThroughRenderedPropSlot({
+      combinator: input.constraint.combinator,
+      renderModel: input.renderModel,
+    })
+  ) {
+    const leftMatch = leftMatches[0];
+    const rightMatch = rightMatches[0];
+    const leftElement = input.renderModel.indexes.elementById.get(leftMatch.elementId);
+    const rightElement = input.renderModel.indexes.elementById.get(rightMatch.elementId);
+    if (leftElement && rightElement) {
+      branchMatches.push({
+        id: selectorBranchMatchId({
+          selectorBranchNodeId: input.branch.id,
+          elementId: `${leftMatch.elementId}:${rightMatch.elementId}:rendered-prop-slot`,
+        }),
+        selectorBranchNodeId: input.branch.id,
+        subjectElementId: rightMatch.elementId,
+        elementMatchIds: [leftMatch.id, rightMatch.id].sort(compareStrings),
+        supportingEmissionSiteIds: mergeUniqueSortedStrings(
+          leftMatch.supportingEmissionSiteIds,
+          rightMatch.supportingEmissionSiteIds,
+        ),
+        requiredClassNames,
+        matchedClassNames: mergeUniqueSortedStrings(
+          leftMatch.matchedClassNames,
+          rightMatch.matchedClassNames,
+        ),
+        renderPathIds:
+          leftElement.renderPathId === rightElement.renderPathId
+            ? [leftElement.renderPathId]
+            : [leftElement.renderPathId, rightElement.renderPathId].sort(compareStrings),
+        placementConditionIds: mergeUniqueSortedStrings(
+          leftElement.placementConditionIds,
+          rightElement.placementConditionIds,
+        ),
+        certainty: "unknown-context",
+        confidence: "medium",
+        traces: [],
+      });
+    }
+  }
+
   return {
     elementMatches: deduplicateElementMatches([...leftMatches, ...rightMatches]),
     branchMatches: branchMatches.sort((left, right) => compareStrings(left.id, right.id)),
   };
+}
+
+function mayMatchThroughRenderedPropSlot(input: {
+  combinator: StructuralConstraint["combinator"];
+  renderModel: RenderModel;
+}): boolean {
+  return (
+    (input.combinator === "descendant" || input.combinator === "child") &&
+    input.renderModel.componentBoundaries.some((boundary) =>
+      Boolean(boundary.renderedPropSlots?.length),
+    )
+  );
 }
 
 function isRepeatedSiblingCandidate(input: {

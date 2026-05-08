@@ -98,6 +98,13 @@ export function parseSimpleSelectorSequence(segment: string): ParsedSimpleSelect
           requiredClasses.push(...parsedRequiredClasses);
           continue;
         }
+
+        const parsedContextClasses = parseContextOnlyClassNames(inner.content);
+        if (parsedContextClasses) {
+          contextOnlyClasses.push(...parsedContextClasses);
+          negativeClasses.push(...parsedContextClasses);
+          continue;
+        }
       }
 
       if (normalizedPseudoName === "has") {
@@ -296,6 +303,24 @@ function unwrapContextOnlyClassSelectorListPseudo(selector: string): string[] | 
   }
 
   return parseNegatedClassNames(inner.content);
+}
+
+function parseContextOnlyClassNames(value: string): string[] | undefined {
+  const selectors = splitTopLevelSelectorList(value);
+  if (selectors.length === 0) {
+    return undefined;
+  }
+
+  const classNames: string[] = [];
+  for (const selector of selectors) {
+    const unwrappedClassNames = unwrapContextOnlyClassSelectorListPseudo(selector.trim());
+    if (!unwrappedClassNames) {
+      return undefined;
+    }
+    classNames.push(...unwrappedClassNames);
+  }
+
+  return classNames;
 }
 
 function parseNegatedClassNames(value: string): string[] | undefined {

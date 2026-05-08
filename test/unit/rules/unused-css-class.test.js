@@ -326,6 +326,29 @@ test("unused-css-class accepts finite array concat join class composition", asyn
   }
 });
 
+test("unused-css-class accepts identity array map joins", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        'const classes = ["btn", "primary"] as const;',
+        'export function App() { return <button className={classes.map((className) => className).join(" ")}>Save</button>; }',
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".btn { display: inline-block; }\n.primary { color: blue; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", ["btn", "primary"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("unused-css-class preserves className flow through forwardRef wrappers", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(

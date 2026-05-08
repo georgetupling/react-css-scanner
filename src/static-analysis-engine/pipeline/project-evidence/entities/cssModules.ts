@@ -11,6 +11,7 @@ import type {
   ProjectEvidenceBuildInput,
   ProjectEvidenceBuilderIndexes,
 } from "../analysisTypes.js";
+import type { ExpressionSyntaxNode } from "../../fact-graph/index.js";
 import { buildCssModuleAliases } from "../../language-frontends/source/css-module-syntax/analyzeCssModuleAliases.js";
 import { getCssModuleDestructuring } from "../../language-frontends/source/css-module-syntax/analyzeCssModuleDestructuring.js";
 import { getCssModuleMemberAccess } from "../../language-frontends/source/css-module-syntax/analyzeCssModuleMemberAccess.js";
@@ -432,9 +433,6 @@ export function buildCssModuleMemberReferences(input: {
   }
 
   for (const classSite of input.projectInput.factGraph?.graph.nodes.classExpressionSites ?? []) {
-    if (classSite.classExpressionSiteKind !== "css-module-member") {
-      continue;
-    }
     const expressionNode = input.projectInput.factGraph?.graph.indexes.nodesById.get(
       classSite.expressionNodeId,
     );
@@ -442,31 +440,37 @@ export function buildCssModuleMemberReferences(input: {
       continue;
     }
 
-    const resolved = resolveCssModuleExpressionReference({
+    const resolvedReferences = resolveCssModuleExpressionReferences({
       expressionNode,
       factGraph: input.projectInput.factGraph?.graph,
     });
-    if (!resolved) {
+    if (resolvedReferences.length === 0) {
       continue;
     }
 
-    const importsForBinding =
-      importBySourceLocalName.get(
-        `${normalizeProjectPath(classSite.filePath)}:${resolved.localName}`,
-      ) ?? [];
-    for (const cssImport of importsForBinding) {
-      memberReferences.push({
-        id: createCssModuleMemberReferenceId(classSite.location, cssImport.id, resolved.memberName),
-        importId: cssImport.id,
-        sourceFileId: cssImport.sourceFileId,
-        stylesheetId: cssImport.stylesheetId,
-        localName: resolved.localName,
-        memberName: resolved.memberName,
-        accessKind: resolved.accessKind,
-        location: classSite.location,
-        rawExpressionText: classSite.rawExpressionText,
-        traces: [],
-      });
+    for (const resolved of resolvedReferences) {
+      const importsForBinding =
+        importBySourceLocalName.get(
+          `${normalizeProjectPath(classSite.filePath)}:${resolved.localName}`,
+        ) ?? [];
+      for (const cssImport of importsForBinding) {
+        memberReferences.push({
+          id: createCssModuleMemberReferenceId(
+            classSite.location,
+            cssImport.id,
+            resolved.memberName,
+          ),
+          importId: cssImport.id,
+          sourceFileId: cssImport.sourceFileId,
+          stylesheetId: cssImport.stylesheetId,
+          localName: resolved.localName,
+          memberName: resolved.memberName,
+          accessKind: resolved.accessKind,
+          location: classSite.location,
+          rawExpressionText: classSite.rawExpressionText,
+          traces: [],
+        });
+      }
     }
   }
 
@@ -834,21 +838,18 @@ export function toCamelCaseClassName(className: string): string {
   );
 }
 
-function resolveCssModuleExpressionReference(input: {
-  expressionNode: {
-    expressionKind: string;
-    objectExpressionId?: string;
-    propertyName?: string;
-    argumentExpressionId?: string;
-  };
+function resolveCssModuleExpressionReferences(input: {
+  expressionNode: ExpressionSyntaxNode;
   factGraph?: NonNullable<ProjectEvidenceBuildInput["factGraph"]>["graph"];
-}):
-  | { localName: string; memberName: string; accessKind: "property" | "string-literal-element" }
-  | undefined {
+}): Array<{
+  localName: string;
+  memberName: string;
+  accessKind: "property" | "string-literal-element";
+}> {
   const expressionNode = input.expressionNode;
   const nodesById = input.factGraph?.indexes.nodesById;
   if (!nodesById) {
-    return undefined;
+    return [];
   }
 
   if (expressionNode.expressionKind === "member-access" && expressionNode.propertyName) {
@@ -863,13 +864,15 @@ function resolveCssModuleExpressionReference(input: {
       objectNode.kind !== "expression-syntax" ||
       objectNode.expressionKind !== "identifier"
     ) {
-      return undefined;
+      return [];
     }
-    return {
-      localName: objectNode.name,
-      memberName: expressionNode.propertyName,
-      accessKind: "property",
-    };
+    return [
+      {
+        localName: objectNode.name,
+        memberName: expressionNode.propertyName,
+        accessKind: "property",
+      },
+    ];
   }
 
   if (expressionNode.expressionKind === "element-access" && expressionNode.argumentExpressionId) {
@@ -888,17 +891,65 @@ function resolveCssModuleExpressionReference(input: {
       objectNode.kind !== "expression-syntax" ||
       objectNode.expressionKind !== "identifier" ||
       !argumentNode ||
-      argumentNode.kind !== "expression-syntax" ||
-      argumentNode.expressionKind !== "string-literal"
+      argumentNode.kind !== "expression-syntax"
     ) {
-      return undefined;
+      return [];
     }
-    return {
+    const memberNames = getStringCandidatesFromExpressionNode(argumentNode, input.factGraph);
+    if (memberNames.length === 0) {
+      return [];
+    }
+    return memberNames.map((memberName) => ({
       localName: objectNode.name,
-      memberName: argumentNode.value,
-      accessKind: "string-literal-element",
-    };
+      memberName,
+      accessKind: "string-literal-element" as const,
+    }));
   }
 
-  return undefined;
+  return [];
+}
+
+function getStringCandidatesFromExpressionNode(
+  expressionNode: ReturnType<
+    NonNullable<ProjectEvidenceBuildInput["factGraph"]>["graph"]["indexes"]["nodesById"]["get"]
+  >,
+  factGraph: NonNullable<ProjectEvidenceBuildInput["factGraph"]>["graph"] | undefined,
+): string[] {
+  if (!expressionNode || expressionNode.kind !== "expression-syntax") {
+    return [];
+  }
+
+  if (expressionNode.expressionKind === "string-literal") {
+    return [expressionNode.value];
+  }
+
+  if (expressionNode.expressionKind === "identifier") {
+    return [...(expressionNode.possibleStringValues ?? [])].sort((left, right) =>
+      left.localeCompare(right),
+    );
+  }
+
+  if (expressionNode.expressionKind !== "template-literal") {
+    return [];
+  }
+
+  let candidates = [expressionNode.headText];
+  for (const span of expressionNode.spans) {
+    const spanNodeId = factGraph?.indexes.expressionSyntaxNodeIdByExpressionId.get(
+      span.expressionId,
+    );
+    const spanNode = spanNodeId ? factGraph?.indexes.nodesById.get(spanNodeId) : undefined;
+    const spanCandidates = getStringCandidatesFromExpressionNode(spanNode, factGraph);
+    if (spanCandidates.length === 0) {
+      return [];
+    }
+    candidates = candidates.flatMap((prefix) =>
+      spanCandidates.map((candidate) => `${prefix}${candidate}${span.literalText}`),
+    );
+    if (candidates.length > 32) {
+      return [];
+    }
+  }
+
+  return uniqueSorted(candidates);
 }

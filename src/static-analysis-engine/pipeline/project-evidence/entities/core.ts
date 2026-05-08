@@ -207,7 +207,24 @@ export function buildClassDefinitions(
       const sourceAnchor = normalizeOptionalAnchor(
         rule.sourceRule.selectorEntries[branchIndex]?.selectorAnchor,
       );
-      for (const className of branch.subjectClassNames) {
+      const stylesheetInput = stylesheet.filePath
+        ? stylesheetInputsByPath.get(stylesheet.filePath)
+        : undefined;
+      const sourceFilePath = sourceAnchor ? normalizeProjectPath(sourceAnchor.filePath) : undefined;
+      const isCssModuleStylesheet = isCssModuleStylesheetFromInventory(
+        stylesheetInput,
+        stylesheet.filePath,
+      );
+      const localModuleClassNames =
+        isCssModuleStylesheet && branch.raw.includes(":global(")
+          ? branch.contextClassNames.filter(
+              (className) => !branch.subjectClassNames.includes(className),
+            )
+          : [];
+      for (const className of uniqueSorted([
+        ...branch.subjectClassNames,
+        ...localModuleClassNames,
+      ])) {
         const definition = {
           className,
           selector: branch.raw,
@@ -218,16 +235,7 @@ export function buildClassDefinitions(
           line: sourceAnchor?.startLine ?? rule.sourceRule.line,
           atRuleContext: [...rule.sourceRule.atRuleContext],
         };
-        const stylesheetInput = stylesheet.filePath
-          ? stylesheetInputsByPath.get(stylesheet.filePath)
-          : undefined;
-        const sourceFilePath = sourceAnchor
-          ? normalizeProjectPath(sourceAnchor.filePath)
-          : undefined;
-        const isCssModuleStylesheet = isCssModuleStylesheetFromInventory(
-          stylesheetInput,
-          stylesheet.filePath,
-        );
+        const isLocalModuleContextClass = localModuleClassNames.includes(className);
         const id = createClassDefinitionId(stylesheet.id, definition);
         const analysis: ClassDefinitionAnalysis = {
           id,
@@ -241,7 +249,7 @@ export function buildClassDefinitions(
           declarationSignature: getDeclarationSignature(definition.declarationDetails),
           isCssModule:
             isCssModuleStylesheet &&
-            !definition.selector.includes(":global(") &&
+            (isLocalModuleContextClass || !definition.selector.includes(":global(")) &&
             (!stylesheet.filePath ||
               !sourceFilePath ||
               sourceFilePath === normalizeProjectPath(stylesheet.filePath)),

@@ -62,7 +62,11 @@ export function getCssModuleMemberAccess(input: {
     }
 
     const location = toSourceAnchor(input.node, input.parsedSourceFile, input.sourceFilePath);
-    if (ts.isStringLiteralLike(input.node.argumentExpression)) {
+    const resolvedMemberName = resolveStaticStringExpression(
+      input.node.argumentExpression,
+      input.parsedSourceFile,
+    );
+    if (resolvedMemberName) {
       return {
         kind: "reference",
         reference: {
@@ -71,7 +75,7 @@ export function getCssModuleMemberAccess(input: {
           specifier: namespaceBinding.specifier,
           localName: namespaceBinding.localName,
           originLocalName: namespaceBinding.originLocalName,
-          memberName: input.node.argumentExpression.text,
+          memberName: resolvedMemberName,
           accessKind: "string-literal-element",
           location,
           rawExpressionText: input.node.getText(input.parsedSourceFile),
@@ -79,12 +83,12 @@ export function getCssModuleMemberAccess(input: {
             ? [
                 createCssModuleTrace({
                   traceId: `css-module:member-reference:${location.filePath}:${location.startLine}:${location.startColumn}`,
-                  summary: `CSS Module member "${input.node.argumentExpression.text}" was read from binding "${namespaceBinding.localName}"`,
+                  summary: `CSS Module member "${resolvedMemberName}" was read from binding "${namespaceBinding.localName}"`,
                   anchor: location,
                   metadata: {
                     stylesheetFilePath: namespaceBinding.stylesheetFilePath,
                     localName: namespaceBinding.localName,
-                    memberName: input.node.argumentExpression.text,
+                    memberName: resolvedMemberName,
                   },
                 }),
               ]
@@ -109,4 +113,78 @@ export function getCssModuleMemberAccess(input: {
   }
 
   return undefined;
+}
+
+function resolveStaticStringExpression(
+  expression: ts.Expression | undefined,
+  sourceFile: ts.SourceFile,
+): string | undefined {
+  if (!expression) {
+    return undefined;
+  }
+
+  const unwrapped = unwrapExpression(expression);
+  if (ts.isStringLiteralLike(unwrapped)) {
+    return unwrapped.text;
+  }
+
+  if (!ts.isIdentifier(unwrapped)) {
+    return undefined;
+  }
+
+  const binding = findConstStringBinding({
+    sourceFile,
+    identifierName: unwrapped.text,
+    targetPosition: unwrapped.getStart(sourceFile),
+  });
+  return binding ? resolveStaticStringExpression(binding.initializer, sourceFile) : undefined;
+}
+
+function findConstStringBinding(input: {
+  sourceFile: ts.SourceFile;
+  identifierName: string;
+  targetPosition: number;
+}): { initializer: ts.Expression } | undefined {
+  const bindings: Array<{ initializer: ts.Expression; position: number }> = [];
+
+  const visit = (node: ts.Node): void => {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.name.text === input.identifierName &&
+      node.initializer &&
+      isConstVariableDeclaration(node) &&
+      node.getStart(input.sourceFile) <= input.targetPosition
+    ) {
+      bindings.push({
+        initializer: node.initializer,
+        position: node.getStart(input.sourceFile),
+      });
+    }
+
+    ts.forEachChild(node, visit);
+  };
+
+  visit(input.sourceFile);
+  return bindings.sort((left, right) => right.position - left.position)[0];
+}
+
+function isConstVariableDeclaration(node: ts.VariableDeclaration): boolean {
+  return Boolean(
+    ts.isVariableDeclarationList(node.parent) && (node.parent.flags & ts.NodeFlags.Const) !== 0,
+  );
+}
+
+function unwrapExpression(expression: ts.Expression): ts.Expression {
+  let current = expression;
+  while (
+    ts.isParenthesizedExpression(current) ||
+    ts.isAsExpression(current) ||
+    ts.isTypeAssertionExpression(current) ||
+    ts.isNonNullExpression(current) ||
+    ts.isSatisfiesExpression(current)
+  ) {
+    current = current.expression;
+  }
+  return current;
 }
