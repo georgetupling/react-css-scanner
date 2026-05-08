@@ -104,45 +104,24 @@ function collectEffectiveJsxClassSiteInputs(input: {
   intrinsicTag: boolean;
   componentPropBinding?: ReactComponentPropBindingFact;
 }): JsxClassSiteInput[] {
-  if (!input.intrinsicTag) {
-    return input.attributes.flatMap((attribute) => {
-      if (
-        !ts.isJsxAttribute(attribute) ||
-        !ts.isIdentifier(attribute.name) ||
-        !attribute.initializer ||
-        !isClassLikeJsxAttributeName({
-          attributeName: attribute.name.text,
-          intrinsicTag: input.intrinsicTag,
-        })
-      ) {
-        return [];
-      }
-
-      return [
-        {
-          attributeName: attribute.name.text,
-          initializer: attribute.initializer,
-          expression: unwrapJsxAttributeInitializer(attribute.initializer),
-        },
-      ];
-    });
-  }
-
   let effectiveClassNames: JsxClassSiteInput[] = [];
   for (const attribute of input.attributes) {
     if (
       ts.isJsxAttribute(attribute) &&
       ts.isIdentifier(attribute.name) &&
-      attribute.name.text === "className" &&
-      attribute.initializer
+      attribute.initializer &&
+      isClassLikeJsxAttributeName({
+        attributeName: attribute.name.text,
+        intrinsicTag: input.intrinsicTag,
+      })
     ) {
-      effectiveClassNames = [
+      effectiveClassNames = applyClassSiteInputs(effectiveClassNames, [
         {
-          attributeName: "className",
+          attributeName: attribute.name.text,
           initializer: attribute.initializer,
           expression: unwrapJsxAttributeInitializer(attribute.initializer),
         },
-      ];
+      ]);
       continue;
     }
 
@@ -151,18 +130,30 @@ function collectEffectiveJsxClassSiteInputs(input: {
         resolveSpreadClassNames({
           expression: attribute.expression,
           sourceFile: input.sourceFile,
+          intrinsicTag: input.intrinsicTag,
         }) ??
         resolveForwardedComponentPropSpread({
           expression: attribute.expression,
           componentPropBinding: input.componentPropBinding,
         });
       if (spreadClassNames.length > 0) {
-        effectiveClassNames = spreadClassNames;
+        effectiveClassNames = applyClassSiteInputs(effectiveClassNames, spreadClassNames);
       }
     }
   }
 
   return effectiveClassNames;
+}
+
+function applyClassSiteInputs(
+  existing: JsxClassSiteInput[],
+  next: JsxClassSiteInput[],
+): JsxClassSiteInput[] {
+  const overwrittenAttributeNames = new Set(next.map((entry) => entry.attributeName));
+  return [
+    ...existing.filter((entry) => !overwrittenAttributeNames.has(entry.attributeName)),
+    ...next,
+  ];
 }
 
 function resolveForwardedComponentPropSpread(input: {
@@ -210,47 +201,79 @@ function resolveForwardedComponentPropSpread(input: {
 function resolveSpreadClassNames(input: {
   expression: ts.Expression;
   sourceFile: ts.SourceFile;
+  intrinsicTag: boolean;
 }): JsxClassSiteInput[] | undefined {
-  const objectLiterals = resolveObjectLiteralExpressions(input.expression, input.sourceFile);
+  const objectLiterals = resolveObjectLiteralExpressions({
+    expression: input.expression,
+    sourceFile: input.sourceFile,
+  });
   if (!objectLiterals) {
     return undefined;
   }
 
   const classNames: JsxClassSiteInput[] = [];
   for (const objectLiteral of objectLiterals) {
-    const classNameProperty = objectLiteral.properties.find(
-      (property): property is ts.PropertyAssignment =>
-        ts.isPropertyAssignment(property) && getStaticPropertyName(property.name) === "className",
+    const classNameProperties = objectLiteral.properties.filter(
+      (property): property is ts.PropertyAssignment => {
+        if (!ts.isPropertyAssignment(property)) {
+          return false;
+        }
+
+        const attributeName = getStaticPropertyName(property.name);
+        return (
+          Boolean(attributeName) &&
+          isClassLikeJsxAttributeName({
+            attributeName: attributeName!,
+            intrinsicTag: input.intrinsicTag,
+          })
+        );
+      },
     );
-    if (!classNameProperty) {
+    if (classNameProperties.length === 0) {
       return undefined;
     }
 
-    classNames.push({
-      attributeName: "className",
-      initializer: classNameProperty.initializer,
-      expression: classNameProperty.initializer,
-    });
+    for (const classNameProperty of classNameProperties) {
+      const attributeName = getStaticPropertyName(classNameProperty.name);
+      if (!attributeName) {
+        continue;
+      }
+
+      classNames.push({
+        attributeName,
+        initializer: classNameProperty.initializer,
+        expression: classNameProperty.initializer,
+      });
+    }
   }
 
   return classNames;
 }
 
-function resolveObjectLiteralExpressions(
-  expression: ts.Expression,
-  sourceFile: ts.SourceFile,
-): ts.ObjectLiteralExpression[] | undefined {
-  const unwrapped = unwrapExpression(expression);
+function resolveObjectLiteralExpressions(input: {
+  expression: ts.Expression;
+  sourceFile: ts.SourceFile;
+}): ts.ObjectLiteralExpression[] | undefined {
+  const unwrapped = unwrapExpression(input.expression);
   if (ts.isConditionalExpression(unwrapped)) {
-    const whenTrue = resolveObjectLiteralExpressions(unwrapped.whenTrue, sourceFile);
-    const whenFalse = resolveObjectLiteralExpressions(unwrapped.whenFalse, sourceFile);
+    const whenTrue = resolveObjectLiteralExpressions({
+      expression: unwrapped.whenTrue,
+      sourceFile: input.sourceFile,
+    });
+    const whenFalse = resolveObjectLiteralExpressions({
+      expression: unwrapped.whenFalse,
+      sourceFile: input.sourceFile,
+    });
     if (!whenTrue || !whenFalse) {
       return undefined;
     }
     return [...whenTrue, ...whenFalse];
   }
 
-  const objectLiteral = resolveObjectLiteralExpression(unwrapped, sourceFile);
+  const objectLiteral = resolveObjectLiteralExpression({
+    expression: unwrapped,
+    sourceFile: input.sourceFile,
+  });
   if (!objectLiteral) {
     return undefined;
   }
@@ -258,11 +281,11 @@ function resolveObjectLiteralExpressions(
   return [objectLiteral];
 }
 
-function resolveObjectLiteralExpression(
-  expression: ts.Expression,
-  sourceFile: ts.SourceFile,
-): ts.ObjectLiteralExpression | undefined {
-  const unwrapped = unwrapExpression(expression);
+function resolveObjectLiteralExpression(input: {
+  expression: ts.Expression;
+  sourceFile: ts.SourceFile;
+}): ts.ObjectLiteralExpression | undefined {
+  const unwrapped = unwrapExpression(input.expression);
   if (ts.isObjectLiteralExpression(unwrapped)) {
     return unwrapped;
   }
@@ -271,17 +294,48 @@ function resolveObjectLiteralExpression(
     return undefined;
   }
 
-  const declaration = findConstObjectLiteralDeclaration(sourceFile, unwrapped.text);
+  const declaration = findVisibleConstObjectLiteralDeclaration({
+    sourceFile: input.sourceFile,
+    localName: unwrapped.text,
+    usage: unwrapped,
+  });
   return declaration?.initializer
     ? unwrapObjectLiteralInitializer(declaration.initializer)
     : undefined;
 }
 
-function findConstObjectLiteralDeclaration(
-  sourceFile: ts.SourceFile,
-  localName: string,
-): ts.VariableDeclaration | undefined {
-  for (const statement of sourceFile.statements) {
+function findVisibleConstObjectLiteralDeclaration(input: {
+  sourceFile: ts.SourceFile;
+  localName: string;
+  usage: ts.Identifier;
+}): ts.VariableDeclaration | undefined {
+  let current: ts.Node | undefined = input.usage;
+  while (current) {
+    if (ts.isBlock(current) || ts.isSourceFile(current) || ts.isModuleBlock(current)) {
+      const declaration = findConstObjectLiteralDeclarationInStatements({
+        statements: current.statements,
+        localName: input.localName,
+        usage: input.usage,
+      });
+      if (declaration) {
+        return declaration;
+      }
+    }
+    current = current.parent;
+  }
+
+  return undefined;
+}
+
+function findConstObjectLiteralDeclarationInStatements(input: {
+  statements: ts.NodeArray<ts.Statement>;
+  localName: string;
+  usage: ts.Identifier;
+}): ts.VariableDeclaration | undefined {
+  for (const statement of input.statements) {
+    if (statement.pos > input.usage.pos) {
+      break;
+    }
     if (!ts.isVariableStatement(statement)) {
       continue;
     }
@@ -291,8 +345,9 @@ function findConstObjectLiteralDeclaration(
     }
     for (const declaration of statement.declarationList.declarations) {
       if (
+        declaration.pos <= input.usage.pos &&
         ts.isIdentifier(declaration.name) &&
-        declaration.name.text === localName &&
+        declaration.name.text === input.localName &&
         declaration.initializer
       ) {
         return declaration;

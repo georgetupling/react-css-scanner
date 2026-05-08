@@ -100,6 +100,11 @@ export function expandRenderSite(state: ExpansionState, context: ExpandContext):
     return;
   }
 
+  if (context.renderSite.renderSiteKind === "local-value-reference") {
+    expandLocalValueReferenceRenderSite(state, context);
+    return;
+  }
+
   const templates = state.templatesByRenderSiteId.get(context.renderSite.id) ?? [];
   const childRenderSiteIdsRaw =
     state.childRenderSitesByParentRenderSiteId.get(context.renderSite.id) ?? [];
@@ -605,6 +610,90 @@ function getSuppliedComponentInputPropName(
     return renderSite.parentRenderAttributeName;
   }
   return undefined;
+}
+
+function expandLocalValueReferenceRenderSite(state: ExpansionState, context: ExpandContext): void {
+  const localName = context.renderSite.localValueReferenceName;
+  if (!localName) {
+    return;
+  }
+
+  const expression = resolveLocalBindingExpressionForIdentifier({
+    state,
+    context,
+    identifierName: localName,
+    targetLocation: context.renderSite.location,
+  });
+  if (!expression) {
+    return;
+  }
+
+  const renderSites = findRenderSitesForExpression({
+    state,
+    context,
+    expression,
+  });
+  for (const renderSite of renderSites) {
+    expandRenderSite(state, {
+      ...context,
+      renderSite,
+      renderExpressionDepth: context.renderExpressionDepth + 1,
+    });
+  }
+}
+
+function findRenderSitesForExpression(input: {
+  state: ExpansionState;
+  context: ExpandContext;
+  expression: RenderStructureInput["graph"]["nodes"]["expressionSyntax"][number];
+}): RenderStructureInput["graph"]["nodes"]["renderSites"] {
+  const renderSites = [...input.state.renderSitesById.values()]
+    .filter(
+      (renderSite) =>
+        renderSite.id !== input.context.renderSite.id &&
+        renderSite.filePath === input.expression.location.filePath &&
+        renderSite.emittingComponentNodeId === input.context.componentNodeId &&
+        anchorsEqual(renderSite.location, input.expression.location),
+    )
+    .sort((left, right) => left.id.localeCompare(right.id));
+
+  if (renderSites.length > 0) {
+    return renderSites;
+  }
+
+  return [...input.state.renderSitesById.values()]
+    .filter(
+      (renderSite) =>
+        renderSite.id !== input.context.renderSite.id &&
+        renderSite.filePath === input.expression.location.filePath &&
+        renderSite.emittingComponentNodeId === input.context.componentNodeId &&
+        containsAnchor(input.expression.location, renderSite.location),
+    )
+    .filter(
+      (renderSite, _index, candidates) =>
+        !candidates.some(
+          (candidate) =>
+            candidate.id !== renderSite.id &&
+            containsAnchor(renderSite.location, candidate.location),
+        ),
+    )
+    .sort(
+      (left, right) =>
+        compareAnchors(left.location, right.location) || left.id.localeCompare(right.id),
+    );
+}
+
+function anchorsEqual(
+  left: RenderStructureInput["graph"]["nodes"]["renderSites"][number]["location"],
+  right: RenderStructureInput["graph"]["nodes"]["renderSites"][number]["location"],
+): boolean {
+  return (
+    left.filePath === right.filePath &&
+    left.startLine === right.startLine &&
+    left.startColumn === right.startColumn &&
+    left.endLine === right.endLine &&
+    left.endColumn === right.endColumn
+  );
 }
 
 function projectComponentTemplate(

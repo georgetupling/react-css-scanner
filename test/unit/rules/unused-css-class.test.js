@@ -223,6 +223,61 @@ test("unused-css-class respects JSX spread className prop override order", async
   }
 });
 
+test("unused-css-class treats function-local JSX spread className object literals as used", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        "export function App() {",
+        '  const props = { className: "card" };',
+        "  return <section {...props}>Card</section>;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".card { color: green; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", ["card"]);
+    assertNoClassFindings(result, "missing-css-class", ["card"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("unused-css-class treats object-spread className props forwarded through wrappers as used", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        "function Box({ className }: { className: string }) {",
+        "  return <section className={className}>Card</section>;",
+        "}",
+        "export function App() {",
+        '  const props = { className: "card" };',
+        "  return <Box {...props} />;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".card { color: green; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", ["card"]);
+    assertNoClassFindings(result, "missing-css-class", ["card"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("unused-css-class treats imported local class constants as finite references", async () => {
   const constantProject = await new TestProjectBuilder()
     .withSourceFile(

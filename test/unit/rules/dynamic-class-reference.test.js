@@ -58,6 +58,37 @@ test("dynamic-class-reference does not report static class references", async ()
   }
 });
 
+test("dynamic-class-reference does not report object-spread className props forwarded through wrappers", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        "function Box({ className }: { className: string }) {",
+        "  return <section className={className}>Card</section>;",
+        "}",
+        "export function App() {",
+        '  const props = { className: "card" };',
+        "  return <Box {...props} />;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".card { color: green; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assert.deepEqual(
+      result.findings.filter((finding) => finding.ruleId === "dynamic-class-reference"),
+      [],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("dynamic-class-reference does not report bounded clsx and classnames references", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(

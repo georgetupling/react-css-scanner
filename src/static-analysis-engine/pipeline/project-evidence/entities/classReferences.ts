@@ -119,6 +119,9 @@ function buildClassReferencesFromEmissionSites(input: {
   const consumedComponentPropExpressionIds = collectConsumedComponentPropExpressionIds(
     input.renderModel.emissionSites,
   );
+  const instantiatedClassExpressionIds = collectInstantiatedClassExpressionIds(
+    input.renderModel.emissionSites,
+  );
   const unconsumedComponentPropExpressionIds = collectDiagnosticExpressionIds(
     input.renderModel,
     "unconsumed-component-class-prop",
@@ -139,6 +142,7 @@ function buildClassReferencesFromEmissionSites(input: {
         emissionSite,
         expression,
         consumedComponentPropExpressionIds,
+        instantiatedClassExpressionIds,
       })
     ) {
       continue;
@@ -255,16 +259,30 @@ function collectConsumedComponentPropExpressionIds(emissionSites: EmissionSite[]
   return consumed;
 }
 
+function collectInstantiatedClassExpressionIds(emissionSites: EmissionSite[]): Set<string> {
+  return new Set(
+    emissionSites
+      .filter((emissionSite) => emissionSite.emissionKind === "merged-element-class")
+      .map((emissionSite) => emissionSite.classExpressionId),
+  );
+}
+
 function shouldSkipConsumedComponentPropFallback(input: {
   emissionSite: EmissionSite;
   expression: CanonicalClassExpression;
   consumedComponentPropExpressionIds: ReadonlySet<string>;
+  instantiatedClassExpressionIds: ReadonlySet<string>;
 }): boolean {
-  return (
+  const consumedComponentPropFallback =
     input.emissionSite.emissionKind === "rendered-element-class" &&
     input.expression.classExpressionSiteKind === "component-prop-class" &&
-    input.consumedComponentPropExpressionIds.has(input.expression.id)
-  );
+    input.consumedComponentPropExpressionIds.has(input.expression.id);
+  const instantiatedExternalContributionFallback =
+    input.emissionSite.emissionKind === "rendered-element-class" &&
+    input.expression.externalContributions.length > 0 &&
+    input.instantiatedClassExpressionIds.has(input.expression.id);
+
+  return consumedComponentPropFallback || instantiatedExternalContributionFallback;
 }
 
 function shouldSkipConsumedComponentPropSymbolicFallback(

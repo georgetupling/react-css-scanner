@@ -186,6 +186,7 @@ export type RenderSiteNode = FactNodeBase & {
     | "component-reference"
     | "jsx-fragment"
     | "conditional"
+    | "local-value-reference"
     | "helper-return";
   filePath: string;
   location: SourceAnchor;
@@ -206,6 +207,7 @@ export type RenderSiteNode = FactNodeBase & {
   };
   conditionExpressionId?: string;
   conditionSourceText?: string;
+  localValueReferenceName?: string;
 };
 
 export type ElementTemplateNode = FactNodeBase & {

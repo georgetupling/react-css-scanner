@@ -19,7 +19,7 @@ test("realistic CRA storefront keeps entry CSS reachable through nested app and 
     assert.equal(result.summary.findingsByRule["css-class-unreachable"], 0);
     assert.equal(result.summary.findingsByRule["missing-css-class"], 1);
     assert.equal(result.summary.findingsByRule["unused-css-class"], 2);
-    assert.equal(result.summary.findingsByRule["dynamic-class-reference"], 2);
+    assert.equal(result.summary.findingsByRule["dynamic-class-reference"], 0);
     assert.equal(result.summary.findingsByRule["unsupported-syntax-affecting-analysis"], 0);
     assert.deepEqual(
       result.diagnostics.filter((diagnostic) => diagnostic.severity !== "debug"),
@@ -74,7 +74,7 @@ test("realistic manager UI keeps webpack shell, app CSS, package CSS, and lazy C
     assert.equal(result.summary.findingsByRule["missing-css-class"], 0);
     assert.equal(result.summary.findingsByRule["unused-css-class"], 3);
     assert.equal(result.summary.findingsByRule["unused-css-module-class"], 2);
-    assert.equal(result.summary.findingsByRule["dynamic-class-reference"], 5);
+    assert.equal(result.summary.findingsByRule["dynamic-class-reference"], 3);
     assert.equal(result.summary.findingsByRule["unsupported-syntax-affecting-analysis"], 0);
     assert.deepEqual(
       result.diagnostics.filter((diagnostic) => diagnostic.severity !== "debug"),

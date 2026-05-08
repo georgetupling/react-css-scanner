@@ -39,6 +39,7 @@ export type ReactRenderSiteFact = {
     | "component-reference"
     | "jsx-fragment"
     | "conditional"
+    | "local-value-reference"
     | "helper-return";
   filePath: string;
   location: SourceAnchor;
@@ -60,6 +61,7 @@ export type ReactRenderSiteFact = {
   };
   conditionExpressionId?: string;
   conditionSourceText?: string;
+  localValueReferenceName?: string;
 };
 
 export type ReactElementTemplateFact = {

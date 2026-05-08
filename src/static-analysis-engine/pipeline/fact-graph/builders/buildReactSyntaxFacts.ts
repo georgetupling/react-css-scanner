@@ -246,6 +246,9 @@ export function buildReactSyntaxFacts(input: FactGraphInput): BuiltReactSyntaxFa
         ...(renderSite.conditionSourceText
           ? { conditionSourceText: renderSite.conditionSourceText }
           : {}),
+        ...(renderSite.localValueReferenceName
+          ? { localValueReferenceName: renderSite.localValueReferenceName }
+          : {}),
         confidence: "high",
         provenance: frontendFileProvenance({
           filePath: renderSite.filePath,

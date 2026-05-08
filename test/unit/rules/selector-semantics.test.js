@@ -361,6 +361,31 @@ test("unsatisfiable-selector does not report adjacent selectors satisfied by exp
   }
 });
 
+test("unsatisfiable-selector does not report adjacent siblings when one sibling is stored in a conditional JSX variable", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        "export function App({ show }: { show: boolean }) {",
+        '  const first = show ? <span className="first">One</span> : null;',
+        '  return <>{first}<span className="second">Two</span></>;',
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".first + .second { margin-left: 0.5rem; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoSelectorFindings(result, "unsatisfiable-selector", [".first + .second"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("unsatisfiable-selector still reports adjacent self selectors for statically single-item repeats", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(

@@ -23,6 +23,7 @@ export function tryCreateRenderSite(input: {
     !ts.isJsxFragment(input.node) &&
     !ts.isConditionalExpression(input.node) &&
     !isLogicalAndJsxExpression(input.node) &&
+    !isLocalValueReferenceRenderSite(input.node) &&
     !isHelperReturnStatement(input.node)
   ) {
     return undefined;
@@ -48,6 +49,9 @@ export function tryCreateRenderSite(input: {
       : {}),
     ...(input.parentSiteKey ? { parentSiteKey: input.parentSiteKey } : {}),
     ...(repeatedRegion ? { repeatedRegion } : {}),
+    ...(ts.isIdentifier(input.node) && isLocalValueReferenceRenderSite(input.node)
+      ? { localValueReferenceName: input.node.text }
+      : {}),
   };
 }
 
@@ -61,6 +65,9 @@ function getRenderSiteKind(node: ts.Node): ReactRenderSiteFact["kind"] {
   if (isLogicalAndJsxExpression(node)) {
     return "conditional";
   }
+  if (isLocalValueReferenceRenderSite(node)) {
+    return "local-value-reference";
+  }
   if (isHelperReturnStatement(node)) {
     return "helper-return";
   }
@@ -69,6 +76,15 @@ function getRenderSiteKind(node: ts.Node): ReactRenderSiteFact["kind"] {
     return "component-reference";
   }
   return "jsx-element";
+}
+
+function isLocalValueReferenceRenderSite(node: ts.Node): node is ts.Identifier {
+  return (
+    ts.isIdentifier(node) &&
+    ts.isJsxExpression(node.parent) &&
+    node.parent.expression === node &&
+    (ts.isJsxElement(node.parent.parent) || ts.isJsxFragment(node.parent.parent))
+  );
 }
 
 export function isLogicalAndJsxExpression(node: ts.Node): node is ts.BinaryExpression {
