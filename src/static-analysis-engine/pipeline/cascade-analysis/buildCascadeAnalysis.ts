@@ -272,11 +272,7 @@ function createConditionSet(input: {
     ...(renderConditionIds.length > 0 ? (["render-condition"] as const) : []),
   ];
   const compatibility: CascadeConditionSet["compatibility"] =
-    atRuleContext.length > 0
-      ? "unknown"
-      : renderConditionIds.length > 0
-        ? "conditional"
-        : "definite";
+    atRuleContext.length > 0 || renderConditionIds.length > 0 ? "conditional" : "definite";
   const conditionSet: Omit<CascadeConditionSet, "id"> = {
     sources,
     atRuleContext,
@@ -286,7 +282,9 @@ function createConditionSet(input: {
     runtimeContextIds: [],
     compatibility,
     reasons: [
-      ...(atRuleContext.length > 0 ? ["at-rule condition compatibility is not evaluated yet"] : []),
+      ...(atRuleContext.length > 0
+        ? ["at-rule conditions are modeled as conditional runtime contexts"]
+        : []),
       ...(renderConditionIds.length > 0
         ? ["render placement conditions may affect applicability"]
         : []),
@@ -298,6 +296,11 @@ function createConditionSet(input: {
     ...conditionSet,
   };
 }
+
+type CandidateConditionCompatibility = {
+  compatibility: "definite" | "conditional" | "unknown";
+  detail: string;
+};
 
 function mapMatchCertainty(
   certainty: SelectorMatchCertainty,
@@ -365,17 +368,50 @@ function buildOutcomes(input: {
       continue;
     }
 
+    const conditionCompatibility = compareCandidateConditionSets(
+      sortedCandidates,
+      input.conditionSetsById,
+    );
+    if (conditionCompatibility.compatibility === "unknown") {
+      input.diagnostics.push({
+        id: cascadeDiagnosticId({
+          code: "unknown-condition-compatibility",
+          elementId: winner.elementId,
+          index: input.diagnostics.length,
+        }),
+        code: "unknown-condition-compatibility",
+        severity: "debug",
+        confidence: "high",
+        message: `Cascade candidates for "${winner.property}" have condition sets that cannot be reduced to one winner.`,
+        elementId: winner.elementId,
+        traces: [],
+      });
+      outcomes.push({
+        id: cascadeOutcomeId(winner),
+        elementId: winner.elementId,
+        property: winner.property,
+        losingCandidateIds: [],
+        unresolvedCandidateIds: sortedCandidates.map((candidate) => candidate.id),
+        certainty: "unknown",
+        reason: "condition-uncertain",
+        comparisonTrace: [
+          {
+            reason: "condition-uncertain",
+            certainty: "unknown",
+            detail: conditionCompatibility.detail,
+          },
+        ],
+        traces: [],
+      });
+      continue;
+    }
+
     const second = sortedCandidates.at(-2);
     const reason = second ? compareCandidatesReason(winner, second) : "source-order";
-    const conditionSet = winner.conditionSetId
-      ? input.conditionSetsById.get(winner.conditionSetId)
-      : undefined;
     const certainty =
-      winner.matchCertainty === "definite" && conditionSet?.compatibility === "definite"
+      winner.matchCertainty === "definite" && conditionCompatibility.compatibility === "definite"
         ? "definite"
-        : conditionSet?.compatibility === "unknown"
-          ? "unknown"
-          : "possible";
+        : "possible";
     outcomes.push({
       id: cascadeOutcomeId(winner),
       elementId: winner.elementId,
@@ -395,13 +431,63 @@ function buildOutcomes(input: {
           losingCandidateId: candidate.id,
           certainty,
           detail:
-            "Author declarations compared by importance, specificity, and known source order.",
+            conditionCompatibility.compatibility === "conditional"
+              ? "Author declarations compared within the same conditional context."
+              : "Author declarations compared by importance, specificity, and known source order.",
         })),
       traces: [],
     });
   }
 
   return outcomes;
+}
+
+function compareCandidateConditionSets(
+  candidates: CascadeDeclarationCandidate[],
+  conditionSetsById: Map<string, CascadeConditionSet>,
+): CandidateConditionCompatibility {
+  const conditionSignatures = new Set(
+    candidates.map((candidate) =>
+      serializeConditionSet(
+        candidate.conditionSetId ? conditionSetsById.get(candidate.conditionSetId) : undefined,
+      ),
+    ),
+  );
+  if (conditionSignatures.size > 1) {
+    return {
+      compatibility: "unknown",
+      detail:
+        "Candidates have different at-rule or render conditions, so different runtime contexts may produce different winners.",
+    };
+  }
+
+  const conditionSet = candidates[0]?.conditionSetId
+    ? conditionSetsById.get(candidates[0].conditionSetId)
+    : undefined;
+  if (!conditionSet || conditionSet.sources.length === 0) {
+    return {
+      compatibility: "definite",
+      detail: "All candidates are unconditional.",
+    };
+  }
+
+  return {
+    compatibility: "conditional",
+    detail: "All candidates share the same conditional context.",
+  };
+}
+
+function serializeConditionSet(conditionSet: CascadeConditionSet | undefined): string {
+  if (!conditionSet) {
+    return "unconditional";
+  }
+  return JSON.stringify({
+    atRuleContext: conditionSet.atRuleContext,
+    renderConditionIds: conditionSet.renderConditionIds,
+    classEmissionConditionIds: conditionSet.classEmissionConditionIds,
+    pseudoStates: conditionSet.pseudoStates,
+    runtimeContextIds: conditionSet.runtimeContextIds,
+  });
 }
 
 function compareCandidates(

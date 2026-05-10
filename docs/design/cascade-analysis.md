@@ -193,14 +193,15 @@ export type CascadeConditionSet = {
   traces: AnalysisTrace[];
 };
 
-export type ConditionCompatibility =
-  | "definitely-compatible"
-  | "definitely-incompatible"
-  | "possibly-compatible"
-  | "unknown";
 ```
 
-The first implementation may treat most condition details as opaque, but it must distinguish known incompatibility from unknown compatibility.
+The first implementation treats condition details as opaque signatures:
+
+- candidates with no conditions are definite
+- candidates with the same non-empty at-rule/render condition signature can be compared, but the outcome is conditional/possible
+- candidates with different condition signatures produce an unresolved `condition-uncertain` outcome, because different runtime contexts may produce different winners
+
+This deliberately avoids evaluating media/supports truth. It only proves whether the compared declarations are guarded by the same modeled context.
 
 ### Declaration Candidates
 
@@ -372,16 +373,20 @@ Phase 2 adds the first cascade stage scaffold:
 - `CascadeKey` for author declarations with `important`, selector specificity, and local source order.
 - branch-specific selector specificity, including basic `:is()`, `:not()`, `:has()`, and zero-specificity `:where()`.
 - declaration candidates from selector-branch render matches.
-- condition sets for at-rule and render placement conditions, initially conservative.
+- condition sets for at-rule and render placement conditions.
 - outcomes grouped by rendered element and exact property.
 - resolved cross-stylesheet outcomes when all candidates come from a definite initial runtime CSS chunk with stable static import order.
 - unresolved outcomes when candidates come from multiple stylesheets and runtime order cannot be proven.
+- conditional outcomes when all candidates share the same non-empty condition signature.
+- unresolved `condition-uncertain` outcomes when candidates have different at-rule/render condition signatures.
 
 Known limitations:
 
 - only definite initial static runtime stylesheet order is normalized
 - no dynamic/lazy CSS order normalization yet
 - no multi-entry runtime context modeling beyond requiring a stable observed order
+- no evaluation of `@media`, `@supports`, or container-query truth
+- no proof that different conditional contexts are mutually exclusive or overlapping
 - no cascade layers
 - no `@scope`
 - no inline styles
