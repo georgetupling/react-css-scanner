@@ -106,7 +106,15 @@ test("cascade analysis gives inline styles precedence over normal author declara
       includeTraces: false,
     });
     const cascade = result.analysisEvidence.cascadeAnalysis;
-    const outcome = cascade.outcomes.find((candidate) => candidate.property === "color");
+    const outcome = cascade.outcomes.find((candidate) => {
+      if (candidate.property !== "color" || !candidate.winningCandidateId) {
+        return false;
+      }
+      return (
+        cascade.indexes.candidateById.get(candidate.winningCandidateId)?.cascadeKey.origin ===
+        "inline"
+      );
+    });
 
     assert.ok(outcome?.winningCandidateId);
     assert.equal(outcome.reason, "higher-origin");
@@ -178,6 +186,245 @@ test("cascade analysis expands inline shorthand styles into longhand effects", a
     assert.equal(winningCandidate?.propertyEffectSource, "shorthand");
     assert.equal(cascade.meta.declarationCount, 0);
     assert.equal(cascade.meta.candidateCount, 4);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis normalizes React numeric inline style values", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'export function App() { return <button style={{ marginTop: 8, opacity: 0.5, zIndex: 2, "--density": 3, top: -4 }}>Save</button>; }\n',
+    )
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+    const winningValue = (property) => {
+      const outcome = cascade.outcomes.find((candidate) => candidate.property === property);
+      assert.ok(outcome?.winningCandidateId);
+      return cascade.indexes.candidateById.get(outcome.winningCandidateId)?.value;
+    };
+
+    assert.equal(winningValue("margin-top"), "8px");
+    assert.equal(winningValue("opacity"), "0.5");
+    assert.equal(winningValue("z-index"), "2");
+    assert.equal(winningValue("--density"), "3");
+    assert.equal(winningValue("top"), "-4px");
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis flattens static inline style object spreads in source order", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      "const base = { marginTop: 4, opacity: 0.4 };\nexport function App() { return <button style={{ ...base, marginTop: 8 }}>Save</button>; }\n",
+    )
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+    const winningValue = (property) => {
+      const outcome = cascade.outcomes.find((candidate) => candidate.property === property);
+      assert.ok(outcome?.winningCandidateId);
+      return cascade.indexes.candidateById.get(outcome.winningCandidateId)?.value;
+    };
+
+    assert.equal(winningValue("margin-top"), "8px");
+    assert.equal(winningValue("opacity"), "0.4");
+    assert.equal(cascade.meta.diagnosticCount, 0);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis lets later static inline style spreads override earlier properties", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'const override = { color: "red" };\nexport function App() { return <button style={{ color: "blue", ...override }}>Save</button>; }\n',
+    )
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+    const outcome = cascade.outcomes.find((candidate) => candidate.property === "color");
+
+    assert.ok(outcome?.winningCandidateId);
+    const winningCandidate = cascade.indexes.candidateById.get(outcome.winningCandidateId);
+    assert.equal(winningCandidate?.value, "red");
+    assert.equal(cascade.meta.candidateCount, 1);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis keeps unknown inline style spreads conservative", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'export function App({ style }) { return <button style={{ color: "red", ...style }}>Save</button>; }\n',
+    )
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+
+    assert.equal(cascade.meta.candidateCount, 0);
+    assert.equal(
+      cascade.diagnostics.some(
+        (diagnostic) =>
+          diagnostic.code === "unsupported-inline-style" &&
+          diagnostic.message.includes("contains spread that could not be statically resolved"),
+      ),
+      true,
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis follows component-forwarded style props to intrinsic elements", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./styles.css";\nfunction Button({ style }) { return <button className="button primary" style={style}>Save</button>; }\nexport function App() { return <Button style={{ color: "red" }} />; }\n',
+    )
+    .withCssFile("src/styles.css", ".button.primary { color: blue; }\n")
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+    const outcome = cascade.outcomes.find((candidate) => {
+      if (candidate.property !== "color" || !candidate.winningCandidateId) {
+        return false;
+      }
+      return (
+        cascade.indexes.candidateById.get(candidate.winningCandidateId)?.cascadeKey.origin ===
+        "inline"
+      );
+    });
+
+    assert.ok(outcome?.winningCandidateId);
+    assert.equal(outcome.reason, "higher-origin");
+    const winningCandidate = cascade.indexes.candidateById.get(outcome.winningCandidateId);
+    assert.equal(winningCandidate?.value, "red");
+    assert.equal(winningCandidate?.cascadeKey.origin, "inline");
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis follows nested component-forwarded style props", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./styles.css";\nfunction Base({ style }) { return <button className="button primary" style={style}>Save</button>; }\nfunction Button({ style }) { return <Base style={style} />; }\nexport function App() { return <Button style={{ margin: "1px 2px" }} />; }\n',
+    )
+    .withCssFile("src/styles.css", ".button.primary { margin-right: 8px; }\n")
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+    const outcome = cascade.outcomes.find((candidate) => {
+      if (candidate.property !== "margin-right" || !candidate.winningCandidateId) {
+        return false;
+      }
+      return (
+        cascade.indexes.candidateById.get(candidate.winningCandidateId)?.cascadeKey.origin ===
+        "inline"
+      );
+    });
+
+    assert.ok(outcome?.winningCandidateId);
+    assert.equal(outcome.reason, "higher-origin");
+    const winningCandidate = cascade.indexes.candidateById.get(outcome.winningCandidateId);
+    assert.equal(winningCandidate?.value, "2px");
+    assert.equal(winningCandidate?.declaredProperty, "margin");
+    assert.equal(winningCandidate?.propertyEffectSource, "shorthand");
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis normalizes numeric values from forwarded style props", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      "function Button({ style }) { return <button style={style}>Save</button>; }\nexport function App() { return <Button style={{ paddingTop: 12, lineHeight: 1.25 }} />; }\n",
+    )
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+    const winningValue = (property) => {
+      const outcome = cascade.outcomes.find((candidate) => {
+        if (candidate.property !== property || !candidate.winningCandidateId) {
+          return false;
+        }
+        return (
+          cascade.indexes.candidateById.get(candidate.winningCandidateId)?.cascadeKey.origin ===
+          "inline"
+        );
+      });
+      assert.ok(outcome?.winningCandidateId);
+      return cascade.indexes.candidateById.get(outcome.winningCandidateId)?.value;
+    };
+
+    assert.equal(winningValue("padding-top"), "12px");
+    assert.equal(winningValue("line-height"), "1.25");
   } finally {
     await project.cleanup();
   }

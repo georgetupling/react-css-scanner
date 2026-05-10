@@ -4,7 +4,12 @@ import type {
   ProjectEvidenceId,
   SelectorBranchAnalysis,
 } from "../project-evidence/index.js";
-import type { RenderModel, RenderCertainty, RenderedElement } from "../render-structure/index.js";
+import type {
+  RenderModel,
+  RenderCertainty,
+  RenderedComponentBoundary,
+  RenderedElement,
+} from "../render-structure/index.js";
 import type { RuntimeCssLoadingResult } from "../runtime-css-loading/index.js";
 import type {
   SelectorBranchMatch,
@@ -24,6 +29,7 @@ import { calculateSelectorSpecificity, compareSpecificity } from "./specificity.
 import type {
   SourceExpressionSyntaxFact,
   SourceObjectExpressionProperty,
+  SourceObjectLiteralExpressionSyntax,
 } from "../language-frontends/source/expression-syntax/index.js";
 import type { ReactInlineStyleSiteFact } from "../language-frontends/source/react-syntax/index.js";
 import type {
@@ -324,6 +330,13 @@ function buildInlineStyleCandidates(input: {
   const inlineStyleSites = input.input.factGraph.frontends.source.files.flatMap((sourceFile) =>
     sourceFile.reactSyntax.inlineStyleSites.map((site) => ({ sourceFile, site })),
   );
+  const componentStyleSuppliesByBoundaryId = buildComponentStyleSuppliesByBoundaryId({
+    inlineStyleSites,
+    input: input.input,
+  });
+  const boundaryById = new Map(
+    input.input.renderModel.componentBoundaries.map((boundary) => [boundary.id, boundary] as const),
+  );
   const inlineOrderById = new Map(
     inlineStyleSites
       .sort(
@@ -337,22 +350,7 @@ function buildInlineStyleCandidates(input: {
   );
 
   for (const { sourceFile, site } of inlineStyleSites) {
-    const expressionById = new Map(
-      sourceFile.expressionSyntax.map((expression) => [expression.expressionId, expression]),
-    );
-    const declarations = extractInlineStyleDeclarations({
-      site,
-      expressionById,
-    });
-    if (declarations.unsupportedReason) {
-      input.diagnostics.push(
-        input.createDiagnostic({
-          code: "unsupported-inline-style",
-          message: declarations.unsupportedReason,
-          location: site.location,
-          traces: [],
-        }),
-      );
+    if (site.kind === "component-prop-style") {
       continue;
     }
 
@@ -376,6 +374,25 @@ function buildInlineStyleCandidates(input: {
     for (const elementId of elementIds) {
       const renderedElement = input.input.renderModel.indexes.elementById.get(elementId);
       if (!renderedElement) {
+        continue;
+      }
+      const declarations = resolveInlineStyleDeclarationsForElement({
+        site,
+        sourceFile,
+        renderedElement,
+        componentStyleSuppliesByBoundaryId,
+        boundaryById,
+      });
+      if (declarations.unsupportedReason) {
+        input.diagnostics.push(
+          input.createDiagnostic({
+            code: "unsupported-inline-style",
+            message: declarations.unsupportedReason,
+            elementId,
+            location: site.location,
+            traces: [],
+          }),
+        );
         continue;
       }
       const conditionSet = createConditionSetFromRenderedElement({
@@ -422,13 +439,16 @@ function buildInlineStyleCandidates(input: {
                 unlayered: true,
               },
               specificity: { a: 1, b: 0, c: 0 },
-              sourceOrder: 2_000_000_000 + (inlineOrderById.get(site.siteKey) ?? 0),
+              sourceOrder:
+                2_000_000_000 + (inlineOrderById.get(site.siteKey) ?? 0) * 1000 + declaration.order,
               orderKnown: true,
             },
             conditionSetId: conditionSet.id,
             matchCertainty: mapRenderCertainty(renderedElement.certainty),
             reasons: [
-              "inline style applies directly to rendered element",
+              site.componentPropName
+                ? `inline style prop "${site.componentPropName}" is supplied to rendered element`
+                : "inline style applies directly to rendered element",
               ...(propertyEffect.source === "shorthand"
                 ? [`"${declaration.property}" contributes to "${propertyEffect.property}"`]
                 : []),
@@ -441,6 +461,74 @@ function buildInlineStyleCandidates(input: {
   }
 
   return candidates;
+}
+
+type InlineStyleSiteWithSourceFile = {
+  sourceFile: CascadeAnalysisInput["factGraph"]["frontends"]["source"]["files"][number];
+  site: ReactInlineStyleSiteFact;
+};
+
+type InlineStyleDeclaration = {
+  property: string;
+  value: string;
+  location: ReactInlineStyleSiteFact["location"];
+  order: number;
+};
+
+type ComponentStyleSupply = InlineStyleSiteWithSourceFile & {
+  boundaryId: string;
+  componentPropName: string;
+};
+
+function buildComponentStyleSuppliesByBoundaryId(input: {
+  inlineStyleSites: InlineStyleSiteWithSourceFile[];
+  input: CascadeAnalysisInput;
+}): Map<string, ComponentStyleSupply[]> {
+  const boundariesByReferenceRenderSiteNodeId = new Map<string, RenderedComponentBoundary[]>();
+  for (const boundary of input.input.renderModel.componentBoundaries) {
+    if (!boundary.referenceRenderSiteNodeId) {
+      continue;
+    }
+    const existing =
+      boundariesByReferenceRenderSiteNodeId.get(boundary.referenceRenderSiteNodeId) ?? [];
+    existing.push(boundary);
+    boundariesByReferenceRenderSiteNodeId.set(boundary.referenceRenderSiteNodeId, existing);
+  }
+
+  const suppliesByBoundaryId = new Map<string, ComponentStyleSupply[]>();
+  for (const { sourceFile, site } of input.inlineStyleSites) {
+    if (site.kind !== "component-prop-style" || !site.renderSiteKey || !site.componentPropName) {
+      continue;
+    }
+    const renderSiteNodeId =
+      input.input.factGraph.graph.indexes.renderSiteNodeIdByRenderSiteKey.get(site.renderSiteKey);
+    if (!renderSiteNodeId) {
+      continue;
+    }
+    const boundaries = boundariesByReferenceRenderSiteNodeId.get(renderSiteNodeId) ?? [];
+    for (const boundary of boundaries) {
+      const supplies = suppliesByBoundaryId.get(boundary.id) ?? [];
+      supplies.push({
+        sourceFile,
+        site,
+        boundaryId: boundary.id,
+        componentPropName: site.componentPropName,
+      });
+      suppliesByBoundaryId.set(boundary.id, supplies);
+    }
+  }
+
+  for (const [boundaryId, supplies] of suppliesByBoundaryId.entries()) {
+    suppliesByBoundaryId.set(
+      boundaryId,
+      supplies.sort(
+        (left, right) =>
+          left.componentPropName.localeCompare(right.componentPropName) ||
+          left.site.siteKey.localeCompare(right.site.siteKey),
+      ),
+    );
+  }
+  return suppliesByBoundaryId;
 }
 
 function findRenderedElementIdsForInlineStyleSite(input: {
@@ -474,15 +562,103 @@ function findRenderedElementIdsForInlineStyleSite(input: {
   return [];
 }
 
+function resolveInlineStyleDeclarationsForElement(input: {
+  site: ReactInlineStyleSiteFact;
+  sourceFile: InlineStyleSiteWithSourceFile["sourceFile"];
+  renderedElement: RenderedElement;
+  componentStyleSuppliesByBoundaryId: Map<string, ComponentStyleSupply[]>;
+  boundaryById: Map<string, RenderedComponentBoundary>;
+}): {
+  declarations: InlineStyleDeclaration[];
+  unsupportedReason?: string;
+} {
+  if (input.site.componentPropName) {
+    const supplied = resolveComponentStyleDeclarations({
+      boundaryId: input.renderedElement.parentBoundaryId,
+      propName: input.site.componentPropName,
+      componentStyleSuppliesByBoundaryId: input.componentStyleSuppliesByBoundaryId,
+      boundaryById: input.boundaryById,
+      seen: new Set(),
+    });
+    if (supplied.declarations.length > 0 || supplied.unsupportedReason) {
+      return supplied;
+    }
+  }
+
+  return extractInlineStyleDeclarations({
+    site: input.site,
+    sourceFile: input.sourceFile,
+    expressionById: expressionSyntaxById(input.sourceFile),
+  });
+}
+
+function resolveComponentStyleDeclarations(input: {
+  boundaryId: string;
+  propName: string;
+  componentStyleSuppliesByBoundaryId: Map<string, ComponentStyleSupply[]>;
+  boundaryById: Map<string, RenderedComponentBoundary>;
+  seen: Set<string>;
+}): {
+  declarations: InlineStyleDeclaration[];
+  unsupportedReason?: string;
+} {
+  const key = `${input.boundaryId}:${input.propName}`;
+  if (input.seen.has(key)) {
+    return {
+      declarations: [],
+      unsupportedReason: `Inline style prop "${input.propName}" forwarding cycle could not be analyzed.`,
+    };
+  }
+  const seen = new Set(input.seen);
+  seen.add(key);
+
+  const supply = (input.componentStyleSuppliesByBoundaryId.get(input.boundaryId) ?? []).find(
+    (candidate) => candidate.componentPropName === input.propName,
+  );
+  if (!supply) {
+    return {
+      declarations: [],
+      unsupportedReason: `Inline style prop "${input.propName}" could not be linked to a component style supply.`,
+    };
+  }
+
+  const direct = extractInlineStyleDeclarations({
+    site: supply.site,
+    sourceFile: supply.sourceFile,
+    expressionById: expressionSyntaxById(supply.sourceFile),
+  });
+  if (!direct.unsupportedReason) {
+    return direct;
+  }
+
+  const parentBoundaryId = input.boundaryById.get(input.boundaryId)?.parentBoundaryId;
+  if (parentBoundaryId && supply.site.sourceComponentPropName) {
+    return resolveComponentStyleDeclarations({
+      boundaryId: parentBoundaryId,
+      propName: supply.site.sourceComponentPropName,
+      componentStyleSuppliesByBoundaryId: input.componentStyleSuppliesByBoundaryId,
+      boundaryById: input.boundaryById,
+      seen,
+    });
+  }
+
+  return direct;
+}
+
+function expressionSyntaxById(
+  sourceFile: InlineStyleSiteWithSourceFile["sourceFile"],
+): Map<string, SourceExpressionSyntaxFact> {
+  return new Map(
+    sourceFile.expressionSyntax.map((expression) => [expression.expressionId, expression]),
+  );
+}
+
 function extractInlineStyleDeclarations(input: {
   site: ReactInlineStyleSiteFact;
+  sourceFile: InlineStyleSiteWithSourceFile["sourceFile"];
   expressionById: Map<string, SourceExpressionSyntaxFact>;
 }): {
-  declarations: Array<{
-    property: string;
-    value: string;
-    location: ReactInlineStyleSiteFact["location"];
-  }>;
+  declarations: InlineStyleDeclaration[];
   unsupportedReason?: string;
 } {
   const rootExpression = unwrapExpressionSyntax(
@@ -495,43 +671,163 @@ function extractInlineStyleDeclarations(input: {
       unsupportedReason: `Inline style "${input.site.rawExpressionText}" is not a statically analyzable object literal.`,
     };
   }
-  if (rootExpression.hasSpreadProperty || rootExpression.hasUnsupportedProperty) {
+
+  const flattened = flattenInlineStyleObject({
+    objectExpression: rootExpression,
+    site: input.site,
+    sourceFile: input.sourceFile,
+    expressionById: input.expressionById,
+    seenExpressionIds: new Set([rootExpression.expressionId]),
+    orderCounter: { value: 0 },
+  });
+  if (flattened.unsupportedReason) {
+    return flattened;
+  }
+
+  const declarationsByProperty = new Map<string, InlineStyleDeclaration>();
+  for (const declaration of flattened.declarations) {
+    declarationsByProperty.set(declaration.property, declaration);
+  }
+
+  return {
+    declarations: [...declarationsByProperty.values()].sort(
+      (left, right) => left.order - right.order,
+    ),
+  };
+}
+
+function flattenInlineStyleObject(input: {
+  objectExpression: SourceObjectLiteralExpressionSyntax & SourceExpressionSyntaxFact;
+  site: ReactInlineStyleSiteFact;
+  sourceFile: InlineStyleSiteWithSourceFile["sourceFile"];
+  expressionById: Map<string, SourceExpressionSyntaxFact>;
+  seenExpressionIds: Set<string>;
+  orderCounter: { value: number };
+}): {
+  declarations: InlineStyleDeclaration[];
+  unsupportedReason?: string;
+} {
+  if (input.objectExpression.hasUnsupportedProperty) {
     return {
       declarations: [],
-      unsupportedReason: `Inline style "${input.site.rawExpressionText}" contains spread or unsupported object properties.`,
+      unsupportedReason: `Inline style "${input.site.rawExpressionText}" contains unsupported object properties.`,
     };
   }
 
-  const declarations = rootExpression.properties
-    .map((property) =>
-      extractInlineStyleDeclaration({
+  const declarations: InlineStyleDeclaration[] = [];
+  for (const property of input.objectExpression.properties) {
+    if (property.propertyKind === "spread") {
+      const spreadObject = resolveInlineStyleSpreadObject({
         property,
+        site: input.site,
+        sourceFile: input.sourceFile,
         expressionById: input.expressionById,
-        fallbackLocation: input.site.location,
-      }),
-    )
-    .filter(
-      (
-        declaration,
-      ): declaration is {
-        property: string;
-        value: string;
-        location: ReactInlineStyleSiteFact["location"];
-      } => Boolean(declaration),
-    );
+      });
+      if (!spreadObject) {
+        return {
+          declarations: [],
+          unsupportedReason: `Inline style "${input.site.rawExpressionText}" contains spread that could not be statically resolved.`,
+        };
+      }
+      if (input.seenExpressionIds.has(spreadObject.expressionId)) {
+        return {
+          declarations: [],
+          unsupportedReason: `Inline style "${input.site.rawExpressionText}" contains cyclic object spread.`,
+        };
+      }
+
+      const seenExpressionIds = new Set(input.seenExpressionIds);
+      seenExpressionIds.add(spreadObject.expressionId);
+      const spread = flattenInlineStyleObject({
+        objectExpression: spreadObject,
+        site: input.site,
+        sourceFile: input.sourceFile,
+        expressionById: input.expressionById,
+        seenExpressionIds,
+        orderCounter: input.orderCounter,
+      });
+      if (spread.unsupportedReason) {
+        return spread;
+      }
+      declarations.push(...spread.declarations);
+      continue;
+    }
+
+    const declaration = extractInlineStyleDeclaration({
+      property,
+      expressionById: input.expressionById,
+      fallbackLocation: input.site.location,
+      order: input.orderCounter.value,
+    });
+    input.orderCounter.value += 1;
+    if (declaration) {
+      declarations.push(declaration);
+    }
+  }
 
   return {
     declarations,
   };
 }
 
+function resolveInlineStyleSpreadObject(input: {
+  property: SourceObjectExpressionProperty;
+  site: ReactInlineStyleSiteFact;
+  sourceFile: InlineStyleSiteWithSourceFile["sourceFile"];
+  expressionById: Map<string, SourceExpressionSyntaxFact>;
+}): (SourceObjectLiteralExpressionSyntax & SourceExpressionSyntaxFact) | undefined {
+  if (!input.property.spreadExpressionId) {
+    return undefined;
+  }
+
+  const spreadExpression = unwrapExpressionSyntax(
+    input.expressionById.get(input.property.spreadExpressionId),
+    input.expressionById,
+  );
+  if (!spreadExpression) {
+    return undefined;
+  }
+  if (spreadExpression.expressionKind === "object-literal") {
+    return spreadExpression;
+  }
+  if (spreadExpression.expressionKind !== "identifier") {
+    return undefined;
+  }
+
+  const binding = [...input.sourceFile.reactSyntax.localValueBindings]
+    .filter(
+      (candidate) =>
+        candidate.bindingKind === "const-identifier" &&
+        candidate.localName === spreadExpression.name &&
+        candidate.location.filePath === input.site.location.filePath &&
+        isLocationAtOrBefore(candidate.location, input.site.location) &&
+        (!candidate.assignments || candidate.assignments.length === 0),
+    )
+    .sort(
+      (left, right) =>
+        right.location.startLine - left.location.startLine ||
+        right.location.startColumn - left.location.startColumn ||
+        right.bindingKey.localeCompare(left.bindingKey),
+    )
+    .at(0);
+  const objectExpressionId =
+    binding?.expressionId ?? binding?.objectExpressionId ?? binding?.initializerExpressionId;
+  const objectExpression = unwrapExpressionSyntax(
+    objectExpressionId ? input.expressionById.get(objectExpressionId) : undefined,
+    input.expressionById,
+  );
+  if (objectExpression?.expressionKind === "object-literal") {
+    return objectExpression;
+  }
+  return undefined;
+}
+
 function extractInlineStyleDeclaration(input: {
   property: SourceObjectExpressionProperty;
   expressionById: Map<string, SourceExpressionSyntaxFact>;
   fallbackLocation: ReactInlineStyleSiteFact["location"];
-}):
-  | { property: string; value: string; location: ReactInlineStyleSiteFact["location"] }
-  | undefined {
+  order: number;
+}): InlineStyleDeclaration | undefined {
   if (
     input.property.propertyKind !== "property" ||
     input.property.keyKind === "computed" ||
@@ -550,7 +846,11 @@ function extractInlineStyleDeclaration(input: {
     input.expressionById.get(input.property.valueExpressionId),
     input.expressionById,
   );
-  const value = inlineStyleExpressionToCssValue(valueExpression);
+  const value = inlineStyleExpressionToCssValue({
+    property: cssProperty,
+    expression: valueExpression,
+    expressionById: input.expressionById,
+  });
   if (value === undefined) {
     return undefined;
   }
@@ -559,7 +859,21 @@ function extractInlineStyleDeclaration(input: {
     property: cssProperty,
     value,
     location: input.property.location ?? input.fallbackLocation,
+    order: input.order,
   };
+}
+
+function isLocationAtOrBefore(
+  left: ReactInlineStyleSiteFact["location"],
+  right: ReactInlineStyleSiteFact["location"],
+): boolean {
+  if (left.filePath !== right.filePath) {
+    return false;
+  }
+  return (
+    left.startLine < right.startLine ||
+    (left.startLine === right.startLine && left.startColumn <= right.startColumn)
+  );
 }
 
 function unwrapExpressionSyntax(
@@ -575,9 +889,12 @@ function unwrapExpressionSyntax(
   return current;
 }
 
-function inlineStyleExpressionToCssValue(
-  expression: SourceExpressionSyntaxFact | undefined,
-): string | undefined {
+function inlineStyleExpressionToCssValue(input: {
+  property: string;
+  expression: SourceExpressionSyntaxFact | undefined;
+  expressionById: Map<string, SourceExpressionSyntaxFact>;
+}): string | undefined {
+  const expression = input.expression;
   if (!expression) {
     return undefined;
   }
@@ -585,12 +902,84 @@ function inlineStyleExpressionToCssValue(
     return expression.value;
   }
   if (expression.expressionKind === "numeric-literal") {
-    return expression.value;
+    return reactNumericInlineStyleValue(input.property, expression.value);
+  }
+  if (expression.expressionKind === "prefix-unary" && expression.operator !== "~") {
+    const operand = unwrapExpressionSyntax(
+      input.expressionById.get(expression.operandExpressionId),
+      input.expressionById,
+    );
+    if (!operand || operand.expressionKind !== "numeric-literal") {
+      return undefined;
+    }
+    const signedValue = expression.operator === "-" ? `-${operand.value}` : operand.value;
+    return reactNumericInlineStyleValue(input.property, signedValue);
   }
   if (expression.expressionKind === "template-literal" && expression.spans.length === 0) {
     return expression.headText;
   }
   return undefined;
+}
+
+const REACT_UNITLESS_CSS_PROPERTIES = new Set([
+  "animation-iteration-count",
+  "aspect-ratio",
+  "border-image-outset",
+  "border-image-slice",
+  "border-image-width",
+  "box-flex",
+  "box-flex-group",
+  "box-ordinal-group",
+  "column-count",
+  "columns",
+  "flex",
+  "flex-grow",
+  "flex-negative",
+  "flex-order",
+  "flex-positive",
+  "flex-shrink",
+  "font-weight",
+  "grid-area",
+  "grid-column",
+  "grid-column-end",
+  "grid-column-start",
+  "grid-row",
+  "grid-row-end",
+  "grid-row-start",
+  "line-clamp",
+  "-webkit-line-clamp",
+  "line-height",
+  "opacity",
+  "order",
+  "orphans",
+  "scale",
+  "tab-size",
+  "widows",
+  "z-index",
+  "zoom",
+  "fill-opacity",
+  "flood-opacity",
+  "stop-opacity",
+  "stroke-dasharray",
+  "stroke-dashoffset",
+  "stroke-miterlimit",
+  "stroke-opacity",
+  "stroke-width",
+]);
+
+function reactNumericInlineStyleValue(property: string, rawValue: string): string {
+  const numericValue = Number(rawValue);
+  if (!Number.isFinite(numericValue)) {
+    return rawValue;
+  }
+  if (
+    numericValue === 0 ||
+    property.startsWith("--") ||
+    REACT_UNITLESS_CSS_PROPERTIES.has(property)
+  ) {
+    return rawValue;
+  }
+  return `${rawValue}px`;
 }
 
 function reactStylePropertyToCssProperty(propertyName: string): string | undefined {

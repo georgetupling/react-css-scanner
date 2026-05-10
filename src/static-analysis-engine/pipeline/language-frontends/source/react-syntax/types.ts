@@ -92,13 +92,15 @@ export type ReactClassExpressionSiteFact = {
 
 export type ReactInlineStyleSiteFact = {
   siteKey: string;
-  kind: "jsx-style";
+  kind: "jsx-style" | "component-prop-style";
   filePath: string;
   location: SourceAnchor;
   expressionId: string;
   rawExpressionText: string;
   emittingComponentKey?: string;
   placementComponentKey?: string;
+  componentPropName?: string;
+  sourceComponentPropName?: string;
   renderSiteKey?: string;
   elementTemplateKey?: string;
 };

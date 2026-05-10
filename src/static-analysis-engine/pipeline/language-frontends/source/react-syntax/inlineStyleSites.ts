@@ -11,6 +11,7 @@ import type {
   ReactElementTemplateFact,
   ReactInlineStyleSiteFact,
   ReactRenderSiteFact,
+  ReactComponentPropBindingFact,
 } from "./types.js";
 
 export function createJsxInlineStyleSite(input: {
@@ -20,11 +21,13 @@ export function createJsxInlineStyleSite(input: {
   renderSite?: ReactRenderSiteFact;
   template?: ReactElementTemplateFact;
   emittingComponentKey?: string;
+  componentPropBinding?: ReactComponentPropBindingFact;
 }): { site: ReactInlineStyleSiteFact; expressionSyntax: SourceExpressionSyntaxFact[] } | undefined {
   const tagName = getJsxTagName(input.node);
-  if (!tagName || !isIntrinsicTagName(tagName)) {
+  if (!tagName) {
     return undefined;
   }
+  const intrinsicTag = isIntrinsicTagName(tagName);
 
   const styleAttribute = findStyleAttribute(input.node);
   if (!styleAttribute) {
@@ -42,6 +45,10 @@ export function createJsxInlineStyleSite(input: {
     sourceFile: input.sourceFile,
   });
   const location = toSourceAnchor(styleAttribute, input.sourceFile, input.filePath);
+  const sourceComponentPropName = resolveReferencedComponentPropName({
+    expression,
+    componentPropBinding: input.componentPropBinding,
+  });
   return {
     site: {
       siteKey: createSiteKey(
@@ -49,7 +56,7 @@ export function createJsxInlineStyleSite(input: {
         location,
         input.renderSite?.siteKey ?? `${input.filePath}:standalone-inline-style`,
       ),
-      kind: "jsx-style",
+      kind: intrinsicTag ? "jsx-style" : "component-prop-style",
       filePath: input.filePath,
       location,
       expressionId: expressionSyntax.rootExpressionId,
@@ -58,6 +65,11 @@ export function createJsxInlineStyleSite(input: {
       ...(input.template?.placementComponentKey
         ? { placementComponentKey: input.template.placementComponentKey }
         : {}),
+      ...(!intrinsicTag ? { componentPropName: "style" } : {}),
+      ...(intrinsicTag && sourceComponentPropName
+        ? { componentPropName: sourceComponentPropName }
+        : {}),
+      ...(sourceComponentPropName ? { sourceComponentPropName } : {}),
       ...(input.renderSite ? { renderSiteKey: input.renderSite.siteKey } : {}),
       ...(input.template ? { elementTemplateKey: input.template.templateKey } : {}),
     },
@@ -84,4 +96,48 @@ function findStyleAttribute(node: ts.Node): ts.JsxAttribute | undefined {
   }
 
   return undefined;
+}
+
+function resolveReferencedComponentPropName(input: {
+  expression: ts.Expression;
+  componentPropBinding?: ReactComponentPropBindingFact;
+}): string | undefined {
+  const binding = input.componentPropBinding;
+  if (!binding) {
+    return undefined;
+  }
+
+  const expression = unwrapExpression(input.expression);
+  if (
+    binding.bindingKind === "props-identifier" &&
+    binding.identifierName &&
+    ts.isPropertyAccessExpression(expression) &&
+    ts.isIdentifier(expression.expression) &&
+    expression.expression.text === binding.identifierName
+  ) {
+    return expression.name.text;
+  }
+
+  if (binding.bindingKind === "destructured-props" && ts.isIdentifier(expression)) {
+    const property = binding.properties.find(
+      (candidate) => candidate.localName === expression.text,
+    );
+    return property?.propertyName;
+  }
+
+  return undefined;
+}
+
+function unwrapExpression(expression: ts.Expression): ts.Expression {
+  let current = expression;
+  while (
+    ts.isParenthesizedExpression(current) ||
+    ts.isAsExpression(current) ||
+    ts.isTypeAssertionExpression(current) ||
+    ts.isNonNullExpression(current) ||
+    ts.isSatisfiesExpression(current)
+  ) {
+    current = current.expression;
+  }
+  return current;
 }

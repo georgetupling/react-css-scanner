@@ -209,6 +209,9 @@ export function collectSourceReactSyntax(input: {
       ...(renderSite ? { renderSite } : {}),
       ...(template ? { template } : {}),
       ...(currentComponentKey ? { emittingComponentKey: currentComponentKey } : {}),
+      ...(currentComponentKey
+        ? { componentPropBinding: componentPropBindingByComponentKey.get(currentComponentKey) }
+        : {}),
     });
     if (inlineStyleSite) {
       inlineStyleSites.push(inlineStyleSite.site);
