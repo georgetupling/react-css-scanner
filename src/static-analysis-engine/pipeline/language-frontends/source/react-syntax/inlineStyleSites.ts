@@ -14,7 +14,12 @@ import type {
   ReactComponentPropBindingFact,
 } from "./types.js";
 
-export function createJsxInlineStyleSite(input: {
+export type CreatedReactInlineStyleSite = {
+  site: ReactInlineStyleSiteFact;
+  expressionSyntax: SourceExpressionSyntaxFact[];
+};
+
+export function createJsxInlineStyleSites(input: {
   node: ts.Node;
   filePath: string;
   sourceFile: ts.SourceFile;
@@ -22,77 +27,321 @@ export function createJsxInlineStyleSite(input: {
   template?: ReactElementTemplateFact;
   emittingComponentKey?: string;
   componentPropBinding?: ReactComponentPropBindingFact;
-}): { site: ReactInlineStyleSiteFact; expressionSyntax: SourceExpressionSyntaxFact[] } | undefined {
+}): CreatedReactInlineStyleSite[] {
+  if (!ts.isJsxElement(input.node) && !ts.isJsxSelfClosingElement(input.node)) {
+    return [];
+  }
+
   const tagName = getJsxTagName(input.node);
   if (!tagName) {
-    return undefined;
+    return [];
   }
   const intrinsicTag = isIntrinsicTagName(tagName);
-
-  const styleAttribute = findStyleAttribute(input.node);
-  if (!styleAttribute) {
-    return undefined;
-  }
-
-  const expression = unwrapJsxAttributeInitializer(styleAttribute.initializer);
-  if (!expression) {
-    return undefined;
-  }
-
-  const expressionSyntax = collectExpressionSyntaxForNode({
-    node: expression,
-    filePath: input.filePath,
+  const attributes = ts.isJsxElement(input.node)
+    ? input.node.openingElement.attributes.properties
+    : input.node.attributes.properties;
+  const styleSiteInputs = collectEffectiveJsxStyleSiteInputs({
+    attributes,
     sourceFile: input.sourceFile,
-  });
-  const location = toSourceAnchor(styleAttribute, input.sourceFile, input.filePath);
-  const sourceComponentPropName = resolveReferencedComponentPropName({
-    expression,
+    intrinsicTag,
     componentPropBinding: input.componentPropBinding,
   });
-  return {
-    site: {
-      siteKey: createSiteKey(
-        "inline-style",
-        location,
-        input.renderSite?.siteKey ?? `${input.filePath}:standalone-inline-style`,
-      ),
-      kind: intrinsicTag ? "jsx-style" : "component-prop-style",
+  if (styleSiteInputs.length === 0) {
+    return [];
+  }
+
+  const emittingComponentKey = input.renderSite?.emittingComponentKey ?? input.emittingComponentKey;
+  const placementComponentKey = input.renderSite?.placementComponentKey ?? emittingComponentKey;
+
+  return styleSiteInputs.map((styleSiteInput) => {
+    const expression = styleSiteInput.expression;
+    const location = toSourceAnchor(styleSiteInput.initializer, input.sourceFile, input.filePath);
+    const expressionSyntax = collectExpressionSyntaxForNode({
+      node: expression,
       filePath: input.filePath,
-      location,
-      expressionId: expressionSyntax.rootExpressionId,
-      rawExpressionText: expression.getText(input.sourceFile),
-      ...(input.emittingComponentKey ? { emittingComponentKey: input.emittingComponentKey } : {}),
-      ...(input.template?.placementComponentKey
-        ? { placementComponentKey: input.template.placementComponentKey }
-        : {}),
-      ...(!intrinsicTag ? { componentPropName: "style" } : {}),
-      ...(intrinsicTag && sourceComponentPropName
-        ? { componentPropName: sourceComponentPropName }
-        : {}),
-      ...(sourceComponentPropName ? { sourceComponentPropName } : {}),
-      ...(input.renderSite ? { renderSiteKey: input.renderSite.siteKey } : {}),
-      ...(input.template ? { elementTemplateKey: input.template.templateKey } : {}),
-    },
-    expressionSyntax: expressionSyntax.expressions,
-  };
+      sourceFile: input.sourceFile,
+    });
+    const sourceComponentPropName =
+      styleSiteInput.forwardedComponentPropName ??
+      resolveReferencedComponentPropName({
+        expression,
+        componentPropBinding: input.componentPropBinding,
+      });
+
+    return {
+      site: {
+        siteKey: createSiteKey(
+          "inline-style",
+          location,
+          input.renderSite?.siteKey ?? `${input.filePath}:standalone-inline-style`,
+        ),
+        kind: intrinsicTag ? "jsx-style" : "component-prop-style",
+        filePath: input.filePath,
+        location,
+        expressionId: expressionSyntax.rootExpressionId,
+        rawExpressionText: expression.getText(input.sourceFile),
+        ...(emittingComponentKey ? { emittingComponentKey } : {}),
+        ...(placementComponentKey ? { placementComponentKey } : {}),
+        ...(!intrinsicTag ? { componentPropName: "style" } : {}),
+        ...(intrinsicTag && sourceComponentPropName
+          ? { componentPropName: sourceComponentPropName }
+          : {}),
+        ...(sourceComponentPropName ? { sourceComponentPropName } : {}),
+        ...(input.renderSite ? { renderSiteKey: input.renderSite.siteKey } : {}),
+        ...(input.template ? { elementTemplateKey: input.template.templateKey } : {}),
+      },
+      expressionSyntax: expressionSyntax.expressions,
+    };
+  });
 }
 
-function findStyleAttribute(node: ts.Node): ts.JsxAttribute | undefined {
-  const attributes = ts.isJsxElement(node)
-    ? node.openingElement.attributes.properties
-    : ts.isJsxSelfClosingElement(node)
-      ? node.attributes.properties
-      : [];
+type JsxStyleSiteInput = {
+  initializer: ts.Node;
+  expression: ts.Expression;
+  forwardedComponentPropName?: string;
+};
 
-  for (let index = attributes.length - 1; index >= 0; index -= 1) {
-    const attribute = attributes[index];
+function collectEffectiveJsxStyleSiteInputs(input: {
+  attributes: ts.NodeArray<ts.JsxAttributeLike>;
+  sourceFile: ts.SourceFile;
+  intrinsicTag: boolean;
+  componentPropBinding?: ReactComponentPropBindingFact;
+}): JsxStyleSiteInput[] {
+  let effectiveStyles: JsxStyleSiteInput[] = [];
+  for (const attribute of input.attributes) {
     if (
       ts.isJsxAttribute(attribute) &&
       ts.isIdentifier(attribute.name) &&
-      attribute.name.text === "style"
+      attribute.name.text === "style" &&
+      attribute.initializer
     ) {
-      return attribute;
+      const expression = unwrapJsxAttributeInitializer(attribute.initializer);
+      if (expression) {
+        effectiveStyles = applyStyleSiteInputs(effectiveStyles, [
+          {
+            initializer: attribute,
+            expression,
+          },
+        ]);
+      }
+      continue;
     }
+
+    if (!ts.isJsxSpreadAttribute(attribute)) {
+      continue;
+    }
+
+    const spreadStyles =
+      resolveSpreadStyles({
+        expression: attribute.expression,
+        sourceFile: input.sourceFile,
+      }) ??
+      resolveForwardedComponentPropSpread({
+        expression: attribute.expression,
+        componentPropBinding: input.componentPropBinding,
+      });
+    if (spreadStyles.length > 0) {
+      effectiveStyles = applyStyleSiteInputs(effectiveStyles, spreadStyles);
+    }
+  }
+
+  return effectiveStyles;
+}
+
+function applyStyleSiteInputs(
+  existing: JsxStyleSiteInput[],
+  next: JsxStyleSiteInput[],
+): JsxStyleSiteInput[] {
+  return next.length > 0 ? next : existing;
+}
+
+function resolveForwardedComponentPropSpread(input: {
+  expression: ts.Expression;
+  componentPropBinding?: ReactComponentPropBindingFact;
+}): JsxStyleSiteInput[] {
+  const binding = input.componentPropBinding;
+  const unwrapped = unwrapExpression(input.expression);
+  if (!binding || !ts.isIdentifier(unwrapped)) {
+    return [];
+  }
+
+  if (binding.bindingKind === "props-identifier" && binding.identifierName === unwrapped.text) {
+    return [
+      {
+        initializer: unwrapped,
+        expression: unwrapped,
+        forwardedComponentPropName: "style",
+      },
+    ];
+  }
+
+  const destructuresStyle = binding.properties.some(
+    (property) => property.propertyName === "style",
+  );
+  if (
+    binding.bindingKind === "destructured-props" &&
+    binding.restPropertyName === unwrapped.text &&
+    !destructuresStyle
+  ) {
+    return [
+      {
+        initializer: unwrapped,
+        expression: unwrapped,
+        forwardedComponentPropName: "style",
+      },
+    ];
+  }
+
+  return [];
+}
+
+function resolveSpreadStyles(input: {
+  expression: ts.Expression;
+  sourceFile: ts.SourceFile;
+}): JsxStyleSiteInput[] | undefined {
+  const objectLiterals = resolveObjectLiteralExpressions({
+    expression: input.expression,
+    sourceFile: input.sourceFile,
+  });
+  if (!objectLiterals) {
+    return undefined;
+  }
+
+  const styles: JsxStyleSiteInput[] = [];
+  for (const objectLiteral of objectLiterals) {
+    const styleProperties = objectLiteral.properties.filter(
+      (property): property is ts.PropertyAssignment =>
+        ts.isPropertyAssignment(property) && getStaticPropertyName(property.name) === "style",
+    );
+    if (styleProperties.length === 0) {
+      return undefined;
+    }
+
+    for (const styleProperty of styleProperties) {
+      styles.push({
+        initializer: styleProperty.initializer,
+        expression: styleProperty.initializer,
+      });
+    }
+  }
+
+  return styles;
+}
+
+function resolveObjectLiteralExpressions(input: {
+  expression: ts.Expression;
+  sourceFile: ts.SourceFile;
+}): ts.ObjectLiteralExpression[] | undefined {
+  const unwrapped = unwrapExpression(input.expression);
+  if (ts.isConditionalExpression(unwrapped)) {
+    const whenTrue = resolveObjectLiteralExpressions({
+      expression: unwrapped.whenTrue,
+      sourceFile: input.sourceFile,
+    });
+    const whenFalse = resolveObjectLiteralExpressions({
+      expression: unwrapped.whenFalse,
+      sourceFile: input.sourceFile,
+    });
+    if (!whenTrue || !whenFalse) {
+      return undefined;
+    }
+    return [...whenTrue, ...whenFalse];
+  }
+
+  const objectLiteral = resolveObjectLiteralExpression({
+    expression: unwrapped,
+    sourceFile: input.sourceFile,
+  });
+  return objectLiteral ? [objectLiteral] : undefined;
+}
+
+function resolveObjectLiteralExpression(input: {
+  expression: ts.Expression;
+  sourceFile: ts.SourceFile;
+}): ts.ObjectLiteralExpression | undefined {
+  const unwrapped = unwrapExpression(input.expression);
+  if (ts.isObjectLiteralExpression(unwrapped)) {
+    return unwrapped;
+  }
+
+  if (!ts.isIdentifier(unwrapped)) {
+    return undefined;
+  }
+
+  const declaration = findVisibleConstObjectLiteralDeclaration({
+    sourceFile: input.sourceFile,
+    localName: unwrapped.text,
+    usage: unwrapped,
+  });
+  return declaration?.initializer
+    ? unwrapObjectLiteralInitializer(declaration.initializer)
+    : undefined;
+}
+
+function findVisibleConstObjectLiteralDeclaration(input: {
+  sourceFile: ts.SourceFile;
+  localName: string;
+  usage: ts.Identifier;
+}): ts.VariableDeclaration | undefined {
+  let current: ts.Node | undefined = input.usage;
+  while (current) {
+    if (ts.isBlock(current) || ts.isSourceFile(current) || ts.isModuleBlock(current)) {
+      const declaration = findConstObjectLiteralDeclarationInStatements({
+        statements: current.statements,
+        localName: input.localName,
+        usage: input.usage,
+      });
+      if (declaration) {
+        return declaration;
+      }
+    }
+    current = current.parent;
+  }
+
+  return undefined;
+}
+
+function findConstObjectLiteralDeclarationInStatements(input: {
+  statements: ts.NodeArray<ts.Statement>;
+  localName: string;
+  usage: ts.Identifier;
+}): ts.VariableDeclaration | undefined {
+  for (const statement of input.statements) {
+    if (statement.pos > input.usage.pos) {
+      break;
+    }
+    if (!ts.isVariableStatement(statement)) {
+      continue;
+    }
+    const isConst = (statement.declarationList.flags & ts.NodeFlags.Const) === ts.NodeFlags.Const;
+    if (!isConst) {
+      continue;
+    }
+    for (const declaration of statement.declarationList.declarations) {
+      if (
+        declaration.pos <= input.usage.pos &&
+        ts.isIdentifier(declaration.name) &&
+        declaration.name.text === input.localName &&
+        declaration.initializer
+      ) {
+        return declaration;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function unwrapObjectLiteralInitializer(
+  expression: ts.Expression,
+): ts.ObjectLiteralExpression | undefined {
+  const unwrapped = unwrapExpression(expression);
+  return ts.isObjectLiteralExpression(unwrapped) ? unwrapped : undefined;
+}
+
+function getStaticPropertyName(name: ts.PropertyName): string | undefined {
+  if (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNumericLiteral(name)) {
+    return name.text;
   }
 
   return undefined;

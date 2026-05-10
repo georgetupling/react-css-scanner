@@ -19,6 +19,7 @@ export type RuleId =
   | "css-module-import-not-used"
   | "orphan-css-file"
   | "duplicate-class-definition"
+  | "declaration-always-shadowed"
   | "unsatisfiable-selector"
   | "compound-selector-never-matched"
   | "unused-compound-selector-branch"
@@ -37,6 +38,7 @@ export type AnalysisEntityRef =
   | { kind: "statically-skipped-class-reference"; id: ProjectEvidenceId }
   | { kind: "unsupported-class-reference"; id: ProjectEvidenceId }
   | { kind: "class-definition"; id: ProjectEvidenceId }
+  | { kind: "css-declaration"; id: ProjectEvidenceId }
   | { kind: "selector-branch"; id: ProjectEvidenceId }
   | { kind: "css-module-import"; id: ProjectEvidenceId }
   | { kind: "css-module-member-reference"; id: ProjectEvidenceId }

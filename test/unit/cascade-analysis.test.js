@@ -315,6 +315,179 @@ test("cascade analysis keeps unknown inline style spreads conservative", async (
   }
 });
 
+test("cascade analysis reads inline styles supplied through intrinsic JSX prop spreads", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'const props = { style: { color: "red" } };\nexport function App() { return <button {...props}>Save</button>; }\n',
+    )
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+    const outcome = cascade.outcomes.find((candidate) => candidate.property === "color");
+
+    assert.ok(outcome?.winningCandidateId);
+    const winningCandidate = cascade.indexes.candidateById.get(outcome.winningCandidateId);
+    assert.equal(winningCandidate?.value, "red");
+    assert.equal(winningCandidate?.cascadeKey.origin, "inline");
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis follows style props through component JSX prop spreads", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'function Button(props) { return <button {...props}>Save</button>; }\nexport function App() { return <Button {...{ style: { color: "red" } }} />; }\n',
+    )
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+    const outcome = cascade.outcomes.find((candidate) => candidate.property === "color");
+
+    assert.ok(outcome?.winningCandidateId);
+    const winningCandidate = cascade.indexes.candidateById.get(outcome.winningCandidateId);
+    assert.equal(winningCandidate?.value, "red");
+    assert.equal(winningCandidate?.cascadeKey.origin, "inline");
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis resolves imported inline style object constants", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile("src/styles.ts", "export const buttonStyle = { marginTop: 8 };\n")
+    .withSourceFile(
+      "src/App.tsx",
+      'import { buttonStyle } from "./styles";\nexport function App() { return <button style={buttonStyle}>Save</button>; }\n',
+    )
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx", "src/styles.ts"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+    const outcome = cascade.outcomes.find((candidate) => candidate.property === "margin-top");
+
+    assert.ok(outcome?.winningCandidateId);
+    const winningCandidate = cascade.indexes.candidateById.get(outcome.winningCandidateId);
+    assert.equal(winningCandidate?.value, "8px");
+    assert.equal(winningCandidate?.matchCertainty, "definite");
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis resolves inline styles returned by no-argument helpers", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      "function getStyle() { return { paddingTop: 6 }; }\nexport function App() { return <button style={getStyle()}>Save</button>; }\n",
+    )
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+    const outcome = cascade.outcomes.find((candidate) => candidate.property === "padding-top");
+
+    assert.ok(outcome?.winningCandidateId);
+    const winningCandidate = cascade.indexes.candidateById.get(outcome.winningCandidateId);
+    assert.equal(winningCandidate?.value, "6px");
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis marks single-branch conditional inline styles as possible", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'export function App({ active }) { return <button style={active ? { color: "red" } : {}}>Save</button>; }\n',
+    )
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+    const outcome = cascade.outcomes.find((candidate) => candidate.property === "color");
+
+    assert.ok(outcome?.winningCandidateId);
+    assert.equal(outcome.certainty, "possible");
+    const winningCandidate = cascade.indexes.candidateById.get(outcome.winningCandidateId);
+    assert.equal(winningCandidate?.value, "red");
+    assert.equal(winningCandidate?.matchCertainty, "possible");
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis rejects conflicting conditional inline style values", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'export function App({ active }) { return <button style={active ? { color: "red" } : { color: "blue" }}>Save</button>; }\n',
+    )
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+
+    assert.equal(cascade.meta.candidateCount, 0);
+    assert.equal(
+      cascade.diagnostics.some(
+        (diagnostic) =>
+          diagnostic.code === "unsupported-inline-style" &&
+          diagnostic.message.includes('conflicting "color" values'),
+      ),
+      true,
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("cascade analysis follows component-forwarded style props to intrinsic elements", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(

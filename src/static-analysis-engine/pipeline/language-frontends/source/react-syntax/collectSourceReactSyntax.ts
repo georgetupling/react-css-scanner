@@ -34,7 +34,7 @@ import {
   compareLocalValueBindings,
   compareRenderSites,
 } from "./sortReactSyntaxFacts.js";
-import { createJsxInlineStyleSite } from "./inlineStyleSites.js";
+import { createJsxInlineStyleSites } from "./inlineStyleSites.js";
 import type { SourceModuleSyntaxFacts } from "../module-syntax/index.js";
 import type {
   ReactClassExpressionSiteFact,
@@ -202,7 +202,7 @@ export function collectSourceReactSyntax(input: {
       expressionSyntax.push(...classSite.expressionSyntax);
     }
 
-    const inlineStyleSite = createJsxInlineStyleSite({
+    const inlineStyleSitesForNode = createJsxInlineStyleSites({
       node,
       filePath: input.filePath,
       sourceFile: input.sourceFile,
@@ -213,7 +213,7 @@ export function collectSourceReactSyntax(input: {
         ? { componentPropBinding: componentPropBindingByComponentKey.get(currentComponentKey) }
         : {}),
     });
-    if (inlineStyleSite) {
+    for (const inlineStyleSite of inlineStyleSitesForNode) {
       inlineStyleSites.push(inlineStyleSite.site);
       expressionSyntax.push(...inlineStyleSite.expressionSyntax);
     }

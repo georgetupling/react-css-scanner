@@ -23,6 +23,7 @@ export async function scanProject(input: ScanProjectInput = {}): Promise<ScanPro
   const engineProjectResult = await runAnalysisPipeline({
     scanInput: input,
     includeTraces: input.includeTraces ?? true,
+    cascadeAnalysis: "auto",
     onProgress: (event) => progress(event.stage, event.status, event.message, event.durationMs),
   });
   const { snapshot, analysisEvidence } = engineProjectResult;

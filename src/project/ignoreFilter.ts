@@ -166,6 +166,7 @@ function extractPathFromEntityId(entityId: string): string | undefined {
     "class-reference:",
     "unsupported-class-reference:",
     "class-definition:",
+    "css-declaration:",
     "selector-query:",
     "selector-branch:",
     "component:",

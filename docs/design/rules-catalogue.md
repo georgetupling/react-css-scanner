@@ -183,6 +183,26 @@ Config:
 
 - future cascade-aware versions may expand this beyond exact same-scope duplicate selectors
 
+#### `declaration-always-shadowed`
+
+Default severity: `off`
+
+Triggers when a CSS declaration has at least one cascade candidate and every candidate definitely
+loses to stronger cascade candidates wherever it can apply.
+
+Meaning:
+
+- the declaration is present in reachable CSS
+- the scanner can prove that browser cascade order always gives the relevant property to another
+  declaration or inline style for every modeled match
+- this is an opt-in cleanup signal while cascade analysis is still expanding its browser semantics
+
+Config:
+
+- should remain off by default until cascade analysis has broader property, condition, and runtime
+  order coverage
+- only reports when cascade diagnostics and unresolved outcomes are absent for the declaration
+
 ### Ownership And Architecture
 
 Ownership rules should be convention-aware and conservative by default.

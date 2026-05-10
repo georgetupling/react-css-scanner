@@ -34,7 +34,7 @@ Anything weaker should begin as either:
 
 ## Stage Policy
 
-Initial implementation should run `cascade-analysis` only when at least one cascade-aware rule is enabled.
+Normal `scanProject()` execution should run `cascade-analysis` only when at least one cascade-aware rule is enabled.
 
 Reasons:
 
@@ -65,8 +65,9 @@ Current implementation status:
 - `cascade-analysis` is scaffolded under `src/static-analysis-engine/pipeline/cascade-analysis`.
 - The stage currently runs after `ownership-inference` and before `run-rules`.
 - It emits declaration records, condition sets, declaration candidates, outcomes, diagnostics, and indexes.
-- The first pass is intentionally narrow: author stylesheet declarations plus direct and component-forwarded JSX inline styles, limited CSS property effects, selector-branch render matches only, and no user-facing findings.
-- Before adding default-on cascade rules, add rule-aware gating so projects only pay for deeper cascade work when cascade-aware rules are enabled.
+- The first pass is intentionally narrow: author stylesheet declarations plus bounded JSX inline style flow, limited CSS property effects, selector-branch render matches only, and one opt-in cascade-consuming rule.
+- `scanProject()` uses rule-aware gating so projects only pay for cascade work when a cascade-aware rule is enabled.
+- Direct `runAnalysisPipeline()` calls still build cascade analysis by default for engine tests, tooling, and analysis inspection. Callers can request `cascadeAnalysis: "auto"` to use rule-aware gating.
 
 The stage can technically run before `ownership-inference` for pure declaration winning/losing. Placing it after ownership keeps room for ownership-aware cascade rules such as `component-style-overridden-externally`.
 
@@ -168,6 +169,8 @@ export type CascadeKey = {
 ```
 
 Initial support includes author stylesheet declarations, direct JSX inline styles on intrinsic elements, and statically analyzable component-forwarded `style` props. User origin and user-agent origin remain representable so the model does not need to be reshaped later.
+
+Inline style support is intentionally static and bounded. The scanner can follow object literals, local and imported exported `const` style object bindings, no-argument local helpers that return style objects, conditional style object branches, static object spreads, and JSX prop spreads that expose a `style` prop or forward `props`/rest props into an intrinsic element. Conflicting conditional values are rejected as unsupported rather than guessed.
 
 ### Condition Evidence
 
@@ -331,6 +334,12 @@ Start with one opt-in/debug rule after the stage exists:
 
 - `declaration-always-shadowed`
 
+Implementation status:
+
+- `declaration-always-shadowed` is implemented as an opt-in rule with default severity `off`.
+- It consumes cascade outcomes and declaration candidates rather than recomputing cascade logic.
+- It reports only when every candidate for a declaration definitely loses and the declaration has no cascade diagnostics.
+
 Only report when:
 
 - at least one candidate for the declaration exists
@@ -385,6 +394,10 @@ Phase 2 adds the first cascade stage scaffold:
 - declaration candidates from selector-branch render matches.
 - declaration candidates from direct `style={{ ... }}` JSX inline styles on intrinsic elements, with inline origin precedence.
 - declaration candidates from component-forwarded `style` props when a component supplies a static style object and an expanded intrinsic element consumes that prop.
+- declaration candidates from JSX prop spreads when the spread can be statically resolved to a `style` prop, or when component props/rest props are forwarded to an intrinsic element.
+- declaration candidates from local and imported exported `const` style object bindings.
+- declaration candidates from no-argument local helpers that return statically analyzable style objects.
+- conditional inline style object support when every branch can be statically analyzed; properties present in only some branches become possible candidates, while conflicting branch values produce an `unsupported-inline-style` diagnostic.
 - React-style numeric value normalization for inline styles: non-zero numeric values gain `px` except for custom properties and known unitless CSS properties.
 - static inline style object spread flattening for local `const` object literals, preserving object literal order and React's later-property-wins behavior.
 - condition sets for at-rule and render placement conditions.
@@ -406,10 +419,11 @@ Known limitations:
 - anonymous and otherwise unsupported cascade layer order remains unresolved
 - no nested layer name composition beyond explicit dotted layer names
 - no `@scope`
-- no inline style prop flow through JSX spreads or computed prop names
-- no dynamic, unknown spread, computed, or non-object-literal inline style evaluation
+- no computed style property names or computed JSX prop names
+- no dynamic, unknown spread, parameterized helper, mutation-based, call-result, member-expression, re-export barrel, namespace import, or package-import inline style evaluation
+- conditional inline style branches with conflicting values for the same effective property are intentionally unsupported
 - only a small safe shorthand/longhand property semantics set
 - no logical property, reset, inheritance, custom property, or `var()` resolution
 - no typed value evaluation beyond preserving shorthand token values for supported four-sided properties
 - no pseudo-state compatibility model
-- no rule consumes outcomes yet
+- only `declaration-always-shadowed` consumes outcomes today, and it remains opt-in

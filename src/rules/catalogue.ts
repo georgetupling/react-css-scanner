@@ -2,6 +2,7 @@ import { missingCssClassRule } from "./rules/missingCssClass.js";
 import { cssClassUnreachableRule } from "./rules/cssClassUnreachable.js";
 import { compoundSelectorNeverMatchedRule } from "./rules/compoundSelectorNeverMatched.js";
 import { dynamicClassReferenceRule } from "./rules/dynamicClassReference.js";
+import { declarationAlwaysShadowedRule } from "./rules/declarationAlwaysShadowed.js";
 import { duplicateClassDefinitionRule } from "./rules/duplicateClassDefinition.js";
 import { cssModuleImportNotUsedRule } from "./rules/cssModuleImportNotUsed.js";
 import { missingCssModuleClassRule } from "./rules/missingCssModuleClass.js";
@@ -27,6 +28,7 @@ export const RULE_DEFINITIONS: RuleDefinition[] = [
   cssModuleImportNotUsedRule,
   orphanCssFileRule,
   duplicateClassDefinitionRule,
+  declarationAlwaysShadowedRule,
   unsatisfiableSelectorRule,
   compoundSelectorNeverMatchedRule,
   unusedCompoundSelectorBranchRule,
@@ -47,6 +49,7 @@ export const DEFAULT_RULE_SEVERITIES: Record<RuleId, RuleConfigSeverity> = {
   "css-module-import-not-used": "warn",
   "orphan-css-file": "warn",
   "duplicate-class-definition": "info",
+  "declaration-always-shadowed": "off",
   "unsatisfiable-selector": "warn",
   "compound-selector-never-matched": "warn",
   "unused-compound-selector-branch": "warn",

@@ -1,4 +1,5 @@
 export { buildCascadeAnalysis } from "./buildCascadeAnalysis.js";
+export { createEmptyCascadeAnalysisResult } from "./empty.js";
 export {
   cascadeConditionSetId,
   cascadeDeclarationCandidateId,

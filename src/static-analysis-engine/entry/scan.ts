@@ -1,4 +1,7 @@
-import { buildCascadeAnalysis } from "../pipeline/cascade-analysis/index.js";
+import {
+  buildCascadeAnalysis,
+  createEmptyCascadeAnalysisResult,
+} from "../pipeline/cascade-analysis/index.js";
 import { buildFactGraph } from "../pipeline/fact-graph/index.js";
 import { buildLanguageFrontends } from "../pipeline/language-frontends/index.js";
 import { buildOwnershipInference } from "../pipeline/ownership-inference/index.js";
@@ -21,6 +24,7 @@ export async function runAnalysisPipeline(input: {
   scanInput: ScanProjectInput;
   onProgress?: AnalysisProgressCallback;
   includeTraces?: boolean;
+  cascadeAnalysis?: "always" | "auto";
 }): Promise<StaticAnalysisEngineProjectResult> {
   const progress = createAnalysisProgressReporter(input.onProgress);
   const snapshot = await runAsyncAnalysisStage(
@@ -127,23 +131,28 @@ export async function runAnalysisPipeline(input: {
         }),
       }))
     : undefined;
-  const cascadeAnalysisStage = runAnalysisStage(
-    progress,
-    "cascade-analysis",
-    "Building cascade analysis evidence",
-    () => ({
-      cascadeAnalysis: buildCascadeAnalysis({
-        factGraph,
-        projectEvidence: projectEvidenceStage.projectEvidence,
-        renderModel: renderStructureStage.renderModel,
-        runtimeCssLoading: runtimeCssLoadingStage.runtimeCssLoading,
-        selectorReachability: selectorReachabilityStage.selectorReachability,
-        options: {
-          includeTraces,
-        },
-      }),
-    }),
-  );
+  const cascadeAnalysisStage =
+    input.cascadeAnalysis !== "auto" || oneOrMoreCascadeRulesEnabled(snapshot)
+      ? runAnalysisStage(
+          progress,
+          "cascade-analysis",
+          "Building cascade analysis evidence",
+          () => ({
+            cascadeAnalysis: buildCascadeAnalysis({
+              factGraph,
+              projectEvidence: projectEvidenceStage.projectEvidence,
+              renderModel: renderStructureStage.renderModel,
+              runtimeCssLoading: runtimeCssLoadingStage.runtimeCssLoading,
+              selectorReachability: selectorReachabilityStage.selectorReachability,
+              options: {
+                includeTraces,
+              },
+            }),
+          }),
+        )
+      : {
+          cascadeAnalysis: createEmptyCascadeAnalysisResult(),
+        };
 
   return {
     snapshot,
@@ -209,4 +218,9 @@ function oneOrMoreOwnershipRulesEnabled(snapshot: ProjectSnapshot) {
     rules["style-used-outside-owner"] !== "off" ||
     rules["style-shared-without-shared-owner"] !== "off"
   );
+}
+
+function oneOrMoreCascadeRulesEnabled(snapshot: ProjectSnapshot) {
+  const rules = snapshot.config.rules;
+  return rules["declaration-always-shadowed"] !== "off";
 }

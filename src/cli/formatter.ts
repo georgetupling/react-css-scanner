@@ -72,6 +72,7 @@ export function extractPathFromEntityId(entityId: string): string | undefined {
     "statically-skipped-class-reference:",
     "unsupported-class-reference:",
     "class-definition:",
+    "css-declaration:",
     "selector-query:",
     "selector-branch:",
     "component:",
