@@ -172,7 +172,7 @@ export type CascadeKey = {
 
 Initial support includes author stylesheet declarations, direct JSX inline styles on intrinsic elements, and statically analyzable component-forwarded `style` props. User origin and user-agent origin remain representable so the model does not need to be reshaped later.
 
-Inline style support is intentionally static and bounded. The scanner can follow object literals, local and imported exported `const` style object bindings, no-argument local helpers that return style objects, conditional style object branches, static object spreads, and JSX prop spreads that expose a `style` prop or forward `props`/rest props into an intrinsic element. Conflicting conditional values are rejected as unsupported rather than guessed.
+Inline style support is intentionally static and bounded. The scanner can follow object literals, local and imported exported `const` style object bindings, no-argument local helpers that return style objects, conditional style object branches, static object spreads, and JSX prop spreads that expose a `style` prop or forward `props`/rest props into an intrinsic element. Conflicting conditional values are rejected as unsupported rather than guessed. React inline style declaration semantics are computed before candidate creation: camelCase property names are normalized, numeric values are converted using React's `px`/unitless behavior, custom properties are preserved, and then `propertyEffects` are attached through the shared CSS declaration semantics helper.
 
 ### Condition Evidence
 
@@ -411,6 +411,7 @@ Phase 2 adds the first cascade stage scaffold:
 - conditional inline style object support when every branch can be statically analyzed; properties present in only some branches become possible candidates, while conflicting branch values produce an `unsupported-inline-style` diagnostic.
 - React-style numeric value normalization for inline styles: non-zero numeric values gain `px` except for custom properties and known unitless CSS properties.
 - static inline style object spread flattening for local `const` object literals, preserving object literal order and React's later-property-wins behavior.
+- precomputed inline style property effects after React property/value normalization, so cascade candidate creation does not parse inline declaration semantics.
 - condition sets for at-rule and render placement conditions.
 - outcomes grouped by rendered element and effective property.
 - resolved cross-stylesheet outcomes when all candidates come from a definite initial runtime CSS chunk with stable static import order.

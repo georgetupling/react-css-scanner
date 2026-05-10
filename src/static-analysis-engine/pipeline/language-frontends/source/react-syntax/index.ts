@@ -1,4 +1,6 @@
 export { collectSourceReactSyntax } from "./collectSourceReactSyntax.js";
+export { getReactInlineStyleDeclarationSemantics } from "./inlineStylePropertySemantics.js";
+export type { ReactInlineStyleDeclarationSemantics } from "./inlineStylePropertySemantics.js";
 export type {
   ReactClassExpressionSiteFact,
   ReactComponentDeclarationFact,

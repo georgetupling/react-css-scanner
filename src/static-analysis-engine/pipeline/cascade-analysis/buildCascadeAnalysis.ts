@@ -24,14 +24,18 @@ import {
   cascadeOutcomeId,
   elementPropertyKey,
 } from "./ids.js";
-import { getCssPropertyEffects, getCssPropertyEffectsForDeclaration } from "./propertyEffects.js";
+import { getCssPropertyEffectsForDeclaration } from "./propertyEffects.js";
 import { calculateSelectorSpecificity, compareSpecificity } from "./specificity.js";
 import type {
   SourceExpressionSyntaxFact,
   SourceObjectExpressionProperty,
   SourceObjectLiteralExpressionSyntax,
 } from "../language-frontends/source/expression-syntax/index.js";
-import type { ReactInlineStyleSiteFact } from "../language-frontends/source/react-syntax/index.js";
+import {
+  getReactInlineStyleDeclarationSemantics,
+  type ReactInlineStyleSiteFact,
+} from "../language-frontends/source/react-syntax/index.js";
+import type { CssDeclarationPropertyEffect } from "../../types/css.js";
 import type { SourceFrontendFile } from "../language-frontends/index.js";
 import type {
   CascadeAnalysisDiagnostic,
@@ -406,8 +410,7 @@ function buildInlineStyleCandidates(input: {
       input.conditionSetsById.set(conditionSet.id, conditionSet);
 
       for (const declaration of declarations.declarations) {
-        const propertyEffects = getCssPropertyEffects(declaration.property, declaration.value);
-        for (const propertyEffect of propertyEffects) {
+        for (const propertyEffect of declaration.propertyEffects) {
           if (!propertyEffect.supported) {
             input.diagnostics.push(
               input.createDiagnostic({
@@ -481,6 +484,7 @@ type InlineStyleSiteWithSourceFile = {
 type InlineStyleDeclaration = {
   property: string;
   value: string;
+  propertyEffects: CssDeclarationPropertyEffect[];
   location: ReactInlineStyleSiteFact["location"];
   order: number;
   certainty: "definite" | "possible";
@@ -1162,27 +1166,23 @@ function extractInlineStyleDeclaration(input: {
     return undefined;
   }
 
-  const cssProperty = reactStylePropertyToCssProperty(input.property.keyText);
-  if (!cssProperty) {
-    return undefined;
-  }
-
   const valueExpression = unwrapExpressionSyntax(
     input.expressionById.get(input.property.valueExpressionId),
     input.expressionById,
   );
-  const value = inlineStyleExpressionToCssValue({
-    property: cssProperty,
-    expression: valueExpression,
+  const semantics = getReactInlineStyleDeclarationSemantics({
+    propertyName: input.property.keyText,
+    valueExpression,
     expressionById: input.expressionById,
   });
-  if (value === undefined) {
+  if (!semantics) {
     return undefined;
   }
 
   return {
-    property: cssProperty,
-    value,
+    property: semantics.property,
+    value: semantics.value,
+    propertyEffects: semantics.propertyEffects,
     location: input.property.location ?? input.fallbackLocation,
     order: input.order,
     certainty: input.certainty,
@@ -1213,116 +1213,6 @@ function unwrapExpressionSyntax(
     current = expressionById.get(current.innerExpressionId);
   }
   return current;
-}
-
-function inlineStyleExpressionToCssValue(input: {
-  property: string;
-  expression: SourceExpressionSyntaxFact | undefined;
-  expressionById: Map<string, SourceExpressionSyntaxFact>;
-}): string | undefined {
-  const expression = input.expression;
-  if (!expression) {
-    return undefined;
-  }
-  if (expression.expressionKind === "string-literal") {
-    return expression.value;
-  }
-  if (expression.expressionKind === "numeric-literal") {
-    return reactNumericInlineStyleValue(input.property, expression.value);
-  }
-  if (expression.expressionKind === "prefix-unary" && expression.operator !== "~") {
-    const operand = unwrapExpressionSyntax(
-      input.expressionById.get(expression.operandExpressionId),
-      input.expressionById,
-    );
-    if (!operand || operand.expressionKind !== "numeric-literal") {
-      return undefined;
-    }
-    const signedValue = expression.operator === "-" ? `-${operand.value}` : operand.value;
-    return reactNumericInlineStyleValue(input.property, signedValue);
-  }
-  if (expression.expressionKind === "template-literal" && expression.spans.length === 0) {
-    return expression.headText;
-  }
-  return undefined;
-}
-
-const REACT_UNITLESS_CSS_PROPERTIES = new Set([
-  "animation-iteration-count",
-  "aspect-ratio",
-  "border-image-outset",
-  "border-image-slice",
-  "border-image-width",
-  "box-flex",
-  "box-flex-group",
-  "box-ordinal-group",
-  "column-count",
-  "columns",
-  "flex",
-  "flex-grow",
-  "flex-negative",
-  "flex-order",
-  "flex-positive",
-  "flex-shrink",
-  "font-weight",
-  "grid-area",
-  "grid-column",
-  "grid-column-end",
-  "grid-column-start",
-  "grid-row",
-  "grid-row-end",
-  "grid-row-start",
-  "line-clamp",
-  "-webkit-line-clamp",
-  "line-height",
-  "opacity",
-  "order",
-  "orphans",
-  "scale",
-  "tab-size",
-  "widows",
-  "z-index",
-  "zoom",
-  "fill-opacity",
-  "flood-opacity",
-  "stop-opacity",
-  "stroke-dasharray",
-  "stroke-dashoffset",
-  "stroke-miterlimit",
-  "stroke-opacity",
-  "stroke-width",
-]);
-
-function reactNumericInlineStyleValue(property: string, rawValue: string): string {
-  const numericValue = Number(rawValue);
-  if (!Number.isFinite(numericValue)) {
-    return rawValue;
-  }
-  if (
-    numericValue === 0 ||
-    property.startsWith("--") ||
-    REACT_UNITLESS_CSS_PROPERTIES.has(property)
-  ) {
-    return rawValue;
-  }
-  return `${rawValue}px`;
-}
-
-function reactStylePropertyToCssProperty(propertyName: string): string | undefined {
-  if (propertyName.startsWith("--")) {
-    return propertyName;
-  }
-  if (!/^[A-Za-z_$][\w$-]*$/.test(propertyName) && !propertyName.includes("-")) {
-    return undefined;
-  }
-  if (propertyName.includes("-")) {
-    return propertyName.toLowerCase();
-  }
-
-  const prefixed = propertyName
-    .replace(/^ms([A-Z])/, "-ms-$1")
-    .replace(/^(Webkit|Moz|O)([A-Z])/, "-$1-$2");
-  return prefixed.replace(/[A-Z]/g, (character) => `-${character.toLowerCase()}`).toLowerCase();
 }
 
 function createConditionSetFromRenderedElement(input: {
