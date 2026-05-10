@@ -65,7 +65,7 @@ Current implementation status:
 - `cascade-analysis` is scaffolded under `src/static-analysis-engine/pipeline/cascade-analysis`.
 - The stage currently runs after `ownership-inference` and before `run-rules`.
 - It emits declaration records, condition sets, declaration candidates, outcomes, diagnostics, and indexes.
-- The first pass is intentionally narrow: author declarations only, limited CSS property effects, selector-branch render matches only, and no user-facing findings.
+- The first pass is intentionally narrow: author stylesheet declarations plus direct JSX inline styles on intrinsic elements, limited CSS property effects, selector-branch render matches only, and no user-facing findings.
 - Before adding default-on cascade rules, add rule-aware gating so projects only pay for deeper cascade work when cascade-aware rules are enabled.
 
 The stage can technically run before `ownership-inference` for pure declaration winning/losing. Placing it after ownership keeps room for ownership-aware cascade rules such as `component-style-overridden-externally`.
@@ -167,7 +167,7 @@ export type CascadeKey = {
 };
 ```
 
-Initial support should use author styles only. Inline React styles, user origin, and user-agent origin should remain representable so the model does not need to be reshaped later.
+Initial support includes author stylesheet declarations and direct JSX inline styles on intrinsic elements. Component-forwarded `style` props, user origin, and user-agent origin remain representable so the model does not need to be reshaped later.
 
 ### Condition Evidence
 
@@ -211,7 +211,8 @@ A declaration candidate represents a declaration matched to a modeled element un
 ```ts
 export type CascadeDeclarationCandidate = {
   id: string;
-  declarationId: ProjectEvidenceId;
+  declarationId?: ProjectEvidenceId;
+  inlineStyleId?: string;
   elementId: string;
   selectorBranchId?: ProjectEvidenceId;
   property: string;
@@ -230,6 +231,7 @@ export type CascadeDeclarationCandidate = {
 Candidate indexes should include:
 
 - candidates by declaration id
+- candidates by inline style id
 - candidates by selector branch id
 - candidates by element id
 - candidates by element id and property
@@ -287,6 +289,7 @@ export type CascadeAnalysisDiagnosticCode =
   | "unknown-stylesheet-order"
   | "unknown-condition-compatibility"
   | "unsupported-property-semantics"
+  | "unsupported-inline-style"
   | "missing-declaration-location"
   | "missing-selector-branch-match";
 
@@ -380,6 +383,7 @@ Phase 2 adds the first cascade stage scaffold:
 - named cascade layer order from `@layer a, b;` statements and named `@layer name { ... }` blocks.
 - layer precedence before specificity, including unlayered normal declarations and reversed `!important` layer order.
 - declaration candidates from selector-branch render matches.
+- declaration candidates from direct `style={{ ... }}` JSX inline styles on intrinsic elements, with inline origin precedence.
 - condition sets for at-rule and render placement conditions.
 - outcomes grouped by rendered element and effective property.
 - resolved cross-stylesheet outcomes when all candidates come from a definite initial runtime CSS chunk with stable static import order.
@@ -399,7 +403,9 @@ Known limitations:
 - anonymous and otherwise unsupported cascade layer order remains unresolved
 - no nested layer name composition beyond explicit dotted layer names
 - no `@scope`
-- no inline styles
+- no component-forwarded inline `style` prop flow
+- no numeric React style unit coercion beyond preserving static numeric values
+- no dynamic, spread, computed, or non-object-literal inline style evaluation
 - only a small safe shorthand/longhand property semantics set
 - no logical property, reset, inheritance, custom property, or `var()` resolution
 - no typed value evaluation beyond preserving shorthand token values for supported four-sided properties

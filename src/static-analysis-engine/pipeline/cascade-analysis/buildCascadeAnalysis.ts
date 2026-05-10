@@ -4,6 +4,7 @@ import type {
   ProjectEvidenceId,
   SelectorBranchAnalysis,
 } from "../project-evidence/index.js";
+import type { RenderModel, RenderCertainty, RenderedElement } from "../render-structure/index.js";
 import type { RuntimeCssLoadingResult } from "../runtime-css-loading/index.js";
 import type {
   SelectorBranchMatch,
@@ -21,6 +22,11 @@ import {
 import { getCssPropertyEffects } from "./propertyEffects.js";
 import { calculateSelectorSpecificity, compareSpecificity } from "./specificity.js";
 import type {
+  SourceExpressionSyntaxFact,
+  SourceObjectExpressionProperty,
+} from "../language-frontends/source/expression-syntax/index.js";
+import type { ReactInlineStyleSiteFact } from "../language-frontends/source/react-syntax/index.js";
+import type {
   CascadeAnalysisDiagnostic,
   CascadeAnalysisDiagnosticCode,
   CascadeAnalysisResult,
@@ -34,6 +40,7 @@ import type {
 export type CascadeAnalysisInput = {
   factGraph: FactGraphResult;
   projectEvidence: ProjectEvidenceAssemblyResult;
+  renderModel: RenderModel;
   runtimeCssLoading: RuntimeCssLoadingResult;
   selectorReachability: SelectorReachabilityResult;
   options?: {
@@ -206,6 +213,16 @@ export function buildCascadeAnalysis(input: CascadeAnalysisInput): CascadeAnalys
     }
   }
 
+  candidates.push(
+    ...buildInlineStyleCandidates({
+      input,
+      conditionSetsById,
+      includeTraces,
+      diagnostics,
+      createDiagnostic,
+    }),
+  );
+
   const outcomes = buildOutcomes({
     candidates: candidates.sort(compareById),
     projectEvidence: input.projectEvidence,
@@ -288,6 +305,322 @@ function findMatchesForSelectorBranch(
     .sort(compareById);
 }
 
+function buildInlineStyleCandidates(input: {
+  input: CascadeAnalysisInput;
+  conditionSetsById: Map<string, CascadeConditionSet>;
+  includeTraces: boolean;
+  diagnostics: CascadeAnalysisDiagnostic[];
+  createDiagnostic: (input: {
+    code: CascadeAnalysisDiagnosticCode;
+    message: string;
+    declarationId?: ProjectEvidenceId;
+    selectorBranchId?: ProjectEvidenceId;
+    elementId?: string;
+    location?: CascadeAnalysisDiagnostic["location"];
+    traces: CascadeAnalysisDiagnostic["traces"];
+  }) => CascadeAnalysisDiagnostic;
+}): CascadeDeclarationCandidate[] {
+  const candidates: CascadeDeclarationCandidate[] = [];
+  const inlineStyleSites = input.input.factGraph.frontends.source.files.flatMap((sourceFile) =>
+    sourceFile.reactSyntax.inlineStyleSites.map((site) => ({ sourceFile, site })),
+  );
+  const inlineOrderById = new Map(
+    inlineStyleSites
+      .sort(
+        (left, right) =>
+          left.site.filePath.localeCompare(right.site.filePath) ||
+          left.site.location.startLine - right.site.location.startLine ||
+          left.site.location.startColumn - right.site.location.startColumn ||
+          left.site.siteKey.localeCompare(right.site.siteKey),
+      )
+      .map(({ site }, index) => [site.siteKey, index] as const),
+  );
+
+  for (const { sourceFile, site } of inlineStyleSites) {
+    const expressionById = new Map(
+      sourceFile.expressionSyntax.map((expression) => [expression.expressionId, expression]),
+    );
+    const declarations = extractInlineStyleDeclarations({
+      site,
+      expressionById,
+    });
+    if (declarations.unsupportedReason) {
+      input.diagnostics.push(
+        input.createDiagnostic({
+          code: "unsupported-inline-style",
+          message: declarations.unsupportedReason,
+          location: site.location,
+          traces: [],
+        }),
+      );
+      continue;
+    }
+
+    const elementIds = findRenderedElementIdsForInlineStyleSite({
+      site,
+      graph: input.input.factGraph.graph,
+      renderModel: input.input.renderModel,
+    });
+    if (elementIds.length === 0) {
+      input.diagnostics.push(
+        input.createDiagnostic({
+          code: "unsupported-inline-style",
+          message: `Inline style "${site.rawExpressionText}" could not be linked to a rendered element.`,
+          location: site.location,
+          traces: [],
+        }),
+      );
+      continue;
+    }
+
+    for (const elementId of elementIds) {
+      const renderedElement = input.input.renderModel.indexes.elementById.get(elementId);
+      if (!renderedElement) {
+        continue;
+      }
+      const conditionSet = createConditionSetFromRenderedElement({
+        renderedElement,
+        includeTraces: input.includeTraces,
+      });
+      input.conditionSetsById.set(conditionSet.id, conditionSet);
+
+      for (const declaration of declarations.declarations) {
+        const propertyEffects = getCssPropertyEffects(declaration.property, declaration.value);
+        for (const propertyEffect of propertyEffects) {
+          if (!propertyEffect.supported) {
+            input.diagnostics.push(
+              input.createDiagnostic({
+                code: "unsupported-property-semantics",
+                message:
+                  propertyEffect.reason ??
+                  `Property semantics are not fully modeled for inline "${declaration.property}".`,
+                elementId,
+                location: declaration.location,
+                traces: [],
+              }),
+            );
+          }
+
+          candidates.push({
+            id: cascadeDeclarationCandidateId({
+              inlineStyleId: site.siteKey,
+              elementId,
+              property: propertyEffect.property,
+            }),
+            inlineStyleId: site.siteKey,
+            elementId,
+            property: propertyEffect.property,
+            value: propertyEffect.value,
+            declaredProperty: declaration.property,
+            declaredValue: declaration.value,
+            propertyEffectSource: propertyEffect.source,
+            cascadeKey: {
+              origin: "inline",
+              important: false,
+              layer: {
+                known: true,
+                unlayered: true,
+              },
+              specificity: { a: 1, b: 0, c: 0 },
+              sourceOrder: 2_000_000_000 + (inlineOrderById.get(site.siteKey) ?? 0),
+              orderKnown: true,
+            },
+            conditionSetId: conditionSet.id,
+            matchCertainty: mapRenderCertainty(renderedElement.certainty),
+            reasons: [
+              "inline style applies directly to rendered element",
+              ...(propertyEffect.source === "shorthand"
+                ? [`"${declaration.property}" contributes to "${propertyEffect.property}"`]
+                : []),
+            ],
+            traces: input.includeTraces ? renderedElement.traces : [],
+          });
+        }
+      }
+    }
+  }
+
+  return candidates;
+}
+
+function findRenderedElementIdsForInlineStyleSite(input: {
+  site: ReactInlineStyleSiteFact;
+  graph: CascadeAnalysisInput["factGraph"]["graph"];
+  renderModel: RenderModel;
+}): string[] {
+  if (input.site.elementTemplateKey) {
+    const templateNodeId = input.graph.indexes.elementTemplateNodeIdByTemplateKey.get(
+      input.site.elementTemplateKey,
+    );
+    if (templateNodeId) {
+      const elementIds = input.renderModel.indexes.elementIdsByTemplateNodeId.get(templateNodeId);
+      if (elementIds && elementIds.length > 0) {
+        return [...elementIds].sort((left, right) => left.localeCompare(right));
+      }
+    }
+  }
+
+  if (input.site.renderSiteKey) {
+    const renderSiteNodeId = input.graph.indexes.renderSiteNodeIdByRenderSiteKey.get(
+      input.site.renderSiteKey,
+    );
+    if (renderSiteNodeId) {
+      return [
+        ...(input.renderModel.indexes.elementIdsByRenderSiteNodeId.get(renderSiteNodeId) ?? []),
+      ].sort((left, right) => left.localeCompare(right));
+    }
+  }
+
+  return [];
+}
+
+function extractInlineStyleDeclarations(input: {
+  site: ReactInlineStyleSiteFact;
+  expressionById: Map<string, SourceExpressionSyntaxFact>;
+}): {
+  declarations: Array<{
+    property: string;
+    value: string;
+    location: ReactInlineStyleSiteFact["location"];
+  }>;
+  unsupportedReason?: string;
+} {
+  const rootExpression = unwrapExpressionSyntax(
+    input.expressionById.get(input.site.expressionId),
+    input.expressionById,
+  );
+  if (!rootExpression || rootExpression.expressionKind !== "object-literal") {
+    return {
+      declarations: [],
+      unsupportedReason: `Inline style "${input.site.rawExpressionText}" is not a statically analyzable object literal.`,
+    };
+  }
+  if (rootExpression.hasSpreadProperty || rootExpression.hasUnsupportedProperty) {
+    return {
+      declarations: [],
+      unsupportedReason: `Inline style "${input.site.rawExpressionText}" contains spread or unsupported object properties.`,
+    };
+  }
+
+  const declarations = rootExpression.properties
+    .map((property) =>
+      extractInlineStyleDeclaration({
+        property,
+        expressionById: input.expressionById,
+        fallbackLocation: input.site.location,
+      }),
+    )
+    .filter(
+      (
+        declaration,
+      ): declaration is {
+        property: string;
+        value: string;
+        location: ReactInlineStyleSiteFact["location"];
+      } => Boolean(declaration),
+    );
+
+  return {
+    declarations,
+  };
+}
+
+function extractInlineStyleDeclaration(input: {
+  property: SourceObjectExpressionProperty;
+  expressionById: Map<string, SourceExpressionSyntaxFact>;
+  fallbackLocation: ReactInlineStyleSiteFact["location"];
+}):
+  | { property: string; value: string; location: ReactInlineStyleSiteFact["location"] }
+  | undefined {
+  if (
+    input.property.propertyKind !== "property" ||
+    input.property.keyKind === "computed" ||
+    !input.property.keyText ||
+    !input.property.valueExpressionId
+  ) {
+    return undefined;
+  }
+
+  const cssProperty = reactStylePropertyToCssProperty(input.property.keyText);
+  if (!cssProperty) {
+    return undefined;
+  }
+
+  const valueExpression = unwrapExpressionSyntax(
+    input.expressionById.get(input.property.valueExpressionId),
+    input.expressionById,
+  );
+  const value = inlineStyleExpressionToCssValue(valueExpression);
+  if (value === undefined) {
+    return undefined;
+  }
+
+  return {
+    property: cssProperty,
+    value,
+    location: input.property.location ?? input.fallbackLocation,
+  };
+}
+
+function unwrapExpressionSyntax(
+  expression: SourceExpressionSyntaxFact | undefined,
+  expressionById: Map<string, SourceExpressionSyntaxFact>,
+): SourceExpressionSyntaxFact | undefined {
+  let current = expression;
+  const seen = new Set<string>();
+  while (current?.expressionKind === "wrapper" && !seen.has(current.expressionId)) {
+    seen.add(current.expressionId);
+    current = expressionById.get(current.innerExpressionId);
+  }
+  return current;
+}
+
+function inlineStyleExpressionToCssValue(
+  expression: SourceExpressionSyntaxFact | undefined,
+): string | undefined {
+  if (!expression) {
+    return undefined;
+  }
+  if (expression.expressionKind === "string-literal") {
+    return expression.value;
+  }
+  if (expression.expressionKind === "numeric-literal") {
+    return expression.value;
+  }
+  if (expression.expressionKind === "template-literal" && expression.spans.length === 0) {
+    return expression.headText;
+  }
+  return undefined;
+}
+
+function reactStylePropertyToCssProperty(propertyName: string): string | undefined {
+  if (propertyName.startsWith("--")) {
+    return propertyName;
+  }
+  if (!/^[A-Za-z_$][\w$-]*$/.test(propertyName) && !propertyName.includes("-")) {
+    return undefined;
+  }
+  if (propertyName.includes("-")) {
+    return propertyName.toLowerCase();
+  }
+
+  const prefixed = propertyName
+    .replace(/^ms([A-Z])/, "-ms-$1")
+    .replace(/^(Webkit|Moz|O)([A-Z])/, "-$1-$2");
+  return prefixed.replace(/[A-Z]/g, (character) => `-${character.toLowerCase()}`).toLowerCase();
+}
+
+function createConditionSetFromRenderedElement(input: {
+  renderedElement: RenderedElement;
+  includeTraces: boolean;
+}): CascadeConditionSet {
+  return createConditionSetFromParts({
+    atRuleContext: [],
+    renderConditionIds: input.renderedElement.placementConditionIds,
+    traces: input.includeTraces ? input.renderedElement.traces : [],
+  });
+}
+
 function createConditionSet(input: {
   declaration: ProjectEvidenceAssemblyResult["entities"]["cssDeclarations"][number];
   match: SelectorBranchMatch;
@@ -300,6 +633,22 @@ function createConditionSet(input: {
       params: entry.params,
     }));
   const renderConditionIds = [...input.match.placementConditionIds].sort((left, right) =>
+    left.localeCompare(right),
+  );
+  return createConditionSetFromParts({
+    atRuleContext,
+    renderConditionIds,
+    traces: input.includeTraces ? input.match.traces : [],
+  });
+}
+
+function createConditionSetFromParts(input: {
+  atRuleContext: Array<{ name: string; params: string }>;
+  renderConditionIds: string[];
+  traces: CascadeConditionSet["traces"];
+}): CascadeConditionSet {
+  const atRuleContext = [...input.atRuleContext];
+  const renderConditionIds = [...input.renderConditionIds].sort((left, right) =>
     left.localeCompare(right),
   );
   const sources = [
@@ -324,7 +673,7 @@ function createConditionSet(input: {
         ? ["render placement conditions may affect applicability"]
         : []),
     ],
-    traces: input.includeTraces ? input.match.traces : [],
+    traces: input.traces,
   };
   return {
     id: cascadeConditionSetId(conditionSet),
@@ -339,6 +688,18 @@ type CandidateConditionCompatibility = {
 
 function mapMatchCertainty(
   certainty: SelectorMatchCertainty,
+): CascadeDeclarationCandidate["matchCertainty"] {
+  if (certainty === "definite") {
+    return "definite";
+  }
+  if (certainty === "possible") {
+    return "possible";
+  }
+  return "unknown";
+}
+
+function mapRenderCertainty(
+  certainty: RenderCertainty,
 ): CascadeDeclarationCandidate["matchCertainty"] {
   if (certainty === "definite") {
     return "definite";
@@ -373,10 +734,11 @@ function buildOutcomes(input: {
     }
     const stylesheets = new Set(
       sortedCandidates
-        .map(
-          (candidate) =>
-            input.projectEvidence.indexes.cssDeclarationsById.get(candidate.declarationId)
-              ?.stylesheetId,
+        .map((candidate) =>
+          candidate.declarationId
+            ? input.projectEvidence.indexes.cssDeclarationsById.get(candidate.declarationId)
+                ?.stylesheetId
+            : undefined,
         )
         .filter((stylesheetId): stylesheetId is string => Boolean(stylesheetId)),
     );
@@ -490,8 +852,8 @@ function buildOutcomes(input: {
           certainty,
           detail:
             conditionCompatibility.compatibility === "conditional"
-              ? "Author declarations compared within the same conditional context."
-              : "Author declarations compared by importance, specificity, and known source order.",
+              ? "Cascade candidates compared within the same conditional context."
+              : "Cascade candidates compared by importance, origin, layer, specificity, and known source order.",
         })),
       traces: [],
     });
@@ -554,6 +916,7 @@ function compareCandidates(
 ): number {
   return (
     Number(left.cascadeKey.important) - Number(right.cascadeKey.important) ||
+    originPrecedenceRank(left) - originPrecedenceRank(right) ||
     compareLayerPrecedence(left, right) ||
     compareSpecificity(left.cascadeKey.specificity, right.cascadeKey.specificity) ||
     (left.cascadeKey.sourceOrder ?? 0) - (right.cascadeKey.sourceOrder ?? 0) ||
@@ -568,6 +931,9 @@ function compareCandidatesReason(
   if (winner.cascadeKey.important !== loser.cascadeKey.important) {
     return "important";
   }
+  if (originPrecedenceRank(winner) !== originPrecedenceRank(loser)) {
+    return "higher-origin";
+  }
   if (compareLayerPrecedence(winner, loser) !== 0) {
     return "layer-order";
   }
@@ -575,6 +941,21 @@ function compareCandidatesReason(
     return "specificity";
   }
   return "source-order";
+}
+
+function originPrecedenceRank(candidate: CascadeDeclarationCandidate): number {
+  switch (candidate.cascadeKey.origin) {
+    case "user-agent":
+      return 0;
+    case "user":
+      return 1;
+    case "author":
+      return 2;
+    case "inline":
+      return 3;
+    default:
+      return -1;
+  }
 }
 
 function compareById(left: { id: string }, right: { id: string }): number {

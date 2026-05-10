@@ -1,14 +1,15 @@
 import type { CascadeConditionSet } from "./types.js";
 
 export function cascadeDeclarationCandidateId(input: {
-  declarationId: string;
+  declarationId?: string;
+  inlineStyleId?: string;
   selectorBranchId?: string;
   elementId: string;
   property: string;
 }): string {
   return [
     "cascade-candidate",
-    input.declarationId,
+    input.declarationId ?? input.inlineStyleId ?? "unknown-source",
     input.selectorBranchId ?? "direct",
     input.elementId,
     input.property,

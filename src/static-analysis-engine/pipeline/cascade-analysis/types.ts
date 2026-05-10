@@ -49,7 +49,8 @@ export type CascadeConditionSet = {
 
 export type CascadeDeclarationCandidate = {
   id: string;
-  declarationId: ProjectEvidenceId;
+  declarationId?: ProjectEvidenceId;
+  inlineStyleId?: string;
   elementId: RenderedElementId;
   selectorBranchId?: ProjectEvidenceId;
   property: string;
@@ -103,6 +104,7 @@ export type CascadeAnalysisDiagnosticCode =
   | "unknown-stylesheet-order"
   | "unknown-condition-compatibility"
   | "unsupported-property-semantics"
+  | "unsupported-inline-style"
   | "missing-declaration-location"
   | "missing-selector-branch-match";
 
@@ -133,6 +135,7 @@ export type CascadeAnalysisIndexes = {
   outcomeById: Map<string, CascadeOutcome>;
   conditionSetById: Map<string, CascadeConditionSet>;
   candidateIdsByDeclarationId: Map<ProjectEvidenceId, string[]>;
+  candidateIdsByInlineStyleId: Map<string, string[]>;
   candidateIdsBySelectorBranchId: Map<ProjectEvidenceId, string[]>;
   candidateIdsByElementId: Map<RenderedElementId, string[]>;
   candidateIdsByElementAndProperty: Map<string, string[]>;

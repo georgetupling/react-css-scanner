@@ -26,6 +26,7 @@ export function buildCascadeAnalysisIndexes(input: {
     input.conditionSets.map((conditionSet) => [conditionSet.id, conditionSet]),
   );
   const candidateIdsByDeclarationId = new Map<ProjectEvidenceId, string[]>();
+  const candidateIdsByInlineStyleId = new Map<string, string[]>();
   const candidateIdsBySelectorBranchId = new Map<ProjectEvidenceId, string[]>();
   const candidateIdsByElementId = new Map<RenderedElementId, string[]>();
   const candidateIdsByElementAndProperty = new Map<string, string[]>();
@@ -36,7 +37,12 @@ export function buildCascadeAnalysisIndexes(input: {
   const diagnosticIdsBySelectorBranchId = new Map<ProjectEvidenceId, string[]>();
 
   for (const candidate of input.candidates) {
-    pushMapValue(candidateIdsByDeclarationId, candidate.declarationId, candidate.id);
+    if (candidate.declarationId) {
+      pushMapValue(candidateIdsByDeclarationId, candidate.declarationId, candidate.id);
+    }
+    if (candidate.inlineStyleId) {
+      pushMapValue(candidateIdsByInlineStyleId, candidate.inlineStyleId, candidate.id);
+    }
     pushMapValue(candidateIdsByElementId, candidate.elementId, candidate.id);
     pushMapValue(candidateIdsByElementAndProperty, elementPropertyKey(candidate), candidate.id);
     if (candidate.selectorBranchId) {
@@ -65,6 +71,7 @@ export function buildCascadeAnalysisIndexes(input: {
 
   [
     candidateIdsByDeclarationId,
+    candidateIdsByInlineStyleId,
     candidateIdsBySelectorBranchId,
     candidateIdsByElementId,
     candidateIdsByElementAndProperty,
@@ -81,6 +88,7 @@ export function buildCascadeAnalysisIndexes(input: {
     outcomeById,
     conditionSetById,
     candidateIdsByDeclarationId,
+    candidateIdsByInlineStyleId,
     candidateIdsBySelectorBranchId,
     candidateIdsByElementId,
     candidateIdsByElementAndProperty,

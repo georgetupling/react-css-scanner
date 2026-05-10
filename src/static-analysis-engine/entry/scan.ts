@@ -135,6 +135,7 @@ export async function runAnalysisPipeline(input: {
       cascadeAnalysis: buildCascadeAnalysis({
         factGraph,
         projectEvidence: projectEvidenceStage.projectEvidence,
+        renderModel: renderStructureStage.renderModel,
         runtimeCssLoading: runtimeCssLoadingStage.runtimeCssLoading,
         selectorReachability: selectorReachabilityStage.selectorReachability,
         options: {

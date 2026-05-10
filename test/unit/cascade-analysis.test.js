@@ -88,6 +88,101 @@ test("cascade analysis resolves cross-stylesheet source order from runtime impor
   }
 });
 
+test("cascade analysis gives inline styles precedence over normal author declarations", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./styles.css";\nexport function App() { return <button className="button primary" style={{ color: "red" }}>Save</button>; }\n',
+    )
+    .withCssFile("src/styles.css", ".button.primary { color: blue; }\n")
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+    const outcome = cascade.outcomes.find((candidate) => candidate.property === "color");
+
+    assert.ok(outcome?.winningCandidateId);
+    assert.equal(outcome.reason, "higher-origin");
+    const winningCandidate = cascade.indexes.candidateById.get(outcome.winningCandidateId);
+    assert.equal(winningCandidate?.value, "red");
+    assert.equal(winningCandidate?.cascadeKey.origin, "inline");
+    assert.equal(winningCandidate?.inlineStyleId?.startsWith("inline-style:"), true);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis lets important author declarations override normal inline styles", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./styles.css";\nexport function App() { return <button className="button primary" style={{ color: "red" }}>Save</button>; }\n',
+    )
+    .withCssFile("src/styles.css", ".button.primary { color: blue !important; }\n")
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+    const outcome = cascade.outcomes.find((candidate) => candidate.property === "color");
+
+    assert.ok(outcome?.winningCandidateId);
+    assert.equal(outcome.reason, "important");
+    const winningCandidate = cascade.indexes.candidateById.get(outcome.winningCandidateId);
+    assert.equal(winningCandidate?.value, "blue");
+    assert.equal(winningCandidate?.cascadeKey.origin, "author");
+    assert.equal(winningCandidate?.cascadeKey.important, true);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis expands inline shorthand styles into longhand effects", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'export function App() { return <button style={{ margin: "1px 2px" }}>Save</button>; }\n',
+    )
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+    const rightOutcome = cascade.outcomes.find(
+      (candidate) => candidate.property === "margin-right",
+    );
+
+    assert.ok(rightOutcome?.winningCandidateId);
+    const winningCandidate = cascade.indexes.candidateById.get(rightOutcome.winningCandidateId);
+    assert.equal(winningCandidate?.value, "2px");
+    assert.equal(winningCandidate?.declaredProperty, "margin");
+    assert.equal(winningCandidate?.propertyEffectSource, "shorthand");
+    assert.equal(cascade.meta.declarationCount, 0);
+    assert.equal(cascade.meta.candidateCount, 4);
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("cascade analysis resolves candidates inside the same at-rule context as conditional", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(

@@ -7,6 +7,7 @@ export type {
   ReactElementTemplateFact,
   ReactHelperDefinitionFact,
   ReactHelperParameterBindingFact,
+  ReactInlineStyleSiteFact,
   ReactLocalValueBindingFact,
   ReactRenderSiteFact,
   ReactUnsupportedBindingReason,

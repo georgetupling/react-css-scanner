@@ -4,6 +4,7 @@ import type {
   ReactComponentPropBindingFact,
   ReactElementTemplateFact,
   ReactHelperDefinitionFact,
+  ReactInlineStyleSiteFact,
   ReactLocalValueBindingFact,
   ReactRenderSiteFact,
 } from "./types.js";
@@ -29,6 +30,13 @@ export function compareElementTemplates(
 export function compareClassExpressionSites(
   left: ReactClassExpressionSiteFact,
   right: ReactClassExpressionSiteFact,
+): number {
+  return left.siteKey.localeCompare(right.siteKey);
+}
+
+export function compareInlineStyleSites(
+  left: ReactInlineStyleSiteFact,
+  right: ReactInlineStyleSiteFact,
 ): number {
   return left.siteKey.localeCompare(right.siteKey);
 }

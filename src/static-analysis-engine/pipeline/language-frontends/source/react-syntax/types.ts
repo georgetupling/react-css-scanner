@@ -6,6 +6,7 @@ export type SourceReactSyntaxFacts = {
   renderSites: ReactRenderSiteFact[];
   elementTemplates: ReactElementTemplateFact[];
   classExpressionSites: ReactClassExpressionSiteFact[];
+  inlineStyleSites: ReactInlineStyleSiteFact[];
   renderPropInvocations: ReactRenderPropInvocationFact[];
   componentPropBindings: ReactComponentPropBindingFact[];
   localValueBindings: ReactLocalValueBindingFact[];
@@ -85,6 +86,19 @@ export type ReactClassExpressionSiteFact = {
   emittingComponentKey?: string;
   placementComponentKey?: string;
   componentPropName?: string;
+  renderSiteKey?: string;
+  elementTemplateKey?: string;
+};
+
+export type ReactInlineStyleSiteFact = {
+  siteKey: string;
+  kind: "jsx-style";
+  filePath: string;
+  location: SourceAnchor;
+  expressionId: string;
+  rawExpressionText: string;
+  emittingComponentKey?: string;
+  placementComponentKey?: string;
   renderSiteKey?: string;
   elementTemplateKey?: string;
 };

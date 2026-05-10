@@ -30,13 +30,16 @@ import {
   compareComponents,
   compareElementTemplates,
   compareHelperDefinitions,
+  compareInlineStyleSites,
   compareLocalValueBindings,
   compareRenderSites,
 } from "./sortReactSyntaxFacts.js";
+import { createJsxInlineStyleSite } from "./inlineStyleSites.js";
 import type { SourceModuleSyntaxFacts } from "../module-syntax/index.js";
 import type {
   ReactClassExpressionSiteFact,
   ReactElementTemplateFact,
+  ReactInlineStyleSiteFact,
   ReactRenderPropInvocationFact,
   ReactRenderSiteFact,
   SourceReactSyntaxFacts,
@@ -55,6 +58,7 @@ export function collectSourceReactSyntax(input: {
   const renderSites: ReactRenderSiteFact[] = [];
   const elementTemplates: ReactElementTemplateFact[] = [];
   const classExpressionSites: ReactClassExpressionSiteFact[] = [];
+  const inlineStyleSites: ReactInlineStyleSiteFact[] = [];
   const renderPropInvocations: ReactRenderPropInvocationFact[] = [];
   const expressionSyntax: SourceExpressionSyntaxFact[] = [];
   const componentByKey = new Map(
@@ -198,6 +202,19 @@ export function collectSourceReactSyntax(input: {
       expressionSyntax.push(...classSite.expressionSyntax);
     }
 
+    const inlineStyleSite = createJsxInlineStyleSite({
+      node,
+      filePath: input.filePath,
+      sourceFile: input.sourceFile,
+      ...(renderSite ? { renderSite } : {}),
+      ...(template ? { template } : {}),
+      ...(currentComponentKey ? { emittingComponentKey: currentComponentKey } : {}),
+    });
+    if (inlineStyleSite) {
+      inlineStyleSites.push(inlineStyleSite.site);
+      expressionSyntax.push(...inlineStyleSite.expressionSyntax);
+    }
+
     const cssModuleClassSite = tryCreateCssModuleClassExpressionSite({
       node,
       filePath: input.filePath,
@@ -267,6 +284,7 @@ export function collectSourceReactSyntax(input: {
     classExpressionSites: dedupeClassExpressionSites(classExpressionSites).sort(
       compareClassExpressionSites,
     ),
+    inlineStyleSites: inlineStyleSites.sort(compareInlineStyleSites),
     renderPropInvocations: renderPropInvocations.sort((left, right) =>
       left.invocationKey.localeCompare(right.invocationKey),
     ),
