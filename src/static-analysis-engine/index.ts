@@ -20,6 +20,7 @@ export {
   selectorBranchSourceKey,
 } from "./pipeline/selector-reachability/index.js";
 export { buildRuntimeCssLoading } from "./pipeline/runtime-css-loading/index.js";
+export { extractCssStyleRules } from "./libraries/css-parsing/index.js";
 export {
   buildOwnershipInference,
   classDefinitionConsumerEvidenceId,

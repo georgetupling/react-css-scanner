@@ -239,6 +239,14 @@ test("language frontends parse CSS into deterministic frontend facts", async () 
       {
         property: "color",
         value: "blue",
+        important: false,
+        sourceAnchor: {
+          filePath: "src/b.css",
+          startLine: 1,
+          startColumn: 29,
+          endLine: 1,
+          endColumn: 40,
+        },
       },
     ]);
     assert.deepEqual(

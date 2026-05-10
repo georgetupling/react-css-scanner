@@ -30,6 +30,8 @@ export type CssAtRuleContextFact = {
 export type CssDeclarationFact = {
   property: string;
   value: string;
+  important?: boolean;
+  sourceAnchor?: SourceAnchor;
 };
 
 export type CssStyleRuleFact = {
