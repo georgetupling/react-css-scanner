@@ -23,7 +23,7 @@ A default-on cascade finding requires:
 - known stylesheet/runtime order
 - known selector specificity
 - compatible conditions
-- exact property semantics, unless a later property-semantics layer proves shorthand/longhand behavior
+- exact property semantics or supported property-effect expansion
 - no unsupported selector, declaration, source-order, or condition feature involved in the winning comparison
 
 Anything weaker should begin as either:
@@ -65,7 +65,7 @@ Current implementation status:
 - `cascade-analysis` is scaffolded under `src/static-analysis-engine/pipeline/cascade-analysis`.
 - The stage currently runs after `ownership-inference` and before `run-rules`.
 - It emits declaration records, condition sets, declaration candidates, outcomes, diagnostics, and indexes.
-- The first pass is intentionally narrow: author declarations only, exact CSS properties only, selector-branch render matches only, and no user-facing findings.
+- The first pass is intentionally narrow: author declarations only, limited CSS property effects, selector-branch render matches only, and no user-facing findings.
 - Before adding default-on cascade rules, add rule-aware gating so projects only pay for deeper cascade work when cascade-aware rules are enabled.
 
 The stage can technically run before `ownership-inference` for pure declaration winning/losing. Placing it after ownership keeps room for ownership-aware cascade rules such as `component-style-overridden-externally`.
@@ -155,6 +155,7 @@ export type CascadeKey = {
     name?: string;
     order?: number;
     known: boolean;
+    unlayered: boolean;
   };
   specificity: CssSpecificity;
   scopeProximity?: {
@@ -214,6 +215,10 @@ export type CascadeDeclarationCandidate = {
   elementId: string;
   selectorBranchId?: ProjectEvidenceId;
   property: string;
+  value: string;
+  declaredProperty: string;
+  declaredValue: string;
+  propertyEffectSource: "exact" | "shorthand";
   cascadeKey: CascadeKey;
   conditionSetId?: string;
   matchCertainty: "definite" | "possible" | "unknown";
@@ -370,15 +375,19 @@ Once declarations are first-class, `cascade-analysis` can be added as a narrow p
 
 Phase 2 adds the first cascade stage scaffold:
 
-- `CascadeKey` for author declarations with `important`, selector specificity, and local source order.
+- `CascadeKey` for author declarations with `important`, cascade layer, selector specificity, and local source order.
 - branch-specific selector specificity, including basic `:is()`, `:not()`, `:has()`, and zero-specificity `:where()`.
+- named cascade layer order from `@layer a, b;` statements and named `@layer name { ... }` blocks.
+- layer precedence before specificity, including unlayered normal declarations and reversed `!important` layer order.
 - declaration candidates from selector-branch render matches.
 - condition sets for at-rule and render placement conditions.
-- outcomes grouped by rendered element and exact property.
+- outcomes grouped by rendered element and effective property.
 - resolved cross-stylesheet outcomes when all candidates come from a definite initial runtime CSS chunk with stable static import order.
 - unresolved outcomes when candidates come from multiple stylesheets and runtime order cannot be proven.
 - conditional outcomes when all candidates share the same non-empty condition signature.
 - unresolved `condition-uncertain` outcomes when candidates have different at-rule/render condition signatures.
+- value-aware property effects for exact properties plus supported four-sided box-model shorthands: `margin`, `padding`, `border-width`, `border-style`, and `border-color`.
+- `unsupported-property-semantics` diagnostics for known unsupported shorthands such as `background`, `border`, `font`, `flex`, `grid`, transitions, and animations.
 
 Known limitations:
 
@@ -387,9 +396,12 @@ Known limitations:
 - no multi-entry runtime context modeling beyond requiring a stable observed order
 - no evaluation of `@media`, `@supports`, or container-query truth
 - no proof that different conditional contexts are mutually exclusive or overlapping
-- no cascade layers
+- anonymous and otherwise unsupported cascade layer order remains unresolved
+- no nested layer name composition beyond explicit dotted layer names
 - no `@scope`
 - no inline styles
-- no shorthand/longhand property semantics
+- only a small safe shorthand/longhand property semantics set
+- no logical property, reset, inheritance, custom property, or `var()` resolution
+- no typed value evaluation beyond preserving shorthand token values for supported four-sided properties
 - no pseudo-state compatibility model
 - no rule consumes outcomes yet

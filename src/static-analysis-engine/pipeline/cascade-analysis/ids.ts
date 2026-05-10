@@ -4,12 +4,14 @@ export function cascadeDeclarationCandidateId(input: {
   declarationId: string;
   selectorBranchId?: string;
   elementId: string;
+  property: string;
 }): string {
   return [
     "cascade-candidate",
     input.declarationId,
     input.selectorBranchId ?? "direct",
     input.elementId,
+    input.property,
   ].join(":");
 }
 

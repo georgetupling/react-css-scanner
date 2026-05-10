@@ -16,6 +16,7 @@ export type CascadeKey = {
     name?: string;
     order?: number;
     known: boolean;
+    unlayered: boolean;
   };
   specificity: CssSpecificity;
   scopeProximity?: {
@@ -52,6 +53,10 @@ export type CascadeDeclarationCandidate = {
   elementId: RenderedElementId;
   selectorBranchId?: ProjectEvidenceId;
   property: string;
+  value: string;
+  declaredProperty: string;
+  declaredValue: string;
+  propertyEffectSource: "exact" | "shorthand";
   cascadeKey: CascadeKey;
   conditionSetId?: string;
   matchCertainty: "definite" | "possible" | "unknown";

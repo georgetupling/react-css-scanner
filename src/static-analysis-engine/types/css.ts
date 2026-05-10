@@ -25,6 +25,9 @@ export type CssClassAttributePredicateFact = {
 export type CssAtRuleContextFact = {
   name: string;
   params: string;
+  layerName?: string;
+  layerOrder?: number;
+  layerOrderKnown?: boolean;
 };
 
 export type CssDeclarationFact = {

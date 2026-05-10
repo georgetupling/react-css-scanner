@@ -18,6 +18,7 @@ import {
   cascadeOutcomeId,
   elementPropertyKey,
 } from "./ids.js";
+import { getCssPropertyEffects } from "./propertyEffects.js";
 import { calculateSelectorSpecificity, compareSpecificity } from "./specificity.js";
 import type {
   CascadeAnalysisDiagnostic,
@@ -60,6 +61,7 @@ export function buildCascadeAnalysis(input: CascadeAnalysisInput): CascadeAnalys
     }
 
     const stylesheetSourceOrder = stylesheetOrderById.get(declaration.stylesheetId);
+    const layer = getDeclarationLayer(declaration.atRuleContext);
     return {
       declarationId: declaration.id,
       property: declaration.property,
@@ -68,6 +70,7 @@ export function buildCascadeAnalysis(input: CascadeAnalysisInput): CascadeAnalys
       cascadeKey: {
         origin: "author",
         important: declaration.important,
+        layer,
         specificity: specificity.specificity,
         sourceOrder:
           (stylesheetSourceOrder ?? 0) * 1_000_000 +
@@ -128,6 +131,24 @@ export function buildCascadeAnalysis(input: CascadeAnalysisInput): CascadeAnalys
         );
       }
 
+      const propertyEffects = getCssPropertyEffects(declaration.property, declaration.value);
+      for (const propertyEffect of propertyEffects) {
+        if (!propertyEffect.supported) {
+          diagnostics.push(
+            createDiagnostic({
+              code: "unsupported-property-semantics",
+              message:
+                propertyEffect.reason ??
+                `Property semantics are not fully modeled for "${declaration.property}".`,
+              declarationId: declaration.id,
+              selectorBranchId,
+              location: declaration.location,
+              traces: [],
+            }),
+          );
+        }
+      }
+
       const matches = findMatchesForSelectorBranch(selectorBranch, input.selectorReachability);
       if (matches.length === 0) {
         diagnostics.push(
@@ -150,25 +171,37 @@ export function buildCascadeAnalysis(input: CascadeAnalysisInput): CascadeAnalys
           includeTraces,
         });
         conditionSetsById.set(conditionSet.id, conditionSet);
-        candidates.push({
-          id: cascadeDeclarationCandidateId({
+        for (const propertyEffect of propertyEffects) {
+          candidates.push({
+            id: cascadeDeclarationCandidateId({
+              declarationId: declaration.id,
+              selectorBranchId,
+              elementId: match.subjectElementId,
+              property: propertyEffect.property,
+            }),
             declarationId: declaration.id,
-            selectorBranchId,
             elementId: match.subjectElementId,
-          }),
-          declarationId: declaration.id,
-          elementId: match.subjectElementId,
-          selectorBranchId,
-          property: declaration.property,
-          cascadeKey: {
-            ...declarationRecord.cascadeKey,
-            specificity: branchSpecificity.specificity,
-          },
-          conditionSetId: conditionSet.id,
-          matchCertainty: mapMatchCertainty(match.certainty),
-          reasons: [`selector branch "${selectorBranch.selectorText}" matched rendered element`],
-          traces: includeTraces ? match.traces : [],
-        });
+            selectorBranchId,
+            property: propertyEffect.property,
+            value: propertyEffect.value,
+            declaredProperty: declaration.property,
+            declaredValue: declaration.value,
+            propertyEffectSource: propertyEffect.source,
+            cascadeKey: {
+              ...declarationRecord.cascadeKey,
+              specificity: branchSpecificity.specificity,
+            },
+            conditionSetId: conditionSet.id,
+            matchCertainty: mapMatchCertainty(match.certainty),
+            reasons: [
+              `selector branch "${selectorBranch.selectorText}" matched rendered element`,
+              ...(propertyEffect.source === "shorthand"
+                ? [`"${declaration.property}" contributes to "${propertyEffect.property}"`]
+                : []),
+            ],
+            traces: includeTraces ? match.traces : [],
+          });
+        }
       }
     }
   }
@@ -260,10 +293,12 @@ function createConditionSet(input: {
   match: SelectorBranchMatch;
   includeTraces: boolean;
 }): CascadeConditionSet {
-  const atRuleContext = input.declaration.atRuleContext.map((entry) => ({
-    name: entry.name,
-    params: entry.params,
-  }));
+  const atRuleContext = input.declaration.atRuleContext
+    .filter((entry) => entry.name !== "layer")
+    .map((entry) => ({
+      name: entry.name,
+      params: entry.params,
+    }));
   const renderConditionIds = [...input.match.placementConditionIds].sort((left, right) =>
     left.localeCompare(right),
   );
@@ -361,6 +396,29 @@ function buildOutcomes(input: {
             certainty: "unknown",
             detail:
               "Candidates come from multiple stylesheets and project source order is not normalized yet.",
+          },
+        ],
+        traces: [],
+      });
+      continue;
+    }
+    const layerOrderKnown = sortedCandidates.every(
+      (candidate) => candidate.cascadeKey.layer?.known ?? true,
+    );
+    if (!layerOrderKnown) {
+      outcomes.push({
+        id: cascadeOutcomeId(winner),
+        elementId: winner.elementId,
+        property: winner.property,
+        losingCandidateIds: [],
+        unresolvedCandidateIds: sortedCandidates.map((candidate) => candidate.id),
+        certainty: "unknown",
+        reason: "layer-order",
+        comparisonTrace: [
+          {
+            reason: "layer-order",
+            certainty: "unknown",
+            detail: "One or more candidates use anonymous or unsupported cascade layer ordering.",
           },
         ],
         traces: [],
@@ -496,6 +554,7 @@ function compareCandidates(
 ): number {
   return (
     Number(left.cascadeKey.important) - Number(right.cascadeKey.important) ||
+    compareLayerPrecedence(left, right) ||
     compareSpecificity(left.cascadeKey.specificity, right.cascadeKey.specificity) ||
     (left.cascadeKey.sourceOrder ?? 0) - (right.cascadeKey.sourceOrder ?? 0) ||
     left.id.localeCompare(right.id)
@@ -509,6 +568,9 @@ function compareCandidatesReason(
   if (winner.cascadeKey.important !== loser.cascadeKey.important) {
     return "important";
   }
+  if (compareLayerPrecedence(winner, loser) !== 0) {
+    return "layer-order";
+  }
   if (compareSpecificity(winner.cascadeKey.specificity, loser.cascadeKey.specificity) !== 0) {
     return "specificity";
   }
@@ -517,6 +579,51 @@ function compareCandidatesReason(
 
 function compareById(left: { id: string }, right: { id: string }): number {
   return left.id.localeCompare(right.id);
+}
+
+function getDeclarationLayer(
+  atRuleContext: ProjectEvidenceAssemblyResult["entities"]["cssDeclarations"][number]["atRuleContext"],
+): CascadeDeclarationCandidate["cascadeKey"]["layer"] {
+  const layerContext = findInnermostLayerContext(atRuleContext);
+  if (!layerContext) {
+    return {
+      known: true,
+      unlayered: true,
+    };
+  }
+  return {
+    ...(layerContext.layerName ? { name: layerContext.layerName } : {}),
+    ...(layerContext.layerOrder !== undefined ? { order: layerContext.layerOrder } : {}),
+    known: layerContext.layerOrderKnown === true && layerContext.layerOrder !== undefined,
+    unlayered: false,
+  };
+}
+
+function findInnermostLayerContext(
+  atRuleContext: ProjectEvidenceAssemblyResult["entities"]["cssDeclarations"][number]["atRuleContext"],
+) {
+  for (let index = atRuleContext.length - 1; index >= 0; index -= 1) {
+    if (atRuleContext[index].name === "layer") {
+      return atRuleContext[index];
+    }
+  }
+  return undefined;
+}
+
+function compareLayerPrecedence(
+  left: CascadeDeclarationCandidate,
+  right: CascadeDeclarationCandidate,
+): number {
+  return layerPrecedenceRank(left) - layerPrecedenceRank(right);
+}
+
+function layerPrecedenceRank(candidate: CascadeDeclarationCandidate): number {
+  const layer = candidate.cascadeKey.layer;
+  if (!layer || layer.unlayered) {
+    return candidate.cascadeKey.important ? -1_000_000 : 1_000_000;
+  }
+  const layerOrder = layer.order ?? 0;
+  return candidate.cascadeKey.important ? -layerOrder : layerOrder;
 }
 
 function buildRuntimeStylesheetOrder(input: CascadeAnalysisInput): Map<ProjectEvidenceId, number> {

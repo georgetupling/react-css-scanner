@@ -43,6 +43,7 @@ export function extractCssTreeStyleRules(input: {
     sourceText: input.cssText,
     filePath: input.filePath,
     atRuleContext: [],
+    layerOrderByName: new Map(),
   });
 }
 
@@ -51,20 +52,25 @@ function collectRules(input: {
   sourceText: string;
   filePath?: string;
   atRuleContext: CssAtRuleContextFact[];
+  layerOrderByName: Map<string, number>;
   parentSelectorPrelude?: string;
 }): CssStyleRuleFact[] {
   const rules: CssStyleRuleFact[] = [];
 
   for (const node of input.nodes) {
     if (node.type === "Atrule") {
-      const atRule = cssTreeAtRuleContext(node, input.sourceText);
+      const atRule = cssTreeAtRuleContext(node, input.sourceText, input.layerOrderByName);
       if (atRule && !DECLARATION_ONLY_AT_RULES.has(atRule.name)) {
+        if (atRule.name === "layer" && !node.block) {
+          continue;
+        }
         rules.push(
           ...collectRules({
             nodes: node.block?.children ?? [],
             sourceText: input.sourceText,
             filePath: input.filePath,
             atRuleContext: [...input.atRuleContext, atRule],
+            layerOrderByName: input.layerOrderByName,
           }),
         );
       }
@@ -106,6 +112,7 @@ function collectRules(input: {
         sourceText: input.sourceText,
         filePath: input.filePath,
         atRuleContext: input.atRuleContext,
+        layerOrderByName: input.layerOrderByName,
         parentSelectorPrelude: selectorPrelude,
       }),
     );
@@ -117,21 +124,51 @@ function collectRules(input: {
 function cssTreeAtRuleContext(
   node: CssTreeNode,
   sourceText: string,
+  layerOrderByName: Map<string, number>,
 ): CssAtRuleContextFact | undefined {
   if (!node.name) {
     return undefined;
   }
 
+  const params = node.prelude
+    ? getNodeSourceText({
+        node: node.prelude,
+        sourceText,
+        fallback: generateCssTreeNode(node.prelude),
+      }).trim()
+    : "";
+  if (node.name.toLowerCase() === "layer") {
+    const layerNames = splitLayerNameList(params);
+    for (const layerName of layerNames) {
+      registerLayerName(layerOrderByName, layerName);
+    }
+    const layerName = layerNames.length === 1 ? layerNames[0] : undefined;
+    return {
+      name: "layer",
+      params,
+      ...(layerName ? { layerName } : {}),
+      ...(layerName ? { layerOrder: layerOrderByName.get(layerName) } : {}),
+      layerOrderKnown: Boolean(layerName),
+    };
+  }
+
   return {
     name: node.name.toLowerCase(),
-    params: node.prelude
-      ? getNodeSourceText({
-          node: node.prelude,
-          sourceText,
-          fallback: generateCssTreeNode(node.prelude),
-        }).trim()
-      : "",
+    params,
   };
+}
+
+function registerLayerName(layerOrderByName: Map<string, number>, layerName: string): void {
+  if (!layerOrderByName.has(layerName)) {
+    layerOrderByName.set(layerName, layerOrderByName.size);
+  }
+}
+
+function splitLayerNameList(params: string): string[] {
+  return params
+    .split(",")
+    .map((layerName) => layerName.trim())
+    .filter((layerName) => /^[a-zA-Z_][\w-]*(?:\.[a-zA-Z_][\w-]*)*$/.test(layerName));
 }
 
 function extractDeclarations(input: {
