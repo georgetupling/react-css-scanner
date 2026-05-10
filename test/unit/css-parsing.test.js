@@ -114,6 +114,30 @@ test("CSS parser attaches declaration property effects for cascade consumers", (
         source: "shorthand",
         supported: true,
       },
+      {
+        property: "background-position",
+        value: "0% 0%, center",
+        source: "shorthand",
+        supported: true,
+      },
+      {
+        property: "background-size",
+        value: "auto auto, cover",
+        source: "shorthand",
+        supported: true,
+      },
+      {
+        property: "background-origin",
+        value: "padding-box, padding-box",
+        source: "shorthand",
+        supported: true,
+      },
+      {
+        property: "background-clip",
+        value: "border-box, border-box",
+        source: "shorthand",
+        supported: true,
+      },
     ],
   );
 });

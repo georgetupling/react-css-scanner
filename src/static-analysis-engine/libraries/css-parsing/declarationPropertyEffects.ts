@@ -50,9 +50,13 @@ type CssTreeValueAst = {
 
 type ParsedBackgroundLayer = {
   attachment?: string;
+  clip?: string;
   color?: string;
   image?: string;
+  origin?: string;
+  position?: string;
   repeat?: string;
+  size?: string;
 };
 
 export function getCssDeclarationPropertyEffects(input: {
@@ -377,6 +381,10 @@ function expandBackgroundShorthandWithCssTree(input: {
       images: [value],
       repeats: [value],
       attachments: [value],
+      positions: [value],
+      sizes: [value],
+      origins: [value],
+      clips: [value],
     });
   }
 
@@ -410,6 +418,10 @@ function expandBackgroundShorthandWithCssTree(input: {
     images: layers.map((layer) => layer.image ?? "none"),
     repeats: layers.map((layer) => layer.repeat ?? "repeat"),
     attachments: layers.map((layer) => layer.attachment ?? "scroll"),
+    positions: layers.map((layer) => layer.position ?? "0% 0%"),
+    sizes: layers.map((layer) => layer.size ?? "auto auto"),
+    origins: layers.map((layer) => layer.origin ?? "padding-box"),
+    clips: layers.map((layer) => layer.clip ?? "border-box"),
   });
 }
 
@@ -418,11 +430,19 @@ function parseBackgroundLayerWithCssTree(input: {
   allowColor: boolean;
 }): ParsedBackgroundLayer | undefined {
   const parsed: ParsedBackgroundLayer = {};
+  const positionNodes: CssTreeValueNode[] = [];
+  const sizeNodes: CssTreeValueNode[] = [];
+  const boxValues: string[] = [];
   let index = 0;
+  let afterSlash = false;
 
   while (index < input.nodes.length) {
     const node = input.nodes[index];
     if (isCssValueOperator(node, "/")) {
+      if (afterSlash) {
+        return undefined;
+      }
+      afterSlash = true;
       index += 1;
       continue;
     }
@@ -461,8 +481,41 @@ function parseBackgroundLayerWithCssTree(input: {
       index += 1;
       continue;
     }
+    if (matchesCssType("visual-box", [node])) {
+      boxValues.push(generateCssValue([node]));
+      if (boxValues.length > 2) {
+        return undefined;
+      }
+      index += 1;
+      continue;
+    }
 
+    if (afterSlash) {
+      sizeNodes.push(node);
+    } else {
+      positionNodes.push(node);
+    }
     index += 1;
+  }
+
+  if (positionNodes.length > 0) {
+    if (!matchesCssType("position", positionNodes)) {
+      return undefined;
+    }
+    parsed.position = generateCssValue(positionNodes);
+  }
+  if (sizeNodes.length > 0) {
+    if (!matchesCssType("bg-size", sizeNodes)) {
+      return undefined;
+    }
+    parsed.size = generateCssValue(sizeNodes);
+  }
+  if (boxValues.length === 1) {
+    parsed.origin = boxValues[0];
+    parsed.clip = boxValues[0];
+  } else if (boxValues.length === 2) {
+    parsed.origin = boxValues[0];
+    parsed.clip = boxValues[1];
   }
 
   return parsed;
@@ -473,6 +526,10 @@ function backgroundEffects(input: {
   images: string[];
   repeats: string[];
   attachments: string[];
+  positions: string[];
+  sizes: string[];
+  origins: string[];
+  clips: string[];
 }): CssDeclarationPropertyEffect[] {
   return [
     {
@@ -496,6 +553,30 @@ function backgroundEffects(input: {
     {
       property: "background-attachment",
       value: input.attachments.join(", "),
+      source: "shorthand",
+      supported: true,
+    },
+    {
+      property: "background-position",
+      value: input.positions.join(", "),
+      source: "shorthand",
+      supported: true,
+    },
+    {
+      property: "background-size",
+      value: input.sizes.join(", "),
+      source: "shorthand",
+      supported: true,
+    },
+    {
+      property: "background-origin",
+      value: input.origins.join(", "),
+      source: "shorthand",
+      supported: true,
+    },
+    {
+      property: "background-clip",
+      value: input.clips.join(", "),
       source: "shorthand",
       supported: true,
     },

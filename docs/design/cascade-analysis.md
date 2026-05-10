@@ -419,7 +419,7 @@ Phase 2 adds the first cascade stage scaffold:
 - conditional outcomes when all candidates share the same non-empty condition signature.
 - unresolved `condition-uncertain` outcomes when candidates have different at-rule/render condition signatures.
 - selector pseudo-state conditions for supported state and structural pseudo-classes, including conservative unresolved outcomes when a pseudo-state selector is compared with an unconditional selector.
-- value-aware property effects computed by the CSS frontend for exact properties plus supported box-model shorthands: `margin`, `padding`, logical `margin-*`/`padding-*`, physical/logical `inset`, `border-width`, `border-style`, `border-color`, physical side `border-*`, logical `border-block*`/`border-inline*`, whole `border` when the width/style/color value can be safely parsed, and `css-tree`-validated `background` effects for color, image, repeat, and attachment.
+- value-aware property effects computed by the CSS frontend for exact properties plus supported box-model shorthands: `margin`, `padding`, logical `margin-*`/`padding-*`, physical/logical `inset`, `border-width`, `border-style`, `border-color`, physical side `border-*`, logical `border-block*`/`border-inline*`, whole `border` when the width/style/color value can be safely parsed, and `css-tree`-validated `background` effects for color, image, repeat, attachment, position, size, origin, and clip.
 - `unsupported-property-semantics` diagnostics for known unsupported shorthands such as `font`, `flex`, `grid`, transitions, animations, and ambiguous supported-family values such as whole-border CSS variables or ambiguous `background` values.
 
 Known limitations:
@@ -438,6 +438,6 @@ Known limitations:
 - only a bounded safe shorthand/longhand property semantics set
 - no logical property, reset, inheritance, custom property, or `var()` resolution
 - no full typed value grammar; border shorthand parsing recognizes clear width/style/color tokens and intentionally rejects ambiguous whole-value variables
-- `background` shorthand parsing is `css-tree` validated but still partial: it models reset/winning behavior for `background-color`, `background-image`, `background-repeat`, and `background-attachment`, but it does not yet emit candidate effects for `background-position`, `background-size`, `background-origin`, or `background-clip`
+- `background` shorthand parsing is `css-tree` validated but still partial: it models reset/winning behavior for the main background longhands, but it does not yet model every computed-value nuance or `var()` substitution
 - no pseudo-state implication model: for example, `:focus-visible` is not inferred to imply `:focus`, and `:hover:focus` is not reduced against `:hover`
 - only `declaration-always-shadowed` consumes outcomes today, and it remains opt-in

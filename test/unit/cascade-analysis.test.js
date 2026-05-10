@@ -1047,6 +1047,46 @@ test("cascade analysis expands layered background image repeat and attachment ef
     assert.equal(valueFor("background-repeat"), "repeat, no-repeat");
     assert.equal(valueFor("background-attachment"), "scroll, fixed");
     assert.equal(valueFor("background-image"), "linear-gradient(red,blue), url(/hero.png)");
+    assert.equal(valueFor("background-position"), "0% 0%, center");
+    assert.equal(valueFor("background-size"), "auto auto, cover");
+    assert.equal(valueFor("background-origin"), "padding-box, padding-box");
+    assert.equal(valueFor("background-clip"), "border-box, border-box");
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis models background shorthand resets for position size origin and clip", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./styles.css";\nexport function App() { return <button className="button primary">Save</button>; }\n',
+    )
+    .withCssFile(
+      "src/styles.css",
+      ".button.primary { background-size: cover; background-origin: content-box; background-clip: padding-box; background-position: center; background: url(hero.png) no-repeat; }\n",
+    )
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+    const valueFor = (property) => {
+      const outcome = cascade.outcomes.find((candidate) => candidate.property === property);
+      assert.ok(outcome?.winningCandidateId);
+      return cascade.indexes.candidateById.get(outcome.winningCandidateId)?.value;
+    };
+
+    assert.equal(valueFor("background-size"), "auto auto");
+    assert.equal(valueFor("background-origin"), "padding-box");
+    assert.equal(valueFor("background-clip"), "border-box");
+    assert.equal(valueFor("background-position"), "0% 0%");
   } finally {
     await project.cleanup();
   }
