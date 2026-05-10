@@ -38,8 +38,15 @@ export function buildIndexes(input: {
   const classDefinitionsById = new Map(
     input.entities.classDefinitions.map((definition) => [definition.id, definition]),
   );
+  const cssDeclarationsById = new Map(
+    input.entities.cssDeclarations.map((declaration) => [declaration.id, declaration]),
+  );
   const classDefinitionIdsByClassName = new Map<string, ProjectEvidenceId[]>();
   const classDefinitionIdsByStylesheetId = new Map<ProjectEvidenceId, ProjectEvidenceId[]>();
+  const cssDeclarationIdsByStylesheetId = new Map<ProjectEvidenceId, ProjectEvidenceId[]>();
+  const cssDeclarationIdsByRuleDefinitionNodeId = new Map<string, ProjectEvidenceId[]>();
+  const cssDeclarationIdsBySelectorBranchId = new Map<ProjectEvidenceId, ProjectEvidenceId[]>();
+  const cssDeclarationIdsByProperty = new Map<string, ProjectEvidenceId[]>();
   const classReferencesById = new Map(
     input.entities.classReferences.map((reference) => [reference.id, reference]),
   );
@@ -66,6 +73,9 @@ export function buildIndexes(input: {
     ProjectEvidenceId[]
   >();
   const stylesheetReachabilityIdsByStylesheetId = new Map<ProjectEvidenceId, ProjectEvidenceId[]>();
+  const selectorBranchesById = new Map(
+    input.entities.selectorBranches.map((branch) => [branch.id, branch]),
+  );
   const selectorBranchIdsByStylesheetId = new Map<ProjectEvidenceId, ProjectEvidenceId[]>();
   const diagnosticById = new Map<ProjectEvidenceDiagnosticId, ProjectEvidenceDiagnostic>();
   const diagnosticsByTargetId = new Map<ProjectEvidenceId, ProjectEvidenceDiagnosticId[]>();
@@ -80,6 +90,19 @@ export function buildIndexes(input: {
   for (const definition of input.entities.classDefinitions) {
     pushMapValue(classDefinitionIdsByClassName, definition.className, definition.id);
     pushMapValue(classDefinitionIdsByStylesheetId, definition.stylesheetId, definition.id);
+  }
+
+  for (const declaration of input.entities.cssDeclarations) {
+    pushMapValue(cssDeclarationIdsByStylesheetId, declaration.stylesheetId, declaration.id);
+    pushMapValue(
+      cssDeclarationIdsByRuleDefinitionNodeId,
+      declaration.ruleDefinitionNodeId,
+      declaration.id,
+    );
+    pushMapValue(cssDeclarationIdsByProperty, declaration.property, declaration.id);
+    for (const selectorBranchId of declaration.selectorBranchIds) {
+      pushMapValue(cssDeclarationIdsBySelectorBranchId, selectorBranchId, declaration.id);
+    }
   }
 
   for (const reference of input.entities.classReferences) {
@@ -132,6 +155,10 @@ export function buildIndexes(input: {
     componentIdsBySourceFileId,
     classDefinitionIdsByClassName,
     classDefinitionIdsByStylesheetId,
+    cssDeclarationIdsByStylesheetId,
+    cssDeclarationIdsByRuleDefinitionNodeId,
+    cssDeclarationIdsBySelectorBranchId,
+    cssDeclarationIdsByProperty,
     classReferenceIdsByClassName,
     classReferenceIdsBySourceFileId,
     classReferenceMatchIdsByDefinitionId,
@@ -153,6 +180,11 @@ export function buildIndexes(input: {
     classDefinitionsById,
     classDefinitionIdsByClassName,
     classDefinitionIdsByStylesheetId,
+    cssDeclarationsById,
+    cssDeclarationIdsByStylesheetId,
+    cssDeclarationIdsByRuleDefinitionNodeId,
+    cssDeclarationIdsBySelectorBranchId,
+    cssDeclarationIdsByProperty,
     classReferencesById,
     classReferenceIdsByClassName,
     classReferenceIdsBySourceFileId,
@@ -163,6 +195,7 @@ export function buildIndexes(input: {
     providerClassSatisfactionsById,
     providerClassSatisfactionIdsByReferenceAndClassName,
     stylesheetReachabilityIdsByStylesheetId,
+    selectorBranchesById,
     selectorBranchIdsByStylesheetId,
     diagnosticById,
     diagnosticsByTargetId,

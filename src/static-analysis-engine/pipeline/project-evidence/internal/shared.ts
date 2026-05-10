@@ -34,6 +34,7 @@ export {
   createComponentId,
   createComponentIdFromKey,
   createComponentKey,
+  createCssDeclarationId,
   createCssModuleAliasId,
   createCssModuleDestructuredBindingId,
   createCssModuleDiagnosticId,

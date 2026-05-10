@@ -90,6 +90,25 @@ export function createSelectorRuleKey(selectorQuery: SelectorQueryAnalysis, inde
   ].join(":");
 }
 
+export function createCssDeclarationId(input: {
+  stylesheetId: ProjectEvidenceId;
+  ruleDefinitionNodeId: string;
+  declarationIndex: number;
+  property: string;
+  location?: SourceAnchor;
+}): ProjectEvidenceId {
+  const anchor = input.location;
+  return anchor
+    ? createAnchorId("css-declaration", anchor, input.declarationIndex)
+    : [
+        "css-declaration",
+        input.stylesheetId,
+        stableHash(input.ruleDefinitionNodeId),
+        input.declarationIndex,
+        input.property,
+      ].join(":");
+}
+
 export function createAnchorId(
   kind: string,
   anchor: SourceAnchor,

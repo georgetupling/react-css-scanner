@@ -6,6 +6,7 @@ import type {
   ClassReferenceAnalysis,
   ClassReferenceMatchRelation,
   ComponentAnalysis,
+  CssDeclarationAnalysis,
   ComponentRenderRelation,
   CssModuleAliasAnalysis,
   CssModuleDestructuredBindingAnalysis,
@@ -44,6 +45,7 @@ export type ProjectEvidenceAssemblyMeta = {
   componentCount: number;
   stylesheetCount: number;
   classDefinitionCount: number;
+  cssDeclarationCount: number;
   classReferenceCount: number;
   relationCount: number;
   diagnosticCount: number;
@@ -60,6 +62,7 @@ export type ProjectEvidenceEntities = {
   staticallySkippedClassReferences: StaticallySkippedClassReferenceAnalysis[];
   selectorQueries: SelectorQueryAnalysis[];
   selectorBranches: SelectorBranchAnalysis[];
+  cssDeclarations: CssDeclarationAnalysis[];
   unsupportedClassReferences: UnsupportedClassReferenceAnalysis[];
   cssModuleImports: CssModuleImportAnalysis[];
   cssModuleAliases: CssModuleAliasAnalysis[];
@@ -121,7 +124,13 @@ export type ProjectEvidenceIndexes = {
   providerClassSatisfactionsById: Map<ProjectEvidenceId, ProviderClassSatisfactionRelation>;
   providerClassSatisfactionIdsByReferenceAndClassName: Map<string, ProjectEvidenceId[]>;
   stylesheetReachabilityIdsByStylesheetId: Map<ProjectEvidenceId, ProjectEvidenceId[]>;
+  selectorBranchesById: Map<ProjectEvidenceId, SelectorBranchAnalysis>;
   selectorBranchIdsByStylesheetId: Map<ProjectEvidenceId, ProjectEvidenceId[]>;
+  cssDeclarationsById: Map<ProjectEvidenceId, CssDeclarationAnalysis>;
+  cssDeclarationIdsByStylesheetId: Map<ProjectEvidenceId, ProjectEvidenceId[]>;
+  cssDeclarationIdsByRuleDefinitionNodeId: Map<string, ProjectEvidenceId[]>;
+  cssDeclarationIdsBySelectorBranchId: Map<ProjectEvidenceId, ProjectEvidenceId[]>;
+  cssDeclarationIdsByProperty: Map<string, ProjectEvidenceId[]>;
   diagnosticById: Map<ProjectEvidenceDiagnosticId, ProjectEvidenceDiagnostic>;
   diagnosticsByTargetId: Map<ProjectEvidenceId | FactNodeId, ProjectEvidenceDiagnosticId[]>;
 };

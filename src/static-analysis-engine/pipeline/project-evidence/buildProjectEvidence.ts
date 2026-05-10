@@ -26,6 +26,7 @@ export function buildProjectEvidence(
       componentCount: entities.components.length,
       stylesheetCount: entities.stylesheets.length,
       classDefinitionCount: entities.classDefinitions.length,
+      cssDeclarationCount: entities.cssDeclarations.length,
       classReferenceCount: entities.classReferences.length,
       relationCount: Object.values(relations).reduce(
         (count, relationSet) => count + relationSet.length,
@@ -54,6 +55,7 @@ function normalizeEntities(input: Partial<ProjectEvidenceEntities> = {}): Projec
     ),
     selectorQueries: [...(input.selectorQueries ?? [])].sort(compareById),
     selectorBranches: [...(input.selectorBranches ?? [])].sort(compareById),
+    cssDeclarations: [...(input.cssDeclarations ?? [])].sort(compareById),
     unsupportedClassReferences: [...(input.unsupportedClassReferences ?? [])].sort(compareById),
     cssModuleImports: [...(input.cssModuleImports ?? [])].sort(compareById),
     cssModuleAliases: [...(input.cssModuleAliases ?? [])].sort(compareById),

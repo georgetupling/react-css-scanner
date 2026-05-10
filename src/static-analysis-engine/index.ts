@@ -20,6 +20,15 @@ export {
   selectorBranchSourceKey,
 } from "./pipeline/selector-reachability/index.js";
 export { buildRuntimeCssLoading } from "./pipeline/runtime-css-loading/index.js";
+export {
+  buildCascadeAnalysis,
+  calculateSelectorSpecificity,
+  cascadeConditionSetId,
+  cascadeDeclarationCandidateId,
+  cascadeDiagnosticId,
+  cascadeOutcomeId,
+  elementPropertyKey as cascadeElementPropertyKey,
+} from "./pipeline/cascade-analysis/index.js";
 export { extractCssStyleRules } from "./libraries/css-parsing/index.js";
 export {
   buildOwnershipInference,
@@ -65,6 +74,22 @@ export type {
   StaticAnalysisEngineProjectResult,
   StaticAnalysisEngineResult,
 } from "./types/runtime.js";
+export type {
+  CascadeAnalysisDiagnostic,
+  CascadeAnalysisDiagnosticCode,
+  CascadeAnalysisIndexes,
+  CascadeAnalysisMeta,
+  CascadeAnalysisResult,
+  CascadeComparisonReason,
+  CascadeComparisonStep,
+  CascadeConditionSet,
+  CascadeConditionSource,
+  CascadeDeclarationCandidate,
+  CascadeKey,
+  CascadeOutcome,
+  CssDeclarationCascadeRecord,
+  CssSpecificity,
+} from "./pipeline/cascade-analysis/index.js";
 export type {
   CssFrontendFacts,
   CssFrontendFile,
@@ -175,6 +200,7 @@ export type {
   ClassReferenceOrigin,
   ComponentAnalysis,
   ComponentRenderRelation,
+  CssDeclarationAnalysis,
   CssModuleLocalsConvention,
   CssModuleImportAnalysis,
   CssModuleMemberMatchRelation,

@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildProjectEvidence } from "../../dist/static-analysis-engine.js";
+import { buildProjectEvidence, runAnalysisPipeline } from "../../dist/static-analysis-engine.js";
+import { TestProjectBuilder } from "../support/TestProjectBuilder.js";
 
 test("project evidence assembly returns deterministic empty facts", () => {
   const result = buildProjectEvidence();
@@ -12,6 +13,7 @@ test("project evidence assembly returns deterministic empty facts", () => {
     componentCount: 0,
     stylesheetCount: 0,
     classDefinitionCount: 0,
+    cssDeclarationCount: 0,
     classReferenceCount: 0,
     relationCount: 0,
     diagnosticCount: 0,
@@ -26,6 +28,7 @@ test("project evidence assembly returns deterministic empty facts", () => {
   assert.deepEqual(result.entities.staticallySkippedClassReferences, []);
   assert.deepEqual(result.entities.selectorQueries, []);
   assert.deepEqual(result.entities.selectorBranches, []);
+  assert.deepEqual(result.entities.cssDeclarations, []);
   assert.deepEqual(result.entities.unsupportedClassReferences, []);
   assert.deepEqual(result.entities.cssModuleImports, []);
   assert.deepEqual(result.entities.cssModuleAliases, []);
@@ -51,12 +54,18 @@ test("project evidence assembly returns deterministic empty facts", () => {
   assert.equal(result.indexes.classDefinitionsById.size, 0);
   assert.equal(result.indexes.classDefinitionIdsByClassName.size, 0);
   assert.equal(result.indexes.classDefinitionIdsByStylesheetId.size, 0);
+  assert.equal(result.indexes.cssDeclarationsById.size, 0);
+  assert.equal(result.indexes.cssDeclarationIdsByStylesheetId.size, 0);
+  assert.equal(result.indexes.cssDeclarationIdsByRuleDefinitionNodeId.size, 0);
+  assert.equal(result.indexes.cssDeclarationIdsBySelectorBranchId.size, 0);
+  assert.equal(result.indexes.cssDeclarationIdsByProperty.size, 0);
   assert.equal(result.indexes.classReferencesById.size, 0);
   assert.equal(result.indexes.classReferenceIdsByClassName.size, 0);
   assert.equal(result.indexes.classReferenceIdsBySourceFileId.size, 0);
   assert.equal(result.indexes.classReferenceMatchIdsByDefinitionId.size, 0);
   assert.equal(result.indexes.classReferenceMatchIdsByReferenceId.size, 0);
   assert.equal(result.indexes.stylesheetReachabilityIdsByStylesheetId.size, 0);
+  assert.equal(result.indexes.selectorBranchesById.size, 0);
   assert.equal(result.indexes.selectorBranchIdsByStylesheetId.size, 0);
   assert.equal(result.indexes.diagnosticById.size, 0);
   assert.equal(result.indexes.diagnosticsByTargetId.size, 0);
@@ -112,8 +121,12 @@ test("project evidence assembly sorts relations and builds relation indexes", ()
         classReference("reference:a", "source:a", "component:a", "button"),
       ],
       selectorBranches: [
-        selectorBranch("selector-branch:b", "stylesheet:b"),
-        selectorBranch("selector-branch:a", "stylesheet:a"),
+        selectorBranch("selector-branch:b", "stylesheet:b", "rule:b"),
+        selectorBranch("selector-branch:a", "stylesheet:a", "rule:a"),
+      ],
+      cssDeclarations: [
+        cssDeclaration("css-declaration:b", "stylesheet:b", "rule:b", "selector-branch:b"),
+        cssDeclaration("css-declaration:a", "stylesheet:a", "rule:a", "selector-branch:a"),
       ],
     },
     relations: {
@@ -149,9 +162,74 @@ test("project evidence assembly sorts relations and builds relation indexes", ()
   assert.deepEqual(result.indexes.selectorBranchIdsByStylesheetId.get("stylesheet:a"), [
     "selector-branch:a",
   ]);
+  assert.deepEqual(result.indexes.cssDeclarationIdsByStylesheetId.get("stylesheet:a"), [
+    "css-declaration:a",
+  ]);
+  assert.deepEqual(result.indexes.cssDeclarationIdsByRuleDefinitionNodeId.get("rule:a"), [
+    "css-declaration:a",
+  ]);
+  assert.deepEqual(result.indexes.cssDeclarationIdsBySelectorBranchId.get("selector-branch:a"), [
+    "css-declaration:a",
+  ]);
+  assert.deepEqual(result.indexes.cssDeclarationIdsByProperty.get("color"), [
+    "css-declaration:a",
+    "css-declaration:b",
+  ]);
   assert.deepEqual(result.indexes.stylesheetReachabilityIdsByStylesheetId.get("stylesheet:a"), [
     "project-evidence:stylesheet-reachability:stylesheet:a:source:a:component:a:definite",
   ]);
+});
+
+test("project evidence assembly exposes stylesheet declarations from parsed CSS", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./styles.css";\nexport function App() { return <button className="button icon">Save</button>; }\n',
+    )
+    .withCssFile(
+      "src/styles.css",
+      ".button, .link { color: red !important; }\n@media (min-width: 40rem) { .button .icon { display: inline-block; } }\n",
+    )
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const projectEvidence = result.analysisEvidence.projectEvidence;
+    const declarations = projectEvidence.entities.cssDeclarations;
+
+    assert.equal(projectEvidence.meta.cssDeclarationCount, 2);
+    assert.equal(declarations.length, 2);
+    assert.deepEqual(
+      declarations.map((declaration) => [
+        declaration.property,
+        declaration.value,
+        declaration.important,
+        declaration.selectorText,
+        declaration.atRuleContext.map((entry) => `${entry.name}:${entry.params}`).join("|"),
+      ]),
+      [
+        ["color", "red", true, ".button, .link", ""],
+        ["display", "inline-block", false, ".button .icon", "media:(min-width: 40rem)"],
+      ],
+    );
+
+    const colorDeclarations = projectEvidence.indexes.cssDeclarationIdsByProperty.get("color");
+    assert.equal(colorDeclarations?.length, 1);
+    assert.equal(declarations[0].selectorBranchIds.length, 2);
+    for (const declaration of declarations) {
+      assert.equal(projectEvidence.indexes.cssDeclarationsById.get(declaration.id), declaration);
+      assert.ok(declaration.location?.filePath.endsWith("src/styles.css"));
+      assert.ok(declaration.selectorBranchIds.length > 0);
+    }
+  } finally {
+    await project.cleanup();
+  }
 });
 
 function anchor(filePath, startLine, startColumn) {
@@ -192,10 +270,11 @@ function classReference(id, sourceFileId, componentId, className) {
   };
 }
 
-function selectorBranch(id, stylesheetId) {
+function selectorBranch(id, stylesheetId, ruleDefinitionNodeId) {
   return {
     id,
     selectorQueryId: `query:${id}`,
+    ruleDefinitionNodeId,
     stylesheetId,
     selectorText: ".button",
     selectorListText: ".button",
@@ -207,6 +286,27 @@ function selectorBranch(id, stylesheetId) {
     confidence: "high",
     traces: [],
     sourceQuery: {},
+  };
+}
+
+function cssDeclaration(id, stylesheetId, ruleDefinitionNodeId, selectorBranchId) {
+  return {
+    id,
+    stylesheetId,
+    ruleDefinitionNodeId,
+    selectorBranchIds: [selectorBranchId],
+    selectorText: ".button",
+    declarationIndex: 0,
+    ruleSourceOrder: 0,
+    property: "color",
+    value: "red",
+    important: false,
+    atRuleContext: [],
+    sourceDeclaration: {
+      property: "color",
+      value: "red",
+      important: false,
+    },
   };
 }
 

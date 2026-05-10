@@ -6,6 +6,7 @@ import {
   buildClassContexts,
   buildClassDefinitions,
   buildComponents,
+  buildCssDeclarations,
   buildRenderSubtrees,
   buildSourceFiles,
   buildStylesheets,
@@ -83,6 +84,13 @@ export function buildProjectEvidenceEntities(input: {
       includeTraces: input.includeTraces,
     }),
   );
+  const cssDeclarations = measure("entities.cssDeclarations", () =>
+    buildCssDeclarations({
+      projectInput: input.projectInput,
+      stylesheets,
+      selectorBranches,
+    }),
+  );
   const cssModuleImports = measure("entities.cssModuleImports", () =>
     buildCssModuleImports(input.projectInput, input.indexes),
   );
@@ -111,6 +119,7 @@ export function buildProjectEvidenceEntities(input: {
     staticallySkippedClassReferences,
     selectorQueries,
     selectorBranches,
+    cssDeclarations,
     unsupportedClassReferences,
     cssModuleImports,
     cssModuleAliases,

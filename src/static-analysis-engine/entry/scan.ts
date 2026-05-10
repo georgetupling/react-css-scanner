@@ -1,3 +1,4 @@
+import { buildCascadeAnalysis } from "../pipeline/cascade-analysis/index.js";
 import { buildFactGraph } from "../pipeline/fact-graph/index.js";
 import { buildLanguageFrontends } from "../pipeline/language-frontends/index.js";
 import { buildOwnershipInference } from "../pipeline/ownership-inference/index.js";
@@ -126,6 +127,22 @@ export async function runAnalysisPipeline(input: {
         }),
       }))
     : undefined;
+  const cascadeAnalysisStage = runAnalysisStage(
+    progress,
+    "cascade-analysis",
+    "Building cascade analysis evidence",
+    () => ({
+      cascadeAnalysis: buildCascadeAnalysis({
+        factGraph,
+        projectEvidence: projectEvidenceStage.projectEvidence,
+        runtimeCssLoading: runtimeCssLoadingStage.runtimeCssLoading,
+        selectorReachability: selectorReachabilityStage.selectorReachability,
+        options: {
+          includeTraces,
+        },
+      }),
+    }),
+  );
 
   return {
     snapshot,
@@ -134,6 +151,7 @@ export async function runAnalysisPipeline(input: {
       runtimeCssLoading: runtimeCssLoadingStage.runtimeCssLoading,
       selectorReachability: selectorReachabilityStage.selectorReachability,
       ownershipInference: ownershipInferenceStage?.ownershipInference,
+      cascadeAnalysis: cascadeAnalysisStage.cascadeAnalysis,
     },
   };
 }

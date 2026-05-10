@@ -81,6 +81,7 @@ function indexProjectEvidenceEntities(
     classContexts: entities.classContexts,
     selectorQueries: entities.selectorQueries,
     selectorBranches: entities.selectorBranches,
+    cssDeclarations: entities.cssDeclarations,
     components: entities.components,
     unsupportedClassReferences: entities.unsupportedClassReferences,
     cssModuleImports: entities.cssModuleImports,

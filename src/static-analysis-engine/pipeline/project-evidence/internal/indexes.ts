@@ -3,6 +3,7 @@ import type {
   ClassDefinitionAnalysis,
   ClassReferenceAnalysis,
   ComponentAnalysis,
+  CssDeclarationAnalysis,
   CssModuleAliasAnalysis,
   CssModuleDestructuredBindingAnalysis,
   CssModuleImportAnalysis,
@@ -27,6 +28,7 @@ export function indexEntities(input: {
   classContexts: ClassContextAnalysis[];
   selectorQueries: SelectorQueryAnalysis[];
   selectorBranches: SelectorBranchAnalysis[];
+  cssDeclarations: CssDeclarationAnalysis[];
   components: ComponentAnalysis[];
   unsupportedClassReferences: UnsupportedClassReferenceAnalysis[];
   cssModuleImports: CssModuleImportAnalysis[];
@@ -74,6 +76,27 @@ export function indexEntities(input: {
         input.indexes.selectorBranchesByStylesheetId,
         selectorBranch.stylesheetId,
         selectorBranch.id,
+      );
+    }
+  }
+  for (const declaration of input.cssDeclarations) {
+    input.indexes.cssDeclarationsById.set(declaration.id, declaration);
+    pushMapValue(
+      input.indexes.cssDeclarationsByStylesheetId,
+      declaration.stylesheetId,
+      declaration.id,
+    );
+    pushMapValue(
+      input.indexes.cssDeclarationsByRuleDefinitionNodeId,
+      declaration.ruleDefinitionNodeId,
+      declaration.id,
+    );
+    pushMapValue(input.indexes.cssDeclarationsByProperty, declaration.property, declaration.id);
+    for (const selectorBranchId of declaration.selectorBranchIds) {
+      pushMapValue(
+        input.indexes.cssDeclarationsBySelectorBranchId,
+        selectorBranchId,
+        declaration.id,
       );
     }
   }
@@ -134,6 +157,10 @@ export function indexEntities(input: {
   sortIndexValues(input.indexes.selectorBranchesByQueryId);
   sortIndexValues(input.indexes.selectorBranchesByRuleKey);
   sortIndexValues(input.indexes.selectorBranchesByStylesheetId);
+  sortIndexValues(input.indexes.cssDeclarationsByStylesheetId);
+  sortIndexValues(input.indexes.cssDeclarationsByRuleDefinitionNodeId);
+  sortIndexValues(input.indexes.cssDeclarationsBySelectorBranchId);
+  sortIndexValues(input.indexes.cssDeclarationsByProperty);
   sortIndexValues(input.indexes.cssModuleImportsByStylesheetId);
   sortIndexValues(input.indexes.cssModuleAliasesByImportId);
   sortIndexValues(input.indexes.cssModuleDestructuredBindingsByImportId);
@@ -152,6 +179,7 @@ export function createEmptyIndexes(): ProjectEvidenceBuilderIndexes {
     classContextsById: new Map(),
     selectorQueriesById: new Map(),
     selectorBranchesById: new Map(),
+    cssDeclarationsById: new Map(),
     componentsById: new Map(),
     unsupportedClassReferencesById: new Map(),
     cssModuleImportsById: new Map(),
@@ -176,6 +204,10 @@ export function createEmptyIndexes(): ProjectEvidenceBuilderIndexes {
     selectorBranchesByStylesheetId: new Map(),
     selectorBranchesByQueryId: new Map(),
     selectorBranchesByRuleKey: new Map(),
+    cssDeclarationsByStylesheetId: new Map(),
+    cssDeclarationsByRuleDefinitionNodeId: new Map(),
+    cssDeclarationsBySelectorBranchId: new Map(),
+    cssDeclarationsByProperty: new Map(),
     cssModuleImportsBySourceFileId: new Map(),
     cssModuleImportsByStylesheetId: new Map(),
     cssModuleAliasesByImportId: new Map(),

@@ -8,10 +8,12 @@ import type {
   ClassContextAnalysis,
   ClassDefinitionAnalysis,
   ComponentAnalysis,
+  CssDeclarationAnalysis,
   ProjectEvidenceBuildInput,
   ProjectEvidenceBuilderIndexes,
   ProjectEvidenceStylesheetInput,
   RenderSubtreeAnalysis,
+  SelectorBranchAnalysis,
   SourceFileAnalysis,
   StylesheetAnalysis,
   UnsupportedClassReferenceAnalysis,
@@ -22,6 +24,7 @@ import {
   createAnchorId,
   createClassContextId,
   createClassDefinitionId,
+  createCssDeclarationId,
   createComponentId,
   createComponentKey,
   createPathId,
@@ -270,6 +273,77 @@ export function buildClassDefinitions(
   return definitions.sort(compareById);
 }
 
+export function buildCssDeclarations(input: {
+  projectInput: ProjectEvidenceBuildInput;
+  stylesheets: StylesheetAnalysis[];
+  selectorBranches: SelectorBranchAnalysis[];
+}): CssDeclarationAnalysis[] {
+  const stylesheetsByNodeId = buildStylesheetsByNodeId(input.projectInput, input.stylesheets);
+  const selectorBranchIdsByRuleDefinitionNodeId = new Map<string, SelectorBranchAnalysis[]>();
+  for (const branch of input.selectorBranches) {
+    if (!branch.ruleDefinitionNodeId) {
+      continue;
+    }
+    const branches = selectorBranchIdsByRuleDefinitionNodeId.get(branch.ruleDefinitionNodeId) ?? [];
+    branches.push(branch);
+    selectorBranchIdsByRuleDefinitionNodeId.set(branch.ruleDefinitionNodeId, branches);
+  }
+
+  const ruleSourceOrderById = new Map<string, number>();
+  const nextRuleSourceOrderByStylesheetNodeId = new Map<string, number>();
+  for (const rule of getRuleDefinitionNodes(input.projectInput)
+    .slice()
+    .sort(compareRuleDefinitionNodes)) {
+    const nextOrder = nextRuleSourceOrderByStylesheetNodeId.get(rule.stylesheetNodeId) ?? 0;
+    ruleSourceOrderById.set(rule.id, nextOrder);
+    nextRuleSourceOrderByStylesheetNodeId.set(rule.stylesheetNodeId, nextOrder + 1);
+  }
+
+  const declarations: CssDeclarationAnalysis[] = [];
+  for (const rule of getRuleDefinitionNodes(input.projectInput)) {
+    const stylesheet = stylesheetsByNodeId.get(rule.stylesheetNodeId);
+    if (!stylesheet) {
+      continue;
+    }
+
+    const selectorBranches = (selectorBranchIdsByRuleDefinitionNodeId.get(rule.id) ?? []).sort(
+      compareById,
+    );
+    const selectorBranchIds = selectorBranches.map((branch) => branch.id);
+    const selectorQueryIds = uniqueSorted(selectorBranches.map((branch) => branch.selectorQueryId));
+
+    for (const [declarationIndex, declaration] of rule.sourceRule.declarations.entries()) {
+      const location = normalizeOptionalAnchor(declaration.sourceAnchor);
+      const analysis: CssDeclarationAnalysis = {
+        id: createCssDeclarationId({
+          stylesheetId: stylesheet.id,
+          ruleDefinitionNodeId: rule.id,
+          declarationIndex,
+          property: declaration.property,
+          location,
+        }),
+        stylesheetId: stylesheet.id,
+        ruleDefinitionNodeId: rule.id,
+        ...(selectorQueryIds[0] ? { selectorQueryId: selectorQueryIds[0] } : {}),
+        selectorBranchIds,
+        selectorText: rule.sourceRule.selector,
+        declarationIndex,
+        ruleSourceOrder: ruleSourceOrderById.get(rule.id) ?? 0,
+        property: declaration.property,
+        value: declaration.value,
+        important: declaration.important ?? false,
+        ...(location ? { location } : {}),
+        atRuleContext: [...rule.sourceRule.atRuleContext],
+        sourceDeclaration: { ...declaration },
+      };
+
+      declarations.push(analysis);
+    }
+  }
+
+  return declarations.sort(compareById);
+}
+
 function indexStylesheetInputsByPath(
   input: ProjectEvidenceBuildInput,
 ): Map<string, ProjectEvidenceStylesheetInput> {
@@ -408,6 +482,36 @@ export function buildClassContexts(
   sortIndexValues(indexes.contextsByClassName);
   sortIndexValues(indexes.contextsByStylesheetId);
   return contexts.sort(compareById);
+}
+
+function buildStylesheetsByNodeId(
+  input: ProjectEvidenceBuildInput,
+  stylesheets: StylesheetAnalysis[],
+): Map<string, StylesheetAnalysis> {
+  const stylesheetsByNodeId = new Map<string, StylesheetAnalysis>();
+  for (const stylesheetNode of input.factGraph.graph.nodes.stylesheets) {
+    const filePath = normalizeOptionalProjectPath(stylesheetNode.filePath);
+    const stylesheet = filePath
+      ? stylesheets.find((candidate) => candidate.filePath === filePath)
+      : stylesheets.find((candidate) => candidate.filePath === undefined);
+    if (stylesheet) {
+      stylesheetsByNodeId.set(stylesheetNode.id, stylesheet);
+    }
+  }
+  return stylesheetsByNodeId;
+}
+
+function compareRuleDefinitionNodes(left: RuleDefinitionNode, right: RuleDefinitionNode): number {
+  const leftAnchor = normalizeOptionalAnchor(left.sourceRule.selectorEntries[0]?.selectorAnchor);
+  const rightAnchor = normalizeOptionalAnchor(right.sourceRule.selectorEntries[0]?.selectorAnchor);
+
+  if (left.stylesheetNodeId !== right.stylesheetNodeId) {
+    return left.stylesheetNodeId.localeCompare(right.stylesheetNodeId);
+  }
+  if (leftAnchor && rightAnchor) {
+    return compareAnchors(leftAnchor, rightAnchor) || left.id.localeCompare(right.id);
+  }
+  return left.sourceRule.line - right.sourceRule.line || left.id.localeCompare(right.id);
 }
 
 function getRuleDefinitionNodes(input: ProjectEvidenceBuildInput): RuleDefinitionNode[] {

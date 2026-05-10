@@ -16,6 +16,7 @@ export type {
   ClassReferenceOrigin,
   ComponentAnalysis,
   ComponentRenderRelation,
+  CssDeclarationAnalysis,
   CssModuleAliasAnalysis,
   CssModuleDestructuredBindingAnalysis,
   CssModuleLocalsConvention,

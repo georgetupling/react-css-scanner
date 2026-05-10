@@ -1,4 +1,5 @@
 import type { OwnershipInferenceResult } from "../pipeline/ownership-inference/index.js";
+import type { CascadeAnalysisResult } from "../pipeline/cascade-analysis/index.js";
 import type { ProjectEvidenceAssemblyResult } from "../pipeline/project-evidence/index.js";
 import type { RuntimeCssLoadingResult } from "../pipeline/runtime-css-loading/index.js";
 import type { SelectorReachabilityResult } from "../pipeline/selector-reachability/index.js";
@@ -9,6 +10,7 @@ export type AnalysisEvidence = {
   runtimeCssLoading: RuntimeCssLoadingResult;
   selectorReachability: SelectorReachabilityResult;
   ownershipInference?: OwnershipInferenceResult;
+  cascadeAnalysis: CascadeAnalysisResult;
 };
 
 export type StaticAnalysisEngineResult = {

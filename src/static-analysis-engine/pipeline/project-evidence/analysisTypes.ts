@@ -125,6 +125,23 @@ export type StylesheetAnalysis = CssFileRecord & {
   selectors: ProjectEvidenceId[];
 };
 
+export type CssDeclarationAnalysis = {
+  id: ProjectEvidenceId;
+  stylesheetId: ProjectEvidenceId;
+  ruleDefinitionNodeId: string;
+  selectorQueryId?: ProjectEvidenceId;
+  selectorBranchIds: ProjectEvidenceId[];
+  selectorText: string;
+  declarationIndex: number;
+  ruleSourceOrder: number;
+  property: string;
+  value: string;
+  important: boolean;
+  location?: SourceAnchor;
+  atRuleContext: CssAtRuleContextFact[];
+  sourceDeclaration: CssDeclarationFact;
+};
+
 export type ClassReferenceOrigin = "render-ir" | "runtime-dom" | "unknown";
 
 export type ClassReferenceExpressionKind =
@@ -446,6 +463,7 @@ export type ProjectEvidenceBuilderIndexes = {
   classContextsById: Map<ProjectEvidenceId, ClassContextAnalysis>;
   selectorQueriesById: Map<ProjectEvidenceId, SelectorQueryAnalysis>;
   selectorBranchesById: Map<ProjectEvidenceId, SelectorBranchAnalysis>;
+  cssDeclarationsById: Map<ProjectEvidenceId, CssDeclarationAnalysis>;
   componentsById: Map<ProjectEvidenceId, ComponentAnalysis>;
   unsupportedClassReferencesById: Map<ProjectEvidenceId, UnsupportedClassReferenceAnalysis>;
   cssModuleImportsById: Map<ProjectEvidenceId, CssModuleImportAnalysis>;
@@ -470,6 +488,10 @@ export type ProjectEvidenceBuilderIndexes = {
   selectorBranchesByStylesheetId: Map<ProjectEvidenceId, ProjectEvidenceId[]>;
   selectorBranchesByQueryId: Map<ProjectEvidenceId, ProjectEvidenceId[]>;
   selectorBranchesByRuleKey: Map<string, ProjectEvidenceId[]>;
+  cssDeclarationsByStylesheetId: Map<ProjectEvidenceId, ProjectEvidenceId[]>;
+  cssDeclarationsByRuleDefinitionNodeId: Map<string, ProjectEvidenceId[]>;
+  cssDeclarationsBySelectorBranchId: Map<ProjectEvidenceId, ProjectEvidenceId[]>;
+  cssDeclarationsByProperty: Map<string, ProjectEvidenceId[]>;
   cssModuleImportsBySourceFileId: Map<ProjectEvidenceId, ProjectEvidenceId[]>;
   cssModuleImportsByStylesheetId: Map<ProjectEvidenceId, ProjectEvidenceId[]>;
   cssModuleAliasesByImportId: Map<ProjectEvidenceId, ProjectEvidenceId[]>;
