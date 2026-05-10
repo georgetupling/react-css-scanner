@@ -52,6 +52,7 @@ export type {
   CssClassContextFact,
   CssClassDefinitionFact,
   CssDeclarationFact,
+  CssDeclarationPropertyEffect,
   CssSelectorBranchFact,
   CssSelectorMatchKind,
   CssStyleRuleFact,

@@ -3,6 +3,7 @@ export type {
   CssAtRuleContextFact,
   CssClassDefinitionFact,
   CssDeclarationFact,
+  CssDeclarationPropertyEffect,
   CssSelectorBranchFact,
   CssSelectorMatchKind,
   CssStyleRuleFact,

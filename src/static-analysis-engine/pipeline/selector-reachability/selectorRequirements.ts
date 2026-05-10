@@ -8,6 +8,59 @@ import type { SelectorBranchRequirement, SelectorRequirementStep } from "./types
 const UNSUPPORTED_SELECTOR_REASON =
   "only simple .a .b, .a > .b, .a + .b, .a ~ .b, and .a.b selector queries are currently supported";
 
+const SUPPORTED_SUBJECT_PSEUDO_MODIFIERS = new Set([
+  "active",
+  "any-link",
+  "autofill",
+  "blank",
+  "checked",
+  "current",
+  "default",
+  "defined",
+  "disabled",
+  "empty",
+  "enabled",
+  "first-child",
+  "first-of-type",
+  "focus",
+  "focus-visible",
+  "focus-within",
+  "fullscreen",
+  "future",
+  "hover",
+  "in-range",
+  "indeterminate",
+  "invalid",
+  "last-child",
+  "last-of-type",
+  "link",
+  "local-link",
+  "modal",
+  "muted",
+  "only-child",
+  "only-of-type",
+  "open",
+  "optional",
+  "out-of-range",
+  "past",
+  "paused",
+  "picture-in-picture",
+  "placeholder-shown",
+  "playing",
+  "popover-open",
+  "read-only",
+  "read-write",
+  "required",
+  "root",
+  "scope",
+  "target",
+  "target-within",
+  "user-invalid",
+  "user-valid",
+  "valid",
+  "visited",
+]);
+
 export function projectSelectorBranchRequirement(
   parsedBranch: ParsedSelectorBranch | undefined,
   options: { includeTraces?: boolean } = {},
@@ -24,6 +77,7 @@ export function projectSelectorBranchRequirement(
   if (
     parsedBranch.hasUnknownSemantics ||
     (parsedBranch.hasSubjectModifiers &&
+      !hasOnlySupportedSubjectPseudoModifiers(parsedBranch) &&
       !parsedBranch.steps.some((step) => step.selector.hasClassRelations.length > 0) &&
       parsedBranch.hasDescendantClassNames.length === 0 &&
       parsedBranch.negativeClassNames.length === 0)
@@ -207,6 +261,22 @@ export function projectSelectorBranchRequirement(
     ],
     traces: [],
   };
+}
+
+function hasOnlySupportedSubjectPseudoModifiers(parsedBranch: ParsedSelectorBranch): boolean {
+  const subjectStep = parsedBranch.steps[parsedBranch.subjectStepIndex];
+  if (!subjectStep) {
+    return false;
+  }
+  const selector = subjectStep.selector;
+  return (
+    selector.pseudoClasses.length > 0 &&
+    selector.pseudoClasses.every((pseudoClass) =>
+      SUPPORTED_SUBJECT_PSEUDO_MODIFIERS.has(pseudoClass),
+    ) &&
+    !selector.hasTypeOrIdConstraint &&
+    selector.classAttributePredicates.length === 0
+  );
 }
 
 function createUnsupportedRequirement(input: {

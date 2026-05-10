@@ -86,11 +86,12 @@ export type CssDeclarationFact = {
   property: string;
   value: string;
   important?: boolean;
+  propertyEffects?: CssDeclarationPropertyEffect[];
   sourceAnchor?: SourceAnchor;
 };
 ```
 
-This is still a frontend fact, not the final cascade contract. Cascade analysis should consume normalized declaration evidence from `project-evidence`, not raw parser output.
+`propertyEffects` is computed by the CSS parsing/frontend layer, including any `css-tree` value parsing needed for shorthand semantics. This keeps later stages from re-walking CSS value ASTs. Cascade analysis should consume normalized declaration evidence from `project-evidence`, not raw parser output.
 
 ## Evidence Contracts
 
@@ -110,6 +111,7 @@ export type CssDeclarationAnalysis = {
   selectorText: string;
   property: string;
   value: string;
+  propertyEffects?: CssDeclarationPropertyEffect[];
   important: boolean;
   declarationIndex: number;
   ruleSourceOrder: number;
@@ -206,6 +208,14 @@ The first implementation treats condition details as opaque signatures:
 - candidates with different condition signatures produce an unresolved `condition-uncertain` outcome, because different runtime contexts may produce different winners
 
 This deliberately avoids evaluating media/supports truth. It only proves whether the compared declarations are guarded by the same modeled context.
+
+Implementation status:
+
+- at-rule and render placement conditions are modeled as opaque compatibility signatures.
+- supported selector pseudo-classes are modeled as `selector-state` conditions.
+- pseudo-state selectors can still produce selector reachability matches when their structural class requirements are otherwise supported.
+- candidates with the same pseudo-state set can be compared as a possible conditional outcome.
+- candidates with different pseudo-state sets, including stateful selectors compared with unconditional selectors, remain unresolved instead of producing a false definite winner.
 
 ### Declaration Candidates
 
@@ -375,6 +385,7 @@ Implementation status:
 
 - `CssDeclarationAnalysis` is exported from `project-evidence`.
 - `projectEvidence.entities.cssDeclarations` carries normalized declaration records.
+- CSS frontend declaration facts carry `propertyEffects`, so cascade analysis can consume parsed declaration semantics without reparsing stylesheet values.
 - `projectEvidence.indexes` exposes declaration indexes by id, stylesheet, rule definition node, selector branch, and property.
 - `projectEvidence.meta.cssDeclarationCount` records the declaration count.
 - The first version uses `ruleDefinitionNodeId` rather than a project-evidence `styleRuleId`, because rules are not yet first-class project-evidence entities.
@@ -406,8 +417,9 @@ Phase 2 adds the first cascade stage scaffold:
 - unresolved outcomes when candidates come from multiple stylesheets and runtime order cannot be proven.
 - conditional outcomes when all candidates share the same non-empty condition signature.
 - unresolved `condition-uncertain` outcomes when candidates have different at-rule/render condition signatures.
-- value-aware property effects for exact properties plus supported four-sided box-model shorthands: `margin`, `padding`, `border-width`, `border-style`, and `border-color`.
-- `unsupported-property-semantics` diagnostics for known unsupported shorthands such as `background`, `border`, `font`, `flex`, `grid`, transitions, and animations.
+- selector pseudo-state conditions for supported state and structural pseudo-classes, including conservative unresolved outcomes when a pseudo-state selector is compared with an unconditional selector.
+- value-aware property effects computed by the CSS frontend for exact properties plus supported box-model shorthands: `margin`, `padding`, logical `margin-*`/`padding-*`, physical/logical `inset`, `border-width`, `border-style`, `border-color`, physical side `border-*`, logical `border-block*`/`border-inline*`, whole `border` when the width/style/color value can be safely parsed, and `css-tree`-validated `background` effects for color, image, repeat, and attachment.
+- `unsupported-property-semantics` diagnostics for known unsupported shorthands such as `font`, `flex`, `grid`, transitions, animations, and ambiguous supported-family values such as whole-border CSS variables or ambiguous `background` values.
 
 Known limitations:
 
@@ -422,8 +434,9 @@ Known limitations:
 - no computed style property names or computed JSX prop names
 - no dynamic, unknown spread, parameterized helper, mutation-based, call-result, member-expression, re-export barrel, namespace import, or package-import inline style evaluation
 - conditional inline style branches with conflicting values for the same effective property are intentionally unsupported
-- only a small safe shorthand/longhand property semantics set
+- only a bounded safe shorthand/longhand property semantics set
 - no logical property, reset, inheritance, custom property, or `var()` resolution
-- no typed value evaluation beyond preserving shorthand token values for supported four-sided properties
-- no pseudo-state compatibility model
+- no full typed value grammar; border shorthand parsing recognizes clear width/style/color tokens and intentionally rejects ambiguous whole-value variables
+- `background` shorthand parsing is `css-tree` validated but still partial: it models reset/winning behavior for `background-color`, `background-image`, `background-repeat`, and `background-attachment`, but it does not yet emit candidate effects for `background-position`, `background-size`, `background-origin`, or `background-clip`
+- no pseudo-state implication model: for example, `:focus-visible` is not inferred to imply `:focus`, and `:hover:focus` is not reduced against `:hover`
 - only `declaration-always-shadowed` consumes outcomes today, and it remains opt-in

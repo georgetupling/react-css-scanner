@@ -682,6 +682,82 @@ test("cascade analysis leaves different at-rule contexts unresolved", async () =
   }
 });
 
+test("cascade analysis compares candidates inside the same pseudo-state context", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./styles.css";\nexport function App() { return <button className="button primary active">Save</button>; }\n',
+    )
+    .withCssFile(
+      "src/styles.css",
+      ".button.primary:hover { color: red; }\n.button.primary.active:hover { color: blue; }\n",
+    )
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+    const outcome = cascade.outcomes.find((candidate) => candidate.property === "color");
+
+    assert.ok(outcome?.winningCandidateId);
+    assert.equal(outcome.reason, "specificity");
+    assert.equal(outcome.certainty, "possible");
+    const winningCandidate = cascade.indexes.candidateById.get(outcome.winningCandidateId);
+    assert.ok(winningCandidate);
+    const conditionSet = cascade.indexes.conditionSetById.get(winningCandidate.conditionSetId);
+    assert.deepEqual(conditionSet?.sources, ["selector-state"]);
+    assert.deepEqual(conditionSet?.pseudoStates, ["hover"]);
+    assert.equal(conditionSet?.compatibility, "conditional");
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis leaves pseudo-state and unconditional candidates unresolved", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./styles.css";\nexport function App() { return <button className="button primary">Save</button>; }\n',
+    )
+    .withCssFile(
+      "src/styles.css",
+      ".button.primary { color: red; }\n.button.primary:hover { color: blue; }\n",
+    )
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+    const outcome = cascade.outcomes.find((candidate) => candidate.property === "color");
+
+    assert.ok(outcome);
+    assert.equal(outcome.reason, "condition-uncertain");
+    assert.equal(outcome.certainty, "unknown");
+    assert.equal(outcome.winningCandidateId, undefined);
+    assert.equal(outcome.unresolvedCandidateIds.length, 2);
+    assert.equal(
+      cascade.diagnostics.some(
+        (diagnostic) => diagnostic.code === "unknown-condition-compatibility",
+      ),
+      true,
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("cascade analysis expands supported box-model shorthands into longhand effects", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(
@@ -777,13 +853,244 @@ test("cascade analysis expands border side shorthand values", async () => {
   }
 });
 
-test("cascade analysis reports unsupported shorthand property semantics", async () => {
+test("cascade analysis expands border box shorthands into width style and color effects", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./styles.css";\nexport function App() { return <button className="button primary">Save</button>; }\n',
+    )
+    .withCssFile(
+      "src/styles.css",
+      ".button.primary { border: 2px solid red; border-top-color: blue; }\n",
+    )
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+    const topColorOutcome = cascade.outcomes.find(
+      (candidate) => candidate.property === "border-top-color",
+    );
+    const rightStyleOutcome = cascade.outcomes.find(
+      (candidate) => candidate.property === "border-right-style",
+    );
+    const leftWidthOutcome = cascade.outcomes.find(
+      (candidate) => candidate.property === "border-left-width",
+    );
+
+    assert.ok(topColorOutcome?.winningCandidateId);
+    assert.equal(
+      cascade.indexes.candidateById.get(topColorOutcome.winningCandidateId)?.value,
+      "blue",
+    );
+    assert.ok(rightStyleOutcome?.winningCandidateId);
+    assert.equal(
+      cascade.indexes.candidateById.get(rightStyleOutcome.winningCandidateId)?.value,
+      "solid",
+    );
+    assert.ok(leftWidthOutcome?.winningCandidateId);
+    assert.equal(
+      cascade.indexes.candidateById.get(leftWidthOutcome.winningCandidateId)?.value,
+      "2px",
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis expands logical box and inset shorthands", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./styles.css";\nexport function App() { return <button className="button primary">Save</button>; }\n',
+    )
+    .withCssFile(
+      "src/styles.css",
+      ".button.primary { margin-inline: 1px 2px; inset: 3px 4px; border-inline-color: red blue; }\n",
+    )
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+    const valueFor = (property) => {
+      const outcome = cascade.outcomes.find((candidate) => candidate.property === property);
+      assert.ok(outcome?.winningCandidateId);
+      return cascade.indexes.candidateById.get(outcome.winningCandidateId)?.value;
+    };
+
+    assert.equal(valueFor("margin-inline-start"), "1px");
+    assert.equal(valueFor("margin-inline-end"), "2px");
+    assert.equal(valueFor("top"), "3px");
+    assert.equal(valueFor("right"), "4px");
+    assert.equal(valueFor("bottom"), "3px");
+    assert.equal(valueFor("border-inline-start-color"), "red");
+    assert.equal(valueFor("border-inline-end-color"), "blue");
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis reports ambiguous border shorthand values as unsupported", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./styles.css";\nexport function App() { return <button className="button primary">Save</button>; }\n',
+    )
+    .withCssFile("src/styles.css", ".button.primary { border: var(--button-border); }\n")
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+
+    assert.equal(cascade.meta.candidateCount, 1);
+    assert.equal(
+      cascade.diagnostics.some(
+        (diagnostic) =>
+          diagnostic.code === "unsupported-property-semantics" &&
+          diagnostic.message.includes('"border" shorthand value could not be safely parsed'),
+      ),
+      true,
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis expands background shorthand color and reset effects", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(
       "src/App.tsx",
       'import "./styles.css";\nexport function App() { return <button className="button primary">Save</button>; }\n',
     )
     .withCssFile("src/styles.css", ".button.primary { background: red; background-color: blue; }\n")
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+    const colorOutcome = cascade.outcomes.find(
+      (candidate) => candidate.property === "background-color",
+    );
+    const imageOutcome = cascade.outcomes.find(
+      (candidate) => candidate.property === "background-image",
+    );
+
+    assert.ok(colorOutcome?.winningCandidateId);
+    assert.equal(cascade.indexes.candidateById.get(colorOutcome.winningCandidateId)?.value, "blue");
+    assert.ok(imageOutcome?.winningCandidateId);
+    assert.equal(cascade.indexes.candidateById.get(imageOutcome.winningCandidateId)?.value, "none");
+    assert.equal(
+      cascade.diagnostics.some(
+        (diagnostic) => diagnostic.code === "unsupported-property-semantics",
+      ),
+      false,
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis expands layered background image repeat and attachment effects", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./styles.css";\nexport function App() { return <button className="button primary">Save</button>; }\n',
+    )
+    .withCssFile(
+      "src/styles.css",
+      '.button.primary { background: linear-gradient(red, blue), url("/hero.png") no-repeat fixed center / cover #fff; }\n',
+    )
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+    const valueFor = (property) => {
+      const outcome = cascade.outcomes.find((candidate) => candidate.property === property);
+      assert.ok(outcome?.winningCandidateId);
+      return cascade.indexes.candidateById.get(outcome.winningCandidateId)?.value;
+    };
+
+    assert.equal(valueFor("background-color"), "#fff");
+    assert.equal(valueFor("background-repeat"), "repeat, no-repeat");
+    assert.equal(valueFor("background-attachment"), "scroll, fixed");
+    assert.equal(valueFor("background-image"), "linear-gradient(red,blue), url(/hero.png)");
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis reports ambiguous background shorthand values as unsupported", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./styles.css";\nexport function App() { return <button className="button primary">Save</button>; }\n',
+    )
+    .withCssFile("src/styles.css", ".button.primary { background: var(--button-bg); }\n")
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+
+    assert.equal(
+      cascade.diagnostics.some(
+        (diagnostic) =>
+          diagnostic.code === "unsupported-property-semantics" &&
+          diagnostic.message.includes('"background" shorthand value could not be safely parsed'),
+      ),
+      true,
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis reports unsupported shorthand property semantics", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./styles.css";\nexport function App() { return <button className="button primary">Save</button>; }\n',
+    )
+    .withCssFile("src/styles.css", ".button.primary { font: 14px sans-serif; color: blue; }\n")
     .build();
 
   try {

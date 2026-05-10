@@ -74,6 +74,50 @@ test("CSS parser extracts style rules with css-tree declaration metadata", () =>
   );
 });
 
+test("CSS parser attaches declaration property effects for cascade consumers", () => {
+  const [rule] = extractCssStyleRules({
+    cssText:
+      '.button { background: linear-gradient(red, blue), url("/hero.png") no-repeat fixed center / cover pink; }',
+    filePath: "src/App.css",
+  });
+  const declaration = rule.declarations[0];
+
+  assert.deepEqual(
+    declaration.propertyEffects.map(({ property, value, source, supported }) => ({
+      property,
+      value,
+      source,
+      supported,
+    })),
+    [
+      {
+        property: "background-color",
+        value: "pink",
+        source: "shorthand",
+        supported: true,
+      },
+      {
+        property: "background-image",
+        value: "linear-gradient(red,blue), url(/hero.png)",
+        source: "shorthand",
+        supported: true,
+      },
+      {
+        property: "background-repeat",
+        value: "repeat, no-repeat",
+        source: "shorthand",
+        supported: true,
+      },
+      {
+        property: "background-attachment",
+        value: "scroll, fixed",
+        source: "shorthand",
+        supported: true,
+      },
+    ],
+  );
+});
+
 function summarizeRules(rules) {
   return rules.map((rule) => ({
     selector: rule.selector,

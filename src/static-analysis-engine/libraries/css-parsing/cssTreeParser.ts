@@ -11,6 +11,7 @@ import {
   expandNestedSelectorPrelude,
   sourceAnchorFromOffsets,
 } from "./parserUtils.js";
+import { getCssDeclarationPropertyEffects } from "./declarationPropertyEffects.js";
 
 type CssTreeNode = {
   type: string;
@@ -185,6 +186,10 @@ function extractDeclarations(input: {
         property: declaration.property ?? "",
         value: declaration.value ? generateCssTreeNode(declaration.value).trim() : "",
         important: declaration.important ?? false,
+        propertyEffects: getCssDeclarationPropertyEffects({
+          property: declaration.property ?? "",
+          value: declaration.value ? generateCssTreeNode(declaration.value).trim() : "",
+        }),
         sourceAnchor: sourceAnchorFromOffsets({
           sourceText: input.sourceText,
           filePath: input.filePath,

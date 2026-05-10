@@ -331,6 +331,9 @@ export function buildCssDeclarations(input: {
         ruleSourceOrder: ruleSourceOrderById.get(rule.id) ?? 0,
         property: declaration.property,
         value: declaration.value,
+        ...(declaration.propertyEffects
+          ? { propertyEffects: declaration.propertyEffects.map((effect) => ({ ...effect })) }
+          : {}),
         important: declaration.important ?? false,
         ...(location ? { location } : {}),
         atRuleContext: [...rule.sourceRule.atRuleContext],

@@ -12,6 +12,7 @@ export type ParsedSimpleSelectorSequence = {
   contextOnlyClasses: string[];
   hasDescendantClasses: string[];
   hasClassRelations: ParsedHasClassRelation[];
+  pseudoClasses: string[];
   hasUnknownSemantics: boolean;
   hasSubjectModifiers: boolean;
   hasTypeOrIdConstraint: boolean;

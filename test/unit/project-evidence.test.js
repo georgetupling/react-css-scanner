@@ -222,6 +222,14 @@ test("project evidence assembly exposes stylesheet declarations from parsed CSS"
     const colorDeclarations = projectEvidence.indexes.cssDeclarationIdsByProperty.get("color");
     assert.equal(colorDeclarations?.length, 1);
     assert.equal(declarations[0].selectorBranchIds.length, 2);
+    assert.deepEqual(declarations[0].propertyEffects, [
+      {
+        property: "color",
+        value: "red",
+        source: "exact",
+        supported: true,
+      },
+    ]);
     for (const declaration of declarations) {
       assert.equal(projectEvidence.indexes.cssDeclarationsById.get(declaration.id), declaration);
       assert.ok(declaration.location?.filePath.endsWith("src/styles.css"));

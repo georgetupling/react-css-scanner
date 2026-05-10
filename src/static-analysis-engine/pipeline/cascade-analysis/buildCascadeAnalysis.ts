@@ -24,7 +24,7 @@ import {
   cascadeOutcomeId,
   elementPropertyKey,
 } from "./ids.js";
-import { getCssPropertyEffects } from "./propertyEffects.js";
+import { getCssPropertyEffects, getCssPropertyEffectsForDeclaration } from "./propertyEffects.js";
 import { calculateSelectorSpecificity, compareSpecificity } from "./specificity.js";
 import type {
   SourceExpressionSyntaxFact,
@@ -145,7 +145,7 @@ export function buildCascadeAnalysis(input: CascadeAnalysisInput): CascadeAnalys
         );
       }
 
-      const propertyEffects = getCssPropertyEffects(declaration.property, declaration.value);
+      const propertyEffects = getCssPropertyEffectsForDeclaration(declaration);
       for (const propertyEffect of propertyEffects) {
         if (!propertyEffect.supported) {
           diagnostics.push(
@@ -181,6 +181,7 @@ export function buildCascadeAnalysis(input: CascadeAnalysisInput): CascadeAnalys
       for (const match of matches) {
         const conditionSet = createConditionSet({
           declaration,
+          selectorText: selectorBranch.selectorText,
           match,
           includeTraces,
         });
@@ -1337,6 +1338,7 @@ function createConditionSetFromRenderedElement(input: {
 
 function createConditionSet(input: {
   declaration: ProjectEvidenceAssemblyResult["entities"]["cssDeclarations"][number];
+  selectorText: string;
   match: SelectorBranchMatch;
   includeTraces: boolean;
 }): CascadeConditionSet {
@@ -1352,6 +1354,7 @@ function createConditionSet(input: {
   return createConditionSetFromParts({
     atRuleContext,
     renderConditionIds,
+    pseudoStates: extractSelectorPseudoStates(input.selectorText),
     traces: input.includeTraces ? input.match.traces : [],
   });
 }
@@ -1359,29 +1362,39 @@ function createConditionSet(input: {
 function createConditionSetFromParts(input: {
   atRuleContext: Array<{ name: string; params: string }>;
   renderConditionIds: string[];
+  pseudoStates?: string[];
   traces: CascadeConditionSet["traces"];
 }): CascadeConditionSet {
   const atRuleContext = [...input.atRuleContext];
   const renderConditionIds = [...input.renderConditionIds].sort((left, right) =>
     left.localeCompare(right),
   );
+  const pseudoStates = [...(input.pseudoStates ?? [])].sort((left, right) =>
+    left.localeCompare(right),
+  );
   const sources = [
     ...(atRuleContext.length > 0 ? (["at-rule"] as const) : []),
+    ...(pseudoStates.length > 0 ? (["selector-state"] as const) : []),
     ...(renderConditionIds.length > 0 ? (["render-condition"] as const) : []),
   ];
   const compatibility: CascadeConditionSet["compatibility"] =
-    atRuleContext.length > 0 || renderConditionIds.length > 0 ? "conditional" : "definite";
+    atRuleContext.length > 0 || pseudoStates.length > 0 || renderConditionIds.length > 0
+      ? "conditional"
+      : "definite";
   const conditionSet: Omit<CascadeConditionSet, "id"> = {
     sources,
     atRuleContext,
     renderConditionIds,
     classEmissionConditionIds: [],
-    pseudoStates: [],
+    pseudoStates,
     runtimeContextIds: [],
     compatibility,
     reasons: [
       ...(atRuleContext.length > 0
         ? ["at-rule conditions are modeled as conditional runtime contexts"]
+        : []),
+      ...(pseudoStates.length > 0
+        ? ["selector pseudo-classes are modeled as conditional runtime states"]
         : []),
       ...(renderConditionIds.length > 0
         ? ["render placement conditions may affect applicability"]
@@ -1393,6 +1406,176 @@ function createConditionSetFromParts(input: {
     id: cascadeConditionSetId(conditionSet),
     ...conditionSet,
   };
+}
+
+const MODELED_SELECTOR_PSEUDO_STATES = new Set([
+  "active",
+  "any-link",
+  "autofill",
+  "blank",
+  "checked",
+  "current",
+  "default",
+  "defined",
+  "disabled",
+  "empty",
+  "enabled",
+  "first-child",
+  "first-of-type",
+  "focus",
+  "focus-visible",
+  "focus-within",
+  "fullscreen",
+  "future",
+  "hover",
+  "in-range",
+  "indeterminate",
+  "invalid",
+  "last-child",
+  "last-of-type",
+  "link",
+  "local-link",
+  "modal",
+  "muted",
+  "only-child",
+  "only-of-type",
+  "open",
+  "optional",
+  "out-of-range",
+  "past",
+  "paused",
+  "picture-in-picture",
+  "placeholder-shown",
+  "playing",
+  "popover-open",
+  "read-only",
+  "read-write",
+  "required",
+  "root",
+  "scope",
+  "target",
+  "target-within",
+  "user-invalid",
+  "user-valid",
+  "valid",
+  "visited",
+]);
+
+const SELECTOR_PSEUDO_STATE_CONTAINERS = new Set(["has", "host", "host-context", "is", "not"]);
+
+const SELECTOR_PSEUDO_CLASS_IGNORED_FOR_STATE = new Set([
+  "dir",
+  "global",
+  "lang",
+  "nth-child",
+  "nth-last-child",
+  "nth-last-of-type",
+  "nth-of-type",
+  "where",
+]);
+
+function extractSelectorPseudoStates(selectorText: string): string[] {
+  const states = new Set<string>();
+  collectSelectorPseudoStates(selectorText, states);
+  return [...states].sort((left, right) => left.localeCompare(right));
+}
+
+function collectSelectorPseudoStates(selectorText: string, states: Set<string>): void {
+  let index = 0;
+  while (index < selectorText.length) {
+    const character = selectorText[index];
+    if (character === "'" || character === '"') {
+      index = skipQuotedSelectorText(selectorText, index, character);
+      continue;
+    }
+    if (character === "[") {
+      index = skipBalancedSelectorText(selectorText, index, "[", "]");
+      continue;
+    }
+    if (character !== ":") {
+      index += 1;
+      continue;
+    }
+
+    if (selectorText[index + 1] === ":") {
+      index += 2;
+      while (isCssIdentifierCharacter(selectorText[index])) {
+        index += 1;
+      }
+      continue;
+    }
+
+    index += 1;
+    const pseudoStart = index;
+    while (isCssIdentifierCharacter(selectorText[index])) {
+      index += 1;
+    }
+    if (pseudoStart === index) {
+      continue;
+    }
+    const pseudoName = selectorText.slice(pseudoStart, index).toLowerCase();
+    if (selectorText[index] === "(") {
+      const innerStart = index + 1;
+      const innerEnd = skipBalancedSelectorText(selectorText, index, "(", ")");
+      if (SELECTOR_PSEUDO_STATE_CONTAINERS.has(pseudoName)) {
+        collectSelectorPseudoStates(selectorText.slice(innerStart, innerEnd - 1), states);
+      } else if (!SELECTOR_PSEUDO_CLASS_IGNORED_FOR_STATE.has(pseudoName)) {
+        states.add(pseudoName);
+      }
+      index = innerEnd;
+      continue;
+    }
+
+    if (MODELED_SELECTOR_PSEUDO_STATES.has(pseudoName)) {
+      states.add(pseudoName);
+    }
+  }
+}
+
+function skipQuotedSelectorText(text: string, startIndex: number, quote: string): number {
+  let index = startIndex + 1;
+  while (index < text.length) {
+    if (text[index] === "\\") {
+      index += 2;
+      continue;
+    }
+    if (text[index] === quote) {
+      return index + 1;
+    }
+    index += 1;
+  }
+  return text.length;
+}
+
+function skipBalancedSelectorText(
+  text: string,
+  startIndex: number,
+  open: string,
+  close: string,
+): number {
+  let depth = 0;
+  let index = startIndex;
+  while (index < text.length) {
+    const character = text[index];
+    if (character === "'" || character === '"') {
+      index = skipQuotedSelectorText(text, index, character);
+      continue;
+    }
+    if (character === open) {
+      depth += 1;
+    } else if (character === close) {
+      depth -= 1;
+      if (depth === 0) {
+        return index + 1;
+      }
+    }
+    index += 1;
+  }
+  return text.length;
+}
+
+function isCssIdentifierCharacter(character: string | undefined): boolean {
+  return character !== undefined && /[A-Za-z0-9_-]/.test(character);
 }
 
 type CandidateConditionCompatibility = {

@@ -18,6 +18,7 @@ export function parseSimpleSelectorSequence(segment: string): ParsedSimpleSelect
   const contextOnlyClasses: string[] = [];
   const hasDescendantClasses: string[] = [];
   const hasClassRelations: ParsedHasClassRelation[] = [];
+  const pseudoClasses: string[] = [];
   let hasUnknownSemantics = false;
   let hasSubjectModifiers = false;
   let hasTypeOrIdConstraint = false;
@@ -80,6 +81,10 @@ export function parseSimpleSelectorSequence(segment: string): ParsedSimpleSelect
       }
 
       index = pseudoName.nextIndex;
+      const normalizedPseudoName = pseudoName.value.toLowerCase();
+      if (!isPseudoElement) {
+        pseudoClasses.push(normalizedPseudoName);
+      }
       if (segment[index] !== "(") {
         continue;
       }
@@ -87,7 +92,6 @@ export function parseSimpleSelectorSequence(segment: string): ParsedSimpleSelect
       const inner = readParenthesizedContent(segment, index);
       index = inner.nextIndex;
 
-      const normalizedPseudoName = pseudoName.value.toLowerCase();
       if (
         normalizedPseudoName === "is" ||
         normalizedPseudoName === "where" ||
@@ -156,6 +160,7 @@ export function parseSimpleSelectorSequence(segment: string): ParsedSimpleSelect
     contextOnlyClasses: unique(contextOnlyClasses),
     hasDescendantClasses: unique(hasDescendantClasses),
     hasClassRelations: uniqueHasClassRelations(hasClassRelations),
+    pseudoClasses: unique(pseudoClasses),
     hasUnknownSemantics,
     hasSubjectModifiers,
     hasTypeOrIdConstraint,

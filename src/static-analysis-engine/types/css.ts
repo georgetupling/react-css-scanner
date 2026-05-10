@@ -34,7 +34,16 @@ export type CssDeclarationFact = {
   property: string;
   value: string;
   important?: boolean;
+  propertyEffects?: CssDeclarationPropertyEffect[];
   sourceAnchor?: SourceAnchor;
+};
+
+export type CssDeclarationPropertyEffect = {
+  property: string;
+  value: string;
+  source: "exact" | "shorthand";
+  supported: boolean;
+  reason?: string;
 };
 
 export type CssStyleRuleFact = {

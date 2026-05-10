@@ -565,6 +565,39 @@ test("scanProject reports opt-in declarations that are always shadowed", async (
   }
 });
 
+test("scanProject does not report pseudo-state declarations as always shadowing base styles", async () => {
+  const project = await new TestProjectBuilder()
+    .withConfig({
+      rules: {
+        "duplicate-class-definition": "off",
+        "declaration-always-shadowed": "info",
+      },
+    })
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./App.css";\nexport function App() { return <button className="button primary">Save</button>; }\n',
+    )
+    .withCssFile(
+      "src/App.css",
+      ".button.primary { color: red; }\n.button.primary:hover { color: blue; }\n",
+    )
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+    });
+
+    assert.equal(
+      result.findings.some((finding) => finding.ruleId === "declaration-always-shadowed"),
+      false,
+    );
+    assert.equal(result.summary.findingsByRule["declaration-always-shadowed"] ?? 0, 0);
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("scanProject fails on unknown top-level config keys", async () => {
   const project = await new TestProjectBuilder()
     .withConfig({

@@ -235,20 +235,37 @@ test("language frontends parse CSS into deterministic frontend facts", async () 
         },
       ],
     );
-    assert.deepEqual(frontends.css.filesByPath.get("src/b.css").rules[0].declarations, [
-      {
-        property: "color",
-        value: "blue",
-        important: false,
-        sourceAnchor: {
-          filePath: "src/b.css",
-          startLine: 1,
-          startColumn: 29,
-          endLine: 1,
-          endColumn: 40,
+    assert.deepEqual(
+      frontends.css.filesByPath.get("src/b.css").rules[0].declarations.map((declaration) => ({
+        property: declaration.property,
+        value: declaration.value,
+        important: declaration.important,
+        propertyEffects: declaration.propertyEffects,
+        sourceAnchor: declaration.sourceAnchor,
+      })),
+      [
+        {
+          property: "color",
+          value: "blue",
+          important: false,
+          propertyEffects: [
+            {
+              property: "color",
+              value: "blue",
+              source: "exact",
+              supported: true,
+            },
+          ],
+          sourceAnchor: {
+            filePath: "src/b.css",
+            startLine: 1,
+            startColumn: 29,
+            endLine: 1,
+            endColumn: 40,
+          },
         },
-      },
-    ]);
+      ],
+    );
     assert.deepEqual(
       frontends.css.filesByPath.get("src/b.css").selectorEntries.map((entry) => ({
         selectorText: entry.selectorText,

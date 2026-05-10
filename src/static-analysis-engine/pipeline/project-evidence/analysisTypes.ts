@@ -20,6 +20,7 @@ import type {
   CssClassContextFact,
   CssClassDefinitionFact,
   CssDeclarationFact,
+  CssDeclarationPropertyEffect,
   CssStyleRuleFact,
 } from "../../types/css.js";
 
@@ -136,6 +137,7 @@ export type CssDeclarationAnalysis = {
   ruleSourceOrder: number;
   property: string;
   value: string;
+  propertyEffects?: CssDeclarationPropertyEffect[];
   important: boolean;
   location?: SourceAnchor;
   atRuleContext: CssAtRuleContextFact[];
