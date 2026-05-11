@@ -437,8 +437,13 @@ Phase 2 adds the first cascade stage scaffold:
 - unresolved outcomes when candidates come from multiple stylesheets and runtime order cannot be proven.
 - conditional outcomes when all candidates share the same non-empty condition signature.
 - `condition-branch` outcomes when unconditional/default declarations compete with conditional declarations, with separate branch winners for each modeled condition signature.
-- unresolved `condition-uncertain` outcomes when candidates only have different conditional at-rule/render/state signatures.
+- modeled condition branch enumeration for satisfiable combinations of supported at-rule and selector-state contexts, including viewport plus pseudo-state branches.
+- media condition normalization for impossible `min-width`/`max-width` and modern `width` comparison ranges, plus branch overlap checks. Disjoint bounded width contexts stay in separate branches; overlapping contexts get an additional combined branch.
+- mutually exclusive media feature values are modeled for `prefers-color-scheme: light/dark` and `orientation: portrait/landscape`.
+- simple `@supports` declaration requirements are modeled for branch satisfiability: compatible declaration checks can combine, while `@supports (x: y)` and `@supports not (x: y)` stay mutually exclusive.
+- unresolved `condition-uncertain` outcomes when candidates only have unsupported or unmodeled conditional signatures.
 - selector pseudo-state conditions for supported state and structural pseudo-classes, including branch outcomes when a pseudo-state selector is compared with an unconditional selector.
+- pseudo-state branch reduction for modeled selector-state implication, so branches such as `:hover:focus` include declarations that only require `:hover`, and `:focus-visible` branches include declarations that require `:focus`.
 - bounded `@scope` proximity for class-compound root selector lists, including optional class-compound selector-list limits; scoped declarations outside the modeled root are skipped, and proximity is compared between specificity and source order.
 - value-aware property effects computed by the CSS frontend for exact properties plus supported box-model shorthands: `margin`, `padding`, logical `margin-*`/`padding-*`, physical/logical `inset`, `border-width`, `border-style`, `border-color`, physical side `border-*`, logical `border-block*`/`border-inline*`, whole `border` when the width/style/color value can be safely parsed, and `css-tree`-validated `background` effects for color, image, repeat, attachment, position, size, origin, and clip.
 - `unsupported-property-semantics` diagnostics for known unsupported shorthands such as `font`, `flex`, `grid`, transitions, animations, and ambiguous supported-family values such as whole-border CSS variables or ambiguous `background` values.
@@ -448,9 +453,10 @@ Known limitations:
 - only definite runtime stylesheet contexts are normalized; possible dynamic CSS imports, unresolved dynamic imports, and unknown bundler chunk semantics remain uncertain
 - lazy CSS order is normalized per runtime source context, not as one global project order
 - multi-entry runtime context modeling is conservative; entries remain separate unless a stable per-context order can be proven
-- no viewport, capability, or container environment evaluation beyond browser-stable `@media all` / `@media not all` and conservative `@supports` syntax/boolean normalization
-- no proof that different conditional contexts are mutually exclusive or overlapping
-- condition branches model one conditional signature at a time against the unconditional/default candidates; they do not yet enumerate combined simultaneous states such as viewport plus pseudo-state plus runtime route unless the source declarations already share that exact signature
+- viewport reasoning is limited to browser-stable `@media all` / `@media not all`, static width range satisfiability for `min-width`, `max-width`, and simple `width` range syntax, plus mutually exclusive `prefers-color-scheme` and `orientation` values; other media features remain conditional without a concrete environment profile
+- capability and container environment evaluation remain conservative beyond `@supports` syntax/boolean normalization and simple declaration-check contradiction; valid supports conditions are modeled as possible, not as always true for a named browser target
+- condition branches enumerate modeled simultaneous at-rule and selector-state contexts, but they do not combine render placement conditions, class-emission conditions, or runtime route/loading contexts yet
+- pseudo-state implication is deliberately small and one-way: `:focus-visible` implies `:focus`, `:user-invalid` implies `:invalid`, and `:user-valid` implies `:valid`; broader pseudo-state overlap, exclusion, or temporal state semantics are not modeled
 - anonymous and otherwise unsupported cascade layer order remains unresolved
 - cross-stylesheet layer ordering follows definite runtime stylesheet order; uncertain runtime stylesheet order still blocks definite cross-stylesheet layer precedence
 - `@scope` support is limited to class-compound root/limit selector lists; complex structural scope roots/limits are skipped conservatively, and `:scope` root matching is not modeled yet
@@ -462,5 +468,4 @@ Known limitations:
 - custom property cascade and definite `var()` substitution are modeled, but conditional, cyclic, missing, and invalid substitutions remain unsupported-property-semantics uncertainty
 - no full typed value grammar; border shorthand parsing recognizes clear width/style/color tokens and intentionally rejects ambiguous whole-value variables
 - `background` shorthand parsing is `css-tree` validated but still partial: it models reset/winning behavior for the main background longhands, but it does not yet model every computed-value nuance or `var()` substitution
-- no pseudo-state implication model: for example, `:focus-visible` is not inferred to imply `:focus`, and `:hover:focus` is not reduced against `:hover`
 - only `declaration-always-shadowed` consumes outcomes today, and it remains opt-in

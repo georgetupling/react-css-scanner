@@ -8,7 +8,8 @@ import type {
   ProjectEvidenceId,
 } from "../project-evidence/index.js";
 import { cascadeDeclarationCandidateId, elementPropertyKey } from "./ids.js";
-import { buildOutcomes, compareById } from "./outcomes.js";
+import { compareById } from "./candidateComparison.js";
+import { buildOutcomes } from "./outcomes.js";
 import type {
   CascadeAnalysisDiagnostic,
   CascadeAnalysisDiagnosticCode,

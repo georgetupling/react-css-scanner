@@ -15,7 +15,8 @@ import type {
   CascadeDeclarationCandidate,
   CascadeConditionSet,
 } from "./types.js";
-import { buildOutcomes, compareById } from "./outcomes.js";
+import { compareById } from "./candidateComparison.js";
+import { buildOutcomes } from "./outcomes.js";
 import {
   emitUnsupportedPropertyDiagnostics,
   resolveCustomPropertyDependentCandidates,

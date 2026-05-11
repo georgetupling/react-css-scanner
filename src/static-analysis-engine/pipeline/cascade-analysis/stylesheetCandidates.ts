@@ -13,7 +13,7 @@ import { normalizeAtRuleConditions } from "./atRuleConditions.js";
 import { getDeclarationLayer } from "./cascadeKeys.js";
 import { createConditionSet, mapMatchCertainty } from "./conditions.js";
 import { cascadeDeclarationCandidateId } from "./ids.js";
-import { compareById } from "./outcomes.js";
+import { compareById } from "./candidateComparison.js";
 import { getCssPropertyEffectsForDeclaration } from "./propertyEffects.js";
 import type { RuntimeStylesheetOrder } from "./runtimeStylesheetOrder.js";
 import { calculateSelectorSpecificity } from "./specificity.js";

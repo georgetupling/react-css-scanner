@@ -8,6 +8,24 @@ export type NormalizedAtRuleCondition = {
   reasons: string[];
 };
 
+export type MediaWidthRange = {
+  minWidthPx?: number;
+  minWidthInclusive?: boolean;
+  maxWidthPx?: number;
+  maxWidthInclusive?: boolean;
+};
+
+export type MediaEnvironmentConstraints = {
+  width?: MediaWidthRange;
+  prefersColorScheme?: "dark" | "light";
+  orientation?: "landscape" | "portrait";
+};
+
+export type SupportsConditionConstraints = {
+  required: string[];
+  rejected: string[];
+};
+
 export function normalizeAtRuleConditions(
   atRuleContext: CssAtRuleContextFact[],
 ): NormalizedAtRuleCondition {
@@ -91,7 +109,197 @@ function evaluateSingleMediaQuery(query: string): "definite" | "conditional" | "
     return "impossible";
   }
 
+  const mediaConstraints = getSingleMediaQueryEnvironmentConstraints(normalized);
+  if (mediaConstraints && !isMediaEnvironmentConstraintSatisfiable(mediaConstraints)) {
+    return "impossible";
+  }
+
   return "conditional";
+}
+
+export function getMediaQueryListWidthRange(params: string): MediaWidthRange | undefined {
+  return getMediaQueryListEnvironmentConstraints(params)?.width;
+}
+
+export function getMediaQueryListEnvironmentConstraints(
+  params: string,
+): MediaEnvironmentConstraints | undefined {
+  const queries = splitMediaQueryList(params);
+  if (queries.length !== 1) {
+    return undefined;
+  }
+  return getSingleMediaQueryEnvironmentConstraints(queries[0]);
+}
+
+function getSingleMediaQueryEnvironmentConstraints(
+  query: string,
+): MediaEnvironmentConstraints | undefined {
+  const normalized = query.trim().toLowerCase().replace(/\s+/g, " ");
+  if (
+    normalized === "" ||
+    normalized.startsWith("not ") ||
+    normalized.includes(",") ||
+    normalized.includes(" or ")
+  ) {
+    return undefined;
+  }
+
+  const constraints: MediaEnvironmentConstraints = {};
+  const width = getSingleMediaQueryWidthRange(normalized);
+  if (width) {
+    constraints.width = width;
+  }
+
+  const colorScheme = getSingleValuedMediaFeature(normalized, "prefers-color-scheme", [
+    "dark",
+    "light",
+  ]);
+  if (colorScheme) {
+    constraints.prefersColorScheme = colorScheme;
+  }
+
+  const orientation = getSingleValuedMediaFeature(normalized, "orientation", [
+    "landscape",
+    "portrait",
+  ]);
+  if (orientation) {
+    constraints.orientation = orientation;
+  }
+
+  return Object.keys(constraints).length > 0 ? constraints : undefined;
+}
+
+function getSingleMediaQueryWidthRange(query: string): MediaWidthRange | undefined {
+  const normalized = query.trim().toLowerCase().replace(/\s+/g, " ");
+  const range: MediaWidthRange = {};
+  let sawWidthFeature = false;
+  for (const match of normalized.matchAll(
+    /\(\s*(min|max)-width\s*:\s*([0-9]+(?:\.[0-9]+)?)\s*(px|rem|em)\s*\)/g,
+  )) {
+    const [, kind, rawValue, unit] = match;
+    const valuePx = toPixels(Number(rawValue), unit);
+    if (valuePx === undefined) {
+      continue;
+    }
+    sawWidthFeature = true;
+    if (kind === "min") {
+      applyMinWidth(range, valuePx, true);
+    } else {
+      applyMaxWidth(range, valuePx, true);
+    }
+  }
+
+  for (const match of normalized.matchAll(
+    /\(\s*width\s*([<>]=?)\s*([0-9]+(?:\.[0-9]+)?)\s*(px|rem|em)\s*\)/g,
+  )) {
+    const [, operator, rawValue, unit] = match;
+    const valuePx = toPixels(Number(rawValue), unit);
+    if (valuePx === undefined) {
+      continue;
+    }
+    sawWidthFeature = true;
+    if (operator.startsWith(">")) {
+      applyMinWidth(range, valuePx, operator === ">=");
+    } else {
+      applyMaxWidth(range, valuePx, operator === "<=");
+    }
+  }
+
+  for (const match of normalized.matchAll(
+    /\(\s*([0-9]+(?:\.[0-9]+)?)\s*(px|rem|em)\s*([<>]=?)\s*width\s*([<>]=?)\s*([0-9]+(?:\.[0-9]+)?)\s*(px|rem|em)\s*\)/g,
+  )) {
+    const [, rawLeftValue, leftUnit, leftOperator, rightOperator, rawRightValue, rightUnit] = match;
+    const leftValuePx = toPixels(Number(rawLeftValue), leftUnit);
+    const rightValuePx = toPixels(Number(rawRightValue), rightUnit);
+    if (leftValuePx === undefined || rightValuePx === undefined) {
+      continue;
+    }
+    sawWidthFeature = true;
+    if (leftOperator.startsWith("<")) {
+      applyMinWidth(range, leftValuePx, leftOperator === "<=");
+    } else {
+      applyMaxWidth(range, leftValuePx, leftOperator === ">=");
+    }
+    if (rightOperator.startsWith("<")) {
+      applyMaxWidth(range, rightValuePx, rightOperator === "<=");
+    } else {
+      applyMinWidth(range, rightValuePx, rightOperator === ">=");
+    }
+  }
+
+  return sawWidthFeature ? range : undefined;
+}
+
+function applyMinWidth(range: MediaWidthRange, valuePx: number, inclusive: boolean): void {
+  if (
+    range.minWidthPx === undefined ||
+    valuePx > range.minWidthPx ||
+    (valuePx === range.minWidthPx && range.minWidthInclusive === true && !inclusive)
+  ) {
+    range.minWidthPx = valuePx;
+    range.minWidthInclusive = inclusive;
+  }
+}
+
+function applyMaxWidth(range: MediaWidthRange, valuePx: number, inclusive: boolean): void {
+  if (
+    range.maxWidthPx === undefined ||
+    valuePx < range.maxWidthPx ||
+    (valuePx === range.maxWidthPx && range.maxWidthInclusive === true && !inclusive)
+  ) {
+    range.maxWidthPx = valuePx;
+    range.maxWidthInclusive = inclusive;
+  }
+}
+
+function getSingleValuedMediaFeature<T extends string>(
+  query: string,
+  featureName: string,
+  allowedValues: readonly T[],
+): T | undefined {
+  let value: T | undefined;
+  for (const match of query.matchAll(
+    new RegExp(`\\(\\s*${featureName}\\s*:\\s*([A-Za-z-]+)\\s*\\)`, "g"),
+  )) {
+    const rawValue = match[1] as T | undefined;
+    if (!rawValue || !allowedValues.includes(rawValue)) {
+      continue;
+    }
+    if (value && value !== rawValue) {
+      return undefined;
+    }
+    value = rawValue;
+  }
+  return value;
+}
+
+function isMediaEnvironmentConstraintSatisfiable(
+  constraints: MediaEnvironmentConstraints,
+): boolean {
+  const width = constraints.width;
+  if (!width || width.minWidthPx === undefined || width.maxWidthPx === undefined) {
+    return true;
+  }
+  if (width.minWidthPx < width.maxWidthPx) {
+    return true;
+  }
+  if (width.minWidthPx > width.maxWidthPx) {
+    return false;
+  }
+  return width.minWidthInclusive === true && width.maxWidthInclusive === true;
+}
+
+function toPixels(value: number, unit: string | undefined): number | undefined {
+  if (!Number.isFinite(value)) {
+    return undefined;
+  }
+  if (unit === "px") {
+    return value;
+  }
+  if (unit === "rem" || unit === "em") {
+    return value * 16;
+  }
+  return undefined;
 }
 
 function splitMediaQueryList(params: string): string[] {
@@ -140,6 +348,67 @@ function splitMediaQueryList(params: string): string[] {
 
 function evaluateSupportsCondition(params: string): "definite" | "conditional" | "impossible" {
   return evaluateSupportsExpression(params.trim());
+}
+
+export function getSupportsConditionConstraints(
+  params: string,
+): SupportsConditionConstraints | undefined {
+  return getSupportsExpressionConstraints(params.trim());
+}
+
+function getSupportsExpressionConstraints(
+  expression: string,
+): SupportsConditionConstraints | undefined {
+  const normalized = stripOuterParentheses(expression.trim());
+  if (!normalized) {
+    return undefined;
+  }
+
+  if (splitTopLevelByKeyword(normalized, "or").length > 1) {
+    return undefined;
+  }
+
+  const andParts = splitTopLevelByKeyword(normalized, "and");
+  if (andParts.length > 1) {
+    const constraints: SupportsConditionConstraints = { required: [], rejected: [] };
+    for (const part of andParts) {
+      const partConstraints = getSupportsExpressionConstraints(part);
+      if (!partConstraints) {
+        return undefined;
+      }
+      constraints.required.push(...partConstraints.required);
+      constraints.rejected.push(...partConstraints.rejected);
+    }
+    return {
+      required: uniqueSortedStrings(constraints.required),
+      rejected: uniqueSortedStrings(constraints.rejected),
+    };
+  }
+
+  const withoutNot = stripLeadingKeyword(normalized, "not");
+  if (withoutNot !== normalized) {
+    const innerConstraints = getSupportsExpressionConstraints(withoutNot);
+    if (
+      !innerConstraints ||
+      innerConstraints.required.length !== 1 ||
+      innerConstraints.rejected.length > 0
+    ) {
+      return undefined;
+    }
+    return {
+      required: [],
+      rejected: innerConstraints.required,
+    };
+  }
+
+  const declaration = parseSupportsDeclaration(normalized);
+  if (!declaration || !isCssDeclarationSyntaxSupported(declaration)) {
+    return undefined;
+  }
+  return {
+    required: [supportsDeclarationKey(declaration)],
+    rejected: [],
+  };
 }
 
 function evaluateSupportsExpression(expression: string): "definite" | "conditional" | "impossible" {
@@ -219,6 +488,10 @@ function parseSupportsDeclaration(input: string): { property: string; value: str
   }
 
   return { property, value };
+}
+
+function supportsDeclarationKey(input: { property: string; value: string }): string {
+  return `${input.property}:${input.value.trim().toLowerCase().replace(/\s+/g, " ")}`;
 }
 
 function isCssDeclarationSyntaxSupported(input: { property: string; value: string }): boolean {
@@ -380,4 +653,8 @@ function findTopLevelCharacter(input: string, target: string): number {
 
 function isIdentifierCharacter(character: string | undefined): boolean {
   return character !== undefined && /[A-Za-z0-9_-]/.test(character);
+}
+
+function uniqueSortedStrings(values: string[]): string[] {
+  return [...new Set(values)].sort((left, right) => left.localeCompare(right));
 }

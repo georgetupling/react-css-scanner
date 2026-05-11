@@ -855,6 +855,40 @@ test("cascade analysis drops declarations inside impossible media queries", asyn
   }
 });
 
+test("cascade analysis drops declarations inside contradictory width media queries", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./styles.css";\nexport function App() { return <button className="button primary">Save</button>; }\n',
+    )
+    .withCssFile(
+      "src/styles.css",
+      ".button.primary { color: red; }\n@media (min-width: 60rem) and (max-width: 40rem) { .button.primary { color: blue; } }\n",
+    )
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+    const outcome = cascade.outcomes.find((candidate) => candidate.property === "color");
+
+    assert.ok(outcome?.winningCandidateId);
+    assert.equal(cascade.indexes.candidateById.get(outcome.winningCandidateId)?.value, "red");
+    assert.equal(
+      cascade.candidates.some((candidate) => candidate.value === "blue"),
+      false,
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("cascade analysis keeps mixed media query lists conditional", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(
@@ -1000,7 +1034,104 @@ test("cascade analysis keeps valid supports declarations conditional", async () 
   }
 });
 
-test("cascade analysis leaves different at-rule contexts unresolved", async () => {
+test("cascade analysis keeps mutually exclusive supports conditions in separate branches", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./styles.css";\nexport function App() { return <button className="button primary">Save</button>; }\n',
+    )
+    .withCssFile(
+      "src/styles.css",
+      "@supports (display: grid) { .button.primary { color: red; } }\n@supports not (display: grid) { .button.primary { color: blue; } }\n",
+    )
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+    const outcome = cascade.outcomes.find((candidate) => candidate.property === "color");
+
+    assert.ok(outcome);
+    assert.equal(outcome.reason, "condition-branch");
+    assert.equal(outcome.conditionalBranches?.length, 2);
+    const branchValues = new Map(
+      (outcome.conditionalBranches ?? []).map((branch) => {
+        const conditionSet = cascade.indexes.conditionSetById.get(branch.conditionSetId);
+        const conditionKey = (conditionSet?.atRuleContext ?? [])
+          .map((entry) => `${entry.name}:${entry.params}`)
+          .join("|");
+        const winner = branch.winningCandidateId
+          ? cascade.indexes.candidateById.get(branch.winningCandidateId)
+          : undefined;
+        return [conditionKey, winner?.value];
+      }),
+    );
+    assert.equal(branchValues.get("supports:(display: grid)"), "red");
+    assert.equal(branchValues.get("supports:not (display: grid)"), "blue");
+    assert.equal(
+      cascade.diagnostics.some(
+        (diagnostic) => diagnostic.code === "unknown-condition-compatibility",
+      ),
+      false,
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis combines compatible supports condition branches", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./styles.css";\nexport function App() { return <button className="button primary">Save</button>; }\n',
+    )
+    .withCssFile(
+      "src/styles.css",
+      "@supports (display: grid) { .button.primary { color: red; } }\n@supports (color: red) { .button.primary { color: blue; } }\n",
+    )
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+    const outcome = cascade.outcomes.find((candidate) => candidate.property === "color");
+
+    assert.ok(outcome);
+    assert.equal(outcome.reason, "condition-branch");
+    assert.equal(outcome.conditionalBranches?.length, 3);
+    const branchValues = new Map(
+      (outcome.conditionalBranches ?? []).map((branch) => {
+        const conditionSet = cascade.indexes.conditionSetById.get(branch.conditionSetId);
+        const conditionKey = (conditionSet?.atRuleContext ?? [])
+          .map((entry) => `${entry.name}:${entry.params}`)
+          .join("|");
+        const winner = branch.winningCandidateId
+          ? cascade.indexes.candidateById.get(branch.winningCandidateId)
+          : undefined;
+        return [conditionKey, winner?.value];
+      }),
+    );
+    assert.equal(branchValues.get("supports:(display: grid)"), "red");
+    assert.equal(branchValues.get("supports:(color: red)"), "blue");
+    assert.equal(branchValues.get("supports:(color: red)|supports:(display: grid)"), "blue");
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis models overlapping at-rule contexts as branch outcomes", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(
       "src/App.tsx",
@@ -1024,16 +1155,169 @@ test("cascade analysis leaves different at-rule contexts unresolved", async () =
     const outcome = cascade.outcomes.find((candidate) => candidate.property === "color");
 
     assert.ok(outcome);
-    assert.equal(outcome.reason, "condition-uncertain");
-    assert.equal(outcome.certainty, "unknown");
+    assert.equal(outcome.reason, "condition-branch");
+    assert.equal(outcome.certainty, "possible");
     assert.equal(outcome.winningCandidateId, undefined);
-    assert.equal(outcome.unresolvedCandidateIds.length, 2);
+    assert.equal(outcome.unresolvedCandidateIds.length, 0);
+    assert.equal(outcome.conditionalBranches?.length, 3);
+    const branchValues = new Map(
+      (outcome.conditionalBranches ?? []).map((branch) => {
+        const conditionSet = cascade.indexes.conditionSetById.get(branch.conditionSetId);
+        const conditionKey = (conditionSet?.atRuleContext ?? [])
+          .map((entry) => `${entry.name}:${entry.params}`)
+          .join("|");
+        const winner = branch.winningCandidateId
+          ? cascade.indexes.candidateById.get(branch.winningCandidateId)
+          : undefined;
+        return [conditionKey, winner?.value];
+      }),
+    );
+    assert.equal(branchValues.get("media:(min-width: 40rem)"), "red");
+    assert.equal(branchValues.get("media:(prefers-color-scheme: dark)"), "blue");
+    assert.equal(
+      branchValues.get("media:(min-width: 40rem)|media:(prefers-color-scheme: dark)"),
+      "blue",
+    );
     assert.equal(
       cascade.diagnostics.some(
         (diagnostic) => diagnostic.code === "unknown-condition-compatibility",
       ),
-      true,
+      false,
     );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis keeps disjoint width media contexts in separate branches", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./styles.css";\nexport function App() { return <button className="button primary">Save</button>; }\n',
+    )
+    .withCssFile(
+      "src/styles.css",
+      "@media (max-width: 30rem) { .button.primary { color: red; } }\n@media (min-width: 40rem) { .button.primary { color: blue; } }\n",
+    )
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+    const outcome = cascade.outcomes.find((candidate) => candidate.property === "color");
+
+    assert.ok(outcome);
+    assert.equal(outcome.reason, "condition-branch");
+    assert.equal(outcome.certainty, "possible");
+    assert.equal(outcome.conditionalBranches?.length, 2);
+    const branchValues = new Map(
+      (outcome.conditionalBranches ?? []).map((branch) => {
+        const conditionSet = cascade.indexes.conditionSetById.get(branch.conditionSetId);
+        const conditionKey = (conditionSet?.atRuleContext ?? [])
+          .map((entry) => `${entry.name}:${entry.params}`)
+          .join("|");
+        const winner = branch.winningCandidateId
+          ? cascade.indexes.candidateById.get(branch.winningCandidateId)
+          : undefined;
+        return [conditionKey, winner?.value];
+      }),
+    );
+    assert.equal(branchValues.get("media:(max-width: 30rem)"), "red");
+    assert.equal(branchValues.get("media:(min-width: 40rem)"), "blue");
+    assert.equal(
+      cascade.diagnostics.some(
+        (diagnostic) => diagnostic.code === "unknown-condition-compatibility",
+      ),
+      false,
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis understands modern width comparison range syntax", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./styles.css";\nexport function App() { return <button className="button primary">Save</button>; }\n',
+    )
+    .withCssFile(
+      "src/styles.css",
+      "@media (40rem <= width < 60rem) { .button.primary { color: red; } }\n@media (width >= 60rem) { .button.primary { color: blue; } }\n",
+    )
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+    const outcome = cascade.outcomes.find((candidate) => candidate.property === "color");
+
+    assert.ok(outcome);
+    assert.equal(outcome.reason, "condition-branch");
+    assert.equal(outcome.conditionalBranches?.length, 2);
+    const branchValues = new Map(
+      (outcome.conditionalBranches ?? []).map((branch) => {
+        const conditionSet = cascade.indexes.conditionSetById.get(branch.conditionSetId);
+        const conditionKey = (conditionSet?.atRuleContext ?? [])
+          .map((entry) => `${entry.name}:${entry.params}`)
+          .join("|");
+        const winner = branch.winningCandidateId
+          ? cascade.indexes.candidateById.get(branch.winningCandidateId)
+          : undefined;
+        return [conditionKey, winner?.value];
+      }),
+    );
+    assert.equal(branchValues.get("media:(40rem <= width < 60rem)"), "red");
+    assert.equal(branchValues.get("media:(width >= 60rem)"), "blue");
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis keeps mutually exclusive media feature values separate", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./styles.css";\nexport function App() { return <button className="button primary">Save</button>; }\n',
+    )
+    .withCssFile(
+      "src/styles.css",
+      "@media (prefers-color-scheme: light) { .button.primary { color: red; } }\n@media (prefers-color-scheme: dark) { .button.primary { color: blue; } }\n@media (orientation: portrait) { .button.primary { background-color: white; } }\n@media (orientation: landscape) { .button.primary { background-color: black; } }\n",
+    )
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+    const colorOutcome = cascade.outcomes.find((candidate) => candidate.property === "color");
+    const backgroundOutcome = cascade.outcomes.find(
+      (candidate) => candidate.property === "background-color",
+    );
+
+    assert.ok(colorOutcome);
+    assert.equal(colorOutcome.reason, "condition-branch");
+    assert.equal(colorOutcome.conditionalBranches?.length, 2);
+    assert.ok(backgroundOutcome);
+    assert.equal(backgroundOutcome.reason, "condition-branch");
+    assert.equal(backgroundOutcome.conditionalBranches?.length, 2);
   } finally {
     await project.cleanup();
   }
@@ -1071,6 +1355,60 @@ test("cascade analysis models unconditional and media candidates as branch outco
     assert.ok(branch?.winningCandidateId);
     assert.equal(cascade.indexes.candidateById.get(branch.winningCandidateId)?.value, "blue");
     assert.equal(branch.certainty, "possible");
+    assert.equal(
+      cascade.diagnostics.some(
+        (diagnostic) => diagnostic.code === "unknown-condition-compatibility",
+      ),
+      false,
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis enumerates combined viewport and pseudo-state branches", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./styles.css";\nexport function App() { return <button className="button primary">Save</button>; }\n',
+    )
+    .withCssFile(
+      "src/styles.css",
+      ".button.primary { color: black; }\n@media (min-width: 40rem) { .button.primary { color: red; } }\n.button.primary:hover { color: green; }\n@media (min-width: 40rem) { .button.primary:hover { color: blue; } }\n",
+    )
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+    const outcome = cascade.outcomes.find((candidate) => candidate.property === "color");
+
+    assert.ok(outcome?.winningCandidateId);
+    assert.equal(outcome.reason, "condition-branch");
+    assert.equal(cascade.indexes.candidateById.get(outcome.winningCandidateId)?.value, "black");
+    assert.equal(outcome.conditionalBranches?.length, 3);
+    const branchValues = new Map(
+      (outcome.conditionalBranches ?? []).map((branch) => {
+        const conditionSet = cascade.indexes.conditionSetById.get(branch.conditionSetId);
+        const atRules = (conditionSet?.atRuleContext ?? [])
+          .map((entry) => `${entry.name}:${entry.params}`)
+          .join("|");
+        const pseudoStates = (conditionSet?.pseudoStates ?? []).join(",");
+        const winner = branch.winningCandidateId
+          ? cascade.indexes.candidateById.get(branch.winningCandidateId)
+          : undefined;
+        return [[atRules, pseudoStates].filter(Boolean).join(" + "), winner?.value];
+      }),
+    );
+    assert.equal(branchValues.get("media:(min-width: 40rem)"), "red");
+    assert.equal(branchValues.get("hover"), "green");
+    assert.equal(branchValues.get("media:(min-width: 40rem) + hover"), "blue");
     assert.equal(
       cascade.diagnostics.some(
         (diagnostic) => diagnostic.code === "unknown-condition-compatibility",
@@ -1151,6 +1489,108 @@ test("cascade analysis models unconditional and pseudo-state candidates as branc
     const branch = outcome.conditionalBranches?.[0];
     assert.ok(branch?.winningCandidateId);
     assert.equal(cascade.indexes.candidateById.get(branch.winningCandidateId)?.value, "blue");
+    assert.equal(
+      cascade.diagnostics.some(
+        (diagnostic) => diagnostic.code === "unknown-condition-compatibility",
+      ),
+      false,
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis models compound pseudo-state selector branches", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./styles.css";\nexport function App() { return <button className="button primary">Save</button>; }\n',
+    )
+    .withCssFile(
+      "src/styles.css",
+      ".button.primary:hover { color: red; }\n.button.primary:hover:focus { color: blue; }\n",
+    )
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+    const outcome = cascade.outcomes.find((candidate) => candidate.property === "color");
+
+    assert.ok(outcome);
+    assert.equal(outcome.winningCandidateId, undefined);
+    assert.equal(outcome.reason, "condition-branch");
+    assert.equal(outcome.certainty, "possible");
+    assert.equal(outcome.conditionalBranches?.length, 2);
+
+    const branchValues = new Map(
+      (outcome.conditionalBranches ?? []).map((branch) => {
+        const conditionSet = cascade.indexes.conditionSetById.get(branch.conditionSetId);
+        const winner = branch.winningCandidateId
+          ? cascade.indexes.candidateById.get(branch.winningCandidateId)
+          : undefined;
+        return [(conditionSet?.pseudoStates ?? []).join(","), winner?.value];
+      }),
+    );
+    assert.equal(branchValues.get("hover"), "red");
+    assert.equal(branchValues.get("focus,hover"), "blue");
+    assert.equal(
+      cascade.diagnostics.some(
+        (diagnostic) => diagnostic.code === "unknown-condition-compatibility",
+      ),
+      false,
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis applies modeled pseudo-state implications inside branches", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./styles.css";\nexport function App() { return <button className="button primary active">Save</button>; }\n',
+    )
+    .withCssFile(
+      "src/styles.css",
+      ".button.primary:focus { color: red; }\n.button.primary.active:focus-visible { color: blue; }\n",
+    )
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+    const outcome = cascade.outcomes.find((candidate) => candidate.property === "color");
+
+    assert.ok(outcome);
+    assert.equal(outcome.winningCandidateId, undefined);
+    assert.equal(outcome.reason, "condition-branch");
+    assert.equal(outcome.certainty, "possible");
+    assert.equal(outcome.conditionalBranches?.length, 2);
+
+    const branchValues = new Map(
+      (outcome.conditionalBranches ?? []).map((branch) => {
+        const conditionSet = cascade.indexes.conditionSetById.get(branch.conditionSetId);
+        const winner = branch.winningCandidateId
+          ? cascade.indexes.candidateById.get(branch.winningCandidateId)
+          : undefined;
+        return [(conditionSet?.pseudoStates ?? []).join(","), winner?.value];
+      }),
+    );
+    assert.equal(branchValues.get("focus"), "red");
+    assert.equal(branchValues.get("focus-visible"), "blue");
     assert.equal(
       cascade.diagnostics.some(
         (diagnostic) => diagnostic.code === "unknown-condition-compatibility",
