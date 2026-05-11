@@ -25,9 +25,11 @@ import type {
   CascadeDeclarationCandidate,
 } from "./types.js";
 import type { CascadeAnalysisInput } from "./buildCascadeAnalysis.js";
+import type { RuntimeStylesheetOrder } from "./runtimeStylesheetOrder.js";
 
 export function buildInlineStyleCandidates(input: {
   input: CascadeAnalysisInput;
+  runtimeStylesheetOrder: RuntimeStylesheetOrder;
   conditionSetsById: Map<string, CascadeConditionSet>;
   includeTraces: boolean;
   diagnostics: CascadeAnalysisDiagnostic[];
@@ -112,68 +114,96 @@ export function buildInlineStyleCandidates(input: {
         );
         continue;
       }
-      const conditionSet = createConditionSetFromRenderedElement({
+      const runtimeContextIds = getRuntimeContextIdsForInlineElement({
         renderedElement,
-        includeTraces: input.includeTraces,
+        runtimeStylesheetOrder: input.runtimeStylesheetOrder,
       });
-      input.conditionSetsById.set(conditionSet.id, conditionSet);
 
-      for (const declaration of declarations.declarations) {
-        for (const propertyEffect of declaration.propertyEffects) {
-          candidates.push({
-            id: cascadeDeclarationCandidateId({
+      for (const runtimeContextId of runtimeContextIds) {
+        const conditionSet = createConditionSetFromRenderedElement({
+          renderedElement,
+          ...(runtimeContextId ? { runtimeContextIds: [runtimeContextId] } : {}),
+          includeTraces: input.includeTraces,
+        });
+        input.conditionSetsById.set(conditionSet.id, conditionSet);
+
+        for (const declaration of declarations.declarations) {
+          for (const propertyEffect of declaration.propertyEffects) {
+            candidates.push({
+              id: cascadeDeclarationCandidateId({
+                inlineStyleId: site.siteKey,
+                elementId,
+                ...(runtimeContextId ? { runtimeContextId } : {}),
+                property: propertyEffect.property,
+              }),
               inlineStyleId: site.siteKey,
               elementId,
               property: propertyEffect.property,
-            }),
-            inlineStyleId: site.siteKey,
-            elementId,
-            property: propertyEffect.property,
-            value: propertyEffect.value,
-            declaredProperty: declaration.property,
-            declaredValue: declaration.value,
-            propertyEffectSource: propertyEffect.source,
-            propertyEffectSupported: propertyEffect.supported,
-            ...(propertyEffect.reason ? { propertyEffectReason: propertyEffect.reason } : {}),
-            ...(propertyEffect.customPropertyDependencies
-              ? { customPropertyDependencies: propertyEffect.customPropertyDependencies }
-              : {}),
-            cascadeKey: {
-              origin: "inline",
-              important: false,
-              layer: {
-                known: true,
-                unlayered: true,
+              value: propertyEffect.value,
+              declaredProperty: declaration.property,
+              declaredValue: declaration.value,
+              propertyEffectSource: propertyEffect.source,
+              propertyEffectSupported: propertyEffect.supported,
+              ...(propertyEffect.reason ? { propertyEffectReason: propertyEffect.reason } : {}),
+              ...(propertyEffect.customPropertyDependencies
+                ? { customPropertyDependencies: propertyEffect.customPropertyDependencies }
+                : {}),
+              cascadeKey: {
+                origin: "inline",
+                important: false,
+                layer: {
+                  known: true,
+                  unlayered: true,
+                },
+                specificity: { a: 1, b: 0, c: 0 },
+                sourceOrder:
+                  2_000_000_000 +
+                  (inlineOrderById.get(site.siteKey) ?? 0) * 1000 +
+                  declaration.order,
+                orderKnown: true,
               },
-              specificity: { a: 1, b: 0, c: 0 },
-              sourceOrder:
-                2_000_000_000 + (inlineOrderById.get(site.siteKey) ?? 0) * 1000 + declaration.order,
-              orderKnown: true,
-            },
-            conditionSetId: conditionSet.id,
-            matchCertainty:
-              declaration.certainty === "possible"
-                ? "possible"
-                : mapRenderCertainty(renderedElement.certainty),
-            reasons: [
-              site.componentPropName
-                ? `inline style prop "${site.componentPropName}" is supplied to rendered element`
-                : "inline style applies directly to rendered element",
-              ...(declaration.certainty === "possible"
-                ? ["inline style comes from a conditional style object branch"]
-                : []),
-              ...(propertyEffect.source === "shorthand"
-                ? [`"${declaration.property}" contributes to "${propertyEffect.property}"`]
-                : []),
-            ],
-            traces: input.includeTraces ? renderedElement.traces : [],
-          });
+              conditionSetId: conditionSet.id,
+              matchCertainty:
+                declaration.certainty === "possible"
+                  ? "possible"
+                  : mapRenderCertainty(renderedElement.certainty),
+              reasons: [
+                site.componentPropName
+                  ? `inline style prop "${site.componentPropName}" is supplied to rendered element`
+                  : "inline style applies directly to rendered element",
+                ...(runtimeContextId
+                  ? [`inline style applies in runtime CSS context "${runtimeContextId}"`]
+                  : []),
+                ...(declaration.certainty === "possible"
+                  ? ["inline style comes from a conditional style object branch"]
+                  : []),
+                ...(propertyEffect.source === "shorthand"
+                  ? [`"${declaration.property}" contributes to "${propertyEffect.property}"`]
+                  : []),
+              ],
+              traces: input.includeTraces ? renderedElement.traces : [],
+            });
+          }
         }
       }
     }
   }
 
   return candidates;
+}
+
+function getRuntimeContextIdsForInlineElement(input: {
+  renderedElement: RenderedElement;
+  runtimeStylesheetOrder: RuntimeStylesheetOrder;
+}): Array<string | undefined> {
+  const sourceFilePath = input.renderedElement.sourceLocation.filePath.replace(/\\/g, "/");
+  const runtimeContextIds =
+    input.runtimeStylesheetOrder.contextIdsBySourceFilePath.get(sourceFilePath) ?? [];
+  const lazyRuntimeContextIds = runtimeContextIds.filter(
+    (runtimeContextId) =>
+      input.runtimeStylesheetOrder.contextById.get(runtimeContextId)?.loading === "lazy",
+  );
+  return lazyRuntimeContextIds.length > 0 ? lazyRuntimeContextIds : [undefined];
 }
 
 type InlineStyleSiteWithSourceFile = {

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { runAnalysisPipeline } from "../../dist/static-analysis-engine.js";
+import { buildRuntimeStylesheetOrder } from "../../dist/static-analysis-engine/pipeline/cascade-analysis/runtimeStylesheetOrder.js";
 import { TestProjectBuilder } from "../support/TestProjectBuilder.js";
 
 test("cascade analysis builds declaration candidates and specificity outcomes", async () => {
@@ -86,6 +87,147 @@ test("cascade analysis resolves cross-stylesheet source order from runtime impor
   } finally {
     await project.cleanup();
   }
+});
+
+test("cascade analysis normalizes lazy CSS into runtime-specific stylesheet order contexts", () => {
+  const order = buildRuntimeStylesheetOrder({
+    projectEvidence: {
+      indexes: {
+        stylesheetIdByPath: new Map([
+          ["src/base.css", "stylesheet:src/base.css"],
+          ["src/lazy.css", "stylesheet:src/lazy.css"],
+        ]),
+      },
+    },
+    factGraph: {
+      frontends: {
+        source: {
+          files: [
+            {
+              filePath: "src/App.tsx",
+              moduleSyntax: {
+                imports: [
+                  {
+                    specifier: "./base.css",
+                    importKind: "css",
+                    importLoading: "static",
+                  },
+                  {
+                    specifier: "./LazyRoute",
+                    importKind: "source",
+                    importLoading: "dynamic",
+                  },
+                ],
+              },
+            },
+            {
+              filePath: "src/LazyRoute.tsx",
+              moduleSyntax: {
+                imports: [
+                  {
+                    specifier: "./lazy.css",
+                    importKind: "css",
+                    importLoading: "static",
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      },
+      graph: {
+        edges: {
+          imports: [
+            {
+              importerKind: "source",
+              importerFilePath: "src/App.tsx",
+              specifier: "./base.css",
+              importKind: "css",
+              importLoading: "static",
+              resolvedFilePath: "src/base.css",
+            },
+            {
+              importerKind: "source",
+              importerFilePath: "src/App.tsx",
+              specifier: "./LazyRoute",
+              importKind: "source",
+              importLoading: "dynamic",
+              resolvedFilePath: "src/LazyRoute.tsx",
+            },
+            {
+              importerKind: "source",
+              importerFilePath: "src/LazyRoute.tsx",
+              specifier: "./lazy.css",
+              importKind: "css",
+              importLoading: "static",
+              resolvedFilePath: "src/lazy.css",
+            },
+          ],
+        },
+      },
+      snapshot: { edges: [] },
+    },
+    runtimeCssLoading: {
+      chunks: [
+        {
+          id: "initial",
+          entryId: "entry",
+          loading: "initial",
+          rootSourceFilePath: "src/App.tsx",
+          sourceFilePaths: ["src/App.tsx"],
+          stylesheetFilePaths: ["src/base.css"],
+          reason: "static imports reachable from runtime CSS entry",
+        },
+        {
+          id: "lazy",
+          entryId: "entry",
+          loading: "lazy",
+          rootSourceFilePath: "src/LazyRoute.tsx",
+          sourceFilePaths: ["src/LazyRoute.tsx"],
+          stylesheetFilePaths: ["src/lazy.css"],
+          reason: "static imports reachable from dynamic import chunk root",
+        },
+      ],
+      availability: [
+        {
+          stylesheetFilePath: "src/base.css",
+          sourceFilePath: "src/App.tsx",
+          availability: "definite",
+          entryId: "entry",
+          chunkId: "initial",
+          entrySourceFilePath: "src/App.tsx",
+          bundlerProfileId: "vite",
+          bundler: "vite",
+          cssLoading: "split-by-runtime-chunk",
+          confidence: "medium",
+          reason: "stylesheet is loaded by the same rendered app-shell bundle",
+        },
+        {
+          stylesheetFilePath: "src/lazy.css",
+          sourceFilePath: "src/LazyRoute.tsx",
+          availability: "definite",
+          entryId: "entry",
+          chunkId: "lazy",
+          entrySourceFilePath: "src/App.tsx",
+          bundlerProfileId: "vite",
+          bundler: "vite",
+          cssLoading: "split-by-runtime-chunk",
+          confidence: "medium",
+          reason: "stylesheet is loaded by the same lazy runtime CSS chunk",
+        },
+      ],
+    },
+  });
+
+  assert.equal(order.stylesheetOrderById.get("stylesheet:src/base.css"), 0);
+  assert.equal(order.stylesheetOrderById.has("stylesheet:src/lazy.css"), false);
+
+  const lazyContextId = order.contextIdsBySourceFilePath.get("src/LazyRoute.tsx")?.[0];
+  assert.ok(lazyContextId);
+  const lazyContext = order.contextById.get(lazyContextId);
+  assert.equal(lazyContext?.loading, "lazy");
+  assert.equal(lazyContext?.stylesheetOrderById.get("stylesheet:src/base.css"), 0);
+  assert.equal(lazyContext?.stylesheetOrderById.get("stylesheet:src/lazy.css"), 1);
 });
 
 test("cascade analysis gives inline styles precedence over normal author declarations", async () => {

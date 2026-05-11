@@ -9,11 +9,13 @@ import type { CascadeConditionSet, CascadeDeclarationCandidate } from "./types.j
 
 export function createConditionSetFromRenderedElement(input: {
   renderedElement: RenderedElement;
+  runtimeContextIds?: string[];
   includeTraces: boolean;
 }): CascadeConditionSet {
   return createConditionSetFromParts({
     atRuleContext: [],
     renderConditionIds: input.renderedElement.placementConditionIds,
+    runtimeContextIds: input.runtimeContextIds,
     traces: input.includeTraces ? input.renderedElement.traces : [],
   });
 }
@@ -22,6 +24,7 @@ export function createConditionSet(input: {
   declaration: ProjectEvidenceAssemblyResult["entities"]["cssDeclarations"][number];
   selectorText: string;
   match: SelectorBranchMatch;
+  runtimeContextIds?: string[];
   includeTraces: boolean;
 }): CascadeConditionSet {
   const atRuleContext = input.declaration.atRuleContext
@@ -37,6 +40,7 @@ export function createConditionSet(input: {
     atRuleContext,
     renderConditionIds,
     pseudoStates: extractSelectorPseudoStates(input.selectorText),
+    runtimeContextIds: input.runtimeContextIds,
     traces: input.includeTraces ? input.match.traces : [],
   });
 }
@@ -69,6 +73,7 @@ function createConditionSetFromParts(input: {
   atRuleContext: Array<{ name: string; params: string }>;
   renderConditionIds: string[];
   pseudoStates?: string[];
+  runtimeContextIds?: string[];
   traces: CascadeConditionSet["traces"];
 }): CascadeConditionSet {
   const atRuleContext = [...input.atRuleContext];
@@ -78,13 +83,20 @@ function createConditionSetFromParts(input: {
   const pseudoStates = [...(input.pseudoStates ?? [])].sort((left, right) =>
     left.localeCompare(right),
   );
+  const runtimeContextIds = [...(input.runtimeContextIds ?? [])].sort((left, right) =>
+    left.localeCompare(right),
+  );
   const sources = [
     ...(atRuleContext.length > 0 ? (["at-rule"] as const) : []),
     ...(pseudoStates.length > 0 ? (["selector-state"] as const) : []),
     ...(renderConditionIds.length > 0 ? (["render-condition"] as const) : []),
+    ...(runtimeContextIds.length > 0 ? (["runtime-css-loading"] as const) : []),
   ];
   const compatibility: CascadeConditionSet["compatibility"] =
-    atRuleContext.length > 0 || pseudoStates.length > 0 || renderConditionIds.length > 0
+    atRuleContext.length > 0 ||
+    pseudoStates.length > 0 ||
+    renderConditionIds.length > 0 ||
+    runtimeContextIds.length > 0
       ? "conditional"
       : "definite";
   const conditionSet: Omit<CascadeConditionSet, "id"> = {
@@ -93,7 +105,7 @@ function createConditionSetFromParts(input: {
     renderConditionIds,
     classEmissionConditionIds: [],
     pseudoStates,
-    runtimeContextIds: [],
+    runtimeContextIds,
     compatibility,
     reasons: [
       ...(atRuleContext.length > 0
@@ -104,6 +116,9 @@ function createConditionSetFromParts(input: {
         : []),
       ...(renderConditionIds.length > 0
         ? ["render placement conditions may affect applicability"]
+        : []),
+      ...(runtimeContextIds.length > 0
+        ? ["runtime CSS loading context may affect stylesheet applicability and order"]
         : []),
     ],
     traces: input.traces,

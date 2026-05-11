@@ -42,16 +42,18 @@ export function buildCascadeAnalysis(input: CascadeAnalysisInput): CascadeAnalys
   const includeTraces = input.options?.includeTraces ?? true;
   const diagnostics: CascadeAnalysisDiagnostic[] = [];
   const conditionSetsById = new Map<string, CascadeConditionSet>();
-  const stylesheetOrderById = buildRuntimeStylesheetOrder(input);
+  const runtimeStylesheetOrder = buildRuntimeStylesheetOrder(input);
   const declarations = buildStylesheetCascadeDeclarations({
     projectEvidence: input.projectEvidence,
-    stylesheetOrderById,
+    stylesheetOrderById: runtimeStylesheetOrder.stylesheetOrderById,
     diagnostics,
     createDiagnostic,
   });
 
   const candidates: CascadeDeclarationCandidate[] = buildStylesheetDeclarationCandidates({
     projectEvidence: input.projectEvidence,
+    renderModel: input.renderModel,
+    runtimeStylesheetOrder,
     selectorReachability: input.selectorReachability,
     declarations,
     conditionSetsById,
@@ -63,6 +65,7 @@ export function buildCascadeAnalysis(input: CascadeAnalysisInput): CascadeAnalys
   candidates.push(
     ...buildInlineStyleCandidates({
       input,
+      runtimeStylesheetOrder,
       conditionSetsById,
       includeTraces,
       diagnostics,

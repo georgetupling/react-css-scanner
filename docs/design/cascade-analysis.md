@@ -389,7 +389,7 @@ Implementation status:
 - `projectEvidence.indexes` exposes declaration indexes by id, stylesheet, rule definition node, selector branch, and property.
 - `projectEvidence.meta.cssDeclarationCount` records the declaration count.
 - The first version uses `ruleDefinitionNodeId` rather than a project-evidence `styleRuleId`, because rules are not yet first-class project-evidence entities.
-- Runtime stylesheet order is normalized for definite initial static CSS imports, including CSS files reached through statically imported source modules and nested stylesheet imports.
+- Runtime stylesheet order is normalized for definite initial static CSS imports and definite lazy runtime CSS chunks, including CSS files reached through statically imported source modules and nested stylesheet imports.
 - `stylesheetSourceOrder` and `projectSourceOrder` fields remain deferred on the declaration evidence itself; cascade currently stores normalized order in candidate cascade keys.
 
 Once declarations are first-class, `cascade-analysis` can be added as a narrow proof stage over exact-property author declarations.
@@ -418,7 +418,8 @@ Phase 2 adds the first cascade stage scaffold:
 - custom property substitution preserves uncertainty when the referenced custom property winner is conditional, unresolved, cyclic, invalid after substitution, or missing without a usable fallback.
 - condition sets for at-rule and render placement conditions.
 - outcomes grouped by rendered element and effective property.
-- resolved cross-stylesheet outcomes when all candidates come from a definite initial runtime CSS chunk with stable static import order.
+- resolved cross-stylesheet outcomes when all candidates come from a definite runtime CSS context with stable static import order.
+- runtime-specific stylesheet order contexts for lazy CSS chunks: initial chunk styles are ordered before lazy chunk styles for that lazy source context, while lazy chunk styles are not treated as globally loaded for initial source contexts.
 - unresolved outcomes when candidates come from multiple stylesheets and runtime order cannot be proven.
 - conditional outcomes when all candidates share the same non-empty condition signature.
 - unresolved `condition-uncertain` outcomes when candidates have different at-rule/render condition signatures.
@@ -428,9 +429,9 @@ Phase 2 adds the first cascade stage scaffold:
 
 Known limitations:
 
-- only definite initial static runtime stylesheet order is normalized
-- no dynamic/lazy CSS order normalization yet
-- no multi-entry runtime context modeling beyond requiring a stable observed order
+- only definite runtime stylesheet contexts are normalized; possible dynamic CSS imports, unresolved dynamic imports, and unknown bundler chunk semantics remain uncertain
+- lazy CSS order is normalized per runtime source context, not as one global project order
+- multi-entry runtime context modeling is conservative; entries remain separate unless a stable per-context order can be proven
 - no evaluation of `@media`, `@supports`, or container-query truth
 - no proof that different conditional contexts are mutually exclusive or overlapping
 - anonymous and otherwise unsupported cascade layer order remains unresolved

@@ -5,15 +5,20 @@ export function cascadeDeclarationCandidateId(input: {
   inlineStyleId?: string;
   selectorBranchId?: string;
   elementId: string;
+  runtimeContextId?: string;
   property: string;
 }): string {
-  return [
+  const parts = [
     "cascade-candidate",
     input.declarationId ?? input.inlineStyleId ?? "unknown-source",
     input.selectorBranchId ?? "direct",
     input.elementId,
-    input.property,
-  ].join(":");
+  ];
+  if (input.runtimeContextId) {
+    parts.push(input.runtimeContextId);
+  }
+  parts.push(input.property);
+  return parts.join(":");
 }
 
 export function cascadeOutcomeId(input: { elementId: string; property: string }): string {
