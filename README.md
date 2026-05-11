@@ -151,17 +151,30 @@ Minimal example:
 }
 ```
 
-## Rule Coverage
+## Rule Catalogue
 
-Default checks include:
+Rules can be disabled or given a different severity with `rules.<ruleId>` in config.
 
-- missing class references (`missing-css-class`, `missing-css-module-class`)
-- unreachable or unsatisfiable selectors (`css-class-unreachable`, `unsatisfiable-selector`)
-- dead CSS (`unused-css-class`, `unused-css-module-class`, `orphan-css-file`, unused compound selector branches)
-- stale CSS Module imports (`css-module-import-not-used`)
-- duplicate same-scope class definitions (`duplicate-class-definition`)
-- style ownership risks (`style-used-outside-owner`, `style-shared-without-shared-owner`)
-- bounded-analysis uncertainty surfaced as debug (`dynamic-class-reference`, `unsupported-syntax-affecting-analysis`)
+| Rule id                                     | Default severity | Description                                                                                                            |
+| ------------------------------------------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `missing-css-class`                         | `error`          | Reports statically known class references with no matching reachable project CSS definition or provider match.         |
+| `css-class-unreachable`                     | `error`          | Reports class references whose definition exists, but only in stylesheets that cannot reach the usage context.         |
+| `unused-css-class`                          | `warn`           | Reports project CSS class definitions with no known reachable source reference or selector-context use.                |
+| `missing-css-module-class`                  | `error`          | Reports CSS Module member references, such as `styles.root`, that do not exist in the imported module.                 |
+| `unused-css-module-class`                   | `warn`           | Reports CSS Module classes that are exported by a module stylesheet but never consumed by known imports.               |
+| `css-module-import-not-used`                | `warn`           | Reports CSS Module imports whose imported object is never read through known member, destructured, or computed use.    |
+| `orphan-css-file`                           | `warn`           | Reports project stylesheets that define classes but have no reachable source, component, or render context.            |
+| `duplicate-class-definition`                | `info`           | Reports duplicate same-selector class definitions in the same stylesheet and at-rule context.                          |
+| `declaration-always-shadowed`               | `off`            | Opt-in cascade cleanup rule for declarations proven to always lose to stronger candidates wherever they apply.         |
+| `unsatisfiable-selector`                    | `warn`           | Reports selectors that cannot match any known renderable structure under bounded selector/render analysis.             |
+| `compound-selector-never-matched`           | `warn`           | Reports compound selectors, such as `.button.primary`, whose required classes are never observed on one node.          |
+| `unused-compound-selector-branch`           | `warn`           | Reports unused branches in selector lists or compound selectors when other branches may still be useful.               |
+| `selector-only-matches-in-unknown-contexts` | `debug`          | Reports selectors that can only match through unresolved render paths, unknown dynamic classes, or unsupported syntax. |
+| `single-component-style-not-colocated`      | `off`            | Opt-in ownership rule for styles used by one component but defined outside that component's expected location.         |
+| `style-used-outside-owner`                  | `off`            | Opt-in ownership rule for private component styles used by components outside the inferred owner.                      |
+| `style-shared-without-shared-owner`         | `off`            | Opt-in ownership rule for styles shared by multiple components but not located in an intentionally shared place.       |
+| `dynamic-class-reference`                   | `debug`          | Reports class expressions that cannot be reduced to a finite exact or possible set of class names.                     |
+| `unsupported-syntax-affecting-analysis`     | `debug`          | Reports unsupported syntax that caused class, selector, module, render, or reachability analysis to degrade.           |
 
 ## Node API
 
@@ -185,8 +198,3 @@ CLI exits non-zero when:
 - a finding meets `failOnSeverity`
 
 Default `failOnSeverity` is `error`.
-
-## Docs
-
-- [Rules Catalogue](./docs/design/rules-catalogue.md)
-- [Architecture](./docs/design/architecture.md)
