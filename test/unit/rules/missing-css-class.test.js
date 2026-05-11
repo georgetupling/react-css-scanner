@@ -1605,6 +1605,38 @@ test("missing-css-class accepts classes inside nested :where(:not()) selector co
   }
 });
 
+test("missing-css-class accepts class requirements from supported @scope roots", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        "export function App() {",
+        "  return (",
+        "    <>",
+        '      <section className="card"><h2 className="title">Inside</h2></section>',
+        '      <h2 className="title">Outside</h2>',
+        "    </>",
+        "  );",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile(
+      "src/App.css",
+      ".title { color: red; }\n@scope (.card) {\n  .title { color: blue; }\n}\n",
+    )
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "missing-css-class", ["card"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("missing-css-class reports missing default JSON object property class tokens", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(

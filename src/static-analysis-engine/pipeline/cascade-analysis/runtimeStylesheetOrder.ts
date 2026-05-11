@@ -79,6 +79,14 @@ export function buildRuntimeStylesheetOrder(input: {
     }
   }
 
+  for (const orderedStylesheetIds of collectHtmlLinkedStylesheetOrders(input)) {
+    for (const [index, stylesheetId] of orderedStylesheetIds.entries()) {
+      const orders = stylesheetOrdersById.get(stylesheetId) ?? [];
+      orders.push(index);
+      stylesheetOrdersById.set(stylesheetId, orders);
+    }
+  }
+
   for (const chunk of lazyChunks) {
     const environmentContext = findEnvironmentContextForChunk({
       runtimeCssLoading: input.runtimeCssLoading,
@@ -132,6 +140,64 @@ export function buildRuntimeStylesheetOrder(input: {
     contextIdsBySourceFilePath,
     contextById,
   };
+}
+
+function collectHtmlLinkedStylesheetOrders(input: {
+  factGraph: FactGraphResult;
+  projectEvidence: ProjectEvidenceAssemblyResult;
+}): ProjectEvidenceId[][] {
+  const stylesheetIdByPath = input.projectEvidence.indexes.stylesheetIdByPath;
+  const linksByHtmlPath = new Map<
+    string,
+    Array<{
+      resolvedFilePath: string;
+      href: string;
+      documentOrder: number;
+    }>
+  >();
+
+  for (const edge of input.factGraph.snapshot.edges) {
+    if (edge.kind !== "html-stylesheet" || !edge.resolvedFilePath) {
+      continue;
+    }
+
+    const links = linksByHtmlPath.get(edge.fromHtmlFilePath) ?? [];
+    links.push({
+      resolvedFilePath: normalizeProjectPath(edge.resolvedFilePath),
+      href: edge.href,
+      documentOrder: edge.documentOrder,
+    });
+    linksByHtmlPath.set(edge.fromHtmlFilePath, links);
+  }
+
+  return [...linksByHtmlPath.keys()]
+    .sort(compareStrings)
+    .map((htmlFilePath) => {
+      const seenStylesheetIds = new Set<ProjectEvidenceId>();
+      const orderedStylesheetIds: ProjectEvidenceId[] = [];
+      const links = linksByHtmlPath.get(htmlFilePath) ?? [];
+      for (const link of links.sort(compareHtmlStylesheetLinks)) {
+        const stylesheetId = stylesheetIdByPath.get(link.resolvedFilePath);
+        if (!stylesheetId || seenStylesheetIds.has(stylesheetId)) {
+          continue;
+        }
+        seenStylesheetIds.add(stylesheetId);
+        orderedStylesheetIds.push(stylesheetId);
+      }
+      return orderedStylesheetIds;
+    })
+    .filter((orderedStylesheetIds) => orderedStylesheetIds.length > 0);
+}
+
+function compareHtmlStylesheetLinks(
+  left: { resolvedFilePath: string; href: string; documentOrder: number },
+  right: { resolvedFilePath: string; href: string; documentOrder: number },
+): number {
+  return (
+    left.documentOrder - right.documentOrder ||
+    left.href.localeCompare(right.href) ||
+    left.resolvedFilePath.localeCompare(right.resolvedFilePath)
+  );
 }
 
 function getDefiniteOrderedStylesheetsForChunk(input: {

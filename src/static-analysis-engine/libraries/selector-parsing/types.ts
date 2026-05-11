@@ -8,6 +8,7 @@ export type SelectorStepCombinator =
 export type ParsedSimpleSelectorSequence = {
   requiredClasses: string[];
   classAttributePredicates: ParsedClassAttributePredicate[];
+  attributePredicates: ParsedAttributePredicate[];
   negativeClasses: string[];
   contextOnlyClasses: string[];
   hasDescendantClasses: string[];
@@ -20,6 +21,12 @@ export type ParsedSimpleSelectorSequence = {
 
 export type ParsedClassAttributePredicate = {
   operator: "prefix" | "suffix" | "substring";
+  value: string;
+};
+
+export type ParsedAttributePredicate = {
+  name: string;
+  operator: "exact";
   value: string;
 };
 
@@ -41,6 +48,7 @@ export type ParsedSelectorBranch = {
   subjectStepIndex: number;
   subjectClassNames: string[];
   classAttributePredicates: ParsedClassAttributePredicate[];
+  attributePredicates: ParsedAttributePredicate[];
   requiredClassNames: string[];
   contextClassNames: string[];
   negativeClassNames: string[];

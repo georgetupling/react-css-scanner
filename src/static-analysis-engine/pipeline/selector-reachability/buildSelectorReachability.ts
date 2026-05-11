@@ -158,6 +158,7 @@ export function buildSelectorReachability(
         classAttributePredicates: branch.classAttributePredicates.map((predicate) => ({
           ...predicate,
         })),
+        attributePredicates: branch.attributePredicates.map((predicate) => ({ ...predicate })),
         unsupportedParts: branchDiagnostics.map((diagnostic) => ({
           reason: diagnostic.message,
           ...(diagnostic.location ? { location: diagnostic.location } : {}),

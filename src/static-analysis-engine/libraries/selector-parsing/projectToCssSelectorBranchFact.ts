@@ -11,6 +11,7 @@ export function projectToCssSelectorBranchFact(
     classAttributePredicates: parsedBranch.classAttributePredicates.map((predicate) => ({
       ...predicate,
     })),
+    attributePredicates: parsedBranch.attributePredicates.map((predicate) => ({ ...predicate })),
     requiredClassNames: [...parsedBranch.requiredClassNames],
     contextClassNames: [...parsedBranch.contextClassNames],
     negativeClassNames: [...parsedBranch.negativeClassNames],

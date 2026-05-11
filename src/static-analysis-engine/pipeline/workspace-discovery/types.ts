@@ -72,6 +72,7 @@ export type HtmlStylesheetLinkFact = {
   filePath: string;
   href: string;
   isRemote: boolean;
+  documentOrder: number;
   resolvedFilePath?: string;
 };
 

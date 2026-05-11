@@ -118,6 +118,9 @@ export function buildSelectorBranches(input: {
           ...predicate,
         }),
       ),
+      attributePredicates: branchProjection.subject.attributePredicates.map((predicate) => ({
+        ...predicate,
+      })),
       reasons: [...branchProjection.reasons],
       confidence: branchProjection.confidence,
       traces: input.includeTraces ? [...branchProjection.traces] : [],

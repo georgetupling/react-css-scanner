@@ -61,6 +61,8 @@ const SUPPORTED_SUBJECT_PSEUDO_MODIFIERS = new Set([
   "visited",
 ]);
 
+const TRANSPARENT_CLASS_WRAPPER_PSEUDO_MODIFIERS = new Set(["global", "is", "where"]);
+
 export function projectSelectorBranchRequirement(
   parsedBranch: ParsedSelectorBranch | undefined,
   options: { includeTraces?: boolean } = {},
@@ -78,6 +80,7 @@ export function projectSelectorBranchRequirement(
     parsedBranch.hasUnknownSemantics ||
     (parsedBranch.hasSubjectModifiers &&
       !hasOnlySupportedSubjectPseudoModifiers(parsedBranch) &&
+      !hasOnlySupportedAttributePredicates(parsedBranch) &&
       !parsedBranch.steps.some((step) => step.selector.hasClassRelations.length > 0) &&
       parsedBranch.hasDescendantClassNames.length === 0 &&
       parsedBranch.negativeClassNames.length === 0)
@@ -253,6 +256,20 @@ export function projectSelectorBranchRequirement(
   };
 }
 
+function hasOnlySupportedAttributePredicates(parsedBranch: ParsedSelectorBranch): boolean {
+  const subjectStep = parsedBranch.steps[parsedBranch.subjectStepIndex];
+  if (!subjectStep) {
+    return false;
+  }
+  const selector = subjectStep.selector;
+  return (
+    selector.attributePredicates.length > 0 &&
+    selector.pseudoClasses.length === 0 &&
+    !selector.hasTypeOrIdConstraint &&
+    selector.classAttributePredicates.length === 0
+  );
+}
+
 function hasOnlySupportedSubjectPseudoModifiers(parsedBranch: ParsedSelectorBranch): boolean {
   const subjectStep = parsedBranch.steps[parsedBranch.subjectStepIndex];
   if (!subjectStep) {
@@ -261,11 +278,16 @@ function hasOnlySupportedSubjectPseudoModifiers(parsedBranch: ParsedSelectorBran
   const selector = subjectStep.selector;
   return (
     selector.pseudoClasses.length > 0 &&
-    selector.pseudoClasses.every((pseudoClass) =>
-      SUPPORTED_SUBJECT_PSEUDO_MODIFIERS.has(pseudoClass),
-    ) &&
+    selector.pseudoClasses.every((pseudoClass) => isSupportedSubjectPseudoModifier(pseudoClass)) &&
     !selector.hasTypeOrIdConstraint &&
     selector.classAttributePredicates.length === 0
+  );
+}
+
+function isSupportedSubjectPseudoModifier(pseudoClass: string): boolean {
+  return (
+    SUPPORTED_SUBJECT_PSEUDO_MODIFIERS.has(pseudoClass) ||
+    TRANSPARENT_CLASS_WRAPPER_PSEUDO_MODIFIERS.has(pseudoClass)
   );
 }
 
@@ -323,8 +345,8 @@ function projectHasClassRelationRequirement(input: {
 
   if (input.relation.relation === "child") {
     return {
-      kind: "parent-child",
-      parentClassName: input.subjectClassName,
+      kind: "has-child",
+      subjectClassName: input.subjectClassName,
       childClassName: input.relation.className,
       normalizedSteps,
       parseNotes: [
@@ -337,10 +359,10 @@ function projectHasClassRelationRequirement(input: {
   }
 
   return {
-    kind: "sibling",
+    kind: "has-sibling",
     relation: input.relation.relation === "adjacent-sibling" ? "adjacent" : "general",
-    leftClassName: input.subjectClassName,
-    rightClassName: input.relation.className,
+    subjectClassName: input.subjectClassName,
+    siblingClassName: input.relation.className,
     normalizedSteps,
     parseNotes: [
       `normalized selector into a simple :has() ${

@@ -117,6 +117,7 @@ export type RenderedElement = {
   elementTemplateNodeId?: FactNodeId;
   renderSiteNodeId?: FactNodeId;
   sourceLocation: SourceAnchor;
+  staticAttributes?: Array<{ name: string; value: string | true }>;
   parentElementId?: RenderedElementId;
   parentBoundaryId: RenderedComponentBoundaryId;
   childElementIds: RenderedElementId[];

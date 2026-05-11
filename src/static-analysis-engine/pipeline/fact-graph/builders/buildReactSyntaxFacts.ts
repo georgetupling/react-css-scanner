@@ -313,6 +313,13 @@ export function buildReactSyntaxFacts(input: FactGraphInput): BuiltReactSyntaxFa
         filePath: template.filePath,
         location: template.location,
         renderSiteNodeId: renderSiteNodeId(template.renderSiteKey),
+        ...(template.staticAttributes?.length
+          ? {
+              staticAttributes: template.staticAttributes
+                .map((attribute) => ({ ...attribute }))
+                .sort((left, right) => left.name.localeCompare(right.name)),
+            }
+          : {}),
         ...(template.emittingComponentKey
           ? { emittingComponentNodeId: componentNodeId(template.emittingComponentKey) }
           : {}),

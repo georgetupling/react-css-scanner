@@ -16,6 +16,7 @@ export function parseSelectorBranch(branch: string): ParsedSelectorBranch | unde
   const subjectStep = steps[subjectStepIndex];
   const subjectClassNames = subjectStep.selector.requiredClasses;
   const classAttributePredicates = subjectStep.selector.classAttributePredicates;
+  const attributePredicates = subjectStep.selector.attributePredicates;
   const contextClassNames = unique(
     steps
       .slice(0, -1)
@@ -35,6 +36,7 @@ export function parseSelectorBranch(branch: string): ParsedSelectorBranch | unde
   if (
     subjectClassNames.length === 0 &&
     classAttributePredicates.length === 0 &&
+    attributePredicates.length === 0 &&
     contextClassNames.length === 0 &&
     negativeClassNames.length === 0
   ) {
@@ -62,6 +64,7 @@ export function parseSelectorBranch(branch: string): ParsedSelectorBranch | unde
     subjectStepIndex,
     subjectClassNames,
     classAttributePredicates,
+    attributePredicates,
     requiredClassNames: subjectClassNames,
     contextClassNames,
     negativeClassNames,

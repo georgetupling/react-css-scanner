@@ -1,5 +1,11 @@
 import type { RuleDefinitionNode, StyleSheetNode } from "../../fact-graph/index.js";
 import type {
+  CssAtRuleContextFact,
+  CssClassContextFact,
+  CssScopeSelectorRequirementFact,
+  CssSelectorBranchFact,
+} from "../../../types/css.js";
+import type {
   RenderGraphProjectionNode,
   RenderModel,
   UnsupportedClassReferenceDiagnostic,
@@ -402,6 +408,7 @@ export function buildClassContexts(
     }
   }
   const contexts: ClassContextAnalysis[] = [];
+  const scopeContextIds = new Set<string>();
 
   for (const rule of getRuleDefinitionNodes(input)) {
     const stylesheet = stylesheetsByNodeId.get(rule.stylesheetNodeId);
@@ -438,6 +445,35 @@ export function buildClassContexts(
         pushMapValue(indexes.contextsByClassName, context.className, id);
         pushMapValue(indexes.contextsByStylesheetId, stylesheet.id, id);
       }
+    }
+
+    for (const context of buildScopeRequirementClassContexts(rule.sourceRule.atRuleContext)) {
+      const sourceContext = {
+        ...context,
+        line: rule.sourceRule.line,
+        atRuleContext: [...rule.sourceRule.atRuleContext],
+      };
+      const id = createClassContextId(stylesheet.id, sourceContext);
+      if (scopeContextIds.has(id)) {
+        continue;
+      }
+      scopeContextIds.add(id);
+
+      const analysis: ClassContextAnalysis = {
+        id,
+        stylesheetId: stylesheet.id,
+        sourceKind: "css-rule",
+        className: sourceContext.className,
+        selectorText: sourceContext.selector,
+        selectorKind: getSelectorBranchKind(sourceContext.selectorBranch),
+        line: sourceContext.line,
+        atRuleContext: [...sourceContext.atRuleContext],
+        sourceContext,
+      };
+
+      contexts.push(analysis);
+      pushMapValue(indexes.contextsByClassName, sourceContext.className, id);
+      pushMapValue(indexes.contextsByStylesheetId, stylesheet.id, id);
     }
   }
 
@@ -485,6 +521,82 @@ export function buildClassContexts(
   sortIndexValues(indexes.contextsByClassName);
   sortIndexValues(indexes.contextsByStylesheetId);
   return contexts.sort(compareById);
+}
+
+function buildScopeRequirementClassContexts(
+  atRuleContext: CssAtRuleContextFact[],
+): Array<Omit<CssClassContextFact, "line" | "atRuleContext">> {
+  const contexts: Array<Omit<CssClassContextFact, "line" | "atRuleContext">> = [];
+
+  for (const scopeContext of atRuleContext) {
+    if (scopeContext.name !== "scope" || scopeContext.scopeSupported !== true) {
+      continue;
+    }
+
+    for (const requirement of [
+      ...getScopeRequirements(scopeContext.scopeRootRequirements, scopeContext.scopeRootClassName),
+      ...getScopeRequirements(
+        scopeContext.scopeLimitRequirements,
+        scopeContext.scopeLimitClassName,
+      ),
+    ]) {
+      const requiredClassNames = uniqueSorted(requirement.requiredClassNames);
+      if (requiredClassNames.length === 0) {
+        continue;
+      }
+
+      const selectorBranch = createScopeRequirementSelectorBranch(requirement, requiredClassNames);
+      for (const className of requiredClassNames) {
+        contexts.push({
+          className,
+          selector: requirement.selectorText,
+          selectorBranch,
+        });
+      }
+    }
+  }
+
+  return contexts;
+}
+
+function getScopeRequirements(
+  requirements: CssScopeSelectorRequirementFact[] | undefined,
+  legacyClassName: string | undefined,
+): CssScopeSelectorRequirementFact[] {
+  if (requirements) {
+    return requirements.filter((requirement) => requirement.requiredClassNames.length > 0);
+  }
+
+  return legacyClassName
+    ? [
+        {
+          selectorText: `.${legacyClassName}`,
+          requiredClassNames: [legacyClassName],
+        },
+      ]
+    : [];
+}
+
+function createScopeRequirementSelectorBranch(
+  requirement: CssScopeSelectorRequirementFact,
+  requiredClassNames: string[],
+): CssSelectorBranchFact {
+  return {
+    raw: requirement.selectorText,
+    matchKind: requiredClassNames.length > 1 ? "compound" : "standalone",
+    subjectClassNames: [...requiredClassNames],
+    classAttributePredicates: [],
+    attributePredicates: [],
+    requiredClassNames: [...requiredClassNames],
+    contextClassNames: [],
+    negativeClassNames: [...(requirement.forbiddenClassNames ?? [])].sort((left, right) =>
+      left.localeCompare(right),
+    ),
+    hasDescendantClassNames: [],
+    hasCombinators: false,
+    hasSubjectModifiers: false,
+    hasUnknownSemantics: false,
+  };
 }
 
 function buildStylesheetsByNodeId(

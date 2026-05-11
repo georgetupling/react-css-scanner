@@ -26,7 +26,13 @@ function serializeProjectBoundary(boundary: ProjectBoundary): string {
 
 function serializeProjectResourceEdge(edge: ProjectResourceEdge): string {
   if (edge.kind === "html-stylesheet") {
-    return `${edge.kind}:${edge.fromHtmlFilePath}:${edge.href}:${edge.resolvedFilePath ?? ""}`;
+    return [
+      edge.kind,
+      edge.fromHtmlFilePath,
+      edge.documentOrder.toString().padStart(8, "0"),
+      edge.href,
+      edge.resolvedFilePath ?? "",
+    ].join(":");
   }
   if (edge.kind === "html-script") {
     return `${edge.kind}:${edge.fromHtmlFilePath}:${edge.src}:${edge.resolvedFilePath ?? ""}:${edge.appRootPath ?? ""}`;

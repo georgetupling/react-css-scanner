@@ -265,6 +265,7 @@ export type SelectorBranchAnalysis = {
   location?: SourceAnchor;
   selectorReachabilityStatus: SelectorReachabilityStatus;
   classAttributePredicates: Array<{ operator: "prefix" | "suffix" | "substring"; value: string }>;
+  attributePredicates: Array<{ name: string; operator: "exact"; value: string }>;
   reasons: string[];
   scopedReachability?: {
     availability: ReachabilityAvailability;

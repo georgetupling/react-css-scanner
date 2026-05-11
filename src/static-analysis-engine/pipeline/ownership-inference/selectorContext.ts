@@ -267,6 +267,8 @@ function isContextualSelectorBranch(branch: SelectorBranchReachability): boolean
     case "parent-child":
     case "sibling":
     case "has-descendant":
+    case "has-child":
+    case "has-sibling":
       return true;
     case "same-node-class-conjunction":
       return branch.requirement.classNames.length > 1;

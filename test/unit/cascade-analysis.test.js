@@ -50,6 +50,72 @@ test("cascade analysis builds declaration candidates and specificity outcomes", 
   }
 });
 
+for (const selectorCase of [
+  {
+    name: ":where() contributes zero specificity",
+    source:
+      'import "./styles.css";\nexport function App() { return <section className="card">Hello</section>; }\n',
+    css: ":where(.card) { color: red; }\n.card { color: blue; }\n",
+    losing: { selectorText: ":where(.card)", property: "color", value: "red" },
+  },
+  {
+    name: ":is() class arguments contribute specificity",
+    source:
+      'import "./styles.css";\nexport function App() { return <section className="card featured">Hello</section>; }\n',
+    css: ".card:is(.featured) { color: red; }\n.card { color: blue; }\n",
+    losing: { selectorText: ".card", property: "color", value: "blue" },
+  },
+  {
+    name: "exact attribute selectors match rendered static JSX attributes",
+    source:
+      'import "./styles.css";\nexport function App() { return <section className="panel" data-state="open">Hello</section>; }\n',
+    css: '.panel[data-state="open"] { color: red; }\n.panel { color: blue; }\n',
+    losing: { selectorText: ".panel", property: "color", value: "blue" },
+  },
+  {
+    name: ":has() contributes argument specificity on the subject element",
+    source:
+      'import "./styles.css";\nexport function App() { return <section className="card"><h2 className="title">Title</h2></section>; }\n',
+    css: ".card:has(.title) { color: red; }\n.card { color: blue; }\n",
+    losing: { selectorText: ".card", property: "color", value: "blue" },
+  },
+  {
+    name: ":is() selector lists remain matchable when unsupported alternatives are present",
+    source:
+      'import "./styles.css";\nexport function App() { return <section className="card featured">Hello</section>; }\n',
+    css: ".card:is(.featured, #never) { color: red; }\n.card { color: blue; }\n",
+    losing: { selectorText: ".card", property: "color", value: "blue" },
+  },
+  {
+    name: "universal selectors do not increase specificity",
+    source:
+      'import "./styles.css";\nexport function App() { return <section className="card">Hello</section>; }\n',
+    css: "*.card { color: red; }\n.card { color: blue; }\n",
+    losing: { selectorText: "*.card", property: "color", value: "red" },
+  },
+]) {
+  test(`cascade analysis models selector specificity: ${selectorCase.name}`, async () => {
+    const project = await new TestProjectBuilder()
+      .withSourceFile("src/App.tsx", selectorCase.source)
+      .withCssFile("src/styles.css", selectorCase.css)
+      .build();
+
+    try {
+      const result = await runAnalysisPipeline({
+        scanInput: {
+          rootDir: project.rootDir,
+          sourceFilePaths: ["src/App.tsx"],
+        },
+        includeTraces: false,
+      });
+
+      assertLosingDeclaration(result, selectorCase.losing);
+    } finally {
+      await project.cleanup();
+    }
+  });
+}
+
 test("cascade analysis resolves cross-stylesheet source order from runtime import order", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(
@@ -84,6 +150,139 @@ test("cascade analysis resolves cross-stylesheet source order from runtime impor
       );
     assert.equal(winningDeclaration?.value, "blue");
     assert.equal(winningCandidate.cascadeKey.orderKnown, true);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis resolves CSS @import source order", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./styles.css";\nexport function App() { return <section className="card">Hello</section>; }\n',
+    )
+    .withCssFile("src/base.css", ".card { color: red; }\n")
+    .withCssFile("src/styles.css", '@import "./base.css";\n.card { color: blue; }\n')
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+
+    assertLosingDeclaration(result, {
+      stylesheetFilePath: "src/base.css",
+      selectorText: ".card",
+      property: "color",
+      value: "red",
+    });
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis resolves ordered JS stylesheet imports from app shells", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./base.css";\nimport "./theme.css";\nexport function App() { return <section className="card">Hello</section>; }\n',
+    )
+    .withCssFile("src/base.css", ".card { color: red; }\n")
+    .withCssFile("src/theme.css", ".card { color: blue; }\n")
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+
+    assertLosingDeclaration(result, {
+      stylesheetFilePath: "src/base.css",
+      selectorText: ".card",
+      property: "color",
+      value: "red",
+    });
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis resolves HTML linked stylesheet order", async () => {
+  const project = await new TestProjectBuilder()
+    .withFile(
+      "index.html",
+      [
+        "<!doctype html>",
+        "<html>",
+        "  <head>",
+        '    <link rel="stylesheet" href="/src/base.css">',
+        '    <link rel="stylesheet" href="/src/theme.css">',
+        "  </head>",
+        '  <body><div id="root"></div></body>',
+        "</html>",
+        "",
+      ].join("\n"),
+    )
+    .withSourceFile(
+      "src/App.tsx",
+      'export function App() { return <section className="card">Hello</section>; }\n',
+    )
+    .withCssFile("src/base.css", ".card { color: red; }\n")
+    .withCssFile("src/theme.css", ".card { color: blue; }\n")
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+
+    assertLosingDeclaration(result, {
+      stylesheetFilePath: "src/base.css",
+      selectorText: ".card",
+      property: "color",
+      value: "red",
+    });
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis matches CSS Module local class candidates", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import styles from "./App.module.css";\nexport function App() { return <section className={styles.card}>Hello</section>; }\n',
+    )
+    .withCssFile("src/App.module.css", ".card { color: red; }\n.card { color: blue; }\n")
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+
+    assertLosingDeclaration(result, {
+      stylesheetFilePath: "src/App.module.css",
+      selectorText: ".card",
+      property: "color",
+      value: "red",
+    });
   } finally {
     await project.cleanup();
   }
@@ -3205,3 +3404,48 @@ test("cascade analysis resolves inherit and unset computed values", async () => 
     await project.cleanup();
   }
 });
+
+function assertLosingDeclaration(result, expected) {
+  const cascade = result.analysisEvidence.cascadeAnalysis;
+  const projectEvidence = result.analysisEvidence.projectEvidence;
+  const candidate = cascade.candidates.find(
+    (entry) =>
+      entry.property === expected.property &&
+      entry.value === expected.value &&
+      projectEvidence.indexes.cssDeclarationsById.get(entry.declarationId)?.selectorText ===
+        expected.selectorText &&
+      (expected.stylesheetFilePath === undefined ||
+        projectEvidence.indexes.stylesheetsById.get(
+          projectEvidence.indexes.cssDeclarationsById.get(entry.declarationId)?.stylesheetId,
+        )?.filePath === expected.stylesheetFilePath),
+  );
+
+  assert.ok(candidate, formatCascadeCandidates(result));
+  assert.equal(
+    cascade.outcomes.some((outcome) => outcome.losingCandidateIds.includes(candidate.id)),
+    true,
+    formatCascadeCandidates(result),
+  );
+}
+
+function formatCascadeCandidates(result) {
+  const cascade = result.analysisEvidence.cascadeAnalysis;
+  const projectEvidence = result.analysisEvidence.projectEvidence;
+  return cascade.candidates
+    .map((candidate) => {
+      const declaration = projectEvidence.indexes.cssDeclarationsById.get(candidate.declarationId);
+      const stylesheet = declaration
+        ? projectEvidence.indexes.stylesheetsById.get(declaration.stylesheetId)
+        : undefined;
+      return [
+        stylesheet?.filePath,
+        declaration?.selectorText,
+        candidate.property,
+        candidate.value,
+        JSON.stringify(candidate.cascadeKey.specificity),
+      ]
+        .filter(Boolean)
+        .join(" | ");
+    })
+    .join("\n");
+}

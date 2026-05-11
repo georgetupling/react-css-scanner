@@ -104,6 +104,9 @@ export function buildCssNodes(input: FactGraphInput): BuiltCssNodes {
           classAttributePredicates: branchFact.classAttributePredicates.map((predicate) => ({
             ...predicate,
           })),
+          attributePredicates: branchFact.attributePredicates.map((predicate) => ({
+            ...predicate,
+          })),
           contextClassNames: [...branchFact.contextClassNames],
           negativeClassNames: [...branchFact.negativeClassNames],
           hasDescendantClassNames: [...branchFact.hasDescendantClassNames],

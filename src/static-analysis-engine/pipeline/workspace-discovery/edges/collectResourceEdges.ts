@@ -21,6 +21,7 @@ export function collectProjectResourceEdges(input: {
       fromHtmlFilePath: stylesheetLink.filePath,
       href: stylesheetLink.href,
       isRemote: stylesheetLink.isRemote,
+      documentOrder: stylesheetLink.documentOrder,
       ...(stylesheetLink.resolvedFilePath
         ? { resolvedFilePath: stylesheetLink.resolvedFilePath }
         : {}),

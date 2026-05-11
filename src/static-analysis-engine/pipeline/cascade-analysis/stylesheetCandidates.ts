@@ -6,6 +6,7 @@ import type {
 import type { SelectorBranchNode } from "../fact-graph/index.js";
 import type {
   SelectorBranchMatch,
+  SelectorMatchCertainty,
   SelectorReachabilityResult,
 } from "../selector-reachability/index.js";
 import { buildSelectorReachability } from "../selector-reachability/index.js";
@@ -100,6 +101,10 @@ export function buildStylesheetDeclarationCandidates(input: {
 }): CascadeDeclarationCandidate[] {
   const candidates: CascadeDeclarationCandidate[] = [];
   const scopeMatcher = createScopeSelectorMatcher(input.renderModel);
+  const cssModuleLocalClassMatches = buildCssModuleLocalClassMatches({
+    projectEvidence: input.projectEvidence,
+    renderModel: input.renderModel,
+  });
 
   for (const declaration of input.projectEvidence.entities.cssDeclarations) {
     const atRuleConditions = normalizeAtRuleConditions(declaration.atRuleContext);
@@ -157,7 +162,12 @@ export function buildStylesheetDeclarationCandidates(input: {
 
       const propertyEffects = getCssPropertyEffectsForDeclaration(declaration);
 
-      const matches = findMatchesForSelectorBranch(selectorBranch, input.selectorReachability);
+      const matches = findMatchesForSelectorBranch({
+        selectorBranch,
+        selectorReachability: input.selectorReachability,
+        projectEvidence: input.projectEvidence,
+        cssModuleLocalClassMatches,
+      });
       if (matches.length === 0) {
         input.diagnostics.push(
           input.createDiagnostic({
@@ -498,6 +508,7 @@ function createSyntheticScopeSelectorBranch(
     requiredClassNames: parsedBranch?.requiredClassNames ?? requirement.requiredClassNames,
     subjectClassNames: parsedBranch?.subjectClassNames ?? requirement.requiredClassNames,
     classAttributePredicates: parsedBranch?.classAttributePredicates ?? [],
+    attributePredicates: parsedBranch?.attributePredicates ?? [],
     contextClassNames: parsedBranch?.contextClassNames ?? [],
     negativeClassNames: parsedBranch?.negativeClassNames ?? [],
     hasDescendantClassNames: parsedBranch?.hasDescendantClassNames ?? [],
@@ -529,17 +540,442 @@ function normalizeScopeSelectorIdPart(selectorText: string): string {
   );
 }
 
-function findMatchesForSelectorBranch(
-  selectorBranch: SelectorBranchAnalysis,
-  selectorReachability: SelectorReachabilityResult,
-): SelectorBranchMatch[] {
+type CssModuleLocalClassElementMatch = {
+  elementId: string;
+  classNames: string[];
+  emissionSiteIds: string[];
+  renderPathIds: string[];
+  placementConditionIds: string[];
+  certainty: SelectorMatchCertainty;
+};
+
+type CssModuleLocalClassMatchIndex = Map<string, CssModuleLocalClassElementMatch[]>;
+type MutableCssModuleLocalClassElementMatch = {
+  elementId: string;
+  classNames: Set<string>;
+  emissionSiteIds: Set<string>;
+  renderPathIds: Set<string>;
+  placementConditionIds: Set<string>;
+  certainty: SelectorMatchCertainty;
+};
+
+function buildCssModuleLocalClassMatches(input: {
+  projectEvidence: ProjectEvidenceAssemblyResult;
+  renderModel: RenderModel;
+}): CssModuleLocalClassMatchIndex {
+  const classNamesByStylesheetAndExportName = new Map<string, Set<string>>();
+  const cssModuleMemberReferenceById = new Map(
+    input.projectEvidence.entities.cssModuleMemberReferences.map((reference) => [
+      reference.id,
+      reference,
+    ]),
+  );
+  for (const match of input.projectEvidence.relations.cssModuleMemberMatches) {
+    if (match.status !== "matched") {
+      continue;
+    }
+
+    const key = createCssModuleExportLookupKey(match.stylesheetId, match.exportName);
+    const classNames = classNamesByStylesheetAndExportName.get(key) ?? new Set<string>();
+    classNames.add(match.className);
+    classNamesByStylesheetAndExportName.set(key, classNames);
+  }
+
+  const matchesByStylesheetAndClassName = new Map<
+    string,
+    Map<string, Map<string, MutableCssModuleLocalClassElementMatch>>
+  >();
+
+  for (const emissionSite of input.renderModel.emissionSites) {
+    if (!emissionSite.elementId) {
+      continue;
+    }
+
+    const element = input.renderModel.indexes.elementById.get(emissionSite.elementId);
+    if (!element) {
+      continue;
+    }
+
+    for (const contribution of emissionSite.cssModuleContributions) {
+      if (!contribution.stylesheetFilePath) {
+        continue;
+      }
+
+      const stylesheetId = input.projectEvidence.indexes.stylesheetIdByPath.get(
+        normalizeProjectPath(contribution.stylesheetFilePath),
+      );
+      if (!stylesheetId) {
+        continue;
+      }
+
+      const exportedClassNames = classNamesByStylesheetAndExportName.get(
+        createCssModuleExportLookupKey(stylesheetId, contribution.exportName),
+      );
+      if (!exportedClassNames || exportedClassNames.size === 0) {
+        continue;
+      }
+
+      for (const className of exportedClassNames) {
+        addCssModuleLocalClassElementMatch({
+          matchesByStylesheetAndClassName,
+          stylesheetId,
+          className,
+          element,
+          emissionSite,
+          certainty: getCssModuleEmissionCertainty({
+            renderModel: input.renderModel,
+            element,
+            emissionSite,
+            contribution,
+          }),
+        });
+      }
+    }
+  }
+
+  for (const memberMatch of input.projectEvidence.relations.cssModuleMemberMatches) {
+    if (memberMatch.status !== "matched") {
+      continue;
+    }
+
+    const reference = cssModuleMemberReferenceById.get(memberMatch.referenceId);
+    if (!reference) {
+      continue;
+    }
+
+    for (const emissionSite of input.renderModel.emissionSites) {
+      if (
+        !emissionSite.elementId ||
+        !anchorsOverlap(reference.location, emissionSite.sourceLocation)
+      ) {
+        continue;
+      }
+
+      const element = input.renderModel.indexes.elementById.get(emissionSite.elementId);
+      if (!element) {
+        continue;
+      }
+
+      addCssModuleLocalClassElementMatch({
+        matchesByStylesheetAndClassName,
+        stylesheetId: memberMatch.stylesheetId,
+        className: memberMatch.className,
+        element,
+        emissionSite,
+        certainty: getRenderEmissionCertainty({
+          renderModel: input.renderModel,
+          element,
+          emissionSite,
+        }),
+      });
+    }
+  }
+
+  const result: CssModuleLocalClassMatchIndex = new Map();
+  for (const [stylesheetId, stylesheetMatches] of matchesByStylesheetAndClassName) {
+    for (const [className, classMatches] of stylesheetMatches) {
+      result.set(
+        createCssModuleExportLookupKey(stylesheetId, className),
+        [...classMatches.values()]
+          .map((match) => ({
+            elementId: match.elementId,
+            classNames: [...match.classNames].sort(compareStrings),
+            emissionSiteIds: [...match.emissionSiteIds].sort(compareStrings),
+            renderPathIds: [...match.renderPathIds].sort(compareStrings),
+            placementConditionIds: [...match.placementConditionIds].sort(compareStrings),
+            certainty: match.certainty,
+          }))
+          .sort((left, right) => left.elementId.localeCompare(right.elementId)),
+      );
+    }
+  }
+  return result;
+}
+
+function addCssModuleLocalClassElementMatch(input: {
+  matchesByStylesheetAndClassName: Map<
+    string,
+    Map<string, Map<string, MutableCssModuleLocalClassElementMatch>>
+  >;
+  stylesheetId: string;
+  className: string;
+  element: RenderModel["elements"][number];
+  emissionSite: RenderModel["emissionSites"][number];
+  certainty: SelectorMatchCertainty;
+}): void {
+  const stylesheetMatches =
+    input.matchesByStylesheetAndClassName.get(input.stylesheetId) ??
+    new Map<string, Map<string, MutableCssModuleLocalClassElementMatch>>();
+  const classMatches =
+    stylesheetMatches.get(input.className) ??
+    new Map<string, MutableCssModuleLocalClassElementMatch>();
+  const existing = classMatches.get(input.emissionSite.elementId ?? "") ?? {
+    elementId: input.emissionSite.elementId ?? "",
+    classNames: new Set<string>(),
+    emissionSiteIds: new Set<string>(),
+    renderPathIds: new Set<string>(),
+    placementConditionIds: new Set<string>(),
+    certainty: "definite" as SelectorMatchCertainty,
+  };
+  if (!existing.elementId) {
+    return;
+  }
+
+  existing.classNames.add(input.className);
+  existing.emissionSiteIds.add(input.emissionSite.id);
+  existing.renderPathIds.add(input.element.renderPathId);
+  for (const placementConditionId of [
+    ...input.element.placementConditionIds,
+    ...input.emissionSite.placementConditionIds,
+  ]) {
+    existing.placementConditionIds.add(placementConditionId);
+  }
+  existing.certainty = combineMatchCertainty(existing.certainty, input.certainty);
+  classMatches.set(existing.elementId, existing);
+  stylesheetMatches.set(input.className, classMatches);
+  input.matchesByStylesheetAndClassName.set(input.stylesheetId, stylesheetMatches);
+}
+
+function getCssModuleEmissionCertainty(input: {
+  renderModel: RenderModel;
+  element: RenderModel["elements"][number];
+  emissionSite: RenderModel["emissionSites"][number];
+  contribution: RenderModel["emissionSites"][number]["cssModuleContributions"][number];
+}): SelectorMatchCertainty {
+  const hasAlwaysToken = input.emissionSite.tokens.some(
+    (token) =>
+      token.tokenKind === "css-module-export" &&
+      token.contributionId === input.contribution.id &&
+      token.presence === "always",
+  );
+  const renderPath = input.renderModel.indexes.renderPathById.get(input.element.renderPathId);
+  if (
+    input.element.certainty === "definite" &&
+    input.element.placementConditionIds.length === 0 &&
+    input.emissionSite.placementConditionIds.length === 0 &&
+    hasAlwaysToken &&
+    (!renderPath || renderPath.certainty === "definite")
+  ) {
+    return "definite";
+  }
+  return "possible";
+}
+
+function getRenderEmissionCertainty(input: {
+  renderModel: RenderModel;
+  element: RenderModel["elements"][number];
+  emissionSite: RenderModel["emissionSites"][number];
+}): SelectorMatchCertainty {
+  const renderPath = input.renderModel.indexes.renderPathById.get(input.element.renderPathId);
+  if (
+    input.element.certainty === "definite" &&
+    input.element.placementConditionIds.length === 0 &&
+    input.emissionSite.placementConditionIds.length === 0 &&
+    (!renderPath || renderPath.certainty === "definite")
+  ) {
+    return "definite";
+  }
+  return "possible";
+}
+
+function combineMatchCertainty(
+  left: SelectorMatchCertainty,
+  right: SelectorMatchCertainty,
+): SelectorMatchCertainty {
+  if (left === "unknown-context" || right === "unknown-context") {
+    return "unknown-context";
+  }
+  if (left === "possible" || right === "possible") {
+    return "possible";
+  }
+  if (left === "impossible" || right === "impossible") {
+    return "impossible";
+  }
+  return "definite";
+}
+
+function createCssModuleExportLookupKey(stylesheetId: string, exportName: string): string {
+  return `${stylesheetId}\0${exportName}`;
+}
+
+function findMatchesForSelectorBranch(input: {
+  selectorBranch: SelectorBranchAnalysis;
+  selectorReachability: SelectorReachabilityResult;
+  projectEvidence: ProjectEvidenceAssemblyResult;
+  cssModuleLocalClassMatches: CssModuleLocalClassMatchIndex;
+}): SelectorBranchMatch[] {
+  const cssModuleMatches = findCssModuleLocalMatchesForSelectorBranch(input);
+  if (cssModuleMatches) {
+    return cssModuleMatches;
+  }
+
   const matchIds =
-    selectorReachability.indexes.matchIdsBySelectorBranchNodeId.get(
-      selectorBranch.selectorBranchNodeId,
+    input.selectorReachability.indexes.matchIdsBySelectorBranchNodeId.get(
+      input.selectorBranch.selectorBranchNodeId,
     ) ?? [];
   return matchIds
-    .map((matchId) => selectorReachability.indexes.matchById.get(matchId))
+    .map((matchId) => input.selectorReachability.indexes.matchById.get(matchId))
     .filter((match): match is SelectorBranchMatch => Boolean(match))
     .filter((match) => match.certainty !== "impossible")
     .sort(compareById);
+}
+
+function findCssModuleLocalMatchesForSelectorBranch(input: {
+  selectorBranch: SelectorBranchAnalysis;
+  selectorReachability: SelectorReachabilityResult;
+  projectEvidence: ProjectEvidenceAssemblyResult;
+  cssModuleLocalClassMatches: CssModuleLocalClassMatchIndex;
+}): SelectorBranchMatch[] | undefined {
+  const stylesheetId = input.selectorBranch.stylesheetId;
+  if (!stylesheetId) {
+    return undefined;
+  }
+
+  const stylesheet = input.projectEvidence.indexes.stylesheetsById.get(stylesheetId);
+  if (stylesheet?.origin !== "css-module") {
+    return undefined;
+  }
+
+  const branchReachability =
+    input.selectorReachability.indexes.branchReachabilityBySelectorBranchNodeId.get(
+      input.selectorBranch.selectorBranchNodeId,
+    );
+  if (
+    !branchReachability ||
+    branchReachability.requirement.kind !== "same-node-class-conjunction" ||
+    branchReachability.subject.classAttributePredicates.length > 0 ||
+    branchReachability.subject.unsupportedParts.length > 0
+  ) {
+    return undefined;
+  }
+
+  const requiredClassNames = [...branchReachability.requirement.classNames].sort(compareStrings);
+  if (requiredClassNames.length === 0) {
+    return undefined;
+  }
+
+  const candidateMatches = requiredClassNames.map(
+    (className) =>
+      input.cssModuleLocalClassMatches.get(
+        createCssModuleExportLookupKey(stylesheetId, className),
+      ) ?? [],
+  );
+  if (candidateMatches.some((matches) => matches.length === 0)) {
+    return [];
+  }
+
+  const matchesByElementId = intersectCssModuleElementMatches(candidateMatches);
+  const forbiddenClassNames = branchReachability.requirement.forbiddenClassNames ?? [];
+  return [...matchesByElementId.values()]
+    .filter((match) =>
+      forbiddenClassNames.every((className) => !match.classNames.includes(className)),
+    )
+    .map((match) => ({
+      id: ["css-module-selector-branch-match", input.selectorBranch.id, match.elementId].join(":"),
+      selectorBranchNodeId: input.selectorBranch.selectorBranchNodeId,
+      subjectElementId: match.elementId,
+      elementMatchIds: [],
+      supportingEmissionSiteIds: match.emissionSiteIds,
+      requiredClassNames,
+      matchedClassNames: match.classNames,
+      renderPathIds: match.renderPathIds,
+      placementConditionIds: match.placementConditionIds,
+      certainty: match.certainty,
+      confidence: match.certainty === "definite" ? "high" : "medium",
+      traces: [],
+    }))
+    .sort(compareById);
+}
+
+function intersectCssModuleElementMatches(
+  candidateMatches: CssModuleLocalClassElementMatch[][],
+): Map<string, CssModuleLocalClassElementMatch> {
+  const [firstMatches, ...restMatches] = candidateMatches;
+  const matchesByElementId = new Map<string, CssModuleLocalClassElementMatch>();
+  for (const match of firstMatches ?? []) {
+    matchesByElementId.set(match.elementId, {
+      elementId: match.elementId,
+      classNames: [...match.classNames],
+      emissionSiteIds: [...match.emissionSiteIds],
+      renderPathIds: [...match.renderPathIds],
+      placementConditionIds: [...match.placementConditionIds],
+      certainty: match.certainty,
+    });
+  }
+
+  for (const matches of restMatches) {
+    const currentIds = new Set(matches.map((match) => match.elementId));
+    for (const elementId of [...matchesByElementId.keys()]) {
+      if (!currentIds.has(elementId)) {
+        matchesByElementId.delete(elementId);
+      }
+    }
+    for (const match of matches) {
+      const existing = matchesByElementId.get(match.elementId);
+      if (!existing) {
+        continue;
+      }
+      existing.classNames = [...new Set([...existing.classNames, ...match.classNames])].sort(
+        compareStrings,
+      );
+      existing.emissionSiteIds = [
+        ...new Set([...existing.emissionSiteIds, ...match.emissionSiteIds]),
+      ].sort(compareStrings);
+      existing.renderPathIds = [
+        ...new Set([...existing.renderPathIds, ...match.renderPathIds]),
+      ].sort(compareStrings);
+      existing.placementConditionIds = [
+        ...new Set([...existing.placementConditionIds, ...match.placementConditionIds]),
+      ].sort(compareStrings);
+      existing.certainty = combineMatchCertainty(existing.certainty, match.certainty);
+    }
+  }
+
+  return matchesByElementId;
+}
+
+function compareStrings(left: string, right: string): number {
+  return left.localeCompare(right);
+}
+
+function normalizeProjectPath(filePath: string): string {
+  return filePath.replace(/\\/g, "/");
+}
+
+function anchorsOverlap(
+  left: {
+    filePath: string;
+    startLine: number;
+    startColumn: number;
+    endLine?: number;
+    endColumn?: number;
+  },
+  right: {
+    filePath: string;
+    startLine: number;
+    startColumn: number;
+    endLine?: number;
+    endColumn?: number;
+  },
+): boolean {
+  if (normalizeProjectPath(left.filePath) !== normalizeProjectPath(right.filePath)) {
+    return false;
+  }
+
+  const leftStart = toAnchorPositionValue(left.startLine, left.startColumn);
+  const leftEnd = toAnchorPositionValue(
+    left.endLine ?? left.startLine,
+    left.endColumn ?? left.startColumn,
+  );
+  const rightStart = toAnchorPositionValue(right.startLine, right.startColumn);
+  const rightEnd = toAnchorPositionValue(
+    right.endLine ?? right.startLine,
+    right.endColumn ?? right.startColumn,
+  );
+
+  return leftStart <= rightEnd && rightStart <= leftEnd;
+}
+
+function toAnchorPositionValue(line: number, column: number): number {
+  return line * 1_000_000 + column;
 }

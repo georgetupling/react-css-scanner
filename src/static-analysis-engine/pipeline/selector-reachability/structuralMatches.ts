@@ -15,6 +15,7 @@ export type StructuralConstraint = {
   combinator: "descendant" | "child" | "adjacent-sibling" | "general-sibling";
   leftClassName: string;
   rightClassName: string;
+  subjectSide: "left" | "right";
 };
 
 export type StructuralRelationIndexes = {
@@ -59,6 +60,7 @@ export function projectStructuralConstraintFromRequirement(
       combinator: "descendant",
       leftClassName: requirement.ancestorClassName,
       rightClassName: requirement.subjectClassName,
+      subjectSide: "right",
     };
   }
 
@@ -67,6 +69,7 @@ export function projectStructuralConstraintFromRequirement(
       combinator: "child",
       leftClassName: requirement.parentClassName,
       rightClassName: requirement.childClassName,
+      subjectSide: "right",
     };
   }
 
@@ -75,6 +78,25 @@ export function projectStructuralConstraintFromRequirement(
       combinator: "descendant",
       leftClassName: requirement.subjectClassName,
       rightClassName: requirement.descendantClassName,
+      subjectSide: "left",
+    };
+  }
+
+  if (requirement.kind === "has-child") {
+    return {
+      combinator: "child",
+      leftClassName: requirement.subjectClassName,
+      rightClassName: requirement.childClassName,
+      subjectSide: "left",
+    };
+  }
+
+  if (requirement.kind === "has-sibling") {
+    return {
+      combinator: requirement.relation === "adjacent" ? "adjacent-sibling" : "general-sibling",
+      leftClassName: requirement.subjectClassName,
+      rightClassName: requirement.siblingClassName,
+      subjectSide: "left",
     };
   }
 
@@ -86,6 +108,7 @@ export function projectStructuralConstraintFromRequirement(
     combinator: requirement.relation === "adjacent" ? "adjacent-sibling" : "general-sibling",
     leftClassName: requirement.leftClassName,
     rightClassName: requirement.rightClassName,
+    subjectSide: "right",
   };
 }
 
@@ -151,6 +174,11 @@ export function buildStructuralMatches(input: {
       }
 
       const certainty = combineCertainty(leftMatch.certainty, rightMatch.certainty);
+      const subjectMatch = getSubjectMatch({
+        constraint: input.constraint,
+        leftMatch,
+        rightMatch,
+      });
       const leftFirstElementMatchId = leftMatch.id < rightMatch.id ? leftMatch.id : rightMatch.id;
       const rightSecondElementMatchId = leftMatch.id < rightMatch.id ? rightMatch.id : leftMatch.id;
       branchMatches.push({
@@ -159,7 +187,7 @@ export function buildStructuralMatches(input: {
           elementId: `${leftMatch.elementId}:${rightMatch.elementId}`,
         }),
         selectorBranchNodeId: input.branch.id,
-        subjectElementId: rightMatch.elementId,
+        subjectElementId: subjectMatch.elementId,
         elementMatchIds: [leftFirstElementMatchId, rightSecondElementMatchId],
         supportingEmissionSiteIds: mergeUniqueSortedStrings(
           leftMatch.supportingEmissionSiteIds,
@@ -239,13 +267,18 @@ export function buildStructuralMatches(input: {
     const leftElement = input.renderModel.indexes.elementById.get(leftMatch.elementId);
     const rightElement = input.renderModel.indexes.elementById.get(rightMatch.elementId);
     if (leftElement && rightElement) {
+      const subjectMatch = getSubjectMatch({
+        constraint: input.constraint,
+        leftMatch,
+        rightMatch,
+      });
       branchMatches.push({
         id: selectorBranchMatchId({
           selectorBranchNodeId: input.branch.id,
           elementId: `${leftMatch.elementId}:${rightMatch.elementId}:rendered-prop-slot`,
         }),
         selectorBranchNodeId: input.branch.id,
-        subjectElementId: rightMatch.elementId,
+        subjectElementId: subjectMatch.elementId,
         elementMatchIds: [leftMatch.id, rightMatch.id].sort(compareStrings),
         supportingEmissionSiteIds: mergeUniqueSortedStrings(
           leftMatch.supportingEmissionSiteIds,
@@ -275,6 +308,14 @@ export function buildStructuralMatches(input: {
     elementMatches: deduplicateElementMatches([...leftMatches, ...rightMatches]),
     branchMatches: branchMatches.sort((left, right) => compareStrings(left.id, right.id)),
   };
+}
+
+function getSubjectMatch(input: {
+  constraint: StructuralConstraint;
+  leftMatch: SelectorElementMatch;
+  rightMatch: SelectorElementMatch;
+}): SelectorElementMatch {
+  return input.constraint.subjectSide === "left" ? input.leftMatch : input.rightMatch;
 }
 
 function mayMatchThroughRenderedPropSlot(input: {
@@ -321,6 +362,7 @@ function getClassMatches(input: {
     requirement: {
       requiredClassNames: [input.className],
       classAttributePredicates: [],
+      attributePredicates: [],
       unsupportedParts: [],
     },
     matchedClassNames: match.matchedClassNames,

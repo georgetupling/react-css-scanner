@@ -341,6 +341,7 @@ function createSelectorMentionBranch(
     matchKind: "complex",
     subjectClassNames: [],
     classAttributePredicates: [],
+    attributePredicates: [],
     requiredClassNames: [],
     contextClassNames: uniqueSortedStrings(mentionClassNames),
     negativeClassNames: [],

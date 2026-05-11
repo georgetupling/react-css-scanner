@@ -222,6 +222,7 @@ export type ElementTemplateNode = FactNodeBase & {
   filePath: string;
   location: SourceAnchor;
   renderSiteNodeId: FactNodeId;
+  staticAttributes?: Array<{ name: string; value: string | true }>;
   emittingComponentNodeId?: FactNodeId;
   placementComponentNodeId?: FactNodeId;
   resolvedComponentNodeId?: FactNodeId;
@@ -337,6 +338,7 @@ export type SelectorBranchNode = FactNodeBase & {
   requiredClassNames: string[];
   subjectClassNames: string[];
   classAttributePredicates: Array<{ operator: "prefix" | "suffix" | "substring"; value: string }>;
+  attributePredicates: Array<{ name: string; operator: "exact"; value: string }>;
   contextClassNames: string[];
   negativeClassNames: string[];
   hasDescendantClassNames: string[];

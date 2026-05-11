@@ -27,6 +27,9 @@ export function buildElementMatchesForClassNames(input: {
     if (match.certainty === "impossible") {
       continue;
     }
+    if (!elementMatchesAttributePredicates(input.renderIndexes, elementId, input.branch)) {
+      continue;
+    }
 
     matches.push({
       id: selectorElementMatchId({
@@ -38,6 +41,9 @@ export function buildElementMatchesForClassNames(input: {
       requirement: {
         requiredClassNames,
         classAttributePredicates: [],
+        attributePredicates: input.branch.attributePredicates.map((predicate) => ({
+          ...predicate,
+        })),
         unsupportedParts: [],
       },
       matchedClassNames: match.matchedClassNames,
@@ -47,6 +53,28 @@ export function buildElementMatchesForClassNames(input: {
     });
   }
   return matches;
+}
+
+function elementMatchesAttributePredicates(
+  renderIndexes: SelectorRenderMatchIndexes,
+  elementId: string,
+  branch: SelectorBranchNode,
+): boolean {
+  if (branch.attributePredicates.length === 0) {
+    return true;
+  }
+
+  const element = renderIndexes.elementsById.get(elementId);
+  if (!element) {
+    return false;
+  }
+  const attributes = new Map(
+    (element.staticAttributes ?? []).map((attribute) => [attribute.name, attribute.value] as const),
+  );
+  return branch.attributePredicates.every((predicate) => {
+    const value = attributes.get(predicate.name);
+    return value === predicate.value;
+  });
 }
 
 export function buildSubjectBranchMatches(input: {

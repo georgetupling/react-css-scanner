@@ -50,6 +50,8 @@ function getUnsupportedSelectorReason(input: {
   if (
     parsedBranch.hasSubjectModifiers &&
     input.requirement.kind !== "has-descendant" &&
+    input.requirement.kind !== "has-child" &&
+    input.requirement.kind !== "has-sibling" &&
     !isHasStructuralRequirement(input) &&
     input.requirement.kind !== "same-node-class-conjunction"
   ) {
@@ -82,7 +84,12 @@ function isHasStructuralRequirement(input: {
   parsedBranch: ParsedSelectorBranch | undefined;
   requirement: SelectorBranchRequirement;
 }): boolean {
-  if (input.requirement.kind !== "parent-child" && input.requirement.kind !== "sibling") {
+  if (
+    input.requirement.kind !== "parent-child" &&
+    input.requirement.kind !== "sibling" &&
+    input.requirement.kind !== "has-child" &&
+    input.requirement.kind !== "has-sibling"
+  ) {
     return false;
   }
 

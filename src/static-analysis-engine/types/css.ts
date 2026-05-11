@@ -8,6 +8,7 @@ export type CssSelectorBranchFact = {
   matchKind: CssSelectorMatchKind;
   subjectClassNames: string[];
   classAttributePredicates: CssClassAttributePredicateFact[];
+  attributePredicates: CssAttributePredicateFact[];
   requiredClassNames: string[];
   contextClassNames: string[];
   negativeClassNames: string[];
@@ -19,6 +20,12 @@ export type CssSelectorBranchFact = {
 
 export type CssClassAttributePredicateFact = {
   operator: "prefix" | "suffix" | "substring";
+  value: string;
+};
+
+export type CssAttributePredicateFact = {
+  name: string;
+  operator: "exact";
   value: string;
 };
 

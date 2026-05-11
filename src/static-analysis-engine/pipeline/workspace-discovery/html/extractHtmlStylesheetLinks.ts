@@ -8,6 +8,7 @@ export function extractHtmlStylesheetLinks(input: {
   htmlText: string;
 }): HtmlStylesheetLinkFact[] {
   const links: HtmlStylesheetLinkFact[] = [];
+  let documentOrder = 0;
 
   for (const linkTagMatch of input.htmlText.matchAll(LINK_TAG_PATTERN)) {
     const attributes = parseAttributes(linkTagMatch[0]);
@@ -21,11 +22,14 @@ export function extractHtmlStylesheetLinks(input: {
       filePath: input.filePath,
       href: normalizeHrefForMatching(href),
       isRemote: isRemoteHref(href),
+      documentOrder,
     });
+    documentOrder += 1;
   }
 
-  return links.sort((left, right) =>
-    `${left.filePath}:${left.href}`.localeCompare(`${right.filePath}:${right.href}`),
+  return links.sort(
+    (left, right) =>
+      left.filePath.localeCompare(right.filePath) || left.documentOrder - right.documentOrder,
   );
 }
 

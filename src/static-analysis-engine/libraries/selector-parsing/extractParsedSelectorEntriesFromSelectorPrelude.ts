@@ -1,4 +1,5 @@
 import { parseSelectorBranch } from "./parseSelectorBranch.js";
+import { splitTopLevelSelectorList } from "./splitTopLevelSelectorList.js";
 import type { ParsedCssAtRuleContext, ParsedCssSelectorEntry } from "./types.js";
 
 export function extractParsedSelectorEntriesFromSelectorPrelude(input: {
@@ -9,19 +10,18 @@ export function extractParsedSelectorEntriesFromSelectorPrelude(input: {
   atRuleContext?: ParsedCssAtRuleContext[];
 }): ParsedCssSelectorEntry[] {
   const entries: ParsedCssSelectorEntry[] = [];
-  const rawParts = input.selectorPrelude.split(",");
+  const rawParts = splitSelectorListWithOffsets(input.selectorPrelude);
   const selectorListText = input.selectorPrelude.trim();
   const ruleKey = createSelectorRuleKey(input);
-  let cursor = 0;
 
   for (const [branchIndex, rawPart] of rawParts.entries()) {
-    const rawPartStart = cursor;
-    const rawPartEnd = rawPartStart + rawPart.length;
-    const trimmed = rawPart.trim();
+    const rawPartStart = rawPart.start;
+    const rawPartEnd = rawPart.end;
+    const trimmed = rawPart.text.trim();
 
     if (trimmed) {
-      const leadingWhitespace = rawPart.match(/^\s*/)?.[0].length ?? 0;
-      const trailingWhitespace = rawPart.match(/\s*$/)?.[0].length ?? 0;
+      const leadingWhitespace = rawPart.text.match(/^\s*/)?.[0].length ?? 0;
+      const trailingWhitespace = rawPart.text.match(/\s*$/)?.[0].length ?? 0;
       const startOffset = input.preludeStartIndex + rawPartStart + leadingWhitespace;
       const endOffset = input.preludeStartIndex + rawPartEnd - trailingWhitespace;
       const parsedBranch = parseSelectorBranch(trimmed);
@@ -43,11 +43,27 @@ export function extractParsedSelectorEntriesFromSelectorPrelude(input: {
         });
       }
     }
-
-    cursor = rawPartEnd + 1;
   }
 
   return entries;
+}
+
+function splitSelectorListWithOffsets(
+  value: string,
+): Array<{ text: string; start: number; end: number }> {
+  const selectors = splitTopLevelSelectorList(value);
+  const result: Array<{ text: string; start: number; end: number }> = [];
+  let searchStart = 0;
+  for (const selector of selectors) {
+    const start = value.indexOf(selector, searchStart);
+    if (start < 0) {
+      continue;
+    }
+    const end = start + selector.length;
+    result.push({ text: selector, start, end });
+    searchStart = end;
+  }
+  return result;
 }
 
 function createSelectorRuleKey(input: {

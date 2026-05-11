@@ -97,6 +97,23 @@ export type SelectorBranchRequirement =
       traces: AnalysisTrace[];
     }
   | {
+      kind: "has-child";
+      subjectClassName: string;
+      childClassName: string;
+      normalizedSteps: SelectorRequirementStep[];
+      parseNotes: string[];
+      traces: AnalysisTrace[];
+    }
+  | {
+      kind: "has-sibling";
+      relation: "adjacent" | "general";
+      subjectClassName: string;
+      siblingClassName: string;
+      normalizedSteps: SelectorRequirementStep[];
+      parseNotes: string[];
+      traces: AnalysisTrace[];
+    }
+  | {
       kind: "ancestor-descendant";
       ancestorClassName: string;
       subjectClassName: string;
@@ -144,6 +161,7 @@ export type SelectorRequirementStep = {
 export type SelectorSubjectRequirement = {
   requiredClassNames: string[];
   classAttributePredicates: Array<{ operator: "prefix" | "suffix" | "substring"; value: string }>;
+  attributePredicates: Array<{ name: string; operator: "exact"; value: string }>;
   unsupportedParts: UnsupportedSelectorPart[];
 };
 

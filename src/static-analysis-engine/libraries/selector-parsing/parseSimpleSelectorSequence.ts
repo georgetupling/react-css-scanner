@@ -7,6 +7,7 @@ import {
 import { splitTopLevelSelectorList } from "./splitTopLevelSelectorList.js";
 import type {
   ParsedClassAttributePredicate,
+  ParsedAttributePredicate,
   ParsedHasClassRelation,
   ParsedSimpleSelectorSequence,
 } from "./types.js";
@@ -14,6 +15,7 @@ import type {
 export function parseSimpleSelectorSequence(segment: string): ParsedSimpleSelectorSequence {
   const requiredClasses: string[] = [];
   const classAttributePredicates: ParsedClassAttributePredicate[] = [];
+  const attributePredicates: ParsedAttributePredicate[] = [];
   const negativeClasses: string[] = [];
   const contextOnlyClasses: string[] = [];
   const hasDescendantClasses: string[] = [];
@@ -64,6 +66,18 @@ export function parseSimpleSelectorSequence(segment: string): ParsedSimpleSelect
         continue;
       }
 
+      const exactAttributeToken = readExactAttributeToken(segment, index);
+      if (exactAttributeToken) {
+        attributePredicates.push({
+          name: exactAttributeToken.name,
+          operator: "exact",
+          value: exactAttributeToken.value,
+        });
+        hasSubjectModifiers = true;
+        index = exactAttributeToken.nextIndex;
+        continue;
+      }
+
       hasSubjectModifiers = true;
       index = skipBalancedSection(segment, index, "[", "]");
       continue;
@@ -103,6 +117,12 @@ export function parseSimpleSelectorSequence(segment: string): ParsedSimpleSelect
           continue;
         }
 
+        const singleSupportedClass = parseSingleSupportedClassAlternative(inner.content);
+        if (singleSupportedClass) {
+          requiredClasses.push(singleSupportedClass);
+          continue;
+        }
+
         const parsedContextClasses = parseContextOnlyClassNames(inner.content);
         if (parsedContextClasses) {
           contextOnlyClasses.push(...parsedContextClasses);
@@ -137,7 +157,12 @@ export function parseSimpleSelectorSequence(segment: string): ParsedSimpleSelect
       continue;
     }
 
-    if (character === "*" || isIdentifierStart(character) || character === "|") {
+    if (character === "*") {
+      index = skipTypeOrNamespaceToken(segment, index);
+      continue;
+    }
+
+    if (isIdentifierStart(character) || character === "|") {
       hasSubjectModifiers = true;
       hasTypeOrIdConstraint = true;
       index = skipTypeOrNamespaceToken(segment, index);
@@ -156,6 +181,7 @@ export function parseSimpleSelectorSequence(segment: string): ParsedSimpleSelect
   return {
     requiredClasses: unique(requiredClasses),
     classAttributePredicates: uniqueClassAttributePredicates(classAttributePredicates),
+    attributePredicates: uniqueAttributePredicates(attributePredicates),
     negativeClasses: unique(negativeClasses),
     contextOnlyClasses: unique(contextOnlyClasses),
     hasDescendantClasses: unique(hasDescendantClasses),
@@ -164,6 +190,48 @@ export function parseSimpleSelectorSequence(segment: string): ParsedSimpleSelect
     hasUnknownSemantics,
     hasSubjectModifiers,
     hasTypeOrIdConstraint,
+  };
+}
+
+function parseSingleSupportedClassAlternative(value: string): string | undefined {
+  const selectors = splitTopLevelSelectorList(value);
+  if (selectors.length === 0) {
+    return undefined;
+  }
+
+  const supportedClassNames = selectors
+    .map((selector) => {
+      const trimmed = selector.trim();
+      if (!trimmed.startsWith(".")) {
+        return undefined;
+      }
+
+      const identifier = readCssIdentifier(trimmed, 1);
+      return identifier && identifier.nextIndex === trimmed.length ? identifier.value : undefined;
+    })
+    .filter((className): className is string => Boolean(className));
+
+  return unique(supportedClassNames).length === 1 ? supportedClassNames[0] : undefined;
+}
+
+function readExactAttributeToken(
+  segment: string,
+  startIndex: number,
+): { name: string; value: string; nextIndex: number } | undefined {
+  const endIndex = skipBalancedSection(segment, startIndex, "[", "]");
+  const rawAttribute = segment.slice(startIndex + 1, Math.max(startIndex + 1, endIndex - 1)).trim();
+  const match = /^([A-Za-z_][\w:-]*)\s*=\s*(["'])(.*?)\2$/u.exec(rawAttribute);
+  if (!match?.[1]) {
+    return undefined;
+  }
+  if (match[1] === "class") {
+    return undefined;
+  }
+
+  return {
+    name: match[1],
+    value: match[3] ?? "",
+    nextIndex: endIndex,
   };
 }
 
@@ -362,6 +430,19 @@ function uniqueClassAttributePredicates(
   return [
     ...new Map(
       predicates.map((predicate) => [`${predicate.operator}:${predicate.value}`, predicate]),
+    ).values(),
+  ];
+}
+
+function uniqueAttributePredicates(
+  predicates: ParsedAttributePredicate[],
+): ParsedAttributePredicate[] {
+  return [
+    ...new Map(
+      predicates.map((predicate) => [
+        `${predicate.name}:${predicate.operator}:${predicate.value}`,
+        predicate,
+      ]),
     ).values(),
   ];
 }

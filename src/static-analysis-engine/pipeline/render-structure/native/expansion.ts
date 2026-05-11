@@ -322,6 +322,13 @@ export function expandRenderSite(state: ExpansionState, context: ExpandContext):
         elementTemplateNodeId: template.id,
         renderSiteNodeId: context.renderSite.id,
         sourceLocation: location,
+        ...(template.staticAttributes?.length
+          ? {
+              staticAttributes: template.staticAttributes
+                .map((attribute) => ({ ...attribute }))
+                .sort((left, right) => left.name.localeCompare(right.name)),
+            }
+          : {}),
         ...(context.parentElementId ? { parentElementId: context.parentElementId } : {}),
         parentBoundaryId: context.boundaryId,
         childElementIds: [],

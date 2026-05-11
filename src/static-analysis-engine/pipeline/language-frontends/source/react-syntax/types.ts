@@ -72,8 +72,14 @@ export type ReactElementTemplateFact = {
   location: SourceAnchor;
   name: string;
   renderSiteKey: string;
+  staticAttributes?: ReactElementStaticAttributeFact[];
   emittingComponentKey?: string;
   placementComponentKey?: string;
+};
+
+export type ReactElementStaticAttributeFact = {
+  name: string;
+  value: string | true;
 };
 
 export type ReactClassExpressionSiteFact = {

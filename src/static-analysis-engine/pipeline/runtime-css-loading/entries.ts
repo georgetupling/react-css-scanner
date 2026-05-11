@@ -133,7 +133,6 @@ function collectInferredAppShellEntrySourceFilePaths(input: {
   moduleFilePaths: string[];
 }): string[] {
   const moduleFilePathSet = new Set(input.moduleFilePaths);
-  const sourceImportsByImporterPath = new Map<string, string[]>();
   const cssImportsByImporterPath = new Map<string, string[]>();
 
   for (const edge of input.snapshotEdges) {
@@ -151,11 +150,6 @@ function collectInferredAppShellEntrySourceFilePaths(input: {
       continue;
     }
 
-    if (edge.importKind === "source" && moduleFilePathSet.has(importedPath)) {
-      pushMapValue(sourceImportsByImporterPath, importerPath, importedPath);
-      continue;
-    }
-
     if (edge.importKind === "css") {
       pushMapValue(cssImportsByImporterPath, importerPath, importedPath);
     }
@@ -164,7 +158,6 @@ function collectInferredAppShellEntrySourceFilePaths(input: {
   return input.moduleFilePaths
     .filter((filePath) => isConventionalAppShellFile(filePath))
     .filter((filePath) => (cssImportsByImporterPath.get(filePath) ?? []).length > 0)
-    .filter((filePath) => (sourceImportsByImporterPath.get(filePath) ?? []).length > 0)
     .sort((left, right) => left.localeCompare(right));
 }
 
