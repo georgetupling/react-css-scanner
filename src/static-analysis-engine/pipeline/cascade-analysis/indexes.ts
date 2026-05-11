@@ -4,6 +4,7 @@ import { elementPropertyKey } from "./ids.js";
 import type {
   CascadeAnalysisDiagnostic,
   CascadeAnalysisIndexes,
+  CascadeComputedProperty,
   CascadeDeclarationCandidate,
   CascadeConditionSet,
   CascadeOutcome,
@@ -15,6 +16,7 @@ export function buildCascadeAnalysisIndexes(input: {
   conditionSets: CascadeConditionSet[];
   candidates: CascadeDeclarationCandidate[];
   outcomes: CascadeOutcome[];
+  computedProperties: CascadeComputedProperty[];
   diagnostics: CascadeAnalysisDiagnostic[];
 }): CascadeAnalysisIndexes {
   const declarationRecordById = new Map(
@@ -22,6 +24,9 @@ export function buildCascadeAnalysisIndexes(input: {
   );
   const candidateById = new Map(input.candidates.map((candidate) => [candidate.id, candidate]));
   const outcomeById = new Map(input.outcomes.map((outcome) => [outcome.id, outcome]));
+  const computedPropertyById = new Map(
+    input.computedProperties.map((property) => [property.id, property]),
+  );
   const conditionSetById = new Map(
     input.conditionSets.map((conditionSet) => [conditionSet.id, conditionSet]),
   );
@@ -33,6 +38,9 @@ export function buildCascadeAnalysisIndexes(input: {
   const candidateIdsByConditionSetId = new Map<string, string[]>();
   const outcomeIdsByElementId = new Map<RenderedElementId, string[]>();
   const outcomeIdsByWinningCandidateId = new Map<string, string[]>();
+  const computedPropertyIdsByElementId = new Map<RenderedElementId, string[]>();
+  const computedPropertyIdByElementAndProperty = new Map<string, string>();
+  const computedPropertyIdsByOutcomeId = new Map<string, string[]>();
   const diagnosticIdsByDeclarationId = new Map<ProjectEvidenceId, string[]>();
   const diagnosticIdsBySelectorBranchId = new Map<ProjectEvidenceId, string[]>();
 
@@ -60,6 +68,17 @@ export function buildCascadeAnalysisIndexes(input: {
     }
   }
 
+  for (const computedProperty of input.computedProperties) {
+    pushMapValue(computedPropertyIdsByElementId, computedProperty.elementId, computedProperty.id);
+    computedPropertyIdByElementAndProperty.set(
+      elementPropertyKey(computedProperty),
+      computedProperty.id,
+    );
+    if (computedProperty.outcomeId) {
+      pushMapValue(computedPropertyIdsByOutcomeId, computedProperty.outcomeId, computedProperty.id);
+    }
+  }
+
   for (const diagnostic of input.diagnostics) {
     if (diagnostic.declarationId) {
       pushMapValue(diagnosticIdsByDeclarationId, diagnostic.declarationId, diagnostic.id);
@@ -78,6 +97,8 @@ export function buildCascadeAnalysisIndexes(input: {
     candidateIdsByConditionSetId,
     outcomeIdsByElementId,
     outcomeIdsByWinningCandidateId,
+    computedPropertyIdsByElementId,
+    computedPropertyIdsByOutcomeId,
     diagnosticIdsByDeclarationId,
     diagnosticIdsBySelectorBranchId,
   ].forEach(sortMapValues);
@@ -86,6 +107,7 @@ export function buildCascadeAnalysisIndexes(input: {
     declarationRecordById,
     candidateById,
     outcomeById,
+    computedPropertyById,
     conditionSetById,
     candidateIdsByDeclarationId,
     candidateIdsByInlineStyleId,
@@ -95,6 +117,9 @@ export function buildCascadeAnalysisIndexes(input: {
     candidateIdsByConditionSetId,
     outcomeIdsByElementId,
     outcomeIdsByWinningCandidateId,
+    computedPropertyIdsByElementId,
+    computedPropertyIdByElementAndProperty,
+    computedPropertyIdsByOutcomeId,
     diagnosticIdsByDeclarationId,
     diagnosticIdsBySelectorBranchId,
   };

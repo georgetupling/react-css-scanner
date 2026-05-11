@@ -3133,3 +3133,75 @@ test("cascade analysis uses selector reachability for structural scope roots and
     await project.cleanup();
   }
 });
+
+test("cascade analysis resolves computed inherited values from parent elements", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./styles.css";\nexport function App() { return <div className="parent"><span className="child">Hello</span></div>; }\n',
+    )
+    .withCssFile("src/styles.css", ".parent { color: red; }\n")
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+    const childColor = cascade.computedProperties.find(
+      (property) => property.property === "color" && property.source === "inherited-parent",
+    );
+    assert.ok(childColor);
+    assert.equal(childColor.value, "red");
+    assert.equal(childColor.source, "inherited-parent");
+    assert.equal(childColor.certainty, "definite");
+    assert.ok(childColor.parentComputedPropertyId);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis resolves inherit and unset computed values", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./styles.css";\nexport function App() { return <div className="parent"><span className="inherit">A</span><span className="unset">B</span><span className="margin">C</span></div>; }\n',
+    )
+    .withCssFile(
+      "src/styles.css",
+      ".parent { color: red; }\n.inherit { color: inherit; }\n.unset { color: unset; }\n.margin { margin-top: unset; }\n",
+    )
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+    const inheritedColors = cascade.computedProperties
+      .filter((property) => property.property === "color" && property.source === "inherited-parent")
+      .map((property) => property.value)
+      .sort();
+    assert.deepEqual(inheritedColors, ["red", "red", "red"]);
+
+    const marginTop = cascade.computedProperties.find(
+      (property) =>
+        property.property === "margin-top" &&
+        property.value === "0" &&
+        Boolean(property.winningCandidateId),
+    );
+    assert.ok(marginTop);
+    assert.equal(marginTop.value, "0");
+    assert.equal(marginTop.certainty, "definite");
+  } finally {
+    await project.cleanup();
+  }
+});

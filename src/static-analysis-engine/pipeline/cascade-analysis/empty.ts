@@ -6,6 +6,7 @@ export function createEmptyCascadeAnalysisResult(): CascadeAnalysisResult {
   const conditionSets: CascadeAnalysisResult["conditionSets"] = [];
   const candidates: CascadeAnalysisResult["candidates"] = [];
   const outcomes: CascadeAnalysisResult["outcomes"] = [];
+  const computedProperties: CascadeAnalysisResult["computedProperties"] = [];
   const diagnostics: CascadeAnalysisResult["diagnostics"] = [];
 
   return {
@@ -13,12 +14,14 @@ export function createEmptyCascadeAnalysisResult(): CascadeAnalysisResult {
     conditionSets,
     candidates,
     outcomes,
+    computedProperties,
     diagnostics,
     indexes: buildCascadeAnalysisIndexes({
       declarations,
       conditionSets,
       candidates,
       outcomes,
+      computedProperties,
       diagnostics,
     }),
     meta: {
@@ -27,6 +30,7 @@ export function createEmptyCascadeAnalysisResult(): CascadeAnalysisResult {
       conditionSetCount: 0,
       candidateCount: 0,
       outcomeCount: 0,
+      computedPropertyCount: 0,
       diagnosticCount: 0,
     },
   };

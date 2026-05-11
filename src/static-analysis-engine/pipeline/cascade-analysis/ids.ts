@@ -25,6 +25,10 @@ export function cascadeOutcomeId(input: { elementId: string; property: string })
   return ["cascade-outcome", input.elementId, input.property].join(":");
 }
 
+export function cascadeComputedPropertyId(input: { elementId: string; property: string }): string {
+  return ["cascade-computed-property", input.elementId, input.property].join(":");
+}
+
 export function cascadeDiagnosticId(input: {
   code: string;
   declarationId?: string;

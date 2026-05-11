@@ -2,6 +2,7 @@ export { buildCascadeAnalysis } from "./buildCascadeAnalysis.js";
 export { createEmptyCascadeAnalysisResult } from "./empty.js";
 export {
   cascadeConditionSetId,
+  cascadeComputedPropertyId,
   cascadeDeclarationCandidateId,
   cascadeDiagnosticId,
   cascadeOutcomeId,
@@ -17,6 +18,8 @@ export type {
   CascadeAnalysisResult,
   CascadeComparisonReason,
   CascadeComparisonStep,
+  CascadeComputedProperty,
+  CascadeComputedPropertySource,
   CascadeConditionSet,
   CascadeConditionSource,
   CascadeDeclarationCandidate,

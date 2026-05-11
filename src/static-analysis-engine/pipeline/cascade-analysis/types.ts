@@ -103,6 +103,28 @@ export type CascadeOutcome = {
   traces: AnalysisTrace[];
 };
 
+export type CascadeComputedPropertySource =
+  | "local-cascade"
+  | "initial"
+  | "inherited-parent"
+  | "unresolved-local"
+  | "unresolved-parent"
+  | "unsupported-css-wide-keyword";
+
+export type CascadeComputedProperty = {
+  id: string;
+  elementId: RenderedElementId;
+  property: string;
+  value?: string;
+  source: CascadeComputedPropertySource;
+  outcomeId?: string;
+  winningCandidateId?: string;
+  parentComputedPropertyId?: string;
+  certainty: "definite" | "possible" | "unknown";
+  reasons: string[];
+  traces: AnalysisTrace[];
+};
+
 export type CascadeConditionalOutcomeBranch = {
   conditionSetId: string;
   environmentProfileIds?: string[];
@@ -149,6 +171,7 @@ export type CascadeAnalysisIndexes = {
   declarationRecordById: Map<ProjectEvidenceId, CssDeclarationCascadeRecord>;
   candidateById: Map<string, CascadeDeclarationCandidate>;
   outcomeById: Map<string, CascadeOutcome>;
+  computedPropertyById: Map<string, CascadeComputedProperty>;
   conditionSetById: Map<string, CascadeConditionSet>;
   candidateIdsByDeclarationId: Map<ProjectEvidenceId, string[]>;
   candidateIdsByInlineStyleId: Map<string, string[]>;
@@ -158,6 +181,9 @@ export type CascadeAnalysisIndexes = {
   candidateIdsByConditionSetId: Map<string, string[]>;
   outcomeIdsByElementId: Map<RenderedElementId, string[]>;
   outcomeIdsByWinningCandidateId: Map<string, string[]>;
+  computedPropertyIdsByElementId: Map<RenderedElementId, string[]>;
+  computedPropertyIdByElementAndProperty: Map<string, string>;
+  computedPropertyIdsByOutcomeId: Map<string, string[]>;
   diagnosticIdsByDeclarationId: Map<ProjectEvidenceId, string[]>;
   diagnosticIdsBySelectorBranchId: Map<ProjectEvidenceId, string[]>;
 };
@@ -168,6 +194,7 @@ export type CascadeAnalysisMeta = {
   conditionSetCount: number;
   candidateCount: number;
   outcomeCount: number;
+  computedPropertyCount: number;
   diagnosticCount: number;
 };
 
@@ -176,6 +203,7 @@ export type CascadeAnalysisResult = {
   conditionSets: CascadeConditionSet[];
   candidates: CascadeDeclarationCandidate[];
   outcomes: CascadeOutcome[];
+  computedProperties: CascadeComputedProperty[];
   diagnostics: CascadeAnalysisDiagnostic[];
   indexes: CascadeAnalysisIndexes;
   meta: CascadeAnalysisMeta;

@@ -26,6 +26,7 @@ import { resolveLogicalPropertyCandidates } from "./logicalPropertyResolution.js
 import { buildRuntimeStylesheetOrder } from "./runtimeStylesheetOrder.js";
 import { buildInlineStyleCandidates } from "./inlineStyleCandidates.js";
 import { buildGlobalLayerOrderByName } from "./cascadeKeys.js";
+import { buildComputedProperties } from "./computedProperties.js";
 import {
   buildStylesheetCascadeDeclarations,
   buildStylesheetDeclarationCandidates,
@@ -106,6 +107,11 @@ export function buildCascadeAnalysis(input: CascadeAnalysisInput): CascadeAnalys
     conditionSetsById,
     diagnostics,
   });
+  const computedProperties = buildComputedProperties({
+    analysisInput: input,
+    candidates: resolvedCandidates,
+    outcomes,
+  });
   const sortedDiagnostics = diagnostics.sort(compareById);
   const sortedConditionSets = [...conditionSetsById.values()].sort(compareById);
   const sortedDeclarations = declarations.sort((left, right) =>
@@ -113,18 +119,21 @@ export function buildCascadeAnalysis(input: CascadeAnalysisInput): CascadeAnalys
   );
   const sortedCandidates = resolvedCandidates.sort(compareById);
   const sortedOutcomes = outcomes.sort(compareById);
+  const sortedComputedProperties = computedProperties.sort(compareById);
 
   return {
     declarations: sortedDeclarations,
     conditionSets: sortedConditionSets,
     candidates: sortedCandidates,
     outcomes: sortedOutcomes,
+    computedProperties: sortedComputedProperties,
     diagnostics: sortedDiagnostics,
     indexes: buildCascadeAnalysisIndexes({
       declarations: sortedDeclarations,
       conditionSets: sortedConditionSets,
       candidates: sortedCandidates,
       outcomes: sortedOutcomes,
+      computedProperties: sortedComputedProperties,
       diagnostics: sortedDiagnostics,
     }),
     meta: {
@@ -133,6 +142,7 @@ export function buildCascadeAnalysis(input: CascadeAnalysisInput): CascadeAnalys
       conditionSetCount: sortedConditionSets.length,
       candidateCount: sortedCandidates.length,
       outcomeCount: sortedOutcomes.length,
+      computedPropertyCount: sortedComputedProperties.length,
       diagnosticCount: sortedDiagnostics.length,
     },
   };
