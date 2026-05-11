@@ -222,7 +222,8 @@ function oneOrMoreOwnershipRulesEnabled(snapshot: ProjectSnapshot) {
   return (
     rules["single-component-style-not-colocated"] !== "off" ||
     rules["style-used-outside-owner"] !== "off" ||
-    rules["style-shared-without-shared-owner"] !== "off"
+    rules["style-shared-without-shared-owner"] !== "off" ||
+    rules["component-style-overridden-externally"] !== "off"
   );
 }
 
@@ -230,6 +231,9 @@ function oneOrMoreCascadeRulesEnabled(snapshot: ProjectSnapshot) {
   const rules = snapshot.config.rules;
   return (
     rules["declaration-always-shadowed"] !== "off" ||
-    rules["selector-declaration-never-wins"] !== "off"
+    rules["selector-declaration-never-wins"] !== "off" ||
+    rules["same-property-conflict"] !== "off" ||
+    rules["selector-specificity-conflict"] !== "off" ||
+    rules["component-style-overridden-externally"] !== "off"
   );
 }

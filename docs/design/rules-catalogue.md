@@ -222,6 +222,44 @@ Config:
 - only reports when cascade diagnostics and unresolved outcomes are absent for the selector branch
 - does not report when any declaration from the selector branch still wins
 
+#### `same-property-conflict`
+
+Default severity: `off`
+
+Triggers when the scanner has a definite cascade outcome where two candidates assign different
+values to the same effective property on the same modeled element.
+
+Meaning:
+
+- both candidates definitely match the modeled element
+- the winning candidate and losing candidate have different normalized values
+- unresolved outcomes and cascade diagnostics suppress the finding
+
+#### `selector-specificity-conflict`
+
+Default severity: `off`
+
+Triggers when a definite same-property conflict is resolved specifically by selector specificity.
+
+Meaning:
+
+- the losing selector branch matches a modeled element
+- another matching selector branch has stronger specificity for the same property
+- this is an opt-in maintainability signal, not a default style-lint threshold
+
+#### `component-style-overridden-externally`
+
+Default severity: `off`
+
+Triggers when a declaration from a private component-owned stylesheet definitely loses to a stronger
+candidate owned by another component.
+
+Meaning:
+
+- the losing stylesheet has high-confidence private component ownership evidence
+- the winning stylesheet or inline candidate resolves to a different component owner
+- the rule consumes cascade outcomes and ownership inference; it stays silent when either side is unresolved
+
 ### Ownership And Architecture
 
 Ownership rules should be convention-aware and conservative by default.

@@ -3,12 +3,15 @@ import { cssClassUnreachableRule } from "./rules/cssClassUnreachable.js";
 import { compoundSelectorNeverMatchedRule } from "./rules/compoundSelectorNeverMatched.js";
 import { dynamicClassReferenceRule } from "./rules/dynamicClassReference.js";
 import { declarationAlwaysShadowedRule } from "./rules/declarationAlwaysShadowed.js";
+import { componentStyleOverriddenExternallyRule } from "./rules/componentStyleOverriddenExternally.js";
 import { duplicateClassDefinitionRule } from "./rules/duplicateClassDefinition.js";
 import { cssModuleImportNotUsedRule } from "./rules/cssModuleImportNotUsed.js";
 import { missingCssModuleClassRule } from "./rules/missingCssModuleClass.js";
 import { orphanCssFileRule } from "./rules/orphanCssFile.js";
 import { selectorDeclarationNeverWinsRule } from "./rules/selectorDeclarationNeverWins.js";
 import { selectorOnlyMatchesInUnknownContextsRule } from "./rules/selectorOnlyMatchesInUnknownContexts.js";
+import { selectorSpecificityConflictRule } from "./rules/selectorSpecificityConflict.js";
+import { samePropertyConflictRule } from "./rules/samePropertyConflict.js";
 import { singleComponentStyleNotColocatedRule } from "./rules/singleComponentStyleNotColocated.js";
 import { styleSharedWithoutSharedOwnerRule } from "./rules/styleSharedWithoutSharedOwner.js";
 import { styleUsedOutsideOwnerRule } from "./rules/styleUsedOutsideOwner.js";
@@ -31,6 +34,9 @@ export const RULE_DEFINITIONS: RuleDefinition[] = [
   duplicateClassDefinitionRule,
   declarationAlwaysShadowedRule,
   selectorDeclarationNeverWinsRule,
+  samePropertyConflictRule,
+  selectorSpecificityConflictRule,
+  componentStyleOverriddenExternallyRule,
   unsatisfiableSelectorRule,
   compoundSelectorNeverMatchedRule,
   unusedCompoundSelectorBranchRule,
@@ -53,6 +59,9 @@ export const DEFAULT_RULE_SEVERITIES: Record<RuleId, RuleConfigSeverity> = {
   "duplicate-class-definition": "info",
   "declaration-always-shadowed": "off",
   "selector-declaration-never-wins": "off",
+  "same-property-conflict": "off",
+  "selector-specificity-conflict": "off",
+  "component-style-overridden-externally": "off",
   "unsatisfiable-selector": "warn",
   "compound-selector-never-matched": "warn",
   "unused-compound-selector-branch": "warn",

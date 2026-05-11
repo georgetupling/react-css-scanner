@@ -169,6 +169,9 @@ Rules can be disabled or given a different severity with `rules.<ruleId>` in con
 | `duplicate-class-definition`                | `info`           | Reports duplicate same-selector class definitions in the same stylesheet and at-rule context.                          |
 | `declaration-always-shadowed`               | `off`            | Opt-in cascade cleanup rule for declarations proven to always lose to stronger candidates wherever they apply.         |
 | `selector-declaration-never-wins`           | `off`            | Opt-in cascade cleanup rule for selector branches whose declarations never win for any modeled match.                  |
+| `same-property-conflict`                    | `off`            | Opt-in cascade rule for definite same-property value conflicts on a modeled element.                                   |
+| `selector-specificity-conflict`             | `off`            | Opt-in cascade rule for selectors that lose definite conflicts because another selector is more specific.              |
+| `component-style-overridden-externally`     | `off`            | Opt-in ownership/cascade rule for private component styles beaten by another component-owned cascade candidate.        |
 | `unsatisfiable-selector`                    | `warn`           | Reports selectors that cannot match any known renderable structure under bounded selector/render analysis.             |
 | `compound-selector-never-matched`           | `warn`           | Reports compound selectors, such as `.button.primary`, whose required classes are never observed on one node.          |
 | `unused-compound-selector-branch`           | `warn`           | Reports unused branches in selector lists or compound selectors when other branches may still be useful.               |

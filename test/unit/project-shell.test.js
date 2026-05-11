@@ -15,6 +15,9 @@ const ZERO_FINDINGS_BY_RULE = {
   "duplicate-class-definition": 0,
   "declaration-always-shadowed": 0,
   "selector-declaration-never-wins": 0,
+  "same-property-conflict": 0,
+  "selector-specificity-conflict": 0,
+  "component-style-overridden-externally": 0,
   "unsatisfiable-selector": 0,
   "compound-selector-never-matched": 0,
   "unused-compound-selector-branch": 0,
@@ -169,6 +172,9 @@ test("scanProject returns deterministic public summary from discovered files", a
     assert.equal(result.config.rules["unused-css-module-class"], "warn");
     assert.equal(result.config.rules["declaration-always-shadowed"], "off");
     assert.equal(result.config.rules["selector-declaration-never-wins"], "off");
+    assert.equal(result.config.rules["same-property-conflict"], "off");
+    assert.equal(result.config.rules["selector-specificity-conflict"], "off");
+    assert.equal(result.config.rules["component-style-overridden-externally"], "off");
     assert.equal(result.config.rules["dynamic-class-reference"], "debug");
     assert.equal(result.config.rules["unsupported-syntax-affecting-analysis"], "debug");
     assert.equal(result.config.externalCss.fetchRemote, false);
@@ -731,6 +737,73 @@ test("scanProject does not report selector branches when one declaration still w
       false,
     );
     assert.equal(result.summary.findingsByRule["selector-declaration-never-wins"] ?? 0, 0);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("scanProject reports opt-in same-property cascade conflicts", async () => {
+  const project = await new TestProjectBuilder()
+    .withConfig({
+      rules: {
+        "duplicate-class-definition": "off",
+        "same-property-conflict": "info",
+      },
+    })
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./App.css";\nexport function App() { return <section className="card primary">Hello</section>; }\n',
+    )
+    .withCssFile("src/App.css", ".card { color: red; }\n.card.primary { color: blue; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+    const finding = result.findings.find(
+      (candidate) => candidate.ruleId === "same-property-conflict",
+    );
+
+    assert.ok(finding);
+    assert.equal(finding.severity, "info");
+    assert.equal(finding.subject.kind, "css-declaration");
+    assert.equal(finding.data?.property, "color");
+    assert.equal(finding.data?.losingValue, "red");
+    assert.equal(finding.data?.winningValue, "blue");
+    assert.equal(result.summary.findingsByRule["same-property-conflict"], 1);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("scanProject reports opt-in selector specificity conflicts", async () => {
+  const project = await new TestProjectBuilder()
+    .withConfig({
+      rules: {
+        "duplicate-class-definition": "off",
+        "selector-specificity-conflict": "info",
+      },
+    })
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./App.css";\nexport function App() { return <section className="card primary">Hello</section>; }\n',
+    )
+    .withCssFile("src/App.css", ".card { color: red; }\n.card.primary { color: blue; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+    const finding = result.findings.find(
+      (candidate) => candidate.ruleId === "selector-specificity-conflict",
+    );
+
+    assert.ok(finding);
+    assert.equal(finding.severity, "info");
+    assert.equal(finding.subject.kind, "selector-branch");
+    assert.equal(finding.data?.selectorText, ".card");
+    assert.equal(finding.data?.winningSelectorText, ".card.primary");
+    assert.deepEqual(finding.data?.losingSpecificity, { a: 0, b: 1, c: 0 });
+    assert.deepEqual(finding.data?.winningSpecificity, { a: 0, b: 2, c: 0 });
+    assert.equal(result.summary.findingsByRule["selector-specificity-conflict"], 1);
   } finally {
     await project.cleanup();
   }

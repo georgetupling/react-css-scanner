@@ -499,6 +499,12 @@ Implementation status:
 - It reports when every candidate for a declaration loses in every modeled context where that candidate can apply and the declaration has no cascade diagnostics.
 - `selector-declaration-never-wins` is implemented as an opt-in rule with default severity `off`.
 - It reports when every candidate produced by a selector branch loses in every modeled context where that candidate can apply, and it stays silent if any declaration from the selector branch still wins.
+- `same-property-conflict` is implemented as an opt-in rule with default severity `off`.
+- It reports definite same-property value conflicts from cascade outcomes when diagnostics and unresolved candidates are absent.
+- `selector-specificity-conflict` is implemented as an opt-in rule with default severity `off`.
+- It reports definite conflicts whose cascade outcome is resolved by selector specificity.
+- `component-style-overridden-externally` is implemented as an opt-in rule with default severity `off`.
+- It reports private component-owned declarations that definitely lose to a stronger candidate owned by another component.
 
 Only report when:
 
@@ -508,13 +514,10 @@ Only report when:
 - the winning declaration is known
 - no unresolved candidate could let the declaration win
 
-Future rules:
+Remaining future rules:
 
-- `same-property-conflict`
-- `component-style-overridden-externally`
 - `implicit-cascade-dependency`
 - `selector-specificity-too-high`
-- `selector-specificity-conflict`
 - `layer-boundary-violation`
 
 ## Phase 1 Boundary
@@ -610,4 +613,4 @@ Known limitations:
 - custom property cascade and definite `var()` substitution are modeled, but conditional, cyclic, and missing substitutions remain unsupported-property-semantics uncertainty
 - exact property values use `css-tree` typed property grammar validation, but shorthand expansion remains intentionally bounded; border shorthand parsing recognizes clear width/style/color tokens and intentionally rejects ambiguous whole-value variables
 - `background` shorthand parsing is `css-tree` validated but still partial: it models reset/winning behavior for the main background longhands, but it does not yet model every computed-value nuance or `var()` substitution
-- only `declaration-always-shadowed` and `selector-declaration-never-wins` consume outcomes today, and both remain opt-in
+- cascade-consuming rules remain opt-in while browser semantics coverage continues expanding
