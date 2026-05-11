@@ -565,6 +565,108 @@ test("scanProject reports opt-in declarations that are always shadowed", async (
   }
 });
 
+test("scanProject reports declarations shadowed inside the same media context", async () => {
+  const project = await new TestProjectBuilder()
+    .withConfig({
+      rules: {
+        "duplicate-class-definition": "off",
+        "declaration-always-shadowed": "info",
+      },
+    })
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./App.css";\nexport function App() { return <section className="card">Hello</section>; }\n',
+    )
+    .withCssFile(
+      "src/App.css",
+      "@media (max-width: 600px) {\n  .card { color: red; }\n  .card { color: blue; }\n}\n",
+    )
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+    const finding = result.findings.find(
+      (candidate) =>
+        candidate.ruleId === "declaration-always-shadowed" &&
+        candidate.data?.property === "color" &&
+        candidate.data?.value === "red",
+    );
+
+    assert.ok(finding);
+    assert.equal(result.summary.findingsByRule["declaration-always-shadowed"], 1);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("scanProject reports media declarations shadowed by later unconditional rules", async () => {
+  const project = await new TestProjectBuilder()
+    .withConfig({
+      rules: {
+        "duplicate-class-definition": "off",
+        "declaration-always-shadowed": "info",
+      },
+    })
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./App.css";\nexport function App() { return <section className="card">Hello</section>; }\n',
+    )
+    .withCssFile(
+      "src/App.css",
+      "@media (max-width: 600px) {\n  .card { color: red; }\n}\n\n.card { color: blue; }\n",
+    )
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+    const finding = result.findings.find(
+      (candidate) =>
+        candidate.ruleId === "declaration-always-shadowed" &&
+        candidate.data?.property === "color" &&
+        candidate.data?.value === "red",
+    );
+
+    assert.ok(finding);
+    assert.equal(result.summary.findingsByRule["declaration-always-shadowed"], 1);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("scanProject reports declarations shadowed inside the same supports context", async () => {
+  const project = await new TestProjectBuilder()
+    .withConfig({
+      rules: {
+        "duplicate-class-definition": "off",
+        "declaration-always-shadowed": "info",
+      },
+    })
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./App.css";\nexport function App() { return <section className="card">Hello</section>; }\n',
+    )
+    .withCssFile(
+      "src/App.css",
+      "@supports (display: grid) {\n  .card { color: red; }\n  .card { color: blue; }\n}\n",
+    )
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+    const finding = result.findings.find(
+      (candidate) =>
+        candidate.ruleId === "declaration-always-shadowed" &&
+        candidate.data?.property === "color" &&
+        candidate.data?.value === "red",
+    );
+
+    assert.ok(finding);
+    assert.equal(result.summary.findingsByRule["declaration-always-shadowed"], 1);
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("scanProject does not report pseudo-state declarations as always shadowing base styles", async () => {
   const project = await new TestProjectBuilder()
     .withConfig({

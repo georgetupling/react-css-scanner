@@ -1,5 +1,6 @@
 import type {
   AnalysisTrace,
+  CascadeConditionalOutcomeBranch,
   CascadeDeclarationCandidate,
   CascadeOutcome,
   CssDeclarationAnalysis,
@@ -112,6 +113,7 @@ type DefiniteLoss = {
   candidate: CascadeDeclarationCandidate;
   outcome: CascadeOutcome;
   winningCandidate: CascadeDeclarationCandidate;
+  branch?: CascadeConditionalOutcomeBranch;
 };
 
 function resolveDeclarationCandidates(input: {
@@ -135,26 +137,111 @@ function resolveDefiniteLoss(input: {
       candidateOutcome.elementId === input.candidate.elementId &&
       candidateOutcome.property === input.candidate.property,
   );
+  if (!outcome || outcome.unresolvedCandidateIds.length > 0) {
+    return undefined;
+  }
+
+  const directLoss = resolveDirectOutcomeLoss({
+    context: input.context,
+    candidate: input.candidate,
+    outcome,
+  });
+  if (directLoss) {
+    return directLoss;
+  }
+
+  return resolveConditionalBranchLoss({
+    context: input.context,
+    candidate: input.candidate,
+    outcome,
+  });
+}
+
+function resolveDirectOutcomeLoss(input: {
+  context: RuleContext;
+  candidate: CascadeDeclarationCandidate;
+  outcome: CascadeOutcome;
+}): DefiniteLoss | undefined {
   if (
-    !outcome ||
-    outcome.certainty !== "definite" ||
-    outcome.unresolvedCandidateIds.length > 0 ||
-    outcome.winningCandidateId === input.candidate.id ||
-    !outcome.losingCandidateIds.includes(input.candidate.id) ||
-    !outcome.winningCandidateId
+    input.outcome.winningCandidateId === input.candidate.id ||
+    !input.outcome.losingCandidateIds.includes(input.candidate.id) ||
+    !input.outcome.winningCandidateId ||
+    input.outcome.unresolvedCandidateIds.length > 0 ||
+    (input.outcome.certainty !== "definite" &&
+      (input.outcome.certainty !== "possible" ||
+        Boolean(input.outcome.conditionalBranches?.length)))
   ) {
     return undefined;
   }
 
-  const winningCandidate = cascade.indexes.candidateById.get(outcome.winningCandidateId);
+  const winningCandidate = input.context.analysisEvidence.cascadeAnalysis.indexes.candidateById.get(
+    input.outcome.winningCandidateId,
+  );
   if (!winningCandidate) {
     return undefined;
+  }
+  return {
+    candidate: input.candidate,
+    outcome: input.outcome,
+    winningCandidate,
+  };
+}
+
+function resolveConditionalBranchLoss(input: {
+  context: RuleContext;
+  candidate: CascadeDeclarationCandidate;
+  outcome: CascadeOutcome;
+}): DefiniteLoss | undefined {
+  const applicableBranches = (input.outcome.conditionalBranches ?? []).filter(
+    (branch) =>
+      branch.losingCandidateIds.includes(input.candidate.id) ||
+      branch.winningCandidateId === input.candidate.id,
+  );
+  if (applicableBranches.length === 0) {
+    return undefined;
+  }
+
+  const winningCandidates: CascadeDeclarationCandidate[] = [];
+  for (const branch of applicableBranches) {
+    if (
+      branch.winningCandidateId === input.candidate.id ||
+      !branch.losingCandidateIds.includes(input.candidate.id) ||
+      branch.unresolvedCandidateIds.length > 0 ||
+      !branch.winningCandidateId
+    ) {
+      return undefined;
+    }
+    const winningCandidate =
+      input.context.analysisEvidence.cascadeAnalysis.indexes.candidateById.get(
+        branch.winningCandidateId,
+      );
+    if (!winningCandidate) {
+      return undefined;
+    }
+    winningCandidates.push(winningCandidate);
+  }
+
+  if (input.outcome.winningCandidateId === input.candidate.id) {
+    return undefined;
+  }
+  if (input.outcome.losingCandidateIds.includes(input.candidate.id)) {
+    const directLoss = resolveDirectOutcomeLoss({
+      context: input.context,
+      candidate: input.candidate,
+      outcome: input.outcome,
+    });
+    if (!directLoss) {
+      return undefined;
+    }
   }
 
   return {
     candidate: input.candidate,
-    outcome,
-    winningCandidate,
+    outcome: input.outcome,
+    winningCandidate: winningCandidates.sort((left, right) => left.id.localeCompare(right.id))[0],
+    branch: applicableBranches.sort((left, right) =>
+      left.conditionSetId.localeCompare(right.conditionSetId),
+    )[0],
   };
 }
 

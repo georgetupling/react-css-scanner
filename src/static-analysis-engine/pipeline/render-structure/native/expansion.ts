@@ -230,7 +230,7 @@ export function expandRenderSite(state: ExpansionState, context: ExpandContext):
       expandRenderSite(state, {
         ...context,
         renderSite: childRenderSite,
-        childIndex: spec.index,
+        childIndex: context.childIndex,
         basePathSegments: pathSegments,
         placementConditionIds: uniqueSorted([...context.placementConditionIds, conditionId]),
         certainty: branchSkippedReason ? "unknown" : "possible",
