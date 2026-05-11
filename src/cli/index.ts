@@ -10,6 +10,7 @@ import { CliUsageError, type CliArgs } from "./types.js";
 
 export async function runCli(rawArgs: string[]): Promise<void> {
   const args = parseCliArgs(rawArgs);
+  const scanRootDir = resolveScanRootDir(args);
 
   if (args.help) {
     printHelp();
@@ -38,8 +39,8 @@ export async function runCli(rawArgs: string[]): Promise<void> {
   let result: ScanProjectResult;
   try {
     result = await scanProject({
-      rootDir: args.rootDir,
-      configBaseDir: process.cwd(),
+      rootDir: scanRootDir,
+      configBaseDir: scanRootDir,
       configPath: args.configPath,
       ignore: {
         classNames: args.ignoreClassNames,
@@ -75,13 +76,18 @@ export async function runCli(rawArgs: string[]): Promise<void> {
 }
 
 async function loadConfigReporting(args: CliArgs): Promise<ReportingConfig> {
+  const scanRootDir = resolveScanRootDir(args);
   const config = await loadScannerConfig({
-    rootDir: path.resolve(process.cwd(), args.rootDir ?? "."),
-    configBaseDir: process.cwd(),
+    rootDir: scanRootDir,
+    configBaseDir: scanRootDir,
     configPath: args.configPath,
     diagnostics: [],
   });
   return config.reporting;
+}
+
+function resolveScanRootDir(args: CliArgs): string {
+  return path.resolve(process.cwd(), args.rootDir ?? ".");
 }
 
 function parseCliArgs(rawArgs: string[]): CliArgs {

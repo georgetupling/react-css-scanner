@@ -585,6 +585,7 @@ function createScopeRequirementSelectorBranch(
     raw: requirement.selectorText,
     matchKind: requiredClassNames.length > 1 ? "compound" : "standalone",
     subjectClassNames: [...requiredClassNames],
+    subjectIds: [],
     classAttributePredicates: [],
     attributePredicates: [],
     requiredClassNames: [...requiredClassNames],

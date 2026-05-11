@@ -40,6 +40,7 @@ export function buildElementMatchesForClassNames(input: {
       elementId,
       requirement: {
         requiredClassNames,
+        requiredIds: [...input.branch.subjectIds],
         classAttributePredicates: [],
         attributePredicates: input.branch.attributePredicates.map((predicate) => ({
           ...predicate,
@@ -60,7 +61,7 @@ function elementMatchesAttributePredicates(
   elementId: string,
   branch: SelectorBranchNode,
 ): boolean {
-  if (branch.attributePredicates.length === 0) {
+  if (branch.attributePredicates.length === 0 && branch.subjectIds.length === 0) {
     return true;
   }
 
@@ -71,6 +72,13 @@ function elementMatchesAttributePredicates(
   const attributes = new Map(
     (element.staticAttributes ?? []).map((attribute) => [attribute.name, attribute.value] as const),
   );
+  if (
+    branch.subjectIds.length > 0 &&
+    !branch.subjectIds.every((subjectId) => attributes.get("id") === subjectId)
+  ) {
+    return false;
+  }
+
   return branch.attributePredicates.every((predicate) => {
     const value = attributes.get(predicate.name);
     return value === predicate.value;

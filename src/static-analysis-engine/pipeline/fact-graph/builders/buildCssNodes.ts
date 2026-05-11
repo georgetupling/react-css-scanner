@@ -101,6 +101,7 @@ export function buildCssNodes(input: FactGraphInput): BuiltCssNodes {
           ruleKey: entry.source.ruleKey ?? `${cssFile.filePath}:${ruleIndex}:${rule.selector}`,
           requiredClassNames: [...branchFact.requiredClassNames],
           subjectClassNames: [...branchFact.subjectClassNames],
+          subjectIds: [...branchFact.subjectIds],
           classAttributePredicates: branchFact.classAttributePredicates.map((predicate) => ({
             ...predicate,
           })),

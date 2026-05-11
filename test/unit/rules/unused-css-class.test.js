@@ -1101,6 +1101,36 @@ test("unused-css-class treats render-prop supplied class values as used", async 
   }
 });
 
+test("unused-css-class treats render-prop argument object spreads as used", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import "./App.css";',
+        "",
+        "function Slot({ children }: { children: (props: { className: string }) => JSX.Element }) {",
+        '  return children({ className: "slot" });',
+        "}",
+        "",
+        "export function App() {",
+        "  return <Slot>{(props) => <span {...props}>Child</span>}</Slot>;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.css", ".slot { color: green; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assertNoClassFindings(result, "unused-css-class", ["slot"]);
+    assertNoClassFindings(result, "missing-css-class", ["slot"]);
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("unused-css-class treats finite role template literal class variants as used", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(

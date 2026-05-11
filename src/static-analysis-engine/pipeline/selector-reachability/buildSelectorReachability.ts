@@ -155,6 +155,7 @@ export function buildSelectorReachability(
       requirement,
       subject: {
         requiredClassNames: uniqueSorted(branch.subjectClassNames),
+        requiredIds: [...branch.subjectIds].sort((left, right) => left.localeCompare(right)),
         classAttributePredicates: branch.classAttributePredicates.map((predicate) => ({
           ...predicate,
         })),

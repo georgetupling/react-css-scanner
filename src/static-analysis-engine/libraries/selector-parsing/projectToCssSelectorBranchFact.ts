@@ -8,6 +8,7 @@ export function projectToCssSelectorBranchFact(
     raw: parsedBranch.raw,
     matchKind: parsedBranch.matchKind,
     subjectClassNames: [...parsedBranch.subjectClassNames],
+    subjectIds: [...parsedBranch.subjectIds],
     classAttributePredicates: parsedBranch.classAttributePredicates.map((predicate) => ({
       ...predicate,
     })),

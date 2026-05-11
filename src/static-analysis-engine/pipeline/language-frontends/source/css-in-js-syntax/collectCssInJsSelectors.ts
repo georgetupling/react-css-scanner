@@ -340,6 +340,7 @@ function createSelectorMentionBranch(
     raw: selectorText,
     matchKind: "complex",
     subjectClassNames: [],
+    subjectIds: [],
     classAttributePredicates: [],
     attributePredicates: [],
     requiredClassNames: [],

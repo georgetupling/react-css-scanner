@@ -160,6 +160,7 @@ export type SelectorRequirementStep = {
 
 export type SelectorSubjectRequirement = {
   requiredClassNames: string[];
+  requiredIds: string[];
   classAttributePredicates: Array<{ operator: "prefix" | "suffix" | "substring"; value: string }>;
   attributePredicates: Array<{ name: string; operator: "exact"; value: string }>;
   unsupportedParts: UnsupportedSelectorPart[];

@@ -7,6 +7,7 @@ export type SelectorStepCombinator =
 
 export type ParsedSimpleSelectorSequence = {
   requiredClasses: string[];
+  requiredIds: string[];
   classAttributePredicates: ParsedClassAttributePredicate[];
   attributePredicates: ParsedAttributePredicate[];
   negativeClasses: string[];
@@ -47,6 +48,7 @@ export type ParsedSelectorBranch = {
   steps: ParsedSelectorStep[];
   subjectStepIndex: number;
   subjectClassNames: string[];
+  subjectIds: string[];
   classAttributePredicates: ParsedClassAttributePredicate[];
   attributePredicates: ParsedAttributePredicate[];
   requiredClassNames: string[];

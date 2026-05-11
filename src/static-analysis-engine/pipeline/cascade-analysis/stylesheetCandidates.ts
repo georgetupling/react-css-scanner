@@ -11,6 +11,7 @@ import type {
 } from "../selector-reachability/index.js";
 import { buildSelectorReachability } from "../selector-reachability/index.js";
 import type { RenderModel } from "../render-structure/index.js";
+import type { AnalysisConfidence } from "../../types/analysis.js";
 import type { CssScopeSelectorRequirementFact } from "../../types/css.js";
 import { parseSelectorBranch } from "../../libraries/selector-parsing/parseSelectorBranch.js";
 import { normalizeAtRuleConditions } from "./atRuleConditions.js";
@@ -507,6 +508,7 @@ function createSyntheticScopeSelectorBranch(
     ruleKey: `@scope:${requirement.selectorText}`,
     requiredClassNames: parsedBranch?.requiredClassNames ?? requirement.requiredClassNames,
     subjectClassNames: parsedBranch?.subjectClassNames ?? requirement.requiredClassNames,
+    subjectIds: parsedBranch?.subjectIds ?? [],
     classAttributePredicates: parsedBranch?.classAttributePredicates ?? [],
     attributePredicates: parsedBranch?.attributePredicates ?? [],
     contextClassNames: parsedBranch?.contextClassNames ?? [],
@@ -870,20 +872,25 @@ function findCssModuleLocalMatchesForSelectorBranch(input: {
     .filter((match) =>
       forbiddenClassNames.every((className) => !match.classNames.includes(className)),
     )
-    .map((match) => ({
-      id: ["css-module-selector-branch-match", input.selectorBranch.id, match.elementId].join(":"),
-      selectorBranchNodeId: input.selectorBranch.selectorBranchNodeId,
-      subjectElementId: match.elementId,
-      elementMatchIds: [],
-      supportingEmissionSiteIds: match.emissionSiteIds,
-      requiredClassNames,
-      matchedClassNames: match.classNames,
-      renderPathIds: match.renderPathIds,
-      placementConditionIds: match.placementConditionIds,
-      certainty: match.certainty,
-      confidence: match.certainty === "definite" ? "high" : "medium",
-      traces: [],
-    }))
+    .map((match): SelectorBranchMatch => {
+      const confidence: AnalysisConfidence = match.certainty === "definite" ? "high" : "medium";
+      return {
+        id: ["css-module-selector-branch-match", input.selectorBranch.id, match.elementId].join(
+          ":",
+        ),
+        selectorBranchNodeId: input.selectorBranch.selectorBranchNodeId,
+        subjectElementId: match.elementId,
+        elementMatchIds: [],
+        supportingEmissionSiteIds: match.emissionSiteIds,
+        requiredClassNames,
+        matchedClassNames: match.classNames,
+        renderPathIds: match.renderPathIds,
+        placementConditionIds: match.placementConditionIds,
+        certainty: match.certainty,
+        confidence,
+        traces: [],
+      };
+    })
     .sort(compareById);
 }
 

@@ -361,6 +361,7 @@ function getClassMatches(input: {
     elementId: match.elementId,
     requirement: {
       requiredClassNames: [input.className],
+      requiredIds: [],
       classAttributePredicates: [],
       attributePredicates: [],
       unsupportedParts: [],

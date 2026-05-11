@@ -7,6 +7,7 @@ export type CssSelectorBranchFact = {
   raw: string;
   matchKind: CssSelectorMatchKind;
   subjectClassNames: string[];
+  subjectIds: string[];
   classAttributePredicates: CssClassAttributePredicateFact[];
   attributePredicates: CssAttributePredicateFact[];
   requiredClassNames: string[];

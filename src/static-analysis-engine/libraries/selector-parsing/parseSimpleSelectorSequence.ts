@@ -14,6 +14,7 @@ import type {
 
 export function parseSimpleSelectorSequence(segment: string): ParsedSimpleSelectorSequence {
   const requiredClasses: string[] = [];
+  const requiredIds: string[] = [];
   const classAttributePredicates: ParsedClassAttributePredicate[] = [];
   const attributePredicates: ParsedAttributePredicate[] = [];
   const negativeClasses: string[] = [];
@@ -44,8 +45,12 @@ export function parseSimpleSelectorSequence(segment: string): ParsedSimpleSelect
 
     if (character === "#") {
       const identifier = readCssIdentifier(segment, index + 1);
+      if (identifier) {
+        requiredIds.push(identifier.value);
+      } else {
+        hasUnknownSemantics = true;
+      }
       hasSubjectModifiers = true;
-      hasTypeOrIdConstraint = true;
       index = identifier?.nextIndex ?? index + 1;
       continue;
     }
@@ -180,6 +185,7 @@ export function parseSimpleSelectorSequence(segment: string): ParsedSimpleSelect
 
   return {
     requiredClasses: unique(requiredClasses),
+    requiredIds: unique(requiredIds),
     classAttributePredicates: uniqueClassAttributePredicates(classAttributePredicates),
     attributePredicates: uniqueAttributePredicates(attributePredicates),
     negativeClasses: unique(negativeClasses),

@@ -85,10 +85,12 @@ Config file name: `scan-react-css.json`
 Discovery order:
 
 1. `--config` path
-2. `<cwd>/scan-react-css.json`
+2. `<rootDir>/scan-react-css.json`
 3. `SCAN_REACT_CSS_CONFIG_DIR/scan-react-css.json`
 4. first `scan-react-css.json` on OS `PATH`
 5. built-in defaults
+
+Relative `--config` paths are resolved from the scan root directory.
 
 Important rules:
 

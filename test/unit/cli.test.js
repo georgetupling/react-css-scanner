@@ -168,11 +168,19 @@ test("CLI reports JSON output write failures clearly", async () => {
   }
 });
 
-test("CLI discovers scan-react-css config from the command directory", async () => {
+test("CLI discovers scan-react-css config from the scan root directory", async () => {
   const project = await new TestProjectBuilder()
+    .withFile(
+      "app/scan-react-css.json",
+      JSON.stringify({
+        rules: {
+          "missing-css-class": "off",
+        },
+      }),
+    )
     .withConfig({
       rules: {
-        "missing-css-class": "off",
+        "missing-css-class": "error",
       },
     })
     .withSourceFile(
@@ -195,10 +203,10 @@ test("CLI discovers scan-react-css config from the command directory", async () 
   }
 });
 
-test("CLI resolves relative --config paths from the command directory", async () => {
+test("CLI resolves relative --config paths from the scan root directory", async () => {
   const project = await new TestProjectBuilder()
     .withFile(
-      "config/custom.scan-react-css.json",
+      "app/config/custom.scan-react-css.json",
       JSON.stringify({
         failOnSeverity: "error",
         rules: {

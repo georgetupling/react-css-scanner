@@ -79,8 +79,7 @@ export function projectSelectorBranchRequirement(
   if (
     parsedBranch.hasUnknownSemantics ||
     (parsedBranch.hasSubjectModifiers &&
-      !hasOnlySupportedSubjectPseudoModifiers(parsedBranch) &&
-      !hasOnlySupportedAttributePredicates(parsedBranch) &&
+      !hasOnlySupportedSubjectConstraints(parsedBranch) &&
       !parsedBranch.steps.some((step) => step.selector.hasClassRelations.length > 0) &&
       parsedBranch.hasDescendantClassNames.length === 0 &&
       parsedBranch.negativeClassNames.length === 0)
@@ -256,29 +255,20 @@ export function projectSelectorBranchRequirement(
   };
 }
 
-function hasOnlySupportedAttributePredicates(parsedBranch: ParsedSelectorBranch): boolean {
+function hasOnlySupportedSubjectConstraints(parsedBranch: ParsedSelectorBranch): boolean {
   const subjectStep = parsedBranch.steps[parsedBranch.subjectStepIndex];
   if (!subjectStep) {
     return false;
   }
   const selector = subjectStep.selector;
+  const hasSupportedPseudoModifiers =
+    selector.pseudoClasses.length === 0 ||
+    selector.pseudoClasses.every((pseudoClass) => isSupportedSubjectPseudoModifier(pseudoClass));
   return (
-    selector.attributePredicates.length > 0 &&
-    selector.pseudoClasses.length === 0 &&
-    !selector.hasTypeOrIdConstraint &&
-    selector.classAttributePredicates.length === 0
-  );
-}
-
-function hasOnlySupportedSubjectPseudoModifiers(parsedBranch: ParsedSelectorBranch): boolean {
-  const subjectStep = parsedBranch.steps[parsedBranch.subjectStepIndex];
-  if (!subjectStep) {
-    return false;
-  }
-  const selector = subjectStep.selector;
-  return (
-    selector.pseudoClasses.length > 0 &&
-    selector.pseudoClasses.every((pseudoClass) => isSupportedSubjectPseudoModifier(pseudoClass)) &&
+    (selector.requiredIds.length > 0 ||
+      selector.attributePredicates.length > 0 ||
+      selector.pseudoClasses.length > 0) &&
+    hasSupportedPseudoModifiers &&
     !selector.hasTypeOrIdConstraint &&
     selector.classAttributePredicates.length === 0
   );

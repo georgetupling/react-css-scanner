@@ -881,7 +881,12 @@ function resolveRenderPropCallbackArgumentAccess(input: {
     const parameterIndex = (input.renderSite.callbackParameterNames ?? []).indexOf(
       directParameterName,
     );
-    return parameterIndex >= 0 ? { parameterIndex } : undefined;
+    return parameterIndex >= 0
+      ? {
+          parameterIndex,
+          ...(getProjectedClassNameProperty(input.classSite) ?? {}),
+        }
+      : undefined;
   }
 
   if (rootExpression.expressionKind !== "member-access") {
@@ -898,6 +903,15 @@ function resolveRenderPropCallbackArgumentAccess(input: {
   );
   return parameterIndex >= 0
     ? { parameterIndex, propertyName: rootExpression.propertyName }
+    : undefined;
+}
+
+function getProjectedClassNameProperty(
+  classSite: RenderStructureInput["graph"]["nodes"]["classExpressionSites"][number],
+): { propertyName: string } | undefined {
+  return classSite.valueProjection?.kind === "object-property" &&
+    classSite.valueProjection.propertyNames.includes("className")
+    ? { propertyName: "className" }
     : undefined;
 }
 

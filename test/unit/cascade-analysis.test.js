@@ -73,6 +73,13 @@ for (const selectorCase of [
     losing: { selectorText: ".panel", property: "color", value: "blue" },
   },
   {
+    name: "ID selectors match rendered static JSX ids",
+    source:
+      'import "./styles.css";\nexport function App() { return <section id="hero" className="card">Hello</section>; }\n',
+    css: "#hero.card { color: red; }\n.card { color: blue; }\n",
+    losing: { selectorText: ".card", property: "color", value: "blue" },
+  },
+  {
     name: ":has() contributes argument specificity on the subject element",
     source:
       'import "./styles.css";\nexport function App() { return <section className="card"><h2 className="title">Title</h2></section>; }\n',
@@ -115,6 +122,62 @@ for (const selectorCase of [
     }
   });
 }
+
+test("cascade analysis does not match ID selector constraints against other static ids", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./styles.css";\nexport function App() { return <section id="main" className="card">Hello</section>; }\n',
+    )
+    .withCssFile("src/styles.css", "#hero.card { color: red; }\n.card { color: blue; }\n")
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+
+    assertNoDeclarationCandidate(result, {
+      selectorText: "#hero.card",
+      property: "color",
+      value: "red",
+    });
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis does not treat dynamic JSX ids as definite ID selector matches", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./styles.css";\nexport function App({ id }) { return <section id={id} className="card">Hello</section>; }\n',
+    )
+    .withCssFile("src/styles.css", "#hero.card { color: red; }\n.card { color: blue; }\n")
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+
+    assertNoDeclarationCandidate(result, {
+      selectorText: "#hero.card",
+      property: "color",
+      value: "red",
+    });
+  } finally {
+    await project.cleanup();
+  }
+});
 
 test("cascade analysis resolves cross-stylesheet source order from runtime import order", async () => {
   const project = await new TestProjectBuilder()
@@ -3426,6 +3489,20 @@ function assertLosingDeclaration(result, expected) {
     true,
     formatCascadeCandidates(result),
   );
+}
+
+function assertNoDeclarationCandidate(result, expected) {
+  const cascade = result.analysisEvidence.cascadeAnalysis;
+  const projectEvidence = result.analysisEvidence.projectEvidence;
+  const candidate = cascade.candidates.find(
+    (entry) =>
+      entry.property === expected.property &&
+      entry.value === expected.value &&
+      projectEvidence.indexes.cssDeclarationsById.get(entry.declarationId)?.selectorText ===
+        expected.selectorText,
+  );
+
+  assert.equal(candidate, undefined, formatCascadeCandidates(result));
 }
 
 function formatCascadeCandidates(result) {
