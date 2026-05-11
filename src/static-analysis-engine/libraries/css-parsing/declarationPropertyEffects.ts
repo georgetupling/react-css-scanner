@@ -64,12 +64,16 @@ export function getCssDeclarationPropertyEffects(input: {
   value: string;
 }): CssDeclarationPropertyEffect[] {
   const normalizedProperty = input.property.trim().toLowerCase();
+  const customPropertyDependencies = collectCustomPropertyDependencies(input.value);
   if (normalizedProperty === "margin" || normalizedProperty === "padding") {
-    return expandFourSidedShorthand({
-      propertyPrefix: normalizedProperty,
-      value: input.value,
-      unsupportedProperty: normalizedProperty,
-    });
+    return withCustomPropertyDependencies(
+      expandFourSidedShorthand({
+        propertyPrefix: normalizedProperty,
+        value: input.value,
+        unsupportedProperty: normalizedProperty,
+      }),
+      customPropertyDependencies,
+    );
   }
 
   if (
@@ -80,60 +84,82 @@ export function getCssDeclarationPropertyEffects(input: {
     normalizedProperty === "inset-block" ||
     normalizedProperty === "inset-inline"
   ) {
-    return expandTwoSidedLogicalShorthand({
-      propertyPrefix: normalizedProperty,
-      value: input.value,
-      unsupportedProperty: normalizedProperty,
-    });
+    return withCustomPropertyDependencies(
+      expandTwoSidedLogicalShorthand({
+        propertyPrefix: normalizedProperty,
+        value: input.value,
+        unsupportedProperty: normalizedProperty,
+      }),
+      customPropertyDependencies,
+    );
   }
 
   if (normalizedProperty === "inset") {
-    return expandFourSidedShorthand({
-      propertyPrefix: normalizedProperty,
-      value: input.value,
-      unsupportedProperty: normalizedProperty,
-      physicalProperties: ["top", "right", "bottom", "left"],
-    });
+    return withCustomPropertyDependencies(
+      expandFourSidedShorthand({
+        propertyPrefix: normalizedProperty,
+        value: input.value,
+        unsupportedProperty: normalizedProperty,
+        physicalProperties: ["top", "right", "bottom", "left"],
+      }),
+      customPropertyDependencies,
+    );
   }
 
   if (normalizedProperty === "background") {
-    return expandBackgroundShorthandWithCssTree({
-      value: input.value,
-      unsupportedProperty: normalizedProperty,
-    });
+    return withCustomPropertyDependencies(
+      expandBackgroundShorthandWithCssTree({
+        value: input.value,
+        unsupportedProperty: normalizedProperty,
+        customPropertyDependencies,
+      }),
+      customPropertyDependencies,
+    );
   }
 
   if (BORDER_PARTS.some((part) => normalizedProperty === `border-${part}`)) {
-    return expandFourSidedShorthand({
-      propertyPrefix: "border",
-      propertySuffix: normalizedProperty.replace("border-", ""),
-      value: input.value,
-      unsupportedProperty: normalizedProperty,
-    });
+    return withCustomPropertyDependencies(
+      expandFourSidedShorthand({
+        propertyPrefix: "border",
+        propertySuffix: normalizedProperty.replace("border-", ""),
+        value: input.value,
+        unsupportedProperty: normalizedProperty,
+      }),
+      customPropertyDependencies,
+    );
   }
 
   if (normalizedProperty === "border") {
-    return expandBorderBoxShorthand({
-      value: input.value,
-      unsupportedProperty: normalizedProperty,
-      sides: BOX_SIDES,
-    });
+    return withCustomPropertyDependencies(
+      expandBorderBoxShorthand({
+        value: input.value,
+        unsupportedProperty: normalizedProperty,
+        sides: BOX_SIDES,
+      }),
+      customPropertyDependencies,
+    );
   }
 
   if (BOX_SIDES.some((side) => normalizedProperty === `border-${side}`)) {
     const side = BOX_SIDES.find((candidate) => normalizedProperty === `border-${candidate}`);
-    return expandBorderBoxShorthand({
-      value: input.value,
-      unsupportedProperty: normalizedProperty,
-      sides: side ? [side] : [],
-    });
+    return withCustomPropertyDependencies(
+      expandBorderBoxShorthand({
+        value: input.value,
+        unsupportedProperty: normalizedProperty,
+        sides: side ? [side] : [],
+      }),
+      customPropertyDependencies,
+    );
   }
 
   if (normalizedProperty === "border-block" || normalizedProperty === "border-inline") {
-    return expandBorderLogicalShorthand({
-      value: input.value,
-      unsupportedProperty: normalizedProperty,
-    });
+    return withCustomPropertyDependencies(
+      expandBorderLogicalShorthand({
+        value: input.value,
+        unsupportedProperty: normalizedProperty,
+      }),
+      customPropertyDependencies,
+    );
   }
 
   if (
@@ -144,34 +170,56 @@ export function getCssDeclarationPropertyEffects(input: {
     )
   ) {
     const [axis, part] = normalizedProperty.replace("border-", "").split("-");
-    return expandBorderLogicalPartShorthand({
-      propertyAxis: axis ?? "",
-      propertyPart: part ?? "",
-      value: input.value,
-      unsupportedProperty: normalizedProperty,
-    });
+    return withCustomPropertyDependencies(
+      expandBorderLogicalPartShorthand({
+        propertyAxis: axis ?? "",
+        propertyPart: part ?? "",
+        value: input.value,
+        unsupportedProperty: normalizedProperty,
+      }),
+      customPropertyDependencies,
+    );
   }
 
   if (UNSUPPORTED_SHORTHANDS.has(normalizedProperty)) {
-    return [
+    return withCustomPropertyDependencies(
+      [
+        {
+          property: normalizedProperty,
+          value: input.value,
+          source: "exact",
+          supported: false,
+          reason: `The "${normalizedProperty}" shorthand is not expanded by cascade analysis yet.`,
+        },
+      ],
+      customPropertyDependencies,
+    );
+  }
+
+  return withCustomPropertyDependencies(
+    [
       {
         property: normalizedProperty,
         value: input.value,
         source: "exact",
-        supported: false,
-        reason: `The "${normalizedProperty}" shorthand is not expanded by cascade analysis yet.`,
+        supported: true,
       },
-    ];
-  }
+    ],
+    customPropertyDependencies,
+  );
+}
 
-  return [
-    {
-      property: normalizedProperty,
-      value: input.value,
-      source: "exact",
-      supported: true,
-    },
-  ];
+function withCustomPropertyDependencies(
+  effects: CssDeclarationPropertyEffect[],
+  customPropertyDependencies: string[],
+): CssDeclarationPropertyEffect[] {
+  if (customPropertyDependencies.length === 0) {
+    return effects;
+  }
+  return effects.map((effect) => ({
+    ...effect,
+    customPropertyDependencies,
+  }));
 }
 
 function expandFourSidedShorthand(input: {
@@ -363,9 +411,20 @@ function parseBorderShorthandValue(
 function expandBackgroundShorthandWithCssTree(input: {
   value: string;
   unsupportedProperty: string;
+  customPropertyDependencies: string[];
 }): CssDeclarationPropertyEffect[] {
   const ast = parseCssValue(input.value);
   if (!ast || !matchesCssProperty("background", ast)) {
+    if (input.customPropertyDependencies.length > 0) {
+      return unsupportedShorthandEffect(
+        input.unsupportedProperty,
+        input.value,
+        `value depends on unresolved custom ${pluralize(
+          "property",
+          input.customPropertyDependencies.length,
+        )} ${input.customPropertyDependencies.join(", ")}`,
+      );
+    }
     return unsupportedShorthandEffect(
       input.unsupportedProperty,
       input.value,
@@ -595,6 +654,33 @@ function parseCssValue(value: string): CssTreeValueAst | undefined {
   }
 }
 
+function collectCustomPropertyDependencies(value: string): string[] {
+  const ast = parseCssValue(value);
+  if (!ast) {
+    return [];
+  }
+  const dependencies = new Set<string>();
+  collectCustomPropertyDependenciesFromNodes(ast.children ?? [], dependencies);
+  return [...dependencies].sort((left, right) => left.localeCompare(right));
+}
+
+function collectCustomPropertyDependenciesFromNodes(
+  nodes: CssTreeValueNode[],
+  dependencies: Set<string>,
+): void {
+  for (const node of nodes) {
+    if (node.type === "Function" && node.name?.toLowerCase() === "var") {
+      const firstArgument = node.children?.find((child) => !isCssValueOperator(child, ","));
+      const customPropertyName =
+        firstArgument?.type === "Identifier" ? firstArgument.name : undefined;
+      if (customPropertyName?.startsWith("--")) {
+        dependencies.add(customPropertyName);
+      }
+    }
+    collectCustomPropertyDependenciesFromNodes(node.children ?? [], dependencies);
+  }
+}
+
 function matchesCssProperty(property: string, ast: CssTreeValueAst): boolean {
   return (
     csstree.lexer.matchProperty(property, cssTreeValueFromNodes(ast.children ?? [])).error === null
@@ -690,6 +776,10 @@ function unsupportedShorthandEffect(
       reason: `The "${property}" shorthand ${reason}.`,
     },
   ];
+}
+
+function pluralize(word: string, count: number): string {
+  return count === 1 ? word : `${word}s`;
 }
 
 function splitCssValueTokens(value: string): string[] {

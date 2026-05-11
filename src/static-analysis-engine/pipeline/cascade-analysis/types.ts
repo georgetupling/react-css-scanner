@@ -58,6 +58,9 @@ export type CascadeDeclarationCandidate = {
   declaredProperty: string;
   declaredValue: string;
   propertyEffectSource: "exact" | "shorthand";
+  propertyEffectSupported: boolean;
+  propertyEffectReason?: string;
+  customPropertyDependencies?: string[];
   cascadeKey: CascadeKey;
   conditionSetId?: string;
   matchCertainty: "definite" | "possible" | "unknown";

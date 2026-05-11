@@ -967,7 +967,9 @@ test("cascade analysis reports ambiguous border shorthand values as unsupported"
       cascade.diagnostics.some(
         (diagnostic) =>
           diagnostic.code === "unsupported-property-semantics" &&
-          diagnostic.message.includes('"border" shorthand value could not be safely parsed'),
+          diagnostic.message.includes(
+            '"border" declaration depends on unresolved custom property substitution',
+          ),
       ),
       true,
     );
@@ -1115,7 +1117,219 @@ test("cascade analysis reports ambiguous background shorthand values as unsuppor
       cascade.diagnostics.some(
         (diagnostic) =>
           diagnostic.code === "unsupported-property-semantics" &&
-          diagnostic.message.includes('"background" shorthand value could not be safely parsed'),
+          diagnostic.message.includes(
+            '"background" declaration depends on unresolved custom property substitution',
+          ),
+      ),
+      true,
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis models custom property declarations as exact candidates", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./styles.css";\nexport function App() { return <button className="button primary active">Save</button>; }\n',
+    )
+    .withCssFile(
+      "src/styles.css",
+      ".button.primary { --surface: red; }\n.button.primary.active { --surface: blue; }\n",
+    )
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+    const outcome = cascade.outcomes.find((candidate) => candidate.property === "--surface");
+
+    assert.ok(outcome?.winningCandidateId);
+    assert.equal(cascade.indexes.candidateById.get(outcome.winningCandidateId)?.value, "blue");
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis substitutes definite custom property winners before expanding shorthands", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./styles.css";\nexport function App() { return <button className="button primary">Save</button>; }\n',
+    )
+    .withCssFile(
+      "src/styles.css",
+      ".button.primary { --button-bg: blue; background: var(--button-bg); }\n",
+    )
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+    const colorOutcome = cascade.outcomes.find(
+      (candidate) => candidate.property === "background-color",
+    );
+    const imageOutcome = cascade.outcomes.find(
+      (candidate) => candidate.property === "background-image",
+    );
+
+    assert.ok(colorOutcome?.winningCandidateId);
+    assert.equal(cascade.indexes.candidateById.get(colorOutcome.winningCandidateId)?.value, "blue");
+    assert.ok(imageOutcome?.winningCandidateId);
+    assert.equal(cascade.indexes.candidateById.get(imageOutcome.winningCandidateId)?.value, "none");
+    assert.equal(
+      cascade.diagnostics.some(
+        (diagnostic) => diagnostic.code === "unsupported-property-semantics",
+      ),
+      false,
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis uses var() fallbacks when custom properties are missing", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./styles.css";\nexport function App() { return <button className="button primary">Save</button>; }\n',
+    )
+    .withCssFile("src/styles.css", ".button.primary { background: var(--missing-bg, blue); }\n")
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+    const colorOutcome = cascade.outcomes.find(
+      (candidate) => candidate.property === "background-color",
+    );
+
+    assert.ok(colorOutcome?.winningCandidateId);
+    assert.equal(cascade.indexes.candidateById.get(colorOutcome.winningCandidateId)?.value, "blue");
+    assert.equal(
+      cascade.diagnostics.some(
+        (diagnostic) => diagnostic.code === "unsupported-property-semantics",
+      ),
+      false,
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis preserves uncertainty for missing var() values without fallback", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./styles.css";\nexport function App() { return <button className="button primary">Save</button>; }\n',
+    )
+    .withCssFile("src/styles.css", ".button.primary { color: var(--missing-color); }\n")
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+
+    assert.equal(
+      cascade.diagnostics.some(
+        (diagnostic) =>
+          diagnostic.code === "unsupported-property-semantics" &&
+          diagnostic.message.includes("--missing-color has no known cascade winner or fallback"),
+      ),
+      true,
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis preserves uncertainty for conditional custom property winners", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./styles.css";\nexport function App() { return <button className="button primary">Save</button>; }\n',
+    )
+    .withCssFile(
+      "src/styles.css",
+      ".button.primary { --surface: red; }\n.button.primary:hover { --surface: blue; }\n.button.primary { color: var(--surface); }\n",
+    )
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+
+    assert.equal(
+      cascade.diagnostics.some(
+        (diagnostic) =>
+          diagnostic.code === "unsupported-property-semantics" &&
+          diagnostic.message.includes("--surface does not have a definite cascade winner"),
+      ),
+      true,
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis preserves uncertainty for cyclic custom property values", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./styles.css";\nexport function App() { return <button className="button primary">Save</button>; }\n',
+    )
+    .withCssFile(
+      "src/styles.css",
+      ".button.primary { --a: var(--b); --b: var(--a); color: var(--a); }\n",
+    )
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+
+    assert.equal(
+      cascade.diagnostics.some(
+        (diagnostic) =>
+          diagnostic.code === "unsupported-property-semantics" &&
+          diagnostic.message.includes("custom property cycle detected through --a -> --b -> --a"),
       ),
       true,
     );

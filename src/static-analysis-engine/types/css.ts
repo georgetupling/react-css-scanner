@@ -43,6 +43,7 @@ export type CssDeclarationPropertyEffect = {
   value: string;
   source: "exact" | "shorthand";
   supported: boolean;
+  customPropertyDependencies?: string[];
   reason?: string;
 };
 

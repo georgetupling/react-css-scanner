@@ -412,6 +412,10 @@ Phase 2 adds the first cascade stage scaffold:
 - React-style numeric value normalization for inline styles: non-zero numeric values gain `px` except for custom properties and known unitless CSS properties.
 - static inline style object spread flattening for local `const` object literals, preserving object literal order and React's later-property-wins behavior.
 - precomputed inline style property effects after React property/value normalization, so cascade candidate creation does not parse inline declaration semantics.
+- custom property declarations are modeled as exact cascade candidates, and declaration values containing `var(...)` record custom-property dependencies. Shorthand expansion blocked by `var(...)` emits explicit unresolved-custom-property diagnostics instead of generic parser uncertainty.
+- definite custom property winners are substituted into dependent declaration values before final property-effect expansion. This lets declarations such as `background: var(--button-bg)` become normal longhand candidates when `--button-bg` has a definite winner for the rendered element.
+- `var(...)` fallback values are used when a referenced custom property is missing and the fallback can be resolved.
+- custom property substitution preserves uncertainty when the referenced custom property winner is conditional, unresolved, cyclic, invalid after substitution, or missing without a usable fallback.
 - condition sets for at-rule and render placement conditions.
 - outcomes grouped by rendered element and effective property.
 - resolved cross-stylesheet outcomes when all candidates come from a definite initial runtime CSS chunk with stable static import order.
@@ -436,7 +440,8 @@ Known limitations:
 - no dynamic, unknown spread, parameterized helper, mutation-based, call-result, member-expression, re-export barrel, namespace import, or package-import inline style evaluation
 - conditional inline style branches with conflicting values for the same effective property are intentionally unsupported
 - only a bounded safe shorthand/longhand property semantics set
-- no logical property, reset, inheritance, custom property, or `var()` resolution
+- no logical property, reset, or inheritance resolution
+- custom property cascade and definite `var()` substitution are modeled, but conditional, cyclic, missing, and invalid substitutions remain unsupported-property-semantics uncertainty
 - no full typed value grammar; border shorthand parsing recognizes clear width/style/color tokens and intentionally rejects ambiguous whole-value variables
 - `background` shorthand parsing is `css-tree` validated but still partial: it models reset/winning behavior for the main background longhands, but it does not yet model every computed-value nuance or `var()` substitution
 - no pseudo-state implication model: for example, `:focus-visible` is not inferred to imply `:focus`, and `:hover:focus` is not reduced against `:hover`

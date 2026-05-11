@@ -598,6 +598,75 @@ test("scanProject does not report pseudo-state declarations as always shadowing 
   }
 });
 
+test("scanProject does not report var-dependent shorthand declarations as always shadowed", async () => {
+  const project = await new TestProjectBuilder()
+    .withConfig({
+      rules: {
+        "duplicate-class-definition": "off",
+        "declaration-always-shadowed": "info",
+      },
+    })
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./App.css";\nexport function App() { return <button className="button primary">Save</button>; }\n',
+    )
+    .withCssFile(
+      "src/App.css",
+      ".button.primary { background: var(--button-bg); }\n.button.primary { background: blue; }\n",
+    )
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+    });
+
+    assert.equal(
+      result.findings.some((finding) => finding.ruleId === "declaration-always-shadowed"),
+      false,
+    );
+    assert.equal(result.summary.findingsByRule["declaration-always-shadowed"] ?? 0, 0);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("scanProject reports var-dependent shorthand declarations as shadowed when custom property resolves", async () => {
+  const project = await new TestProjectBuilder()
+    .withConfig({
+      rules: {
+        "duplicate-class-definition": "off",
+        "declaration-always-shadowed": "info",
+      },
+    })
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./App.css";\nexport function App() { return <button className="button primary">Save</button>; }\n',
+    )
+    .withCssFile(
+      "src/App.css",
+      ".button.primary { --button-bg: blue; background: var(--button-bg); }\n.button.primary { background: red; }\n",
+    )
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+    });
+    const finding = result.findings.find(
+      (candidate) =>
+        candidate.ruleId === "declaration-always-shadowed" &&
+        candidate.data?.property === "background",
+    );
+
+    assert.ok(finding);
+    assert.match(finding.message, /background: var\(--button-bg\)/);
+    assert.equal(result.summary.findingsByRule["declaration-always-shadowed"], 1);
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("scanProject fails on unknown top-level config keys", async () => {
   const project = await new TestProjectBuilder()
     .withConfig({

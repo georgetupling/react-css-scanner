@@ -142,6 +142,48 @@ test("CSS parser attaches declaration property effects for cascade consumers", (
   );
 });
 
+test("CSS parser records custom property dependencies in declaration property effects", () => {
+  const [rule] = extractCssStyleRules({
+    cssText:
+      ".button { --surface: blue; color: var(--surface, red); background: var(--button-bg); }",
+    filePath: "src/App.css",
+  });
+
+  const customProperty = rule.declarations.find(
+    (declaration) => declaration.property === "--surface",
+  );
+  const color = rule.declarations.find((declaration) => declaration.property === "color");
+  const background = rule.declarations.find((declaration) => declaration.property === "background");
+
+  assert.deepEqual(customProperty.propertyEffects, [
+    {
+      property: "--surface",
+      value: "blue",
+      source: "exact",
+      supported: true,
+    },
+  ]);
+  assert.deepEqual(color.propertyEffects, [
+    {
+      property: "color",
+      value: "var(--surface, red)",
+      source: "exact",
+      supported: true,
+      customPropertyDependencies: ["--surface"],
+    },
+  ]);
+  assert.deepEqual(background.propertyEffects, [
+    {
+      property: "background",
+      value: "var(--button-bg)",
+      source: "exact",
+      supported: false,
+      customPropertyDependencies: ["--button-bg"],
+      reason: 'The "background" shorthand value depends on unresolved custom property --button-bg.',
+    },
+  ]);
+});
+
 function summarizeRules(rules) {
   return rules.map((rule) => ({
     selector: rule.selector,
