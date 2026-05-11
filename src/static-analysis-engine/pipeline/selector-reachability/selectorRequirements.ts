@@ -106,27 +106,7 @@ export function projectSelectorBranchRequirement(
       });
     }
 
-    if (requiredClasses.length < 2) {
-      if (requiredClasses.length === 1 && parsedBranch.negativeClassNames.length > 0) {
-        return {
-          kind: "same-node-class-conjunction",
-          classNames: [...requiredClasses],
-          forbiddenClassNames: [...parsedBranch.negativeClassNames],
-          normalizedSteps: [
-            {
-              combinatorFromPrevious: null,
-              requiredClasses: [requiredClasses[0]],
-            },
-          ],
-          parseNotes: [
-            "normalized selector into a same-node class conjunction with negated class guards",
-            `required class: ${requiredClasses[0]}`,
-            `forbidden classes: ${parsedBranch.negativeClassNames.join(", ")}`,
-          ],
-          traces: [],
-        };
-      }
-
+    if (requiredClasses.length === 0) {
       return createUnsupportedRequirement({
         reason: UNSUPPORTED_SELECTOR_REASON,
         summary:
@@ -151,10 +131,20 @@ export function projectSelectorBranchRequirement(
     return {
       kind: "same-node-class-conjunction",
       classNames: [...requiredClasses],
+      ...(parsedBranch.negativeClassNames.length > 0
+        ? { forbiddenClassNames: [...parsedBranch.negativeClassNames] }
+        : {}),
       normalizedSteps,
       parseNotes: [
-        "normalized selector into a same-node class conjunction",
-        `required classes: ${requiredClasses.join(", ")}`,
+        parsedBranch.negativeClassNames.length > 0
+          ? "normalized selector into a same-node class conjunction with negated class guards"
+          : "normalized selector into a same-node class conjunction",
+        requiredClasses.length === 1
+          ? `required class: ${requiredClasses[0]}`
+          : `required classes: ${requiredClasses.join(", ")}`,
+        ...(parsedBranch.negativeClassNames.length > 0
+          ? [`forbidden classes: ${parsedBranch.negativeClassNames.join(", ")}`]
+          : []),
       ],
       traces: [],
     };

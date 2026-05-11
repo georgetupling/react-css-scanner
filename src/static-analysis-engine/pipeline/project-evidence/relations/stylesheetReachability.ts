@@ -17,7 +17,10 @@ import {
   mergeTraces,
 } from "../internal/shared.js";
 import type { AnalysisTrace } from "../../../types/analysis.js";
-import type { SelectorBranchMatch } from "../../selector-reachability/types.js";
+import type {
+  SelectorBranchMatch,
+  SelectorBranchReachability,
+} from "../../selector-reachability/types.js";
 
 export function buildStylesheetReachability(
   input: ProjectEvidenceBuildInput,
@@ -453,6 +456,10 @@ function collectSelectorDerivedStylesheetContexts(input: ProjectEvidenceBuildInp
     }
 
     hasSelectorBranchesByStylesheetPath.add(stylesheetPath);
+    if (isStandaloneClassSelectorBranch(branch)) {
+      continue;
+    }
+
     const matchIds =
       selectorReachability.indexes.matchIdsBySelectorBranchNodeId.get(
         branch.selectorBranchNodeId,
@@ -516,6 +523,15 @@ function collectSelectorDerivedStylesheetContexts(input: ProjectEvidenceBuildInp
   }
 
   return selectorDerived;
+}
+
+function isStandaloneClassSelectorBranch(branch: SelectorBranchReachability): boolean {
+  return (
+    branch.requirement.kind === "same-node-class-conjunction" &&
+    branch.requirement.classNames.length === 1 &&
+    branch.subject.classAttributePredicates.length === 0 &&
+    branch.subject.unsupportedParts.length === 0
+  );
 }
 
 function projectContextFromSelectorMatch(input: {

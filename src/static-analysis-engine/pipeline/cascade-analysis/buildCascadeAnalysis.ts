@@ -22,6 +22,7 @@ import {
 } from "./customPropertyResolution.js";
 import { buildRuntimeStylesheetOrder } from "./runtimeStylesheetOrder.js";
 import { buildInlineStyleCandidates } from "./inlineStyleCandidates.js";
+import { buildGlobalLayerOrderByName } from "./cascadeKeys.js";
 import {
   buildStylesheetCascadeDeclarations,
   buildStylesheetDeclarationCandidates,
@@ -43,9 +44,15 @@ export function buildCascadeAnalysis(input: CascadeAnalysisInput): CascadeAnalys
   const diagnostics: CascadeAnalysisDiagnostic[] = [];
   const conditionSetsById = new Map<string, CascadeConditionSet>();
   const runtimeStylesheetOrder = buildRuntimeStylesheetOrder(input);
+  const layerOrderByName = buildGlobalLayerOrderByName({
+    factGraph: input.factGraph,
+    projectEvidence: input.projectEvidence,
+    runtimeStylesheetOrder,
+  });
   const declarations = buildStylesheetCascadeDeclarations({
     projectEvidence: input.projectEvidence,
     stylesheetOrderById: runtimeStylesheetOrder.stylesheetOrderById,
+    layerOrderByName,
     diagnostics,
     createDiagnostic,
   });

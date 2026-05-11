@@ -34,6 +34,7 @@ export function matchElementClassRequirement(input: {
     const completeVariant = site.emissionVariants.find(
       (variant) =>
         includesAll(variant.tokens, input.classNames, requiredClass) &&
+        hasGlobalTokensForClasses(site.tokens, input.classNames) &&
         variant.completeness === "complete" &&
         !variant.unknownDynamic,
     );
@@ -51,8 +52,10 @@ export function matchElementClassRequirement(input: {
     }
 
     if (
-      site.emissionVariants.some((variant) =>
-        includesAll(variant.tokens, input.classNames, requiredClass),
+      site.emissionVariants.some(
+        (variant) =>
+          includesAll(variant.tokens, input.classNames, requiredClass) &&
+          hasGlobalTokensForClasses(site.tokens, input.classNames),
       )
     ) {
       sawPossible = true;
@@ -101,6 +104,15 @@ export function matchElementClassRequirement(input: {
   }
 
   return noMatch(input.classNames);
+}
+
+function hasGlobalTokensForClasses(
+  tokens: Array<{ token: string; tokenKind: string }>,
+  requiredClassNames: string[],
+): boolean {
+  return requiredClassNames.every((className) =>
+    tokens.some((token) => token.token === className && token.tokenKind !== "css-module-export"),
+  );
 }
 
 function isDefiniteElementEmission(

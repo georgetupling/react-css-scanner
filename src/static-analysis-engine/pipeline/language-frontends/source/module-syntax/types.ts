@@ -25,6 +25,7 @@ export type SourceImportSyntaxName = {
 export type SourceImportSyntaxRecord = {
   filePath: string;
   specifier: string;
+  sourceOrder: number;
   importKind: SourceImportSyntaxKind;
   importLoading: SourceImportLoading;
   importNames: SourceImportSyntaxName[];

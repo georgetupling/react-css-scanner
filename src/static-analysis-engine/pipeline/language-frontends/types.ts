@@ -7,6 +7,7 @@ import type { SourceModuleSyntaxFacts } from "./source/module-syntax/index.js";
 import type { SourceExpressionSyntaxFact } from "./source/expression-syntax/index.js";
 import type { SourceReactSyntaxFacts } from "./source/react-syntax/index.js";
 import type { CssSelectorBranchFact } from "../../types/css.js";
+import type { CssLayerOrderStatementFact } from "../../types/css.js";
 
 export type ParsedProjectFile = {
   filePath: string;
@@ -96,6 +97,7 @@ export type CssFrontendFile = {
   origin: "project" | "html-linked" | "package" | "remote";
   sourceSyntax?: ProjectSnapshot["files"]["stylesheets"][number]["sourceSyntax"];
   compiledFrom?: ProjectSnapshot["files"]["stylesheets"][number]["compiledFrom"];
+  layerOrderStatements: CssLayerOrderStatementFact[];
   rules: CssStyleRuleFact[];
   selectorEntries: ExtractedSelectorQuery[];
 };

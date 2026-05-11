@@ -1,2 +1,2 @@
-export { extractCssStyleRules } from "./parseCssStyleRules.js";
+export { extractCssStyleRules, extractCssStylesheetFacts } from "./parseCssStyleRules.js";
 export { getCssDeclarationPropertyEffects } from "./declarationPropertyEffects.js";

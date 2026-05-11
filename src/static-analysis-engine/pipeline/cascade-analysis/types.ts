@@ -75,6 +75,7 @@ export type CascadeComparisonReason =
   | "specificity"
   | "scope-proximity"
   | "source-order"
+  | "condition-branch"
   | "condition-uncertain"
   | "order-uncertain"
   | "unsupported-selector"
@@ -95,10 +96,20 @@ export type CascadeOutcome = {
   winningCandidateId?: string;
   losingCandidateIds: string[];
   unresolvedCandidateIds: string[];
+  conditionalBranches?: CascadeConditionalOutcomeBranch[];
   certainty: "definite" | "possible" | "unknown";
   reason: CascadeComparisonReason;
   comparisonTrace: CascadeComparisonStep[];
   traces: AnalysisTrace[];
+};
+
+export type CascadeConditionalOutcomeBranch = {
+  conditionSetId: string;
+  winningCandidateId?: string;
+  losingCandidateIds: string[];
+  unresolvedCandidateIds: string[];
+  certainty: "possible" | "unknown";
+  reason: CascadeComparisonReason;
 };
 
 export type CascadeAnalysisDiagnosticCode =

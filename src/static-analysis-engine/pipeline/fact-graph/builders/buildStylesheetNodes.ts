@@ -13,6 +13,10 @@ export function buildStylesheetNodes(input: FactGraphInput): StyleSheetNode[] {
         absolutePath: file.absolutePath,
         cssKind: file.cssKind,
         origin: file.origin,
+        layerOrderStatements: file.layerOrderStatements.map((statement) => ({
+          layerNames: [...statement.layerNames],
+          sourceOrder: statement.sourceOrder,
+        })),
         confidence: "high",
         provenance: frontendFileProvenance({
           filePath: file.filePath,

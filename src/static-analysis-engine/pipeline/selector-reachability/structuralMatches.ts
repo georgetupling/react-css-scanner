@@ -1,4 +1,5 @@
 import type { SelectorBranchNode } from "../fact-graph/index.js";
+import { isCssModulePath } from "../../libraries/stylesheets/cssModulePaths.js";
 import type { RenderedElement, RenderModel } from "../render-structure/index.js";
 import { matchElementClassRequirement } from "./elementRequirementMatcher.js";
 import { selectorBranchMatchId, selectorElementMatchId } from "./ids.js";
@@ -330,11 +331,14 @@ function getClassMatches(input: {
 }
 
 function getCachedClassMatches(input: {
+  branch: SelectorBranchNode;
   className: string;
   renderIndexes: SelectorRenderMatchIndexes;
   context: StructuralMatchContext;
 }): CachedClassMatch[] {
-  const existing = input.context.classMatchCache.get(input.className);
+  const includeUnknownClassFallback = !isCssModulePath(input.branch.location?.filePath ?? "");
+  const cacheKey = `${input.className}:${includeUnknownClassFallback ? "unknown" : "exact"}`;
+  const existing = input.context.classMatchCache.get(cacheKey);
   if (existing) {
     return existing;
   }
@@ -343,6 +347,7 @@ function getCachedClassMatches(input: {
     classNames: [input.className],
     elementIdsByClassName: input.renderIndexes.elementIdsByClassName,
     renderIndexes: input.renderIndexes,
+    includeUnknownClassFallback,
   });
   const matches: CachedClassMatch[] = [];
   for (const elementId of elementIds) {
@@ -362,7 +367,7 @@ function getCachedClassMatches(input: {
       confidence: match.certainty === "definite" ? "high" : "medium",
     });
   }
-  input.context.classMatchCache.set(input.className, matches);
+  input.context.classMatchCache.set(cacheKey, matches);
   return matches;
 }
 

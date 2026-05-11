@@ -1,4 +1,5 @@
 import { parseSelectorBranch } from "../../libraries/selector-parsing/parseSelectorBranch.js";
+import { isCssModulePath } from "../../libraries/stylesheets/cssModulePaths.js";
 import type { SelectorBranchNode } from "../fact-graph/index.js";
 import type { RenderModel } from "../render-structure/index.js";
 import { getBranchConfidence, getBranchStatus } from "./branchStatus.js";
@@ -96,6 +97,7 @@ export function buildSelectorReachability(
               classNames: branch.subjectClassNames,
               elementIdsByClassName: renderIndexes.elementIdsByClassName,
               renderIndexes,
+              includeUnknownClassFallback: !isCssModuleSelectorBranch(branch),
             }),
             renderIndexes,
           });
@@ -204,6 +206,10 @@ export function buildSelectorReachability(
     diagnostics,
     indexes,
   };
+}
+
+function isCssModuleSelectorBranch(branch: SelectorBranchNode): boolean {
+  return isCssModulePath(branch.location?.filePath ?? "");
 }
 
 function filterNegatedSubjectMatches(input: {

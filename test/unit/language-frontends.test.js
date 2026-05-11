@@ -329,23 +329,6 @@ test("language frontends collect module syntax import, export, and declaration f
     })),
     [
       {
-        specifier: "./namespace",
-        importKind: "source",
-        importNames: [
-          {
-            kind: "namespace",
-            importedName: "*",
-            localName: "namespaceSource",
-            typeOnly: false,
-          },
-        ],
-      },
-      {
-        specifier: "./reset.css",
-        importKind: "css",
-        importNames: [],
-      },
-      {
         specifier: "./source",
         importKind: "source",
         importNames: [
@@ -370,6 +353,18 @@ test("language frontends collect module syntax import, export, and declaration f
         ],
       },
       {
+        specifier: "./namespace",
+        importKind: "source",
+        importNames: [
+          {
+            kind: "namespace",
+            importedName: "*",
+            localName: "namespaceSource",
+            typeOnly: false,
+          },
+        ],
+      },
+      {
         specifier: "./types",
         importKind: "type-only",
         importNames: [
@@ -380,6 +375,11 @@ test("language frontends collect module syntax import, export, and declaration f
             typeOnly: true,
           },
         ],
+      },
+      {
+        specifier: "./reset.css",
+        importKind: "css",
+        importNames: [],
       },
       {
         specifier: "https://cdn.test/theme.css",

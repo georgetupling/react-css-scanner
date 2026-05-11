@@ -1,6 +1,10 @@
 import type { AnalysisConfidence, AnalysisSeverity, AnalysisTrace } from "../../types/analysis.js";
 import type { SourceAnchor } from "../../types/core.js";
-import type { CssAtRuleContextFact, CssStyleRuleFact } from "../../types/css.js";
+import type {
+  CssAtRuleContextFact,
+  CssLayerOrderStatementFact,
+  CssStyleRuleFact,
+} from "../../types/css.js";
 import type { ExtractedSelectorQuery } from "../../libraries/selector-parsing/queryTypes.js";
 import type { LanguageFrontendsResult } from "../language-frontends/index.js";
 import type { SourceExpressionSyntaxFact } from "../language-frontends/source/expression-syntax/index.js";
@@ -289,6 +293,7 @@ export type StyleSheetNode = FactNodeBase & {
   absolutePath?: string;
   cssKind: "global-css" | "css-module";
   origin: "project" | "html-linked" | "package" | "remote";
+  layerOrderStatements: CssLayerOrderStatementFact[];
 };
 
 export type RuleDefinitionNode = FactNodeBase & {

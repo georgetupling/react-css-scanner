@@ -1,4 +1,4 @@
-import { extractCssStyleRules } from "../../libraries/css-parsing/index.js";
+import { extractCssStylesheetFacts } from "../../libraries/css-parsing/index.js";
 import type { ParsedCssSelectorEntry } from "../../libraries/selector-parsing/index.js";
 import type { ExtractedSelectorQuery } from "../../libraries/selector-parsing/queryTypes.js";
 import type { ProjectSnapshot } from "../workspace-discovery/index.js";
@@ -184,12 +184,12 @@ function buildCssFrontendFacts(snapshot: ProjectSnapshot): CssFrontendFacts {
   const files: CssFrontendFile[] = [...snapshot.files.stylesheets]
     .sort((left, right) => left.filePath.localeCompare(right.filePath))
     .map((stylesheet) => {
-      const rules = extractCssStyleRules({
+      const stylesheetFacts = extractCssStylesheetFacts({
         cssText: stylesheet.cssText,
         filePath: stylesheet.filePath,
       });
       const remappedRules = remapCssStyleRuleLocations({
-        rules,
+        rules: stylesheetFacts.rules,
         stylesheet,
         rootDir: snapshot.rootDir,
       });
@@ -202,6 +202,7 @@ function buildCssFrontendFacts(snapshot: ProjectSnapshot): CssFrontendFacts {
         origin: stylesheet.origin,
         sourceSyntax: stylesheet.sourceSyntax,
         ...(stylesheet.compiledFrom ? { compiledFrom: stylesheet.compiledFrom } : {}),
+        layerOrderStatements: stylesheetFacts.layerOrderStatements,
         rules: remappedRules,
         selectorEntries: remappedRules.flatMap((rule) =>
           rule.selectorEntries.map(projectSelectorEntryToQuery),

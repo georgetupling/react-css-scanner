@@ -8,6 +8,8 @@ import type {
   SelectorReachabilityResult,
 } from "../selector-reachability/index.js";
 import type { RenderModel } from "../render-structure/index.js";
+import type { CssScopeSelectorRequirementFact } from "../../types/css.js";
+import { normalizeAtRuleConditions } from "./atRuleConditions.js";
 import { getDeclarationLayer } from "./cascadeKeys.js";
 import { createConditionSet, mapMatchCertainty } from "./conditions.js";
 import { cascadeDeclarationCandidateId } from "./ids.js";
@@ -26,6 +28,7 @@ import type {
 export function buildStylesheetCascadeDeclarations(input: {
   projectEvidence: ProjectEvidenceAssemblyResult;
   stylesheetOrderById: RuntimeStylesheetOrder["stylesheetOrderById"];
+  layerOrderByName: Map<string, number>;
   diagnostics: CascadeAnalysisDiagnostic[];
   createDiagnostic: (input: {
     code: CascadeAnalysisDiagnosticCode;
@@ -52,7 +55,7 @@ export function buildStylesheetCascadeDeclarations(input: {
     }
 
     const stylesheetSourceOrder = input.stylesheetOrderById.get(declaration.stylesheetId);
-    const layer = getDeclarationLayer(declaration.atRuleContext);
+    const layer = getDeclarationLayer(declaration.atRuleContext, input.layerOrderByName);
     return {
       declarationId: declaration.id,
       property: declaration.property,
@@ -95,6 +98,11 @@ export function buildStylesheetDeclarationCandidates(input: {
   const candidates: CascadeDeclarationCandidate[] = [];
 
   for (const declaration of input.projectEvidence.entities.cssDeclarations) {
+    const atRuleConditions = normalizeAtRuleConditions(declaration.atRuleContext);
+    if (atRuleConditions.applicability === "impossible") {
+      continue;
+    }
+
     if (!declaration.location) {
       input.diagnostics.push(
         input.createDiagnostic({
@@ -161,6 +169,15 @@ export function buildStylesheetDeclarationCandidates(input: {
       }
 
       for (const match of matches) {
+        const scopeProximity = getScopeProximityForElement({
+          atRuleContext: declaration.atRuleContext,
+          elementId: match.subjectElementId,
+          renderModel: input.renderModel,
+        });
+        if (scopeProximity.applicability === "impossible") {
+          continue;
+        }
+
         const runtimeContexts = getRuntimeContextsForCandidate({
           declarationStylesheetId: declaration.stylesheetId,
           match,
@@ -184,6 +201,9 @@ export function buildStylesheetDeclarationCandidates(input: {
               ...declarationRecord.cascadeKey,
               ...runtimeContext.cascadeKeyOverride,
               specificity: branchSpecificity.specificity,
+              ...(scopeProximity.scopeProximity
+                ? { scopeProximity: scopeProximity.scopeProximity }
+                : {}),
             };
             candidates.push({
               id: cascadeDeclarationCandidateId({
@@ -306,6 +326,135 @@ function applyDeclarationLocalOrder(input: {
       input.ruleSourceOrder * 1000 +
       input.declarationIndex,
   };
+}
+
+function getScopeProximityForElement(input: {
+  atRuleContext: ProjectEvidenceAssemblyResult["entities"]["cssDeclarations"][number]["atRuleContext"];
+  elementId: string;
+  renderModel: RenderModel;
+}): {
+  applicability: "applies" | "impossible";
+  scopeProximity?: CascadeDeclarationCandidate["cascadeKey"]["scopeProximity"];
+} {
+  const scopeContexts = input.atRuleContext.filter((entry) => entry.name === "scope");
+  if (scopeContexts.length === 0) {
+    return {
+      applicability: "applies",
+    };
+  }
+
+  let distance = 0;
+  for (const scopeContext of scopeContexts) {
+    const rootRequirements =
+      scopeContext.scopeRootRequirements ??
+      (scopeContext.scopeRootClassName
+        ? [
+            {
+              selectorText: `.${scopeContext.scopeRootClassName}`,
+              requiredClassNames: [scopeContext.scopeRootClassName],
+            },
+          ]
+        : undefined);
+    const limitRequirements =
+      scopeContext.scopeLimitRequirements ??
+      (scopeContext.scopeLimitClassName
+        ? [
+            {
+              selectorText: `.${scopeContext.scopeLimitClassName}`,
+              requiredClassNames: [scopeContext.scopeLimitClassName],
+            },
+          ]
+        : undefined);
+    if (!scopeContext.scopeSupported || !rootRequirements || rootRequirements.length === 0) {
+      return {
+        applicability: "impossible",
+      };
+    }
+    const scopeDistance = findScopeDistance({
+      rootRequirements,
+      limitRequirements,
+      elementId: input.elementId,
+      renderModel: input.renderModel,
+    });
+    if (scopeDistance === undefined) {
+      return {
+        applicability: "impossible",
+      };
+    }
+    distance += scopeDistance;
+  }
+
+  return {
+    applicability: "applies",
+    scopeProximity: {
+      distance,
+      known: true,
+    },
+  };
+}
+
+function findScopeDistance(input: {
+  rootRequirements: CssScopeSelectorRequirementFact[];
+  limitRequirements?: CssScopeSelectorRequirementFact[];
+  elementId: string;
+  renderModel: RenderModel;
+}): number | undefined {
+  let distance = 0;
+  let elementId: string | undefined = input.elementId;
+
+  while (elementId) {
+    if (
+      distance > 0 &&
+      input.limitRequirements &&
+      elementMatchesAnyScopeRequirement(input.renderModel, elementId, input.limitRequirements)
+    ) {
+      return undefined;
+    }
+    if (elementMatchesAnyScopeRequirement(input.renderModel, elementId, input.rootRequirements)) {
+      return distance;
+    }
+    elementId = input.renderModel.indexes.elementById.get(elementId)?.parentElementId;
+    distance += 1;
+  }
+  return undefined;
+}
+
+function elementMatchesAnyScopeRequirement(
+  renderModel: RenderModel,
+  elementId: string,
+  requirements: CssScopeSelectorRequirementFact[],
+): boolean {
+  return requirements.some((requirement) =>
+    elementMatchesScopeRequirement(renderModel, elementId, requirement),
+  );
+}
+
+function elementMatchesScopeRequirement(
+  renderModel: RenderModel,
+  elementId: string,
+  requirement: CssScopeSelectorRequirementFact,
+): boolean {
+  return (
+    requirement.requiredClassNames.every((className) =>
+      elementHasClass(renderModel, elementId, className),
+    ) &&
+    !(requirement.forbiddenClassNames ?? []).some((className) =>
+      elementHasClass(renderModel, elementId, className),
+    )
+  );
+}
+
+function elementHasClass(renderModel: RenderModel, elementId: string, className: string): boolean {
+  const emissionSiteIds = renderModel.indexes.emissionSiteIdsByElementId.get(elementId) ?? [];
+  return emissionSiteIds.some((emissionSiteId) => {
+    const emissionSite = renderModel.indexes.emissionSiteById.get(emissionSiteId);
+    return emissionSite?.tokens.some(
+      (token) =>
+        token.token === className &&
+        token.tokenKind !== "css-module-export" &&
+        token.presence === "always",
+    );
+  });
 }
 
 function findMatchesForSelectorBranch(

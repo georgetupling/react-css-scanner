@@ -24,6 +24,7 @@ export function collectImports(
     imports.push({
       filePath,
       specifier,
+      sourceOrder: statement.getStart(sourceFile),
       importKind: classifyImportKind(specifier, importNames),
       importLoading: "static",
       importNames,
@@ -41,6 +42,7 @@ export function collectImports(
       imports.push({
         filePath,
         specifier,
+        sourceOrder: node.getStart(sourceFile),
         importKind: classifyImportKind(specifier, []),
         importLoading: "dynamic",
         importNames: [],
@@ -134,6 +136,7 @@ function compareImportRecords(
   right: SourceImportSyntaxRecord,
 ): number {
   return (
+    left.sourceOrder - right.sourceOrder ||
     left.specifier.localeCompare(right.specifier) ||
     left.importLoading.localeCompare(right.importLoading) ||
     compareImportNames(left.importNames[0], right.importNames[0])

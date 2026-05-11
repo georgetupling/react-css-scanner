@@ -205,17 +205,18 @@ The first implementation treats condition details as opaque signatures:
 
 - candidates with no conditions are definite
 - candidates with the same non-empty at-rule/render condition signature can be compared, but the outcome is conditional/possible
-- candidates with different condition signatures produce an unresolved `condition-uncertain` outcome, because different runtime contexts may produce different winners
+- candidates with unconditional plus conditional signatures produce a `condition-branch` outcome: the unconditional declarations form the default winner, and each modeled conditional signature gets its own possible branch winner
+- candidates with only different conditional signatures produce an unresolved `condition-uncertain` outcome, because different runtime contexts may produce different winners
 
-This deliberately avoids evaluating media/supports truth. It only proves whether the compared declarations are guarded by the same modeled context.
+This deliberately avoids inventing a viewport, container, or browser capability profile. It proves stable boolean cases and otherwise only proves whether compared declarations are guarded by the same modeled context.
 
 Implementation status:
 
-- at-rule and render placement conditions are modeled as opaque compatibility signatures.
+- at-rule and render placement conditions are modeled as compatibility signatures. Cascade normalizes browser-stable at-rule truths: `@media all` is definite, and `@media not all` declarations are ignored as impossible. Basic `@supports` boolean expressions are reduced with `not`/`and`/`or`; invalid declaration conditions are impossible, negated invalid declarations are definite, and syntactically valid declaration conditions remain conditional. Environment-dependent media queries, valid `@supports`, container queries, and unknown at-rules remain conditional.
 - supported selector pseudo-classes are modeled as `selector-state` conditions.
 - pseudo-state selectors can still produce selector reachability matches when their structural class requirements are otherwise supported.
 - candidates with the same pseudo-state set can be compared as a possible conditional outcome.
-- candidates with different pseudo-state sets, including stateful selectors compared with unconditional selectors, remain unresolved instead of producing a false definite winner.
+- stateful selectors compared with unconditional selectors produce branch outcomes: the unconditional winner applies by default, and each pseudo-state context has a separate possible winner.
 
 ### Declaration Candidates
 
@@ -262,6 +263,7 @@ export type CascadeComparisonReason =
   | "specificity"
   | "scope-proximity"
   | "source-order"
+  | "condition-branch"
   | "condition-uncertain"
   | "order-uncertain"
   | "unsupported-selector"
@@ -282,10 +284,20 @@ export type CascadeOutcome = {
   winningCandidateId?: string;
   losingCandidateIds: string[];
   unresolvedCandidateIds: string[];
+  conditionalBranches?: CascadeConditionalOutcomeBranch[];
   certainty: "definite" | "possible" | "unknown";
   reason: CascadeComparisonReason;
   comparisonTrace: CascadeComparisonStep[];
   traces: AnalysisTrace[];
+};
+
+export type CascadeConditionalOutcomeBranch = {
+  conditionSetId: string;
+  winningCandidateId?: string;
+  losingCandidateIds: string[];
+  unresolvedCandidateIds: string[];
+  certainty: "possible" | "unknown";
+  reason: CascadeComparisonReason;
 };
 ```
 
@@ -400,7 +412,7 @@ Phase 2 adds the first cascade stage scaffold:
 
 - `CascadeKey` for author declarations with `important`, cascade layer, selector specificity, and local source order.
 - branch-specific selector specificity, including basic `:is()`, `:not()`, `:has()`, and zero-specificity `:where()`.
-- named cascade layer order from `@layer a, b;` statements and named `@layer name { ... }` blocks.
+- named cascade layer order from `@layer a, b;` statements and named `@layer name { ... }` blocks, including layer-order statements from earlier stylesheets and nested named layer composition such as `@layer framework { @layer components { ... } }`.
 - layer precedence before specificity, including unlayered normal declarations and reversed `!important` layer order.
 - declaration candidates from selector-branch render matches.
 - declaration candidates from direct `style={{ ... }}` JSX inline styles on intrinsic elements, with inline origin precedence.
@@ -417,13 +429,17 @@ Phase 2 adds the first cascade stage scaffold:
 - `var(...)` fallback values are used when a referenced custom property is missing and the fallback can be resolved.
 - custom property substitution preserves uncertainty when the referenced custom property winner is conditional, unresolved, cyclic, invalid after substitution, or missing without a usable fallback.
 - condition sets for at-rule and render placement conditions.
+- conservative at-rule truth normalization for browser-stable media query cases: always-active `@media all` does not make a candidate conditional, and impossible `@media not all` candidates are skipped.
+- conservative `@supports` truth normalization for basic declaration conditions and boolean combinations: syntactically invalid declaration checks are impossible, `not`/`and`/`or` are reduced, and syntactically valid declaration checks remain conditional unless boolean reduction proves the whole condition definite or impossible.
 - outcomes grouped by rendered element and effective property.
 - resolved cross-stylesheet outcomes when all candidates come from a definite runtime CSS context with stable static import order.
 - runtime-specific stylesheet order contexts for lazy CSS chunks: initial chunk styles are ordered before lazy chunk styles for that lazy source context, while lazy chunk styles are not treated as globally loaded for initial source contexts.
 - unresolved outcomes when candidates come from multiple stylesheets and runtime order cannot be proven.
 - conditional outcomes when all candidates share the same non-empty condition signature.
-- unresolved `condition-uncertain` outcomes when candidates have different at-rule/render condition signatures.
-- selector pseudo-state conditions for supported state and structural pseudo-classes, including conservative unresolved outcomes when a pseudo-state selector is compared with an unconditional selector.
+- `condition-branch` outcomes when unconditional/default declarations compete with conditional declarations, with separate branch winners for each modeled condition signature.
+- unresolved `condition-uncertain` outcomes when candidates only have different conditional at-rule/render/state signatures.
+- selector pseudo-state conditions for supported state and structural pseudo-classes, including branch outcomes when a pseudo-state selector is compared with an unconditional selector.
+- bounded `@scope` proximity for class-compound root selector lists, including optional class-compound selector-list limits; scoped declarations outside the modeled root are skipped, and proximity is compared between specificity and source order.
 - value-aware property effects computed by the CSS frontend for exact properties plus supported box-model shorthands: `margin`, `padding`, logical `margin-*`/`padding-*`, physical/logical `inset`, `border-width`, `border-style`, `border-color`, physical side `border-*`, logical `border-block*`/`border-inline*`, whole `border` when the width/style/color value can be safely parsed, and `css-tree`-validated `background` effects for color, image, repeat, attachment, position, size, origin, and clip.
 - `unsupported-property-semantics` diagnostics for known unsupported shorthands such as `font`, `flex`, `grid`, transitions, animations, and ambiguous supported-family values such as whole-border CSS variables or ambiguous `background` values.
 
@@ -432,11 +448,12 @@ Known limitations:
 - only definite runtime stylesheet contexts are normalized; possible dynamic CSS imports, unresolved dynamic imports, and unknown bundler chunk semantics remain uncertain
 - lazy CSS order is normalized per runtime source context, not as one global project order
 - multi-entry runtime context modeling is conservative; entries remain separate unless a stable per-context order can be proven
-- no evaluation of `@media`, `@supports`, or container-query truth
+- no viewport, capability, or container environment evaluation beyond browser-stable `@media all` / `@media not all` and conservative `@supports` syntax/boolean normalization
 - no proof that different conditional contexts are mutually exclusive or overlapping
+- condition branches model one conditional signature at a time against the unconditional/default candidates; they do not yet enumerate combined simultaneous states such as viewport plus pseudo-state plus runtime route unless the source declarations already share that exact signature
 - anonymous and otherwise unsupported cascade layer order remains unresolved
-- no nested layer name composition beyond explicit dotted layer names
-- no `@scope`
+- cross-stylesheet layer ordering follows definite runtime stylesheet order; uncertain runtime stylesheet order still blocks definite cross-stylesheet layer precedence
+- `@scope` support is limited to class-compound root/limit selector lists; complex structural scope roots/limits are skipped conservatively, and `:scope` root matching is not modeled yet
 - no computed style property names or computed JSX prop names
 - no dynamic, unknown spread, parameterized helper, mutation-based, call-result, member-expression, re-export barrel, namespace import, or package-import inline style evaluation
 - conditional inline style branches with conflicting values for the same effective property are intentionally unsupported

@@ -4,6 +4,7 @@ import type {
   SelectorBranchMatch,
   SelectorMatchCertainty,
 } from "../selector-reachability/index.js";
+import { normalizeAtRuleConditions } from "./atRuleConditions.js";
 import { cascadeConditionSetId } from "./ids.js";
 import type { CascadeConditionSet, CascadeDeclarationCandidate } from "./types.js";
 
@@ -27,20 +28,16 @@ export function createConditionSet(input: {
   runtimeContextIds?: string[];
   includeTraces: boolean;
 }): CascadeConditionSet {
-  const atRuleContext = input.declaration.atRuleContext
-    .filter((entry) => entry.name !== "layer")
-    .map((entry) => ({
-      name: entry.name,
-      params: entry.params,
-    }));
+  const atRuleConditions = normalizeAtRuleConditions(input.declaration.atRuleContext);
   const renderConditionIds = [...input.match.placementConditionIds].sort((left, right) =>
     left.localeCompare(right),
   );
   return createConditionSetFromParts({
-    atRuleContext,
+    atRuleContext: atRuleConditions.atRuleContext,
     renderConditionIds,
     pseudoStates: extractSelectorPseudoStates(input.selectorText),
     runtimeContextIds: input.runtimeContextIds,
+    reasons: atRuleConditions.reasons,
     traces: input.includeTraces ? input.match.traces : [],
   });
 }
@@ -74,6 +71,7 @@ function createConditionSetFromParts(input: {
   renderConditionIds: string[];
   pseudoStates?: string[];
   runtimeContextIds?: string[];
+  reasons?: string[];
   traces: CascadeConditionSet["traces"];
 }): CascadeConditionSet {
   const atRuleContext = [...input.atRuleContext];
@@ -108,6 +106,7 @@ function createConditionSetFromParts(input: {
     runtimeContextIds,
     compatibility,
     reasons: [
+      ...(input.reasons ?? []),
       ...(atRuleContext.length > 0
         ? ["at-rule conditions are modeled as conditional runtime contexts"]
         : []),

@@ -53,6 +53,7 @@ export type {
   CssClassDefinitionFact,
   CssDeclarationFact,
   CssDeclarationPropertyEffect,
+  CssLayerOrderStatementFact,
   CssSelectorBranchFact,
   CssSelectorMatchKind,
   CssStyleRuleFact,

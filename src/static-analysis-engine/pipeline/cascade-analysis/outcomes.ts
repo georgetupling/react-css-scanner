@@ -12,6 +12,7 @@ import type {
 type CandidateConditionCompatibility = {
   compatibility: "definite" | "conditional" | "unknown";
   detail: string;
+  branchOutcome?: CascadeOutcome;
 };
 
 export function buildOutcomes(input: {
@@ -97,6 +98,11 @@ export function buildOutcomes(input: {
       input.conditionSetsById,
     );
     if (conditionCompatibility.compatibility === "unknown") {
+      if (conditionCompatibility.branchOutcome) {
+        outcomes.push(conditionCompatibility.branchOutcome);
+        continue;
+      }
+
       input.diagnostics.push({
         id: cascadeDiagnosticId({
           code: "unknown-condition-compatibility",
@@ -175,13 +181,19 @@ function compareCandidateConditionSets(
   conditionSetsById: Map<string, CascadeConditionSet>,
 ): CandidateConditionCompatibility {
   const conditionSignatures = new Set(
-    candidates.map((candidate) =>
-      serializeConditionSet(
-        candidate.conditionSetId ? conditionSetsById.get(candidate.conditionSetId) : undefined,
-      ),
-    ),
+    candidates.map((candidate) => conditionSignature(candidate, conditionSetsById)),
   );
   if (conditionSignatures.size > 1) {
+    const branchOutcome = buildConditionalBranchOutcome(candidates, conditionSetsById);
+    if (branchOutcome) {
+      return {
+        compatibility: "unknown",
+        detail:
+          "Candidates have conditional branches; default and conditional winners are modeled separately.",
+        branchOutcome,
+      };
+    }
+
     return {
       compatibility: "unknown",
       detail:
@@ -203,6 +215,117 @@ function compareCandidateConditionSets(
     compatibility: "conditional",
     detail: "All candidates share the same conditional context.",
   };
+}
+
+function buildConditionalBranchOutcome(
+  candidates: CascadeDeclarationCandidate[],
+  conditionSetsById: Map<string, CascadeConditionSet>,
+): CascadeOutcome | undefined {
+  const unconditionalCandidates = candidates.filter((candidate) =>
+    isUnconditionalCandidate(candidate, conditionSetsById),
+  );
+  if (unconditionalCandidates.length === 0) {
+    return undefined;
+  }
+
+  const conditionalCandidatesBySignature = new Map<string, CascadeDeclarationCandidate[]>();
+  for (const candidate of candidates) {
+    if (isUnconditionalCandidate(candidate, conditionSetsById)) {
+      continue;
+    }
+    const signature = conditionSignature(candidate, conditionSetsById);
+    conditionalCandidatesBySignature.set(signature, [
+      ...(conditionalCandidatesBySignature.get(signature) ?? []),
+      candidate,
+    ]);
+  }
+  if (conditionalCandidatesBySignature.size === 0) {
+    return undefined;
+  }
+
+  const sortedDefaultCandidates = unconditionalCandidates.sort(compareCandidates);
+  const defaultWinner = sortedDefaultCandidates.at(-1);
+  if (!defaultWinner) {
+    return undefined;
+  }
+
+  const conditionalBranches = [...conditionalCandidatesBySignature.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([, conditionalCandidates]) => {
+      const branchCandidates = [...unconditionalCandidates, ...conditionalCandidates].sort(
+        compareCandidates,
+      );
+      const branchWinner = branchCandidates.at(-1);
+      const branchRunnerUp = branchCandidates.at(-2);
+      const branchConditionSetId = conditionalCandidates
+        .map((candidate) => candidate.conditionSetId)
+        .filter((conditionSetId): conditionSetId is string => Boolean(conditionSetId))
+        .sort((left, right) => left.localeCompare(right))[0];
+      return {
+        conditionSetId: branchConditionSetId ?? "unknown-condition",
+        winningCandidateId: branchWinner?.id,
+        losingCandidateIds: branchWinner
+          ? branchCandidates
+              .filter((candidate) => candidate.id !== branchWinner.id)
+              .map((candidate) => candidate.id)
+          : [],
+        unresolvedCandidateIds: [],
+        certainty: "possible" as const,
+        reason:
+          branchWinner && branchRunnerUp
+            ? compareCandidatesReason(branchWinner, branchRunnerUp)
+            : ("source-order" as const),
+      };
+    });
+
+  return {
+    id: cascadeOutcomeId(defaultWinner),
+    elementId: defaultWinner.elementId,
+    property: defaultWinner.property,
+    winningCandidateId: defaultWinner.id,
+    losingCandidateIds: sortedDefaultCandidates
+      .filter((candidate) => candidate.id !== defaultWinner.id)
+      .map((candidate) => candidate.id),
+    unresolvedCandidateIds: [],
+    conditionalBranches,
+    certainty: "possible",
+    reason: "condition-branch",
+    comparisonTrace: [
+      {
+        reason: "condition-branch",
+        winningCandidateId: defaultWinner.id,
+        certainty: "possible",
+        detail:
+          "Unconditional candidates form the default branch; conditional candidates are compared in separate conditional branches.",
+      },
+      ...conditionalBranches.map((branch) => ({
+        reason: branch.reason,
+        winningCandidateId: branch.winningCandidateId,
+        certainty: branch.certainty,
+        detail: `Conditional branch ${branch.conditionSetId} has a separate cascade winner.`,
+      })),
+    ],
+    traces: [],
+  };
+}
+
+function isUnconditionalCandidate(
+  candidate: CascadeDeclarationCandidate,
+  conditionSetsById: Map<string, CascadeConditionSet>,
+): boolean {
+  const conditionSet = candidate.conditionSetId
+    ? conditionSetsById.get(candidate.conditionSetId)
+    : undefined;
+  return !conditionSet || conditionSet.sources.length === 0;
+}
+
+function conditionSignature(
+  candidate: CascadeDeclarationCandidate,
+  conditionSetsById: Map<string, CascadeConditionSet>,
+): string {
+  return serializeConditionSet(
+    candidate.conditionSetId ? conditionSetsById.get(candidate.conditionSetId) : undefined,
+  );
 }
 
 function serializeConditionSet(conditionSet: CascadeConditionSet | undefined): string {
@@ -227,6 +350,7 @@ function compareCandidates(
     originPrecedenceRank(left) - originPrecedenceRank(right) ||
     compareLayerPrecedence(left, right) ||
     compareSpecificity(left.cascadeKey.specificity, right.cascadeKey.specificity) ||
+    compareScopeProximity(left, right) ||
     (left.cascadeKey.sourceOrder ?? 0) - (right.cascadeKey.sourceOrder ?? 0) ||
     left.id.localeCompare(right.id)
   );
@@ -247,6 +371,9 @@ function compareCandidatesReason(
   }
   if (compareSpecificity(winner.cascadeKey.specificity, loser.cascadeKey.specificity) !== 0) {
     return "specificity";
+  }
+  if (compareScopeProximity(winner, loser) !== 0) {
+    return "scope-proximity";
   }
   return "source-order";
 }
@@ -280,4 +407,24 @@ function layerPrecedenceRank(candidate: CascadeDeclarationCandidate): number {
   }
   const layerOrder = layer.order ?? 0;
   return candidate.cascadeKey.important ? -layerOrder : layerOrder;
+}
+
+function compareScopeProximity(
+  left: CascadeDeclarationCandidate,
+  right: CascadeDeclarationCandidate,
+): number {
+  const leftDistance = scopeDistanceRank(left);
+  const rightDistance = scopeDistanceRank(right);
+  if (leftDistance === rightDistance) {
+    return 0;
+  }
+  return rightDistance - leftDistance;
+}
+
+function scopeDistanceRank(candidate: CascadeDeclarationCandidate): number {
+  const scopeProximity = candidate.cascadeKey.scopeProximity;
+  if (!scopeProximity?.known || scopeProximity.distance === undefined) {
+    return Number.POSITIVE_INFINITY;
+  }
+  return scopeProximity.distance;
 }

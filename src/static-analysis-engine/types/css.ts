@@ -22,12 +22,28 @@ export type CssClassAttributePredicateFact = {
   value: string;
 };
 
+export type CssScopeSelectorRequirementFact = {
+  selectorText: string;
+  requiredClassNames: string[];
+  forbiddenClassNames?: string[];
+};
+
 export type CssAtRuleContextFact = {
   name: string;
   params: string;
   layerName?: string;
   layerOrder?: number;
   layerOrderKnown?: boolean;
+  scopeRootClassName?: string;
+  scopeLimitClassName?: string;
+  scopeRootRequirements?: CssScopeSelectorRequirementFact[];
+  scopeLimitRequirements?: CssScopeSelectorRequirementFact[];
+  scopeSupported?: boolean;
+};
+
+export type CssLayerOrderStatementFact = {
+  layerNames: string[];
+  sourceOrder: number;
 };
 
 export type CssDeclarationFact = {

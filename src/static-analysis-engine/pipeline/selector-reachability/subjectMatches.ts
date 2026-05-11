@@ -86,6 +86,7 @@ export function getCandidateElementIds(input: {
   classNames: string[];
   elementIdsByClassName: Map<string, string[]>;
   renderIndexes: SelectorRenderMatchIndexes;
+  includeUnknownClassFallback?: boolean;
 }): string[] {
   const classNames = uniqueSorted(input.classNames);
   if (classNames.length === 0) {
@@ -93,10 +94,10 @@ export function getCandidateElementIds(input: {
   }
 
   const [firstClassName, ...restClassNames] = classNames;
-  const unknownElementIds = input.renderIndexes.unknownClassElementIds.slice(
-    0,
-    MAX_UNKNOWN_CLASS_FALLBACK_ELEMENT_IDS,
-  );
+  const unknownElementIds =
+    (input.includeUnknownClassFallback ?? true)
+      ? input.renderIndexes.unknownClassElementIds.slice(0, MAX_UNKNOWN_CLASS_FALLBACK_ELEMENT_IDS)
+      : [];
   let candidates = sortedUnion(
     input.elementIdsByClassName.get(firstClassName) ?? [],
     unknownElementIds,

@@ -125,6 +125,34 @@ test("selector reachability matches same-element compound class selectors", asyn
   assert.equal(match.certainty, "definite");
 });
 
+test("selector reachability matches standalone class selectors", async () => {
+  const renderStructure = await buildRenderStructureFixture({
+    sourceText: 'export function App() { return <button className="button" />; }\n',
+    cssText: ".button { color: blue; }\n",
+  });
+
+  const result = buildSelectorReachability(renderStructure);
+  const branch = findBranch(result, ".button");
+
+  assert.equal(branch.status, "definitely-matchable");
+  assert.deepEqual(branch.requirement, {
+    kind: "same-node-class-conjunction",
+    classNames: ["button"],
+    normalizedSteps: [{ combinatorFromPrevious: null, requiredClasses: ["button"] }],
+    parseNotes: [
+      "normalized selector into a same-node class conjunction",
+      "required class: button",
+    ],
+    traces: [],
+  });
+  assert.equal(branch.matchIds.length, 1);
+
+  const match = result.indexes.matchById.get(branch.matchIds[0]);
+  assert.ok(match);
+  assert.deepEqual(match.requiredClassNames, ["button"]);
+  assert.equal(match.certainty, "definite");
+});
+
 test("selector reachability indexes render elements, emissions, paths, and match evidence", async () => {
   const renderStructure = await buildRenderStructureFixture({
     sourceText: 'export function App() { return <button className="button button--primary" />; }\n',
