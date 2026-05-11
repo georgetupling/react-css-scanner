@@ -9,16 +9,21 @@ import type { ClassExpressionSiteNode, ExpressionSyntaxNode } from "../../fact-g
 import type {
   CanonicalClassExpression,
   ConditionFact,
+  StaticInlineStyleObjectFact,
   SymbolicEvaluationDiagnostic,
   SymbolicEvaluationInput,
   SymbolicEvaluationResult,
 } from "../model/types.js";
+import { evaluateStaticInlineStyleObjects } from "../static-values/inlineStyleObjects.js";
 
 export function evaluateSymbolicExpressions(
   input: SymbolicEvaluationInput,
 ): SymbolicEvaluationResult {
   const evaluatorRegistry = input.evaluatorRegistry ?? createDefaultSymbolicEvaluatorRegistry();
   const classExpressions: CanonicalClassExpression[] = [];
+  const inlineStyleObjects: StaticInlineStyleObjectFact[] = evaluateStaticInlineStyleObjects({
+    factGraph: input.factGraph,
+  });
   const conditions: ConditionFact[] = [];
   const diagnostics: SymbolicEvaluationDiagnostic[] = [];
   const classExpressionSites = [...input.graph.nodes.classExpressionSites].sort((left, right) =>
@@ -59,6 +64,7 @@ export function evaluateSymbolicExpressions(
   const sortedConditions = [...conditions].sort((left, right) => left.id.localeCompare(right.id));
   const indexResult = buildEvaluatedExpressionIndexes({
     classExpressions: sortedClassExpressions,
+    inlineStyleObjects,
     conditions: sortedConditions,
   });
   const allDiagnostics = sortSymbolicEvaluationDiagnostics([
@@ -73,9 +79,18 @@ export function evaluateSymbolicExpressions(
         generatedAtStage: "symbolic-evaluation",
         classExpressionSiteCount: input.graph.nodes.classExpressionSites.length,
         evaluatedClassExpressionCount: sortedClassExpressions.length,
+        inlineStyleSiteCount:
+          input.factGraph?.frontends.source.files.reduce(
+            (count, sourceFile) => count + sourceFile.reactSyntax.inlineStyleSites.length,
+            0,
+          ) ?? 0,
+        evaluatedInlineStyleObjectCount: inlineStyleObjects.filter(
+          (inlineStyleObject) => !inlineStyleObject.unsupportedReason,
+        ).length,
         diagnosticCount: allDiagnostics.length,
       },
       classExpressions: sortedClassExpressions,
+      inlineStyleObjects,
       conditions: sortedConditions,
       diagnostics: allDiagnostics,
       indexes: indexResult.indexes,

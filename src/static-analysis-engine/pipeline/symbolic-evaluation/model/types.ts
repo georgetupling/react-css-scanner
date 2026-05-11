@@ -7,9 +7,11 @@ import type { SourceAnchor } from "../../../types/core.js";
 import type {
   ClassExpressionSiteNode,
   ExpressionSyntaxNode,
+  FactGraphResult,
   FactGraph,
   FactNodeId,
 } from "../../fact-graph/index.js";
+import type { SourceExpressionSyntaxFact } from "../../language-frontends/source/expression-syntax/index.js";
 
 export type EvaluatedExpressionId = string;
 export type ConditionId = string;
@@ -24,6 +26,7 @@ export type SymbolicEvaluationOptions = {
 
 export type SymbolicEvaluationInput = {
   graph: FactGraph;
+  factGraph?: FactGraphResult;
   options?: SymbolicEvaluationOptions;
   evaluatorRegistry?: SymbolicEvaluatorRegistry;
 };
@@ -38,12 +41,38 @@ export type EvaluatedExpressionFacts = {
     generatedAtStage: "symbolic-evaluation";
     classExpressionSiteCount: number;
     evaluatedClassExpressionCount: number;
+    inlineStyleSiteCount: number;
+    evaluatedInlineStyleObjectCount: number;
     diagnosticCount: number;
   };
   classExpressions: CanonicalClassExpression[];
+  inlineStyleObjects: StaticInlineStyleObjectFact[];
   conditions: ConditionFact[];
   diagnostics: SymbolicEvaluationDiagnostic[];
   indexes: EvaluatedExpressionIndexes;
+};
+
+export type StaticInlineStyleObjectFact = {
+  siteKey: string;
+  filePath: string;
+  expressionId: string;
+  rawExpressionText: string;
+  alternatives: StaticInlineStyleObjectAlternative[];
+  unsupportedReason?: string;
+};
+
+export type StaticInlineStyleObjectAlternative = {
+  certainty: "definite" | "possible";
+  properties: StaticInlineStyleObjectProperty[];
+};
+
+export type StaticInlineStyleObjectProperty = {
+  propertyName: string;
+  valueExpressionId: string;
+  valueExpression?: SourceExpressionSyntaxFact;
+  sourceFilePath: string;
+  location: SourceAnchor;
+  order: number;
 };
 
 export type CanonicalExpressionKind =
@@ -200,6 +229,8 @@ export type SymbolicEvaluationProvenance = {
 export type EvaluatedExpressionIndexes = {
   classExpressionById: Map<EvaluatedExpressionId, CanonicalClassExpression>;
   classExpressionIdBySiteNodeId: Map<FactNodeId, EvaluatedExpressionId>;
+  inlineStyleObjectBySiteKey: Map<string, StaticInlineStyleObjectFact>;
+  inlineStyleObjectSiteKeysByFilePath: Map<string, string[]>;
   classExpressionIdsByFilePath: Map<string, EvaluatedExpressionId[]>;
   classExpressionIdsByComponentNodeId: Map<FactNodeId, EvaluatedExpressionId[]>;
   tokenAlternativeIdsByToken: Map<string, EvaluatedExpressionId[]>;

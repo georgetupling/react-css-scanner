@@ -1,15 +1,12 @@
 import ts from "typescript";
 
-import { toSourceAnchor } from "../../../../libraries/react-components/reactComponentAstUtils.js";
+import {
+  toSourceAnchor,
+  unwrapExpression,
+} from "../../../../libraries/react-components/reactComponentAstUtils.js";
 import { collectExpressionSyntaxForNode } from "../expression-syntax/index.js";
 import { createSiteKey } from "./keys.js";
 import { getJsxTagName, isIntrinsicTagName, unwrapJsxAttributeInitializer } from "./jsxUtils.js";
-import {
-  evaluateStaticObjectExpression,
-  findLastKnownPropertyAfterUnknown,
-  getStaticPropertyName,
-  unwrapExpression,
-} from "./staticObjectValues.js";
 import type {
   ReactClassExpressionSiteFact,
   ReactComponentPropBindingFact,
@@ -88,6 +85,9 @@ export function createJsxClassExpressionSites(input: {
         ...(!intrinsicTag || classSiteInput.forwardedComponentPropName
           ? { componentPropName: classSiteInput.forwardedComponentPropName ?? attributeName }
           : {}),
+        ...(classSiteInput.valueProjection
+          ? { valueProjection: classSiteInput.valueProjection }
+          : {}),
         ...(input.renderSite ? { renderSiteKey: input.renderSite.siteKey } : {}),
         ...(input.template ? { elementTemplateKey: input.template.templateKey } : {}),
       },
@@ -103,6 +103,7 @@ type JsxClassSiteInput = {
   initializer: ts.Node;
   expression?: ts.Expression;
   forwardedComponentPropName?: string;
+  valueProjection?: ReactClassExpressionSiteFact["valueProjection"];
 };
 
 function collectEffectiveJsxClassSiteInputs(input: {
@@ -134,18 +135,17 @@ function collectEffectiveJsxClassSiteInputs(input: {
     }
 
     if (ts.isJsxSpreadAttribute(attribute)) {
+      const forwardedClassNames = resolveForwardedComponentPropSpread({
+        expression: attribute.expression,
+        componentPropBinding: input.componentPropBinding,
+      });
       const spreadClassNames =
-        resolveSpreadClassNames({
-          expression: attribute.expression,
-          filePath: input.filePath,
-          sourceFile: input.sourceFile,
-          intrinsicTag: input.intrinsicTag,
-        }) ??
-        resolveForwardedComponentPropSpread({
-          expression: attribute.expression,
-          componentPropBinding: input.componentPropBinding,
-        });
-      if (spreadClassNames.length > 0) {
+        forwardedClassNames.length > 0
+          ? forwardedClassNames
+          : createSpreadClassNameProjection({
+              expression: attribute.expression,
+            });
+      if (spreadClassNames && spreadClassNames.length > 0) {
         effectiveClassNames = applyClassSiteInputs(effectiveClassNames, spreadClassNames);
       }
     }
@@ -207,41 +207,21 @@ function resolveForwardedComponentPropSpread(input: {
   return [];
 }
 
-function resolveSpreadClassNames(input: {
+function createSpreadClassNameProjection(input: {
   expression: ts.Expression;
-  filePath: string;
-  sourceFile: ts.SourceFile;
-  intrinsicTag: boolean;
 }): JsxClassSiteInput[] | undefined {
-  const objectValue = evaluateStaticObjectExpression({
-    expression: input.expression,
-    filePath: input.filePath,
-    sourceFile: input.sourceFile,
-  });
-  if (objectValue.confidence === "unknown") {
-    return undefined;
-  }
-
-  const classNames: JsxClassSiteInput[] = [];
-  for (const branch of objectValue.branches) {
-    const classNameProperty = findLastKnownPropertyAfterUnknown(branch, (property) =>
-      isClassLikeJsxAttributeName({
-        attributeName: property.key,
-        intrinsicTag: input.intrinsicTag,
-      }),
-    );
-    if (!classNameProperty) {
-      return undefined;
-    }
-
-    classNames.push({
-      attributeName: classNameProperty.key,
-      initializer: classNameProperty.valueExpression,
-      expression: classNameProperty.valueExpression,
-    });
-  }
-
-  return classNames;
+  return [
+    {
+      attributeName: "className",
+      initializer: input.expression,
+      expression: input.expression,
+      valueProjection: {
+        kind: "object-property",
+        propertyNames: ["className"],
+        unresolvedObjectEntriesAffectPresence: true,
+      },
+    },
+  ];
 }
 
 function unwrapFunctionReturnedExpression(expression: ts.Expression): ts.Expression | undefined {
@@ -436,6 +416,35 @@ function isCreateElementCall(expression: ts.CallExpression): boolean {
   }
 
   return ts.isPropertyAccessExpression(callee) && callee.name.text === "createElement";
+}
+
+function getStaticPropertyName(
+  name: ts.PropertyName,
+  sourceFile: ts.SourceFile,
+): { key: string } | undefined {
+  if (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNumericLiteral(name)) {
+    return { key: name.text };
+  }
+
+  if (
+    ts.isComputedPropertyName(name) &&
+    (ts.isStringLiteral(name.expression) || ts.isNoSubstitutionTemplateLiteral(name.expression))
+  ) {
+    return { key: name.expression.text };
+  }
+
+  if (ts.isComputedPropertyName(name)) {
+    const unwrapped = unwrapExpression(name.expression);
+    if (ts.isStringLiteral(unwrapped) || ts.isNoSubstitutionTemplateLiteral(unwrapped)) {
+      return { key: unwrapped.text };
+    }
+    const text = unwrapped.getText(sourceFile);
+    return text === '"className"' || text === "'className'" || text === "`className`"
+      ? { key: "className" }
+      : undefined;
+  }
+
+  return undefined;
 }
 
 function isClassLikeJsxAttributeName(input: {

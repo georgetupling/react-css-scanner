@@ -306,6 +306,24 @@ export function resolveObjectLiteralExpressionSyntax(
     return unwrapped;
   }
 
+  if (unwrapped.expressionKind === "member-access") {
+    return resolveObjectLiteralMemberExpressionSyntax({
+      ...input,
+      expression: unwrapped,
+      depth: input.depth + 1,
+      seenExpressionIds,
+    });
+  }
+
+  if (unwrapped.expressionKind === "element-access") {
+    return resolveObjectLiteralElementAccessExpressionSyntax({
+      ...input,
+      expression: unwrapped,
+      depth: input.depth + 1,
+      seenExpressionIds,
+    });
+  }
+
   if (unwrapped.expressionKind !== "identifier") {
     return undefined;
   }
@@ -352,6 +370,113 @@ export function resolveObjectLiteralExpressionSyntax(
   }
 
   return undefined;
+}
+
+function resolveObjectLiteralMemberExpressionSyntax(
+  input: EvaluationContext & {
+    expression: Extract<ExpressionSyntaxNode, { expressionKind: "member-access" }>;
+    callbacks: ObjectMemberEvaluationCallbacks;
+  },
+): Extract<ExpressionSyntaxNode, { expressionKind: "object-literal" }> | undefined {
+  return resolveObjectLiteralPropertyValue({
+    ...input,
+    objectExpressionId: input.expression.objectExpressionId,
+    propertyName: input.expression.propertyName,
+  });
+}
+
+function resolveObjectLiteralElementAccessExpressionSyntax(
+  input: EvaluationContext & {
+    expression: Extract<ExpressionSyntaxNode, { expressionKind: "element-access" }>;
+    callbacks: ObjectMemberEvaluationCallbacks;
+  },
+): Extract<ExpressionSyntaxNode, { expressionKind: "object-literal" }> | undefined {
+  if (!input.expression.argumentExpressionId) {
+    return undefined;
+  }
+
+  const argumentValue = input.callbacks.getExpressionValue(
+    input,
+    input.expression.argumentExpressionId,
+  );
+  const propertyNames = getStringCandidates(argumentValue);
+  if (!propertyNames || propertyNames.length !== 1) {
+    return undefined;
+  }
+
+  return resolveObjectLiteralPropertyValue({
+    ...input,
+    objectExpressionId: input.expression.objectExpressionId,
+    propertyName: propertyNames[0],
+  });
+}
+
+function resolveObjectLiteralPropertyValue(
+  input: EvaluationContext & {
+    objectExpressionId: string;
+    propertyName: string;
+    callbacks: ObjectMemberEvaluationCallbacks;
+  },
+): Extract<ExpressionSyntaxNode, { expressionKind: "object-literal" }> | undefined {
+  const objectExpression = getExpressionSyntax(input.input, input.objectExpressionId);
+  const objectLiteral = objectExpression
+    ? resolveObjectLiteralExpressionSyntax({
+        ...input,
+        expression: objectExpression,
+        depth: input.depth + 1,
+      })
+    : undefined;
+  if (!objectLiteral) {
+    return undefined;
+  }
+
+  let selectedValueExpressionId: string | undefined;
+  for (const property of objectLiteral.properties) {
+    if (property.propertyKind !== "property" && property.propertyKind !== "shorthand") {
+      continue;
+    }
+
+    const keyText = resolveObjectLiteralPropertyKey({
+      ...input,
+      property,
+    });
+    if (keyText === input.propertyName) {
+      selectedValueExpressionId = property.valueExpressionId;
+    }
+  }
+  if (!selectedValueExpressionId) {
+    return undefined;
+  }
+
+  const selectedExpression = getExpressionSyntax(input.input, selectedValueExpressionId);
+  return selectedExpression
+    ? resolveObjectLiteralExpressionSyntax({
+        ...input,
+        expression: selectedExpression,
+        depth: input.depth + 1,
+      })
+    : undefined;
+}
+
+function resolveObjectLiteralPropertyKey(
+  input: EvaluationContext & {
+    property: Extract<
+      ExpressionSyntaxNode,
+      { expressionKind: "object-literal" }
+    >["properties"][number];
+    callbacks: ObjectMemberEvaluationCallbacks;
+  },
+): string | undefined {
+  if (input.property.keyKind === "computed") {
+    if (!input.property.keyExpressionId) {
+      return undefined;
+    }
+    const keyValue = input.callbacks.getExpressionValue(input, input.property.keyExpressionId);
+    const keyCandidates = getStringCandidates(keyValue);
+    return keyCandidates?.length === 1 ? keyCandidates[0] : undefined;
+  }
+
+  return input.property.keyText;
 }
 
 function unwrapExpressionSyntax(input: {

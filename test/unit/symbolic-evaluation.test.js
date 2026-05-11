@@ -17,9 +17,12 @@ test("symbolic evaluation returns empty facts for an empty graph", () => {
     generatedAtStage: "symbolic-evaluation",
     classExpressionSiteCount: 0,
     evaluatedClassExpressionCount: 0,
+    inlineStyleSiteCount: 0,
+    evaluatedInlineStyleObjectCount: 0,
     diagnosticCount: 0,
   });
   assert.deepEqual(result.evaluatedExpressions.classExpressions, []);
+  assert.deepEqual(result.evaluatedExpressions.inlineStyleObjects, []);
   assert.deepEqual(result.evaluatedExpressions.conditions, []);
   assert.deepEqual(result.evaluatedExpressions.diagnostics, []);
   assert.equal(result.evaluatedExpressions.indexes.classExpressionById.size, 0);

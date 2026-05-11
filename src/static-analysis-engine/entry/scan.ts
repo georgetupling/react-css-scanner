@@ -55,7 +55,12 @@ export async function runAnalysisPipeline(input: {
     progress,
     "symbolic-evaluation",
     "Evaluating symbolic class expressions",
-    () => evaluateSymbolicExpressions({ graph: factGraph.graph, options: { includeTraces } }),
+    () =>
+      evaluateSymbolicExpressions({
+        graph: factGraph.graph,
+        factGraph,
+        options: { includeTraces },
+      }),
   );
   const renderStructureStage = runAnalysisStage(
     progress,
@@ -144,6 +149,7 @@ export async function runAnalysisPipeline(input: {
               renderModel: renderStructureStage.renderModel,
               runtimeCssLoading: runtimeCssLoadingStage.runtimeCssLoading,
               selectorReachability: selectorReachabilityStage.selectorReachability,
+              symbolicEvaluation: symbolicEvaluationStage,
               options: {
                 includeTraces,
               },

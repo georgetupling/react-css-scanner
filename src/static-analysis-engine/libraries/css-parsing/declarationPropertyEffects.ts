@@ -222,6 +222,7 @@ export function getCssDeclarationPropertyEffects(input: {
       exactPropertyEffect({
         property: normalizedProperty,
         value: input.value,
+        customPropertyDependencies,
       }),
     ],
     customPropertyDependencies,
@@ -254,6 +255,7 @@ function expandCssWideKeywordShorthand(input: {
 function exactPropertyEffect(input: {
   property: string;
   value: string;
+  customPropertyDependencies: string[];
 }): CssDeclarationPropertyEffect {
   if (isCssWideKeyword(input.value) && getLonghandMetadata(input.property)) {
     return {
@@ -268,12 +270,60 @@ function exactPropertyEffect(input: {
     };
   }
 
+  const unsupportedReason = validateExactPropertyValueWithCssTree({
+    property: input.property,
+    value: input.value,
+    customPropertyDependencies: input.customPropertyDependencies,
+  });
+  if (unsupportedReason) {
+    return {
+      property: input.property,
+      value: input.value,
+      source: "exact",
+      supported: false,
+      reason: `The "${input.property}" declaration ${unsupportedReason}.`,
+    };
+  }
+
   return {
     property: input.property,
     value: input.value,
     source: "exact",
     supported: true,
   };
+}
+
+function validateExactPropertyValueWithCssTree(input: {
+  property: string;
+  value: string;
+  customPropertyDependencies: string[];
+}): string | undefined {
+  if (input.property.startsWith("--")) {
+    return undefined;
+  }
+
+  if (input.customPropertyDependencies.length > 0) {
+    return undefined;
+  }
+
+  if (!isKnownCssTreeProperty(input.property)) {
+    return "property is not in the css-tree property grammar database";
+  }
+
+  const ast = parseCssValue(input.value);
+  if (!ast) {
+    return "value could not be parsed as CSS";
+  }
+
+  const match = csstree.lexer.matchProperty(
+    input.property,
+    cssTreeValueFromNodes(ast.children ?? []),
+  );
+  if (match.error) {
+    return "value does not match the css-tree property grammar";
+  }
+
+  return undefined;
 }
 
 function withCustomPropertyDependencies(
@@ -752,6 +802,13 @@ function matchesCssProperty(property: string, ast: CssTreeValueAst): boolean {
   return (
     csstree.lexer.matchProperty(property, cssTreeValueFromNodes(ast.children ?? [])).error === null
   );
+}
+
+function isKnownCssTreeProperty(property: string): boolean {
+  const lexer = csstree.lexer as typeof csstree.lexer & {
+    getProperty?: (propertyName: string, fallbackBasename?: boolean) => unknown;
+  };
+  return Boolean(lexer.getProperty?.(property));
 }
 
 function matchesCssType(type: string, nodes: CssTreeValueNode[]): boolean {

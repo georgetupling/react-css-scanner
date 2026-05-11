@@ -3,12 +3,14 @@ import type {
   CanonicalClassExpression,
   ConditionFact,
   EvaluatedExpressionIndexes,
+  StaticInlineStyleObjectFact,
   SymbolicEvaluationDiagnostic,
   UnsupportedReasonCode,
 } from "./types.js";
 
 export function buildEvaluatedExpressionIndexes(input: {
   classExpressions: CanonicalClassExpression[];
+  inlineStyleObjects: StaticInlineStyleObjectFact[];
   conditions: ConditionFact[];
 }): {
   indexes: EvaluatedExpressionIndexes;
@@ -17,6 +19,8 @@ export function buildEvaluatedExpressionIndexes(input: {
   const diagnostics: SymbolicEvaluationDiagnostic[] = [];
   const classExpressionById = new Map<string, CanonicalClassExpression>();
   const classExpressionIdBySiteNodeId = new Map<string, string>();
+  const inlineStyleObjectBySiteKey = new Map<string, StaticInlineStyleObjectFact>();
+  const inlineStyleObjectSiteKeysByFilePath = new Map<string, string[]>();
   const classExpressionIdsByFilePath = new Map<string, string[]>();
   const classExpressionIdsByComponentNodeId = new Map<string, string[]>();
   const tokenAlternativeIdsByToken = new Map<string, string[]>();
@@ -73,6 +77,15 @@ export function buildEvaluatedExpressionIndexes(input: {
     }
   }
 
+  for (const inlineStyleObject of input.inlineStyleObjects) {
+    inlineStyleObjectBySiteKey.set(inlineStyleObject.siteKey, inlineStyleObject);
+    pushMapValue(
+      inlineStyleObjectSiteKeysByFilePath,
+      inlineStyleObject.filePath,
+      inlineStyleObject.siteKey,
+    );
+  }
+
   for (const condition of input.conditions) {
     conditionById.set(condition.id, condition);
   }
@@ -81,6 +94,8 @@ export function buildEvaluatedExpressionIndexes(input: {
     indexes: {
       classExpressionById,
       classExpressionIdBySiteNodeId,
+      inlineStyleObjectBySiteKey,
+      inlineStyleObjectSiteKeysByFilePath: sortMapValues(inlineStyleObjectSiteKeysByFilePath),
       classExpressionIdsByFilePath: sortMapValues(classExpressionIdsByFilePath),
       classExpressionIdsByComponentNodeId: sortMapValues(classExpressionIdsByComponentNodeId),
       tokenAlternativeIdsByToken: sortMapValues(tokenAlternativeIdsByToken),

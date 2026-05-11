@@ -86,8 +86,15 @@ export type ReactClassExpressionSiteFact = {
   emittingComponentKey?: string;
   placementComponentKey?: string;
   componentPropName?: string;
+  valueProjection?: ReactClassExpressionValueProjectionFact;
   renderSiteKey?: string;
   elementTemplateKey?: string;
+};
+
+export type ReactClassExpressionValueProjectionFact = {
+  kind: "object-property";
+  propertyNames: string[];
+  unresolvedObjectEntriesAffectPresence?: boolean;
 };
 
 export type ReactInlineStyleSiteFact = {
@@ -101,8 +108,15 @@ export type ReactInlineStyleSiteFact = {
   placementComponentKey?: string;
   componentPropName?: string;
   sourceComponentPropName?: string;
+  valueProjection?: ReactInlineStyleValueProjectionFact;
   renderSiteKey?: string;
   elementTemplateKey?: string;
+};
+
+export type ReactInlineStyleValueProjectionFact = {
+  kind: "object-property";
+  propertyNames: string[];
+  unresolvedObjectEntriesAffectPresence?: boolean;
 };
 
 export type ReactRenderPropInvocationFact = {

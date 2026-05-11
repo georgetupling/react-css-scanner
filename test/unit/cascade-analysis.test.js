@@ -2120,13 +2120,112 @@ test("cascade analysis expands logical box and inset shorthands", async () => {
       return cascade.indexes.candidateById.get(outcome.winningCandidateId)?.value;
     };
 
-    assert.equal(valueFor("margin-inline-start"), "1px");
-    assert.equal(valueFor("margin-inline-end"), "2px");
+    assert.equal(valueFor("margin-left"), "1px");
+    assert.equal(valueFor("margin-right"), "2px");
     assert.equal(valueFor("top"), "3px");
     assert.equal(valueFor("right"), "4px");
     assert.equal(valueFor("bottom"), "3px");
-    assert.equal(valueFor("border-inline-start-color"), "red");
-    assert.equal(valueFor("border-inline-end-color"), "blue");
+    assert.equal(valueFor("border-left-color"), "red");
+    assert.equal(valueFor("border-right-color"), "blue");
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis resolves logical properties using definite direction", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./styles.css";\nexport function App() { return <button className="button primary">Save</button>; }\n',
+    )
+    .withCssFile(
+      "src/styles.css",
+      ".button.primary { direction: rtl; margin-right: 1px; margin-inline-start: 2px; }\n",
+    )
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+    const outcome = cascade.outcomes.find((candidate) => candidate.property === "margin-right");
+
+    assert.ok(outcome?.winningCandidateId);
+    assert.equal(cascade.indexes.candidateById.get(outcome.winningCandidateId)?.value, "2px");
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis resolves logical properties using definite vertical writing mode", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./styles.css";\nexport function App() { return <button className="button primary">Save</button>; }\n',
+    )
+    .withCssFile(
+      "src/styles.css",
+      ".button.primary { writing-mode: vertical-rl; margin-right: 1px; margin-block-start: 3px; padding-inline-start: 5px; }\n",
+    )
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+    const valueFor = (property) => {
+      const outcome = cascade.outcomes.find((candidate) => candidate.property === property);
+      assert.ok(outcome?.winningCandidateId);
+      return cascade.indexes.candidateById.get(outcome.winningCandidateId)?.value;
+    };
+
+    assert.equal(valueFor("margin-right"), "3px");
+    assert.equal(valueFor("padding-top"), "5px");
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis keeps logical properties unresolved when flow is conditional", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./styles.css";\nexport function App() { return <button className="button primary">Save</button>; }\n',
+    )
+    .withCssFile(
+      "src/styles.css",
+      "@media (min-width: 40rem) { .button.primary { direction: rtl; } }\n.button.primary { margin-inline-start: 2px; }\n",
+    )
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+    const logicalOutcome = cascade.outcomes.find(
+      (candidate) => candidate.property === "margin-inline-start",
+    );
+    const physicalOutcome = cascade.outcomes.find(
+      (candidate) => candidate.property === "margin-right",
+    );
+
+    assert.ok(logicalOutcome?.winningCandidateId);
+    assert.equal(physicalOutcome, undefined);
   } finally {
     await project.cleanup();
   }
@@ -2551,6 +2650,44 @@ test("cascade analysis reports unsupported shorthand property semantics", async 
         (diagnostic) => diagnostic.code === "unsupported-property-semantics",
       ),
       true,
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis reports exact declarations that fail css-tree typed grammar", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./styles.css";\nexport function App() { return <button className="button primary">Save</button>; }\n',
+    )
+    .withCssFile("src/styles.css", ".button.primary { color: nope; display: grid; }\n")
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+
+    assert.equal(
+      cascade.diagnostics.some(
+        (diagnostic) =>
+          diagnostic.code === "unsupported-property-semantics" &&
+          diagnostic.message.includes('"color" declaration value does not match'),
+      ),
+      true,
+    );
+    const displayOutcome = cascade.outcomes.find((outcome) => outcome.property === "display");
+    assert.ok(displayOutcome?.winningCandidateId);
+    assert.equal(
+      cascade.indexes.candidateById.get(displayOutcome.winningCandidateId)?.value,
+      "grid",
     );
   } finally {
     await project.cleanup();

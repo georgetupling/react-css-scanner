@@ -6,6 +6,7 @@ import type {
 import type { RenderModel } from "../render-structure/index.js";
 import type { RuntimeCssLoadingResult } from "../runtime-css-loading/index.js";
 import type { SelectorReachabilityResult } from "../selector-reachability/index.js";
+import type { SymbolicEvaluationResult } from "../symbolic-evaluation/index.js";
 import { buildCascadeAnalysisIndexes } from "./indexes.js";
 import { cascadeDiagnosticId } from "./ids.js";
 import type {
@@ -21,6 +22,7 @@ import {
   emitUnsupportedPropertyDiagnostics,
   resolveCustomPropertyDependentCandidates,
 } from "./customPropertyResolution.js";
+import { resolveLogicalPropertyCandidates } from "./logicalPropertyResolution.js";
 import { buildRuntimeStylesheetOrder } from "./runtimeStylesheetOrder.js";
 import { buildInlineStyleCandidates } from "./inlineStyleCandidates.js";
 import { buildGlobalLayerOrderByName } from "./cascadeKeys.js";
@@ -35,6 +37,7 @@ export type CascadeAnalysisInput = {
   renderModel: RenderModel;
   runtimeCssLoading: RuntimeCssLoadingResult;
   selectorReachability: SelectorReachabilityResult;
+  symbolicEvaluation: SymbolicEvaluationResult;
   options?: {
     includeTraces?: boolean;
   };
@@ -81,8 +84,13 @@ export function buildCascadeAnalysis(input: CascadeAnalysisInput): CascadeAnalys
     }),
   );
 
-  const resolvedCandidates = resolveCustomPropertyDependentCandidates({
+  const customPropertyResolvedCandidates = resolveCustomPropertyDependentCandidates({
     candidates,
+    projectEvidence: input.projectEvidence,
+    conditionSetsById,
+  });
+  const resolvedCandidates = resolveLogicalPropertyCandidates({
+    candidates: customPropertyResolvedCandidates,
     projectEvidence: input.projectEvidence,
     conditionSetsById,
   }).sort(compareById);

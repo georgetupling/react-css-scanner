@@ -1,17 +1,15 @@
 import ts from "typescript";
 
-import { toSourceAnchor } from "../../../../libraries/react-components/reactComponentAstUtils.js";
+import {
+  toSourceAnchor,
+  unwrapExpression,
+} from "../../../../libraries/react-components/reactComponentAstUtils.js";
 import {
   collectExpressionSyntaxForNode,
   type SourceExpressionSyntaxFact,
 } from "../expression-syntax/index.js";
 import { createSiteKey } from "./keys.js";
 import { getJsxTagName, isIntrinsicTagName, unwrapJsxAttributeInitializer } from "./jsxUtils.js";
-import {
-  evaluateStaticObjectExpression,
-  findLastKnownPropertyAfterUnknown,
-  unwrapExpression,
-} from "./staticObjectValues.js";
 import type {
   ReactElementTemplateFact,
   ReactInlineStyleSiteFact,
@@ -93,6 +91,9 @@ export function createJsxInlineStyleSites(input: {
           ? { componentPropName: sourceComponentPropName }
           : {}),
         ...(sourceComponentPropName ? { sourceComponentPropName } : {}),
+        ...(styleSiteInput.valueProjection
+          ? { valueProjection: styleSiteInput.valueProjection }
+          : {}),
         ...(input.renderSite ? { renderSiteKey: input.renderSite.siteKey } : {}),
         ...(input.template ? { elementTemplateKey: input.template.templateKey } : {}),
       },
@@ -105,6 +106,7 @@ type JsxStyleSiteInput = {
   initializer: ts.Node;
   expression: ts.Expression;
   forwardedComponentPropName?: string;
+  valueProjection?: ReactInlineStyleSiteFact["valueProjection"];
 };
 
 function collectEffectiveJsxStyleSiteInputs(input: {
@@ -138,16 +140,16 @@ function collectEffectiveJsxStyleSiteInputs(input: {
       continue;
     }
 
+    const forwardedStyles = resolveForwardedComponentPropSpread({
+      expression: attribute.expression,
+      componentPropBinding: input.componentPropBinding,
+    });
     const spreadStyles =
-      resolveSpreadStyles({
-        expression: attribute.expression,
-        filePath: input.filePath,
-        sourceFile: input.sourceFile,
-      }) ??
-      resolveForwardedComponentPropSpread({
-        expression: attribute.expression,
-        componentPropBinding: input.componentPropBinding,
-      });
+      forwardedStyles.length > 0
+        ? forwardedStyles
+        : createSpreadStyleProjection({
+            expression: attribute.expression,
+          });
     if (spreadStyles.length > 0) {
       effectiveStyles = applyStyleSiteInputs(effectiveStyles, spreadStyles);
     }
@@ -203,37 +205,18 @@ function resolveForwardedComponentPropSpread(input: {
   return [];
 }
 
-function resolveSpreadStyles(input: {
-  expression: ts.Expression;
-  filePath: string;
-  sourceFile: ts.SourceFile;
-}): JsxStyleSiteInput[] | undefined {
-  const objectValue = evaluateStaticObjectExpression({
-    expression: input.expression,
-    filePath: input.filePath,
-    sourceFile: input.sourceFile,
-  });
-  if (objectValue.confidence === "unknown") {
-    return undefined;
-  }
-
-  const styles: JsxStyleSiteInput[] = [];
-  for (const branch of objectValue.branches) {
-    const styleProperty = findLastKnownPropertyAfterUnknown(
-      branch,
-      (property) => property.key === "style",
-    );
-    if (!styleProperty) {
-      return undefined;
-    }
-
-    styles.push({
-      initializer: styleProperty.valueExpression,
-      expression: styleProperty.valueExpression,
-    });
-  }
-
-  return styles;
+function createSpreadStyleProjection(input: { expression: ts.Expression }): JsxStyleSiteInput[] {
+  return [
+    {
+      initializer: input.expression,
+      expression: input.expression,
+      valueProjection: {
+        kind: "object-property",
+        propertyNames: ["style"],
+        unresolvedObjectEntriesAffectPresence: true,
+      },
+    },
+  ];
 }
 
 function resolveReferencedComponentPropName(input: {

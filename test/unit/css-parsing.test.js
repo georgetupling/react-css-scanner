@@ -318,6 +318,53 @@ test("CSS parser keeps metadata-only non-keyword shorthands unsupported", () => 
   }
 });
 
+test("CSS parser validates exact declaration values through css-tree property grammar", () => {
+  const [rule] = extractCssStyleRules({
+    cssText:
+      ".button { color: not-a-color; margin-top: red; display: grid; --token: not-a-color; }",
+    filePath: "src/App.css",
+  });
+
+  const effectsByProperty = new Map(
+    rule.declarations.map((declaration) => [declaration.property, declaration.propertyEffects]),
+  );
+
+  assert.deepEqual(effectsByProperty.get("color"), [
+    {
+      property: "color",
+      value: "not-a-color",
+      source: "exact",
+      supported: false,
+      reason: 'The "color" declaration value does not match the css-tree property grammar.',
+    },
+  ]);
+  assert.deepEqual(effectsByProperty.get("margin-top"), [
+    {
+      property: "margin-top",
+      value: "red",
+      source: "exact",
+      supported: false,
+      reason: 'The "margin-top" declaration value does not match the css-tree property grammar.',
+    },
+  ]);
+  assert.deepEqual(effectsByProperty.get("display"), [
+    {
+      property: "display",
+      value: "grid",
+      source: "exact",
+      supported: true,
+    },
+  ]);
+  assert.deepEqual(effectsByProperty.get("--token"), [
+    {
+      property: "--token",
+      value: "not-a-color",
+      source: "exact",
+      supported: true,
+    },
+  ]);
+});
+
 function summarizeRules(rules) {
   return rules.map((rule) => ({
     selector: rule.selector,

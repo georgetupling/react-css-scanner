@@ -1,20 +1,18 @@
-import type { FactGraphResult } from "../fact-graph/index.js";
 import type { ProjectEvidenceId } from "../project-evidence/index.js";
 import type {
   RenderModel,
   RenderedComponentBoundary,
   RenderedElement,
 } from "../render-structure/index.js";
-import type {
-  SourceExpressionSyntaxFact,
-  SourceObjectExpressionProperty,
-  SourceObjectLiteralExpressionSyntax,
-} from "../language-frontends/source/expression-syntax/index.js";
-import type { SourceFrontendFile } from "../language-frontends/index.js";
 import {
   getReactInlineStyleDeclarationSemantics,
   type ReactInlineStyleSiteFact,
 } from "../language-frontends/source/react-syntax/index.js";
+import type { SourceExpressionSyntaxFact } from "../language-frontends/source/expression-syntax/index.js";
+import type {
+  StaticInlineStyleObjectFact,
+  StaticInlineStyleObjectProperty,
+} from "../symbolic-evaluation/index.js";
 import type { CssDeclarationPropertyEffect } from "../../types/css.js";
 import { cascadeDeclarationCandidateId } from "./ids.js";
 import { createConditionSetFromRenderedElement, mapRenderCertainty } from "./conditions.js";
@@ -54,7 +52,9 @@ export function buildInlineStyleCandidates(input: {
   const boundaryById = new Map(
     input.input.renderModel.componentBoundaries.map((boundary) => [boundary.id, boundary] as const),
   );
-  const inlineStyleResolutionContext = createInlineStyleResolutionContext(input.input.factGraph);
+  const expressionByIdByFilePath = buildExpressionByIdByFilePath(input.input);
+  const staticInlineStyleObjectBySiteKey =
+    input.input.symbolicEvaluation.evaluatedExpressions.indexes.inlineStyleObjectBySiteKey;
   const inlineOrderById = new Map(
     inlineStyleSites
       .sort(
@@ -67,7 +67,7 @@ export function buildInlineStyleCandidates(input: {
       .map(({ site }, index) => [site.siteKey, index] as const),
   );
 
-  for (const { sourceFile, site } of inlineStyleSites) {
+  for (const { site } of inlineStyleSites) {
     if (site.kind === "component-prop-style") {
       continue;
     }
@@ -96,11 +96,11 @@ export function buildInlineStyleCandidates(input: {
       }
       const declarations = resolveInlineStyleDeclarationsForElement({
         site,
-        sourceFile,
         renderedElement,
         componentStyleSuppliesByBoundaryId,
         boundaryById,
-        resolutionContext: inlineStyleResolutionContext,
+        expressionByIdByFilePath,
+        staticInlineStyleObjectBySiteKey,
       });
       if (declarations.unsupportedReason) {
         input.diagnostics.push(
@@ -220,24 +220,6 @@ type InlineStyleDeclaration = {
   certainty: "definite" | "possible";
 };
 
-type InlineStyleResolutionContext = {
-  sourceFileByPath: Map<string, SourceFrontendFile>;
-  importedLocalByFileAndName: Map<
-    string,
-    {
-      importedName: string;
-      resolvedFilePath: string;
-    }
-  >;
-};
-
-type InlineStyleExpressionAlternative = {
-  expression: SourceObjectLiteralExpressionSyntax & SourceExpressionSyntaxFact;
-  sourceFile: InlineStyleSiteWithSourceFile["sourceFile"];
-  expressionById: Map<string, SourceExpressionSyntaxFact>;
-  certainty: "definite" | "possible";
-};
-
 type ComponentStyleSupply = InlineStyleSiteWithSourceFile & {
   boundaryId: string;
   componentPropName: string;
@@ -294,61 +276,17 @@ function buildComponentStyleSuppliesByBoundaryId(input: {
   return suppliesByBoundaryId;
 }
 
-function createInlineStyleResolutionContext(
-  factGraph: FactGraphResult,
-): InlineStyleResolutionContext {
-  const sourceFileByPath = new Map(
-    factGraph.frontends.source.files.map((sourceFile) => [sourceFile.filePath, sourceFile]),
+function buildExpressionByIdByFilePath(
+  input: CascadeAnalysisInput,
+): Map<string, Map<string, SourceExpressionSyntaxFact>> {
+  return new Map(
+    input.factGraph.frontends.source.files.map((sourceFile) => [
+      sourceFile.filePath,
+      new Map(
+        sourceFile.expressionSyntax.map((expression) => [expression.expressionId, expression]),
+      ),
+    ]),
   );
-  const importedLocalByFileAndName = new Map<
-    string,
-    {
-      importedName: string;
-      resolvedFilePath: string;
-    }
-  >();
-
-  for (const edge of factGraph.graph.edges.imports) {
-    if (
-      edge.importerKind !== "source" ||
-      edge.importKind !== "source" ||
-      edge.importLoading !== "static" ||
-      !edge.resolvedFilePath
-    ) {
-      continue;
-    }
-
-    const sourceFile = sourceFileByPath.get(edge.importerFilePath);
-    const frontendImport = sourceFile?.moduleSyntax.imports.find(
-      (candidate) =>
-        candidate.specifier === edge.specifier &&
-        candidate.importKind === edge.importKind &&
-        candidate.importLoading === edge.importLoading,
-    );
-    const frontendImportNames =
-      frontendImport?.importNames.map((importName) => ({
-        bindingKind: importName.kind,
-        importedName: importName.importedName,
-        localName: importName.localName,
-      })) ?? [];
-    const importNames =
-      edge.importNames && edge.importNames.length > 0 ? edge.importNames : frontendImportNames;
-
-    for (const importName of importNames) {
-      if (importName.bindingKind === "namespace") {
-        continue;
-      }
-      importedLocalByFileAndName.set(`${edge.importerFilePath}::${importName.localName}`, {
-        importedName: importName.importedName,
-        resolvedFilePath: edge.resolvedFilePath,
-      });
-    }
-  }
-
-  return {
-    sourceFileByPath,
-    importedLocalByFileAndName,
-  };
 }
 
 function findRenderedElementIdsForInlineStyleSite(input: {
@@ -384,11 +322,11 @@ function findRenderedElementIdsForInlineStyleSite(input: {
 
 function resolveInlineStyleDeclarationsForElement(input: {
   site: ReactInlineStyleSiteFact;
-  sourceFile: InlineStyleSiteWithSourceFile["sourceFile"];
   renderedElement: RenderedElement;
   componentStyleSuppliesByBoundaryId: Map<string, ComponentStyleSupply[]>;
   boundaryById: Map<string, RenderedComponentBoundary>;
-  resolutionContext: InlineStyleResolutionContext;
+  expressionByIdByFilePath: Map<string, Map<string, SourceExpressionSyntaxFact>>;
+  staticInlineStyleObjectBySiteKey: Map<string, StaticInlineStyleObjectFact>;
 }): {
   declarations: InlineStyleDeclaration[];
   unsupportedReason?: string;
@@ -399,7 +337,8 @@ function resolveInlineStyleDeclarationsForElement(input: {
       propName: input.site.componentPropName,
       componentStyleSuppliesByBoundaryId: input.componentStyleSuppliesByBoundaryId,
       boundaryById: input.boundaryById,
-      resolutionContext: input.resolutionContext,
+      expressionByIdByFilePath: input.expressionByIdByFilePath,
+      staticInlineStyleObjectBySiteKey: input.staticInlineStyleObjectBySiteKey,
       seen: new Set(),
     });
     if (supplied.declarations.length > 0 || supplied.unsupportedReason) {
@@ -409,9 +348,8 @@ function resolveInlineStyleDeclarationsForElement(input: {
 
   return extractInlineStyleDeclarations({
     site: input.site,
-    sourceFile: input.sourceFile,
-    resolutionContext: input.resolutionContext,
-    expressionById: expressionSyntaxById(input.sourceFile),
+    inlineStyleObject: input.staticInlineStyleObjectBySiteKey.get(input.site.siteKey),
+    expressionByIdByFilePath: input.expressionByIdByFilePath,
   });
 }
 
@@ -420,7 +358,8 @@ function resolveComponentStyleDeclarations(input: {
   propName: string;
   componentStyleSuppliesByBoundaryId: Map<string, ComponentStyleSupply[]>;
   boundaryById: Map<string, RenderedComponentBoundary>;
-  resolutionContext: InlineStyleResolutionContext;
+  expressionByIdByFilePath: Map<string, Map<string, SourceExpressionSyntaxFact>>;
+  staticInlineStyleObjectBySiteKey: Map<string, StaticInlineStyleObjectFact>;
   seen: Set<string>;
 }): {
   declarations: InlineStyleDeclaration[];
@@ -448,9 +387,8 @@ function resolveComponentStyleDeclarations(input: {
 
   const direct = extractInlineStyleDeclarations({
     site: supply.site,
-    sourceFile: supply.sourceFile,
-    resolutionContext: input.resolutionContext,
-    expressionById: expressionSyntaxById(supply.sourceFile),
+    inlineStyleObject: input.staticInlineStyleObjectBySiteKey.get(supply.site.siteKey),
+    expressionByIdByFilePath: input.expressionByIdByFilePath,
   });
   if (!direct.unsupportedReason) {
     return direct;
@@ -463,7 +401,8 @@ function resolveComponentStyleDeclarations(input: {
       propName: supply.site.sourceComponentPropName,
       componentStyleSuppliesByBoundaryId: input.componentStyleSuppliesByBoundaryId,
       boundaryById: input.boundaryById,
-      resolutionContext: input.resolutionContext,
+      expressionByIdByFilePath: input.expressionByIdByFilePath,
+      staticInlineStyleObjectBySiteKey: input.staticInlineStyleObjectBySiteKey,
       seen,
     });
   }
@@ -471,55 +410,34 @@ function resolveComponentStyleDeclarations(input: {
   return direct;
 }
 
-function expressionSyntaxById(
-  sourceFile: InlineStyleSiteWithSourceFile["sourceFile"],
-): Map<string, SourceExpressionSyntaxFact> {
-  return new Map(
-    sourceFile.expressionSyntax.map((expression) => [expression.expressionId, expression]),
-  );
-}
-
 function extractInlineStyleDeclarations(input: {
   site: ReactInlineStyleSiteFact;
-  sourceFile: InlineStyleSiteWithSourceFile["sourceFile"];
-  resolutionContext: InlineStyleResolutionContext;
-  expressionById: Map<string, SourceExpressionSyntaxFact>;
+  inlineStyleObject?: StaticInlineStyleObjectFact;
+  expressionByIdByFilePath: Map<string, Map<string, SourceExpressionSyntaxFact>>;
 }): {
   declarations: InlineStyleDeclaration[];
   unsupportedReason?: string;
 } {
-  const rootAlternatives = resolveInlineStyleObjectAlternatives({
-    expressionId: input.site.expressionId,
-    site: input.site,
-    sourceFile: input.sourceFile,
-    expressionById: input.expressionById,
-    resolutionContext: input.resolutionContext,
-    seenExpressionIds: new Set(),
-  });
-  if (!rootAlternatives || rootAlternatives.length === 0) {
+  if (!input.inlineStyleObject || input.inlineStyleObject.unsupportedReason) {
     return {
       declarations: [],
-      unsupportedReason: `Inline style "${input.site.rawExpressionText}" is not a statically analyzable object literal.`,
+      unsupportedReason:
+        input.inlineStyleObject?.unsupportedReason ??
+        `Inline style "${input.site.rawExpressionText}" is not a statically analyzable object literal.`,
     };
   }
 
-  const branchDeclarations: InlineStyleDeclaration[][] = [];
-  for (const alternative of rootAlternatives) {
-    const flattened = flattenInlineStyleObject({
-      objectExpression: alternative.expression,
-      inheritedCertainty: alternative.certainty,
-      site: input.site,
-      sourceFile: alternative.sourceFile,
-      expressionById: alternative.expressionById,
-      resolutionContext: input.resolutionContext,
-      seenExpressionIds: new Set([alternative.expression.expressionId]),
-      orderCounter: { value: 0 },
-    });
-    if (flattened.unsupportedReason) {
-      return flattened;
-    }
-    branchDeclarations.push(collapseInlineDeclarations(flattened.declarations));
-  }
+  const branchDeclarations = input.inlineStyleObject.alternatives.map((alternative) =>
+    alternative.properties.flatMap((property) => {
+      const declaration = extractInlineStyleDeclaration({
+        property,
+        expressionById: input.expressionByIdByFilePath.get(property.sourceFilePath) ?? new Map(),
+        fallbackLocation: input.site.location,
+        certainty: alternative.certainty,
+      });
+      return declaration ? [declaration] : [];
+    }),
+  );
 
   const merged = mergeInlineStyleAlternatives({
     site: input.site,
@@ -529,96 +447,6 @@ function extractInlineStyleDeclarations(input: {
     return merged;
   }
   return merged;
-}
-
-function flattenInlineStyleObject(input: {
-  objectExpression: SourceObjectLiteralExpressionSyntax & SourceExpressionSyntaxFact;
-  inheritedCertainty: "definite" | "possible";
-  site: ReactInlineStyleSiteFact;
-  sourceFile: InlineStyleSiteWithSourceFile["sourceFile"];
-  expressionById: Map<string, SourceExpressionSyntaxFact>;
-  resolutionContext: InlineStyleResolutionContext;
-  seenExpressionIds: Set<string>;
-  orderCounter: { value: number };
-}): {
-  declarations: InlineStyleDeclaration[];
-  unsupportedReason?: string;
-} {
-  if (input.objectExpression.hasUnsupportedProperty) {
-    return {
-      declarations: [],
-      unsupportedReason: `Inline style "${input.site.rawExpressionText}" contains unsupported object properties.`,
-    };
-  }
-
-  const declarations: InlineStyleDeclaration[] = [];
-  for (const property of input.objectExpression.properties) {
-    if (property.propertyKind === "spread") {
-      const spreadObject = resolveInlineStyleSpreadObject({
-        property,
-        site: input.site,
-        sourceFile: input.sourceFile,
-        expressionById: input.expressionById,
-        resolutionContext: input.resolutionContext,
-      });
-      if (!spreadObject) {
-        return {
-          declarations: [],
-          unsupportedReason: `Inline style "${input.site.rawExpressionText}" contains spread that could not be statically resolved.`,
-        };
-      }
-      if (input.seenExpressionIds.has(spreadObject.expression.expressionId)) {
-        return {
-          declarations: [],
-          unsupportedReason: `Inline style "${input.site.rawExpressionText}" contains cyclic object spread.`,
-        };
-      }
-
-      const seenExpressionIds = new Set(input.seenExpressionIds);
-      seenExpressionIds.add(spreadObject.expression.expressionId);
-      const spread = flattenInlineStyleObject({
-        objectExpression: spreadObject.expression,
-        inheritedCertainty: input.inheritedCertainty,
-        site: input.site,
-        sourceFile: spreadObject.sourceFile,
-        expressionById: spreadObject.expressionById,
-        resolutionContext: input.resolutionContext,
-        seenExpressionIds,
-        orderCounter: input.orderCounter,
-      });
-      if (spread.unsupportedReason) {
-        return spread;
-      }
-      declarations.push(...spread.declarations);
-      continue;
-    }
-
-    const declaration = extractInlineStyleDeclaration({
-      property,
-      expressionById: input.expressionById,
-      fallbackLocation: input.site.location,
-      order: input.orderCounter.value,
-      certainty: input.inheritedCertainty,
-    });
-    input.orderCounter.value += 1;
-    if (declaration) {
-      declarations.push(declaration);
-    }
-  }
-
-  return {
-    declarations,
-  };
-}
-
-function collapseInlineDeclarations(
-  declarations: InlineStyleDeclaration[],
-): InlineStyleDeclaration[] {
-  const declarationsByProperty = new Map<string, InlineStyleDeclaration>();
-  for (const declaration of declarations) {
-    declarationsByProperty.set(declaration.property, declaration);
-  }
-  return [...declarationsByProperty.values()].sort((left, right) => left.order - right.order);
 }
 
 function mergeInlineStyleAlternatives(input: {
@@ -665,243 +493,20 @@ function mergeInlineStyleAlternatives(input: {
   };
 }
 
-function resolveInlineStyleObjectAlternatives(input: {
-  expressionId: string;
-  site: ReactInlineStyleSiteFact;
-  sourceFile: InlineStyleSiteWithSourceFile["sourceFile"];
-  expressionById: Map<string, SourceExpressionSyntaxFact>;
-  resolutionContext: InlineStyleResolutionContext;
-  seenExpressionIds: Set<string>;
-}): InlineStyleExpressionAlternative[] | undefined {
-  if (input.seenExpressionIds.has(input.expressionId)) {
-    return undefined;
-  }
-  const seenExpressionIds = new Set(input.seenExpressionIds);
-  seenExpressionIds.add(input.expressionId);
-
-  const expression = unwrapExpressionSyntax(
-    input.expressionById.get(input.expressionId),
-    input.expressionById,
-  );
-  if (!expression) {
-    return undefined;
-  }
-  if (expression.expressionKind === "object-literal") {
-    return [
-      {
-        expression,
-        sourceFile: input.sourceFile,
-        expressionById: input.expressionById,
-        certainty: "definite",
-      },
-    ];
-  }
-  if (expression.expressionKind === "conditional") {
-    const whenTrue = resolveInlineStyleObjectAlternatives({
-      ...input,
-      expressionId: expression.whenTrueExpressionId,
-      seenExpressionIds,
-    });
-    const whenFalse = resolveInlineStyleObjectAlternatives({
-      ...input,
-      expressionId: expression.whenFalseExpressionId,
-      seenExpressionIds,
-    });
-    if (!whenTrue || !whenFalse) {
-      return undefined;
-    }
-    return [...whenTrue, ...whenFalse].map((alternative) => ({
-      ...alternative,
-      certainty: "possible" as const,
-    }));
-  }
-  if (expression.expressionKind === "identifier") {
-    return resolveInlineStyleIdentifier({
-      identifierName: expression.name,
-      site: input.site,
-      sourceFile: input.sourceFile,
-      expressionById: input.expressionById,
-      resolutionContext: input.resolutionContext,
-      seenExpressionIds,
-    });
-  }
-  if (expression.expressionKind === "call" && expression.argumentExpressionIds.length === 0) {
-    const callee = unwrapExpressionSyntax(
-      input.expressionById.get(expression.calleeExpressionId),
-      input.expressionById,
-    );
-    if (callee?.expressionKind !== "identifier") {
-      return undefined;
-    }
-    const helper = input.sourceFile.reactSyntax.helperDefinitions
-      .filter(
-        (candidate) =>
-          candidate.helperName === callee.name &&
-          candidate.filePath === input.site.filePath &&
-          candidate.parameters.length === 0 &&
-          !candidate.unsupportedReason &&
-          isLocationAtOrBefore(candidate.location, input.site.location),
-      )
-      .sort(
-        (left, right) =>
-          right.location.startLine - left.location.startLine ||
-          right.location.startColumn - left.location.startColumn ||
-          right.helperKey.localeCompare(left.helperKey),
-      )
-      .at(0);
-    const returnExpressionIds =
-      helper?.returnExpressionIds ??
-      (helper?.returnExpressionId ? [helper.returnExpressionId] : []);
-    if (returnExpressionIds.length === 0) {
-      return undefined;
-    }
-    const alternatives = returnExpressionIds.flatMap(
-      (returnExpressionId): InlineStyleExpressionAlternative[] =>
-        resolveInlineStyleObjectAlternatives({
-          ...input,
-          expressionId: returnExpressionId,
-          seenExpressionIds,
-        }) ?? [],
-    );
-    return alternatives.length > 0
-      ? alternatives.map((alternative) => ({
-          ...alternative,
-          certainty: returnExpressionIds.length > 1 ? "possible" : alternative.certainty,
-        }))
-      : undefined;
-  }
-
-  return undefined;
-}
-
-function resolveInlineStyleIdentifier(input: {
-  identifierName: string;
-  site: ReactInlineStyleSiteFact;
-  sourceFile: InlineStyleSiteWithSourceFile["sourceFile"];
-  expressionById: Map<string, SourceExpressionSyntaxFact>;
-  resolutionContext: InlineStyleResolutionContext;
-  seenExpressionIds: Set<string>;
-}): InlineStyleExpressionAlternative[] | undefined {
-  const binding = [...input.sourceFile.reactSyntax.localValueBindings]
-    .filter(
-      (candidate) =>
-        candidate.bindingKind === "const-identifier" &&
-        candidate.localName === input.identifierName &&
-        candidate.location.filePath === input.site.location.filePath &&
-        isLocationAtOrBefore(candidate.location, input.site.location) &&
-        (!candidate.assignments || candidate.assignments.length === 0),
-    )
-    .sort(
-      (left, right) =>
-        right.location.startLine - left.location.startLine ||
-        right.location.startColumn - left.location.startColumn ||
-        right.bindingKey.localeCompare(left.bindingKey),
-    )
-    .at(0);
-  const objectExpressionId =
-    binding?.expressionId ?? binding?.objectExpressionId ?? binding?.initializerExpressionId;
-  if (objectExpressionId) {
-    return resolveInlineStyleObjectAlternatives({
-      expressionId: objectExpressionId,
-      site: input.site,
-      sourceFile: input.sourceFile,
-      expressionById: input.expressionById,
-      resolutionContext: input.resolutionContext,
-      seenExpressionIds: input.seenExpressionIds,
-    });
-  }
-
-  const imported = input.resolutionContext.importedLocalByFileAndName.get(
-    `${input.sourceFile.filePath}::${input.identifierName}`,
-  );
-  if (!imported) {
-    return undefined;
-  }
-  const importedSourceFile = input.resolutionContext.sourceFileByPath.get(
-    imported.resolvedFilePath,
-  );
-  if (!importedSourceFile) {
-    return undefined;
-  }
-  const importedLocalName =
-    imported.importedName === "default"
-      ? importedSourceFile.moduleSyntax.declarations.exportedLocalNames.get("default")
-      : importedSourceFile.moduleSyntax.declarations.exportedLocalNames.get(imported.importedName);
-  if (!importedLocalName) {
-    return undefined;
-  }
-  const importedExpressionById = expressionSyntaxById(importedSourceFile);
-  const importedBinding = importedSourceFile.reactSyntax.localValueBindings.find(
-    (candidate) =>
-      candidate.bindingKind === "const-identifier" &&
-      candidate.localName === importedLocalName &&
-      (!candidate.assignments || candidate.assignments.length === 0),
-  );
-  const importedExpressionId =
-    importedBinding?.expressionId ??
-    importedBinding?.objectExpressionId ??
-    importedBinding?.initializerExpressionId;
-  if (!importedExpressionId) {
-    return undefined;
-  }
-
-  return resolveInlineStyleObjectAlternatives({
-    expressionId: importedExpressionId,
-    site: input.site,
-    sourceFile: importedSourceFile,
-    expressionById: importedExpressionById,
-    resolutionContext: input.resolutionContext,
-    seenExpressionIds: input.seenExpressionIds,
-  });
-}
-
-function resolveInlineStyleSpreadObject(input: {
-  property: SourceObjectExpressionProperty;
-  site: ReactInlineStyleSiteFact;
-  sourceFile: InlineStyleSiteWithSourceFile["sourceFile"];
-  expressionById: Map<string, SourceExpressionSyntaxFact>;
-  resolutionContext: InlineStyleResolutionContext;
-}): InlineStyleExpressionAlternative | undefined {
-  if (!input.property.spreadExpressionId) {
-    return undefined;
-  }
-
-  const alternatives = resolveInlineStyleObjectAlternatives({
-    expressionId: input.property.spreadExpressionId,
-    site: input.site,
-    sourceFile: input.sourceFile,
-    expressionById: input.expressionById,
-    resolutionContext: input.resolutionContext,
-    seenExpressionIds: new Set(),
-  });
-  return alternatives?.length === 1 && alternatives[0].certainty === "definite"
-    ? alternatives[0]
-    : undefined;
-}
-
 function extractInlineStyleDeclaration(input: {
-  property: SourceObjectExpressionProperty;
+  property: StaticInlineStyleObjectProperty;
   expressionById: Map<string, SourceExpressionSyntaxFact>;
   fallbackLocation: ReactInlineStyleSiteFact["location"];
-  order: number;
   certainty: "definite" | "possible";
 }): InlineStyleDeclaration | undefined {
-  if (
-    input.property.propertyKind !== "property" ||
-    input.property.keyKind === "computed" ||
-    !input.property.keyText ||
-    !input.property.valueExpressionId
-  ) {
-    return undefined;
-  }
-
-  const valueExpression = unwrapExpressionSyntax(
-    input.expressionById.get(input.property.valueExpressionId),
-    input.expressionById,
-  );
   const semantics = getReactInlineStyleDeclarationSemantics({
-    propertyName: input.property.keyText,
-    valueExpression,
+    propertyName: input.property.propertyName,
+    valueExpression:
+      input.property.valueExpression ??
+      unwrapExpressionSyntax(
+        input.expressionById.get(input.property.valueExpressionId),
+        input.expressionById,
+      ),
     expressionById: input.expressionById,
   });
   if (!semantics) {
@@ -913,22 +518,9 @@ function extractInlineStyleDeclaration(input: {
     value: semantics.value,
     propertyEffects: semantics.propertyEffects,
     location: input.property.location ?? input.fallbackLocation,
-    order: input.order,
+    order: input.property.order,
     certainty: input.certainty,
   };
-}
-
-function isLocationAtOrBefore(
-  left: ReactInlineStyleSiteFact["location"],
-  right: ReactInlineStyleSiteFact["location"],
-): boolean {
-  if (left.filePath !== right.filePath) {
-    return false;
-  }
-  return (
-    left.startLine < right.startLine ||
-    (left.startLine === right.startLine && left.startColumn <= right.startColumn)
-  );
 }
 
 function unwrapExpressionSyntax(

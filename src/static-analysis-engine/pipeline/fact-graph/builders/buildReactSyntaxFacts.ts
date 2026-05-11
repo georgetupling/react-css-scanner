@@ -394,6 +394,20 @@ export function buildReactSyntaxFacts(input: FactGraphInput): BuiltReactSyntaxFa
           ? { runtimeDomLibraryHint: classSite.runtimeDomLibraryHint }
           : {}),
         ...(classSite.componentPropName ? { componentPropName: classSite.componentPropName } : {}),
+        ...(classSite.valueProjection
+          ? {
+              valueProjection: {
+                kind: classSite.valueProjection.kind,
+                propertyNames: [...classSite.valueProjection.propertyNames].sort(),
+                ...(classSite.valueProjection.unresolvedObjectEntriesAffectPresence !== undefined
+                  ? {
+                      unresolvedObjectEntriesAffectPresence:
+                        classSite.valueProjection.unresolvedObjectEntriesAffectPresence,
+                    }
+                  : {}),
+              },
+            }
+          : {}),
         ...(classSite.emittingComponentKey
           ? { emittingComponentNodeId: componentNodeId(classSite.emittingComponentKey) }
           : {}),

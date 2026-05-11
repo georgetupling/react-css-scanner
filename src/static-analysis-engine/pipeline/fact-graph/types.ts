@@ -243,6 +243,11 @@ export type ClassExpressionSiteNode = FactNodeBase & {
   runtimeDomClassText?: string;
   runtimeDomLibraryHint?: RuntimeDomLibraryHint;
   componentPropName?: string;
+  valueProjection?: {
+    kind: "object-property";
+    propertyNames: string[];
+    unresolvedObjectEntriesAffectPresence?: boolean;
+  };
   emittingComponentNodeId?: FactNodeId;
   placementComponentNodeId?: FactNodeId;
   renderSiteNodeId?: FactNodeId;

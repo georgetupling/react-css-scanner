@@ -33,6 +33,7 @@ import {
   buildExternalContributions,
 } from "./contributions/classContributions.js";
 import {
+  resolveObjectLiteralExpressionSyntax,
   summarizeElementAccessExpressionSyntax,
   summarizeMemberAccessExpressionSyntax,
   summarizeObjectExpressionSyntax,
@@ -132,12 +133,19 @@ export const normalizedClassExpressionEvaluator: SymbolicExpressionEvaluator = {
       return {};
     }
 
-    const value = summarizeNormalizedClassExpression({
-      input,
-      expression: input.expressionSyntax,
-      depth: 0,
-      seenExpressionIds: new Set(),
-    });
+    const value = input.classExpressionSite.valueProjection
+      ? summarizeProjectedClassExpression({
+          input,
+          expression: input.expressionSyntax,
+          depth: 0,
+          seenExpressionIds: new Set(),
+        })
+      : summarizeNormalizedClassExpression({
+          input,
+          expression: input.expressionSyntax,
+          depth: 0,
+          seenExpressionIds: new Set(),
+        });
     const tokenAnchors = buildImportedIdentifierTokenAnchors({
       input,
       syntax: input.expressionSyntax,
@@ -198,6 +206,180 @@ export const normalizedClassExpressionEvaluator: SymbolicExpressionEvaluator = {
     };
   },
 };
+
+function summarizeProjectedClassExpression(input: {
+  input: SymbolicExpressionEvaluatorInput;
+  expression: ExpressionSyntaxNode;
+  depth: number;
+  seenExpressionIds: Set<string>;
+}): AbstractValue {
+  const projection = input.input.classExpressionSite.valueProjection;
+  if (!projection || projection.kind !== "object-property") {
+    return summarizeNormalizedClassExpression(input);
+  }
+
+  const expression = unwrapExpressionSyntax(input);
+  if (expression.expressionKind === "conditional") {
+    const conditionExpression = getExpressionSyntax(input.input, expression.conditionExpressionId);
+    const conditionTruthiness = conditionExpression
+      ? evaluateExpressionStaticTruthiness({
+          ...input,
+          expression: conditionExpression,
+        })
+      : undefined;
+    if (conditionTruthiness === true) {
+      const whenTrueExpression = getExpressionSyntax(input.input, expression.whenTrueExpressionId);
+      return whenTrueExpression
+        ? summarizeProjectedClassExpression({
+            ...input,
+            expression: whenTrueExpression,
+            depth: input.depth + 1,
+          })
+        : { kind: "unknown", reason: "missing-expression-syntax" };
+    }
+    if (conditionTruthiness === false || conditionTruthiness === "nullish") {
+      const whenFalseExpression = getExpressionSyntax(
+        input.input,
+        expression.whenFalseExpressionId,
+      );
+      return whenFalseExpression
+        ? summarizeProjectedClassExpression({
+            ...input,
+            expression: whenFalseExpression,
+            depth: input.depth + 1,
+          })
+        : { kind: "unknown", reason: "missing-expression-syntax" };
+    }
+
+    const whenTrueExpression = getExpressionSyntax(input.input, expression.whenTrueExpressionId);
+    const whenFalseExpression = getExpressionSyntax(input.input, expression.whenFalseExpressionId);
+    if (!whenTrueExpression || !whenFalseExpression) {
+      return { kind: "unknown", reason: "missing-expression-syntax" };
+    }
+
+    const whenTrue = summarizeProjectedClassExpression({
+      ...input,
+      expression: whenTrueExpression,
+      depth: input.depth + 1,
+    });
+    const whenFalse = summarizeProjectedClassExpression({
+      ...input,
+      expression: whenFalseExpression,
+      depth: input.depth + 1,
+    });
+    const stringCandidates = collectStringCandidates(whenTrue, whenFalse);
+    if (stringCandidates) {
+      return {
+        kind: "string-set",
+        values: stringCandidates,
+        mutuallyExclusiveGroups: [
+          uniqueSorted(stringCandidates.flatMap((candidate) => tokenizeClassNames(candidate))),
+        ],
+      };
+    }
+
+    return mergeClassSets([whenTrue, whenFalse], "conditional object property projection");
+  }
+
+  const objectLiteral = resolveObjectLiteralExpressionSyntax({
+    ...input,
+    expression,
+    callbacks: objectMemberEvaluationCallbacks,
+  });
+  if (!objectLiteral) {
+    return { kind: "unknown", reason: "unresolved-member-access" };
+  }
+
+  const projectedPropertyNames = new Set(projection.propertyNames);
+  let unresolvedEntriesCanAffectResult = false;
+  let selectedExpressionId: string | undefined;
+
+  for (const property of objectLiteral.properties) {
+    if (property.propertyKind === "spread" || property.propertyKind === "unsupported") {
+      unresolvedEntriesCanAffectResult = true;
+      continue;
+    }
+
+    if (property.propertyKind !== "property" && property.propertyKind !== "shorthand") {
+      unresolvedEntriesCanAffectResult = true;
+      continue;
+    }
+
+    const keyText = resolveProjectedObjectPropertyKey({
+      ...input,
+      property,
+    });
+    if (!keyText) {
+      unresolvedEntriesCanAffectResult = true;
+      continue;
+    }
+
+    if (projectedPropertyNames.has(keyText)) {
+      selectedExpressionId = property.valueExpressionId;
+      unresolvedEntriesCanAffectResult = false;
+    }
+  }
+
+  if (!selectedExpressionId) {
+    return unresolvedEntriesCanAffectResult && projection.unresolvedObjectEntriesAffectPresence
+      ? {
+          kind: "class-set",
+          definite: [],
+          possible: [],
+          unknownDynamic: true,
+          reason: "object property projection with unresolved entries",
+        }
+      : { kind: "string-exact", value: "" };
+  }
+
+  const projectedExpression = getExpressionSyntax(input.input, selectedExpressionId);
+  if (!projectedExpression) {
+    return { kind: "unknown", reason: "missing-expression-syntax" };
+  }
+
+  const projectedValue = summarizeNormalizedClassExpression({
+    input: input.input,
+    expression: projectedExpression,
+    depth: input.depth + 1,
+    seenExpressionIds: input.seenExpressionIds,
+  });
+
+  if (!unresolvedEntriesCanAffectResult) {
+    return projectedValue;
+  }
+
+  const classSet = toClassSet(projectedValue);
+  return {
+    kind: "class-set",
+    definite: [],
+    possible: uniqueSorted([...classSet.definite, ...classSet.possible]),
+    mutuallyExclusiveGroups: classSet.mutuallyExclusiveGroups,
+    unknownDynamic: true,
+    reason: "object property projection with unresolved entries",
+  };
+}
+
+function resolveProjectedObjectPropertyKey(input: {
+  input: SymbolicExpressionEvaluatorInput;
+  property: Extract<
+    ExpressionSyntaxNode,
+    { expressionKind: "object-literal" }
+  >["properties"][number];
+  depth: number;
+  seenExpressionIds: Set<string>;
+  helperBindings?: Map<string, AbstractValue>;
+}): string | undefined {
+  if (input.property.keyKind === "computed") {
+    if (!input.property.keyExpressionId) {
+      return undefined;
+    }
+    const keyValue = getExpressionValue(input, input.property.keyExpressionId);
+    const keyCandidates = getStringCandidates(keyValue);
+    return keyCandidates?.length === 1 ? keyCandidates[0] : undefined;
+  }
+
+  return input.property.keyText;
+}
 
 function summarizeNormalizedClassExpression(input: {
   input: SymbolicExpressionEvaluatorInput;

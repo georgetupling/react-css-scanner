@@ -174,6 +174,43 @@ Initial support includes author stylesheet declarations, direct JSX inline style
 
 Inline style support is intentionally static and bounded. The scanner can follow object literals, local and imported exported `const` style object bindings, no-argument local helpers that return style objects, conditional style object branches, static object spreads, and JSX prop spreads that expose a `style` prop or forward `props`/rest props into an intrinsic element. JSX prop spread extraction for both `style` and class-like props uses a shared static object value evaluator with exact/partial/unknown confidence, so computed literal keys, member expressions, no-argument helper calls, nested object spreads, and known properties after unknown spreads can be reused consistently across inline style and className analysis. Conflicting conditional inline style values are rejected as unsupported rather than guessed. React inline style declaration semantics are computed before candidate creation: camelCase property names are normalized, numeric values are converted using React's `px`/unitless behavior, custom properties are preserved, and then `propertyEffects` are attached through the shared CSS declaration semantics helper.
 
+### Shared Static Value Flow
+
+The existing className symbolic evaluator already proves many string and token flows: literals, templates, arrays, helpers, member access, imported constants, finite alternatives, and partial/unknown dynamic input. Inline style analysis needs the same reach, but it cannot consume the className projection directly because style semantics are object-shaped rather than token-shaped. Style flow must preserve property order, spread barriers, last-write-wins behavior, computed property names, branch-specific property values, and per-property source locations.
+
+The stage-owned design is:
+
+```text
+language-frontends
+  -> JSX class/style/spread sites
+  -> normalized expression-syntax facts
+  -> no static object evaluation
+
+symbolic-evaluation
+  -> reusable JavaScript value evaluation over expression-syntax facts
+  -> className projection facts
+  -> static object value facts/indexes for later consumers
+
+cascade-analysis
+  -> consumes precomputed inline-style declaration semantics
+  -> does cascade comparison, not JavaScript AST/value flow
+```
+
+Implementation status:
+
+- React language frontends now preserve JSX spread expressions as class/style sites with `object-property` projection metadata instead of evaluating the spread object from the TypeScript AST.
+- `symbolic-evaluation` resolves `className` projections from expression-syntax facts, including local/imported object literals, member access, element access with static keys, computed static object keys, and uncertainty from unresolved object entries.
+- Inline style projections are represented in frontend facts too. `symbolic-evaluation` now emits reusable static inline-style object facts/indexes keyed by inline style site. Those facts flatten supported object spreads, resolve `style` projections from JSX prop spreads, preserve conditional alternatives, and retain value expression syntax for React property semantics. Cascade consumes those facts by site key and no longer projects the `style` property or resolves JavaScript object roots itself.
+
+This keeps the architecture honest:
+
+- language frontends identify syntax sites and collect expression facts
+- symbolic evaluation owns reusable JavaScript value shapes
+- className and inline style analysis project those shapes into domain-specific evidence
+- cascade consumes already-normalized inline style declarations rather than doing JavaScript dataflow
+
+Near-term improvements should land in symbolic evaluation when they are object-shape concepts, and in the className or inline-style projection only when the behavior is domain-specific.
+
 ### Condition Evidence
 
 Cascade comparisons must not treat incompatible conditions as definite conflicts.
@@ -302,6 +339,104 @@ export type CascadeConditionalOutcomeBranch = {
 ```
 
 Rules should consume outcomes rather than recomputing cascade comparisons.
+
+### Computed Style Resolution Follow-On
+
+Cascade outcomes answer which declaration wins locally for one rendered element and one effective property. That is necessary but not sufficient for browser-like inheritance semantics, because many CSS properties are inherited from the parent computed value when the element has no local winning declaration, or when the winning declaration uses a CSS-wide keyword such as `inherit` or inherited `unset`.
+
+The follow-on work is a computed-style resolution layer inside `cascade-analysis`:
+
+```ts
+export type CascadeComputedProperty = {
+  id: string;
+  elementId: string;
+  property: string;
+  value?: string;
+  source:
+    | "local-cascade"
+    | "inherited-parent"
+    | "initial-value"
+    | "unresolved-parent"
+    | "unsupported-css-wide-keyword";
+  outcomeId?: string;
+  winningCandidateId?: string;
+  parentComputedPropertyId?: string;
+  certainty: "definite" | "possible" | "unknown";
+  reasons: string[];
+  traces: AnalysisTrace[];
+};
+```
+
+This should be computed after final cascade outcomes, using:
+
+- `CascadeOutcome` and `CascadeDeclarationCandidate` to find the local winning value for an element/property.
+- `propertyMetadata.ts` for each known longhand's `inherited` flag and initial value.
+- `renderModel.indexes.elementById` / `RenderedElement.parentElementId` to follow the modeled parent element chain.
+- condition branch metadata from outcomes when a local winner or parent value is possible rather than definite.
+
+Resolution rules:
+
+- A definite local winner with an ordinary concrete value produces `source: "local-cascade"`.
+- `initial` resolves to the longhand metadata initial value.
+- `inherit` resolves to the parent element's computed value for the same property.
+- `unset` resolves as `inherit` for inherited properties and as `initial` for non-inherited properties.
+- No local outcome resolves as parent inheritance for inherited properties, and as initial value for non-inherited properties.
+- Root elements with no modeled parent resolve inherited properties to their initial values.
+- `revert` and `revert-layer` remain `unsupported-css-wide-keyword` until user/user-agent origins and layer rollback semantics are modeled.
+- Unknown, conditional, or branch-varying local outcomes should propagate `possible` / `unknown` rather than inventing one computed value.
+- Missing or uncertain parent chains produce `source: "unresolved-parent"` for inherited values rather than falling back silently.
+
+The pass should be recursive and deterministic. It needs a visited-set guard even though render parent chains should be acyclic, because computed-style resolution should never be able to hang on malformed analysis input. It should emit indexed records, not mutate cascade outcomes, so consumers can choose whether they need local cascade evidence or computed-value evidence.
+
+Recommended result/index additions:
+
+```ts
+export type CascadeAnalysisResult = {
+  declarations: CssDeclarationCascadeRecord[];
+  conditionSets: CascadeConditionSet[];
+  candidates: CascadeDeclarationCandidate[];
+  outcomes: CascadeOutcome[];
+  computedProperties: CascadeComputedProperty[];
+  diagnostics: CascadeAnalysisDiagnostic[];
+  indexes: CascadeAnalysisIndexes;
+};
+
+export type CascadeAnalysisIndexes = {
+  // existing indexes...
+  computedPropertyById: Map<string, CascadeComputedProperty>;
+  computedPropertyIdsByElementId: Map<string, string[]>;
+  computedPropertyIdByElementAndProperty: Map<string, string>;
+  computedPropertyIdsByOutcomeId: Map<string, string[]>;
+};
+```
+
+The first implementation should only compute known longhands from `propertyMetadata.ts`. That keeps the behavior explainable and avoids implying the scanner has a full browser computed-style database. As the metadata table expands, computed-style coverage expands with it.
+
+Benefits:
+
+- Inherited properties such as `color` and `list-style-*` become element-aware instead of declaration-local.
+- Declarations using `inherit`, inherited `unset`, or inherited defaults can be compared against the actual modeled parent value.
+- Redundant declarations can be proven when a child explicitly declares the same value it would inherit.
+- Shadowing and conflict rules can distinguish "locally loses" from "computed value still comes from an ancestor".
+- Future accessibility and design-system rules can reason about effective values on the rendered element rather than only syntactic declarations.
+
+Rule consumers:
+
+- `declaration-always-shadowed` should mostly stay on local `CascadeOutcome`; it is about declarations losing in cascade comparison. It can use computed properties later to improve explanations for inherited values, but it should not require parent computed style to report definite local shadowing.
+- `same-property-conflict` should use computed properties once implemented, because two declarations that look conflicting syntactically may compute to the same effective value through inheritance, `unset`, or custom-property substitution.
+- `selector-declaration-never-wins` should use local outcomes for "never wins", then optionally computed properties to explain whether an ancestor still supplies the effective value.
+- `implicit-cascade-dependency` becomes much stronger with computed properties: it can report when a component depends on inherited `color`, `font`, `list-style`, or other inherited values from an ancestor outside its local ownership boundary.
+- `component-style-overridden-externally` can use computed properties to prove the final effective value on a component's rendered element is supplied by an external or parent-owned stylesheet.
+- Future `redundant-inherited-declaration` / `same-computed-value` rules should consume computed properties directly and only report when both the local declaration and inherited parent value are definite.
+
+Suggested implementation order:
+
+1. Add `CascadeComputedProperty` types, ids, and indexes.
+2. Build an internal resolver over known longhands, local outcomes, candidates, metadata, and render parent links.
+3. Handle ordinary concrete values, `initial`, `inherit`, and `unset`.
+4. Preserve `revert` / `revert-layer`, conditional outcomes, and uncertain parent chains as unknown evidence.
+5. Add focused tests for inherited `color`, child `inherit`, child `unset`, root fallback, non-inherited initial fallback, and uncertain parent propagation.
+6. Update rule docs and only then wire specific rules to computed-style evidence.
 
 ### Diagnostics
 
@@ -447,8 +582,9 @@ Phase 2 adds the first cascade stage scaffold:
 - selector pseudo-state conditions for supported state and structural pseudo-classes, including branch outcomes when a pseudo-state selector is compared with an unconditional selector.
 - pseudo-state branch reduction for modeled selector-state implication, so branches such as `:hover:focus` include declarations that only require `:hover`, and `:focus-visible` branches include declarations that require `:focus`.
 - bounded `@scope` proximity through selector-reachability-backed root and limit matching for supported selector shapes; scoped declarations outside the modeled root are skipped, scope limits block descendants past the limit, and proximity is compared between specificity and source order.
-- value-aware property effects computed by the CSS frontend for exact properties plus supported box-model shorthands: `margin`, `padding`, logical `margin-*`/`padding-*`, physical/logical `inset`, `border-width`, `border-style`, `border-color`, physical side `border-*`, logical `border-block*`/`border-inline*`, whole `border` when the width/style/color value can be safely parsed, and `css-tree`-validated `background` effects for color, image, repeat, attachment, position, size, origin, and clip.
+- value-aware property effects computed by the CSS frontend. Exact non-custom declarations are validated through `css-tree`'s MDN-backed property grammar database once their value is concrete; declarations containing unresolved `var()` dependencies are validated after definite custom-property substitution. Supported shorthands include box-model shorthands: `margin`, `padding`, logical `margin-*`/`padding-*`, physical/logical `inset`, `border-width`, `border-style`, `border-color`, physical side `border-*`, logical `border-block*`/`border-inline*`, whole `border` when the width/style/color value can be safely parsed, and `css-tree`-validated `background` effects for color, image, repeat, attachment, position, size, origin, and clip.
 - a metadata-backed property model for known longhands and shorthands. Longhand records include inheritance, initial values, and bounded logical-to-physical relationships; shorthand records define reset groups. CSS-wide keywords are resolved through metadata: `initial` uses the longhand initial value, `unset` becomes `inherit` for inherited properties and the initial value otherwise, and `revert` / `revert-layer` remain explicit because they depend on origin/layer context. The bounded `all` shorthand expands across the known metadata longhand universe.
+- logical property normalization before final outcome comparison. When an element has a definite modeled `writing-mode` and `direction`, or no modeled flow declarations so browser initial `horizontal-tb`/`ltr` applies, logical box/inset/border candidates are remapped to physical properties so they compete with physical declarations. Conditional or unsupported flow declarations leave logical candidates unresolved rather than guessing.
 - `unsupported-property-semantics` diagnostics for known unsupported shorthands such as `font`, `flex`, `grid`, transitions, animations, and ambiguous supported-family values such as whole-border CSS variables or ambiguous `background` values.
 
 Known limitations:
@@ -468,8 +604,8 @@ Known limitations:
 - JSX prop spread extraction has shared static object confidence for known/unknown entries, computed literal keys, member expressions, nested spreads, and no-argument helper calls; dynamic unknown spreads, parameterized helpers, mutation-built objects, arbitrary call results, re-export barrels, namespace imports, and package imports remain conservative
 - conditional inline style branches with conflicting values for the same effective property are intentionally unsupported
 - only a bounded safe shorthand/longhand property semantics set
-- reset and inheritance handling is metadata-backed for known longhands/shorthands and the bounded `all` reset group, but full parent computed-value inheritance, writing-mode-dependent logical-to-physical resolution, and broader reset semantics are not modeled
-- custom property cascade and definite `var()` substitution are modeled, but conditional, cyclic, missing, and invalid substitutions remain unsupported-property-semantics uncertainty
-- no full typed value grammar; border shorthand parsing recognizes clear width/style/color tokens and intentionally rejects ambiguous whole-value variables
+- reset and inheritance handling is metadata-backed for known longhands/shorthands and the bounded `all` reset group. Logical-to-physical mapping is modeled for supported `horizontal-tb`, `vertical-rl`, and `vertical-lr` writing modes with `ltr`/`rtl` direction when the flow is definite; full parent computed-value inheritance, sideways writing modes, and broader reset semantics are not modeled
+- custom property cascade and definite `var()` substitution are modeled, but conditional, cyclic, and missing substitutions remain unsupported-property-semantics uncertainty
+- exact property values use `css-tree` typed property grammar validation, but shorthand expansion remains intentionally bounded; border shorthand parsing recognizes clear width/style/color tokens and intentionally rejects ambiguous whole-value variables
 - `background` shorthand parsing is `css-tree` validated but still partial: it models reset/winning behavior for the main background longhands, but it does not yet model every computed-value nuance or `var()` substitution
 - only `declaration-always-shadowed` consumes outcomes today, and it remains opt-in
