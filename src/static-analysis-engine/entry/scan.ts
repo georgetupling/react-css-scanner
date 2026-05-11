@@ -84,6 +84,9 @@ export async function runAnalysisPipeline(input: {
         {
           renderModel: renderStructureStage.renderModel,
           selectorBranches: factGraph.graph.nodes.selectorBranches,
+          stylesheets: factGraph.graph.nodes.stylesheets,
+          factGraph: factGraph.graph,
+          cssModuleLocalsConvention: snapshot.config.cssModules.localsConvention,
         },
         { includeTraces },
       ),

@@ -627,6 +627,37 @@ test("compound-selector-never-matched does not report matched same-node class co
   }
 });
 
+test("compound-selector-never-matched treats CSS Module classes emitted together as reachable", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      [
+        'import styles from "./App.module.css";',
+        "export function App() {",
+        "  return <section className={`${styles.card} ${styles.featured}`}>Hello</section>;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    .withCssFile("src/App.module.css", ".card { color: black; }\n.card.featured { color: gold; }\n")
+    .build();
+
+  try {
+    const result = await scanProject({
+      rootDir: project.rootDir,
+      sourceFilePaths: ["src/App.tsx"],
+      cssFilePaths: ["src/App.module.css"],
+    });
+
+    assert.deepEqual(
+      result.findings.filter((finding) => finding.ruleId === "compound-selector-never-matched"),
+      [],
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
 test("compound-selector-never-matched allows cloneElement slot class merges", async () => {
   const project = await new TestProjectBuilder()
     .withSourceFile(

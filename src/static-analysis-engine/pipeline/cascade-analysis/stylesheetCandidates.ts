@@ -806,20 +806,20 @@ function findMatchesForSelectorBranch(input: {
   projectEvidence: ProjectEvidenceAssemblyResult;
   cssModuleLocalClassMatches: CssModuleLocalClassMatchIndex;
 }): SelectorBranchMatch[] {
-  const cssModuleMatches = findCssModuleLocalMatchesForSelectorBranch(input);
-  if (cssModuleMatches) {
-    return cssModuleMatches;
-  }
-
   const matchIds =
     input.selectorReachability.indexes.matchIdsBySelectorBranchNodeId.get(
       input.selectorBranch.selectorBranchNodeId,
     ) ?? [];
-  return matchIds
+  const reachabilityMatches = matchIds
     .map((matchId) => input.selectorReachability.indexes.matchById.get(matchId))
     .filter((match): match is SelectorBranchMatch => Boolean(match))
     .filter((match) => match.certainty !== "impossible")
     .sort(compareById);
+  if (reachabilityMatches.length > 0) {
+    return reachabilityMatches;
+  }
+
+  return findCssModuleLocalMatchesForSelectorBranch(input) ?? [];
 }
 
 function findCssModuleLocalMatchesForSelectorBranch(input: {

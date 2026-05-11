@@ -2,7 +2,7 @@ import type { SelectorBranchNode } from "../fact-graph/index.js";
 import type { RenderModel } from "../render-structure/index.js";
 import { matchElementClassRequirement } from "./elementRequirementMatcher.js";
 import { selectorBranchMatchId, selectorElementMatchId } from "./ids.js";
-import { buildSelectorRenderMatchIndexes } from "./renderMatchIndexes.js";
+import { buildSelectorRenderMatchIndexes, createScopeClassKey } from "./renderMatchIndexes.js";
 import type { SelectorBranchMatch, SelectorElementMatch } from "./types.js";
 import { uniqueSorted } from "./utils.js";
 
@@ -15,6 +15,7 @@ export function buildElementMatchesForClassNames(input: {
   classNames: string[];
   elementIds: string[];
   renderIndexes: SelectorRenderMatchIndexes;
+  cssModuleStylesheetNodeId?: string;
 }): SelectorElementMatch[] {
   const matches: SelectorElementMatch[] = [];
   const requiredClassNames = uniqueSorted(input.classNames);
@@ -23,6 +24,9 @@ export function buildElementMatchesForClassNames(input: {
       indexes: input.renderIndexes,
       elementId,
       classNames: input.classNames,
+      ...(input.cssModuleStylesheetNodeId
+        ? { cssModuleStylesheetNodeId: input.cssModuleStylesheetNodeId }
+        : {}),
     });
     if (match.certainty === "impossible") {
       continue;
@@ -123,6 +127,7 @@ export function getCandidateElementIds(input: {
   elementIdsByClassName: Map<string, string[]>;
   renderIndexes: SelectorRenderMatchIndexes;
   includeUnknownClassFallback?: boolean;
+  cssModuleStylesheetNodeId?: string;
 }): string[] {
   const classNames = uniqueSorted(input.classNames);
   if (classNames.length === 0) {
@@ -130,19 +135,20 @@ export function getCandidateElementIds(input: {
   }
 
   const [firstClassName, ...restClassNames] = classNames;
+  const elementIdsByClassName = input.cssModuleStylesheetNodeId
+    ? getCssModuleElementIdsByClassName({
+        classNames,
+        cssModuleStylesheetNodeId: input.cssModuleStylesheetNodeId,
+        renderIndexes: input.renderIndexes,
+      })
+    : input.elementIdsByClassName;
   const unknownElementIds =
-    (input.includeUnknownClassFallback ?? true)
+    !input.cssModuleStylesheetNodeId && (input.includeUnknownClassFallback ?? true)
       ? input.renderIndexes.unknownClassElementIds.slice(0, MAX_UNKNOWN_CLASS_FALLBACK_ELEMENT_IDS)
       : [];
-  let candidates = sortedUnion(
-    input.elementIdsByClassName.get(firstClassName) ?? [],
-    unknownElementIds,
-  );
+  let candidates = sortedUnion(elementIdsByClassName.get(firstClassName) ?? [], unknownElementIds);
   for (const className of restClassNames) {
-    const elementIds = sortedUnion(
-      input.elementIdsByClassName.get(className) ?? [],
-      unknownElementIds,
-    );
+    const elementIds = sortedUnion(elementIdsByClassName.get(className) ?? [], unknownElementIds);
     candidates = intersectSorted(candidates, elementIds);
     if (candidates.length === 0) {
       return [];
@@ -150,6 +156,23 @@ export function getCandidateElementIds(input: {
   }
 
   return candidates;
+}
+
+function getCssModuleElementIdsByClassName(input: {
+  classNames: string[];
+  cssModuleStylesheetNodeId: string;
+  renderIndexes: SelectorRenderMatchIndexes;
+}): Map<string, string[]> {
+  const result = new Map<string, string[]>();
+  for (const className of input.classNames) {
+    result.set(
+      className,
+      input.renderIndexes.cssModuleElementIdsByScopeAndClassName.get(
+        createScopeClassKey(input.cssModuleStylesheetNodeId, className),
+      ) ?? [],
+    );
+  }
+  return result;
 }
 
 function intersectSorted(left: string[], right: string[]): string[] {

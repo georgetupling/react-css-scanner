@@ -1,6 +1,6 @@
-import { parseSelectorBranch } from "../../libraries/selector-parsing/parseSelectorBranch.js";
 import { isCssModulePath } from "../../libraries/stylesheets/cssModulePaths.js";
-import type { SelectorBranchNode } from "../fact-graph/index.js";
+import { parseSelectorBranch } from "../../libraries/selector-parsing/parseSelectorBranch.js";
+import type { FactGraph, SelectorBranchNode, StyleSheetNode } from "../fact-graph/index.js";
 import type { RenderModel } from "../render-structure/index.js";
 import { getBranchConfidence, getBranchStatus } from "./branchStatus.js";
 import { buildDiagnostics } from "./diagnostics.js";
@@ -31,6 +31,9 @@ import { uniqueSorted } from "./utils.js";
 export type SelectorReachabilityInput = {
   renderModel: RenderModel;
   selectorBranches: SelectorBranchNode[];
+  stylesheets?: StyleSheetNode[];
+  factGraph?: FactGraph;
+  cssModuleLocalsConvention?: "asIs" | "camelCase" | "camelCaseOnly";
 };
 
 type SelectorReachabilityProfiler = {
@@ -50,7 +53,17 @@ export function buildSelectorReachability(
     process.env.SCAN_REACT_CSS_PROFILE_SELECTOR_REACHABILITY === "1",
   );
   const renderIndexes = profiler.time("selectorReachability.buildRenderMatchIndexes", () =>
-    buildSelectorRenderMatchIndexes(input.renderModel),
+    buildSelectorRenderMatchIndexes(input.renderModel, {
+      selectorBranches: input.selectorBranches,
+      stylesheets: input.stylesheets,
+      factGraph: input.factGraph,
+      cssModuleLocalsConvention: input.cssModuleLocalsConvention,
+    }),
+  );
+  const cssModuleStylesheetNodeIds = new Set(
+    (input.stylesheets ?? [])
+      .filter((stylesheet) => stylesheet.cssKind === "css-module")
+      .map((stylesheet) => stylesheet.id),
   );
   const selectorBranches: SelectorBranchReachability[] = [];
   const elementMatches: SelectorElementMatch[] = [];
@@ -87,6 +100,10 @@ export function buildSelectorReachability(
 
     const branchElementMatches: SelectorElementMatch[] = [];
     if (branch.subjectClassNames.length > 0 && branchDiagnostics.length === 0) {
+      const cssModuleStylesheetNodeId = getCssModuleStylesheetNodeId({
+        branch,
+        cssModuleStylesheetNodeIds,
+      });
       const subjectElementMatches = profiler.time(
         "selectorReachability.buildElementMatchesForClassNames",
         () => {
@@ -98,8 +115,10 @@ export function buildSelectorReachability(
               elementIdsByClassName: renderIndexes.elementIdsByClassName,
               renderIndexes,
               includeUnknownClassFallback: !isCssModuleSelectorBranch(branch),
+              ...(cssModuleStylesheetNodeId ? { cssModuleStylesheetNodeId } : {}),
             }),
             renderIndexes,
+            ...(cssModuleStylesheetNodeId ? { cssModuleStylesheetNodeId } : {}),
           });
           return filterNegatedSubjectMatches({
             matches,
@@ -212,6 +231,16 @@ export function buildSelectorReachability(
 
 function isCssModuleSelectorBranch(branch: SelectorBranchNode): boolean {
   return isCssModulePath(branch.location?.filePath ?? "");
+}
+
+function getCssModuleStylesheetNodeId(input: {
+  branch: SelectorBranchNode;
+  cssModuleStylesheetNodeIds: Set<string>;
+}): string | undefined {
+  return input.branch.stylesheetNodeId &&
+    input.cssModuleStylesheetNodeIds.has(input.branch.stylesheetNodeId)
+    ? input.branch.stylesheetNodeId
+    : undefined;
 }
 
 function filterNegatedSubjectMatches(input: {
