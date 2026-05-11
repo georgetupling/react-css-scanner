@@ -7,6 +7,11 @@ import {
 } from "../expression-syntax/index.js";
 import { createSiteKey } from "./keys.js";
 import { getJsxTagName, isIntrinsicTagName, unwrapJsxAttributeInitializer } from "./jsxUtils.js";
+import {
+  evaluateStaticObjectExpression,
+  findLastKnownPropertyAfterUnknown,
+  unwrapExpression,
+} from "./staticObjectValues.js";
 import type {
   ReactElementTemplateFact,
   ReactInlineStyleSiteFact,
@@ -42,6 +47,7 @@ export function createJsxInlineStyleSites(input: {
     : input.node.attributes.properties;
   const styleSiteInputs = collectEffectiveJsxStyleSiteInputs({
     attributes,
+    filePath: input.filePath,
     sourceFile: input.sourceFile,
     intrinsicTag,
     componentPropBinding: input.componentPropBinding,
@@ -103,6 +109,7 @@ type JsxStyleSiteInput = {
 
 function collectEffectiveJsxStyleSiteInputs(input: {
   attributes: ts.NodeArray<ts.JsxAttributeLike>;
+  filePath: string;
   sourceFile: ts.SourceFile;
   intrinsicTag: boolean;
   componentPropBinding?: ReactComponentPropBindingFact;
@@ -134,6 +141,7 @@ function collectEffectiveJsxStyleSiteInputs(input: {
     const spreadStyles =
       resolveSpreadStyles({
         expression: attribute.expression,
+        filePath: input.filePath,
         sourceFile: input.sourceFile,
       }) ??
       resolveForwardedComponentPropSpread({
@@ -197,154 +205,35 @@ function resolveForwardedComponentPropSpread(input: {
 
 function resolveSpreadStyles(input: {
   expression: ts.Expression;
+  filePath: string;
   sourceFile: ts.SourceFile;
 }): JsxStyleSiteInput[] | undefined {
-  const objectLiterals = resolveObjectLiteralExpressions({
+  const objectValue = evaluateStaticObjectExpression({
     expression: input.expression,
+    filePath: input.filePath,
     sourceFile: input.sourceFile,
   });
-  if (!objectLiterals) {
+  if (objectValue.confidence === "unknown") {
     return undefined;
   }
 
   const styles: JsxStyleSiteInput[] = [];
-  for (const objectLiteral of objectLiterals) {
-    const styleProperties = objectLiteral.properties.filter(
-      (property): property is ts.PropertyAssignment =>
-        ts.isPropertyAssignment(property) && getStaticPropertyName(property.name) === "style",
+  for (const branch of objectValue.branches) {
+    const styleProperty = findLastKnownPropertyAfterUnknown(
+      branch,
+      (property) => property.key === "style",
     );
-    if (styleProperties.length === 0) {
+    if (!styleProperty) {
       return undefined;
     }
 
-    for (const styleProperty of styleProperties) {
-      styles.push({
-        initializer: styleProperty.initializer,
-        expression: styleProperty.initializer,
-      });
-    }
+    styles.push({
+      initializer: styleProperty.valueExpression,
+      expression: styleProperty.valueExpression,
+    });
   }
 
   return styles;
-}
-
-function resolveObjectLiteralExpressions(input: {
-  expression: ts.Expression;
-  sourceFile: ts.SourceFile;
-}): ts.ObjectLiteralExpression[] | undefined {
-  const unwrapped = unwrapExpression(input.expression);
-  if (ts.isConditionalExpression(unwrapped)) {
-    const whenTrue = resolveObjectLiteralExpressions({
-      expression: unwrapped.whenTrue,
-      sourceFile: input.sourceFile,
-    });
-    const whenFalse = resolveObjectLiteralExpressions({
-      expression: unwrapped.whenFalse,
-      sourceFile: input.sourceFile,
-    });
-    if (!whenTrue || !whenFalse) {
-      return undefined;
-    }
-    return [...whenTrue, ...whenFalse];
-  }
-
-  const objectLiteral = resolveObjectLiteralExpression({
-    expression: unwrapped,
-    sourceFile: input.sourceFile,
-  });
-  return objectLiteral ? [objectLiteral] : undefined;
-}
-
-function resolveObjectLiteralExpression(input: {
-  expression: ts.Expression;
-  sourceFile: ts.SourceFile;
-}): ts.ObjectLiteralExpression | undefined {
-  const unwrapped = unwrapExpression(input.expression);
-  if (ts.isObjectLiteralExpression(unwrapped)) {
-    return unwrapped;
-  }
-
-  if (!ts.isIdentifier(unwrapped)) {
-    return undefined;
-  }
-
-  const declaration = findVisibleConstObjectLiteralDeclaration({
-    sourceFile: input.sourceFile,
-    localName: unwrapped.text,
-    usage: unwrapped,
-  });
-  return declaration?.initializer
-    ? unwrapObjectLiteralInitializer(declaration.initializer)
-    : undefined;
-}
-
-function findVisibleConstObjectLiteralDeclaration(input: {
-  sourceFile: ts.SourceFile;
-  localName: string;
-  usage: ts.Identifier;
-}): ts.VariableDeclaration | undefined {
-  let current: ts.Node | undefined = input.usage;
-  while (current) {
-    if (ts.isBlock(current) || ts.isSourceFile(current) || ts.isModuleBlock(current)) {
-      const declaration = findConstObjectLiteralDeclarationInStatements({
-        statements: current.statements,
-        localName: input.localName,
-        usage: input.usage,
-      });
-      if (declaration) {
-        return declaration;
-      }
-    }
-    current = current.parent;
-  }
-
-  return undefined;
-}
-
-function findConstObjectLiteralDeclarationInStatements(input: {
-  statements: ts.NodeArray<ts.Statement>;
-  localName: string;
-  usage: ts.Identifier;
-}): ts.VariableDeclaration | undefined {
-  for (const statement of input.statements) {
-    if (statement.pos > input.usage.pos) {
-      break;
-    }
-    if (!ts.isVariableStatement(statement)) {
-      continue;
-    }
-    const isConst = (statement.declarationList.flags & ts.NodeFlags.Const) === ts.NodeFlags.Const;
-    if (!isConst) {
-      continue;
-    }
-    for (const declaration of statement.declarationList.declarations) {
-      if (
-        declaration.pos <= input.usage.pos &&
-        ts.isIdentifier(declaration.name) &&
-        declaration.name.text === input.localName &&
-        declaration.initializer
-      ) {
-        return declaration;
-      }
-    }
-  }
-
-  return undefined;
-}
-
-function unwrapObjectLiteralInitializer(
-  expression: ts.Expression,
-): ts.ObjectLiteralExpression | undefined {
-  const unwrapped = unwrapExpression(expression);
-  return ts.isObjectLiteralExpression(unwrapped) ? unwrapped : undefined;
-}
-
-function getStaticPropertyName(name: ts.PropertyName): string | undefined {
-  if (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNumericLiteral(name)) {
-    return name.text;
-  }
-
-  return undefined;
 }
 
 function resolveReferencedComponentPropName(input: {
@@ -375,18 +264,4 @@ function resolveReferencedComponentPropName(input: {
   }
 
   return undefined;
-}
-
-function unwrapExpression(expression: ts.Expression): ts.Expression {
-  let current = expression;
-  while (
-    ts.isParenthesizedExpression(current) ||
-    ts.isAsExpression(current) ||
-    ts.isTypeAssertionExpression(current) ||
-    ts.isNonNullExpression(current) ||
-    ts.isSatisfiesExpression(current)
-  ) {
-    current = current.expression;
-  }
-  return current;
 }

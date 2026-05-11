@@ -3,12 +3,15 @@ import type {
   ProjectEvidenceId,
   SelectorBranchAnalysis,
 } from "../project-evidence/index.js";
+import type { SelectorBranchNode } from "../fact-graph/index.js";
 import type {
   SelectorBranchMatch,
   SelectorReachabilityResult,
 } from "../selector-reachability/index.js";
+import { buildSelectorReachability } from "../selector-reachability/index.js";
 import type { RenderModel } from "../render-structure/index.js";
 import type { CssScopeSelectorRequirementFact } from "../../types/css.js";
+import { parseSelectorBranch } from "../../libraries/selector-parsing/parseSelectorBranch.js";
 import { normalizeAtRuleConditions } from "./atRuleConditions.js";
 import { getDeclarationLayer } from "./cascadeKeys.js";
 import { createConditionSet, mapMatchCertainty } from "./conditions.js";
@@ -96,6 +99,7 @@ export function buildStylesheetDeclarationCandidates(input: {
   }) => CascadeAnalysisDiagnostic;
 }): CascadeDeclarationCandidate[] {
   const candidates: CascadeDeclarationCandidate[] = [];
+  const scopeMatcher = createScopeSelectorMatcher(input.renderModel);
 
   for (const declaration of input.projectEvidence.entities.cssDeclarations) {
     const atRuleConditions = normalizeAtRuleConditions(declaration.atRuleContext);
@@ -173,6 +177,7 @@ export function buildStylesheetDeclarationCandidates(input: {
           atRuleContext: declaration.atRuleContext,
           elementId: match.subjectElementId,
           renderModel: input.renderModel,
+          scopeMatcher,
         });
         if (scopeProximity.applicability === "impossible") {
           continue;
@@ -332,6 +337,7 @@ function getScopeProximityForElement(input: {
   atRuleContext: ProjectEvidenceAssemblyResult["entities"]["cssDeclarations"][number]["atRuleContext"];
   elementId: string;
   renderModel: RenderModel;
+  scopeMatcher: ScopeSelectorMatcher;
 }): {
   applicability: "applies" | "impossible";
   scopeProximity?: CascadeDeclarationCandidate["cascadeKey"]["scopeProximity"];
@@ -375,6 +381,7 @@ function getScopeProximityForElement(input: {
       limitRequirements,
       elementId: input.elementId,
       renderModel: input.renderModel,
+      scopeMatcher: input.scopeMatcher,
     });
     if (scopeDistance === undefined) {
       return {
@@ -398,6 +405,7 @@ function findScopeDistance(input: {
   limitRequirements?: CssScopeSelectorRequirementFact[];
   elementId: string;
   renderModel: RenderModel;
+  scopeMatcher: ScopeSelectorMatcher;
 }): number | undefined {
   let distance = 0;
   let elementId: string | undefined = input.elementId;
@@ -406,11 +414,11 @@ function findScopeDistance(input: {
     if (
       distance > 0 &&
       input.limitRequirements &&
-      elementMatchesAnyScopeRequirement(input.renderModel, elementId, input.limitRequirements)
+      elementMatchesAnyScopeRequirement(input.scopeMatcher, elementId, input.limitRequirements)
     ) {
       return undefined;
     }
-    if (elementMatchesAnyScopeRequirement(input.renderModel, elementId, input.rootRequirements)) {
+    if (elementMatchesAnyScopeRequirement(input.scopeMatcher, elementId, input.rootRequirements)) {
       return distance;
     }
     elementId = input.renderModel.indexes.elementById.get(elementId)?.parentElementId;
@@ -420,41 +428,105 @@ function findScopeDistance(input: {
 }
 
 function elementMatchesAnyScopeRequirement(
-  renderModel: RenderModel,
+  scopeMatcher: ScopeSelectorMatcher,
   elementId: string,
   requirements: CssScopeSelectorRequirementFact[],
 ): boolean {
-  return requirements.some((requirement) =>
-    elementMatchesScopeRequirement(renderModel, elementId, requirement),
-  );
+  return requirements.some((requirement) => scopeMatcher.elementMatches(elementId, requirement));
 }
 
-function elementMatchesScopeRequirement(
-  renderModel: RenderModel,
-  elementId: string,
+type ScopeSelectorMatcher = {
+  elementMatches(elementId: string, requirement: CssScopeSelectorRequirementFact): boolean;
+};
+
+function createScopeSelectorMatcher(renderModel: RenderModel): ScopeSelectorMatcher {
+  const definiteElementIdsBySelectorText = new Map<string, Set<string>>();
+
+  return {
+    elementMatches(elementId, requirement) {
+      return getScopeSelectorMatchedElementIds({
+        renderModel,
+        requirement,
+        definiteElementIdsBySelectorText,
+      }).has(elementId);
+    },
+  };
+}
+
+function getScopeSelectorMatchedElementIds(input: {
+  renderModel: RenderModel;
+  requirement: CssScopeSelectorRequirementFact;
+  definiteElementIdsBySelectorText: Map<string, Set<string>>;
+}): Set<string> {
+  const cached = input.definiteElementIdsBySelectorText.get(input.requirement.selectorText);
+  if (cached) {
+    return cached;
+  }
+
+  const branch = createSyntheticScopeSelectorBranch(input.requirement);
+  const reachability = buildSelectorReachability(
+    {
+      renderModel: input.renderModel,
+      selectorBranches: [branch],
+    },
+    { includeTraces: false },
+  );
+  const matchedElementIds = new Set(
+    reachability.branchMatches
+      .filter((match) => match.certainty === "definite")
+      .map((match) => match.subjectElementId),
+  );
+  input.definiteElementIdsBySelectorText.set(input.requirement.selectorText, matchedElementIds);
+  return matchedElementIds;
+}
+
+function createSyntheticScopeSelectorBranch(
   requirement: CssScopeSelectorRequirementFact,
-): boolean {
-  return (
-    requirement.requiredClassNames.every((className) =>
-      elementHasClass(renderModel, elementId, className),
-    ) &&
-    !(requirement.forbiddenClassNames ?? []).some((className) =>
-      elementHasClass(renderModel, elementId, className),
-    )
-  );
+): SelectorBranchNode {
+  const parsedBranch = parseSelectorBranch(requirement.selectorText);
+  const idPart = normalizeScopeSelectorIdPart(requirement.selectorText);
+
+  return {
+    id: `scope-selector-branch:${idPart}`,
+    kind: "selector-branch",
+    selectorNodeId: `scope-selector:${idPart}`,
+    selectorText: requirement.selectorText,
+    selectorListText: requirement.selectorText,
+    branchIndex: 0,
+    branchCount: 1,
+    ruleKey: `@scope:${requirement.selectorText}`,
+    requiredClassNames: parsedBranch?.requiredClassNames ?? requirement.requiredClassNames,
+    subjectClassNames: parsedBranch?.subjectClassNames ?? requirement.requiredClassNames,
+    classAttributePredicates: parsedBranch?.classAttributePredicates ?? [],
+    contextClassNames: parsedBranch?.contextClassNames ?? [],
+    negativeClassNames: parsedBranch?.negativeClassNames ?? [],
+    hasDescendantClassNames: parsedBranch?.hasDescendantClassNames ?? [],
+    matchKind: parsedBranch?.matchKind ?? "complex",
+    hasUnknownSemantics: parsedBranch?.hasUnknownSemantics ?? true,
+    atRuleContext: [],
+    sourceQuery: {
+      selectorText: requirement.selectorText,
+      source: {
+        kind: "direct-query",
+      },
+    },
+    confidence: parsedBranch?.hasUnknownSemantics ? "medium" : "high",
+    provenance: [
+      {
+        stage: "fact-graph",
+        summary: "Synthetic selector branch for @scope root or limit matching",
+      },
+    ],
+  };
 }
 
-function elementHasClass(renderModel: RenderModel, elementId: string, className: string): boolean {
-  const emissionSiteIds = renderModel.indexes.emissionSiteIdsByElementId.get(elementId) ?? [];
-  return emissionSiteIds.some((emissionSiteId) => {
-    const emissionSite = renderModel.indexes.emissionSiteById.get(emissionSiteId);
-    return emissionSite?.tokens.some(
-      (token) =>
-        token.token === className &&
-        token.tokenKind !== "css-module-export" &&
-        token.presence === "always",
-    );
-  });
+function normalizeScopeSelectorIdPart(selectorText: string): string {
+  return (
+    selectorText
+      .trim()
+      .replace(/[^A-Za-z0-9_-]+/g, "_")
+      .replace(/^_+|_+$/g, "") || "empty"
+  );
 }
 
 function findMatchesForSelectorBranch(

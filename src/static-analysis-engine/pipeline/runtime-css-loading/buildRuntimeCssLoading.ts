@@ -12,7 +12,7 @@ import {
   collectReachableSourceFilePaths,
   enqueueDynamicImportTargets,
 } from "./graphTraversal.js";
-import { runtimeCssChunkId, runtimeCssEntryId } from "./ids.js";
+import { runtimeCssChunkId, runtimeCssEntryId, runtimeCssEnvironmentContextId } from "./ids.js";
 import { pushMapValue } from "./mapUtils.js";
 import { normalizeProjectPath } from "./pathUtils.js";
 import {
@@ -20,6 +20,7 @@ import {
   compareRuntimeCssChunks,
   compareRuntimeCssDiagnostics,
   compareRuntimeCssEntries,
+  compareRuntimeCssEnvironmentContexts,
 } from "./sorting.js";
 import type {
   RuntimeCssAvailability,
@@ -27,6 +28,7 @@ import type {
   RuntimeCssChunk,
   RuntimeCssDiagnostic,
   RuntimeCssEntry,
+  RuntimeCssEnvironmentContext,
   RuntimeCssLoadingResult,
 } from "./types.js";
 
@@ -125,6 +127,8 @@ export function buildRuntimeCssLoading(input: {
   const entries = appEntries.map(createRuntimeCssEntry).sort(compareRuntimeCssEntries);
   const chunks: RuntimeCssChunk[] = [];
   const chunkKeys = new Set<string>();
+  const environmentContexts: RuntimeCssEnvironmentContext[] = [];
+  const environmentContextKeys = new Set<string>();
   const availability: RuntimeCssAvailability[] = [];
   const availabilityKeys = new Set<string>();
 
@@ -153,6 +157,35 @@ export function buildRuntimeCssLoading(input: {
       sourceFilePaths: initialSourceFilePaths,
       stylesheetFilePaths: initialStylesheetPaths,
     });
+    const initialEnvironmentContext = createRuntimeCssEnvironmentContext({
+      kind: "initial",
+      entry,
+      chunks: [initialChunk],
+      rootSourceFilePath: entry.entrySourceFilePath,
+      sourceFilePaths: initialSourceFilePaths,
+      stylesheetFilePaths: initialStylesheetPaths,
+      order: "stable",
+      reason: "initial runtime environment for the app entry",
+    });
+    pushUniqueEnvironmentContext(
+      environmentContexts,
+      environmentContextKeys,
+      initialEnvironmentContext,
+    );
+    pushUniqueEnvironmentContext(
+      environmentContexts,
+      environmentContextKeys,
+      createRuntimeCssEnvironmentContext({
+        kind: "route",
+        entry,
+        chunks: [initialChunk],
+        rootSourceFilePath: entry.entrySourceFilePath,
+        sourceFilePaths: initialSourceFilePaths,
+        stylesheetFilePaths: initialStylesheetPaths,
+        order: "stable",
+        reason: "route runtime environment rooted at the app entry",
+      }),
+    );
     pushChunkAndAvailability({
       chunks,
       chunkKeys,
@@ -160,6 +193,7 @@ export function buildRuntimeCssLoading(input: {
       availabilityKeys,
       entry,
       chunk: initialChunk,
+      environmentContext: initialEnvironmentContext,
       bundlerProfile: selectedBundlerProfile,
       sourceDynamicallyImportedStylesheetsBySourcePath,
       unresolvedDynamicImportSpecifiersBySourcePath,
@@ -188,11 +222,42 @@ export function buildRuntimeCssLoading(input: {
         reason: "all runtime CSS is extracted into the initial stylesheet by bundler configuration",
       });
       replaceChunk(chunks, chunkKeys, expandedInitialChunk);
+      const expandedInitialEnvironmentContext = createRuntimeCssEnvironmentContext({
+        kind: "initial",
+        entry,
+        chunks: [expandedInitialChunk],
+        rootSourceFilePath: entry.entrySourceFilePath,
+        sourceFilePaths: runtimeSourceFilePaths,
+        stylesheetFilePaths: runtimeStylesheetPaths,
+        order: "stable",
+        reason:
+          "initial runtime environment with all runtime CSS extracted by bundler configuration",
+      });
+      replaceEnvironmentContext(
+        environmentContexts,
+        environmentContextKeys,
+        expandedInitialEnvironmentContext,
+      );
+      replaceEnvironmentContext(
+        environmentContexts,
+        environmentContextKeys,
+        createRuntimeCssEnvironmentContext({
+          kind: "route",
+          entry,
+          chunks: [expandedInitialChunk],
+          rootSourceFilePath: entry.entrySourceFilePath,
+          sourceFilePaths: runtimeSourceFilePaths,
+          stylesheetFilePaths: runtimeStylesheetPaths,
+          order: "stable",
+          reason: "route runtime environment rooted at the app entry",
+        }),
+      );
       pushChunkAvailability({
         availability,
         availabilityKeys,
         entry,
         chunk: expandedInitialChunk,
+        environmentContext: expandedInitialEnvironmentContext,
         bundlerProfile: selectedBundlerProfile,
         sourceDynamicallyImportedStylesheetsBySourcePath,
         unresolvedDynamicImportSpecifiersBySourcePath,
@@ -249,6 +314,26 @@ export function buildRuntimeCssLoading(input: {
         sourceFilePaths: lazySourceFilePaths,
         stylesheetFilePaths: lazyStylesheetPaths,
       });
+      const lazyBoundaryEnvironmentContext = createRuntimeCssEnvironmentContext({
+        kind: "lazy-boundary",
+        entry,
+        chunks: [initialChunk, lazyChunk],
+        rootSourceFilePath: lazyRootSourceFilePath,
+        sourceFilePaths: lazySourceFilePaths,
+        stylesheetFilePaths: [
+          ...initialStylesheetPaths,
+          ...lazyStylesheetPaths.filter(
+            (stylesheetPath) => !initialStylesheetPaths.includes(stylesheetPath),
+          ),
+        ],
+        order: "stable",
+        reason: "lazy boundary runtime environment with initial CSS followed by the lazy chunk CSS",
+      });
+      pushUniqueEnvironmentContext(
+        environmentContexts,
+        environmentContextKeys,
+        lazyBoundaryEnvironmentContext,
+      );
       pushChunkAndAvailability({
         chunks,
         chunkKeys,
@@ -256,6 +341,7 @@ export function buildRuntimeCssLoading(input: {
         availabilityKeys,
         entry,
         chunk: lazyChunk,
+        environmentContext: lazyBoundaryEnvironmentContext,
         bundlerProfile: selectedBundlerProfile,
         sourceDynamicallyImportedStylesheetsBySourcePath,
         unresolvedDynamicImportSpecifiersBySourcePath,
@@ -279,6 +365,7 @@ export function buildRuntimeCssLoading(input: {
       availabilityKeys,
       entries,
       chunks,
+      environmentContexts,
       bundlerProfile: selectedBundlerProfile,
     });
   }
@@ -288,6 +375,7 @@ export function buildRuntimeCssLoading(input: {
     selectedBundlerProfileId: selectedBundlerProfile.id,
     entries,
     chunks: chunks.sort(compareRuntimeCssChunks),
+    environmentContexts: environmentContexts.sort(compareRuntimeCssEnvironmentContexts),
     availability: availability.sort(compareRuntimeCssAvailability),
     diagnostics: buildRuntimeCssDiagnostics({
       bundlerProfiles,
@@ -441,6 +529,49 @@ function createRuntimeCssChunk(input: {
   };
 }
 
+function createRuntimeCssEnvironmentContext(input: {
+  kind: RuntimeCssEnvironmentContext["kind"];
+  entry: RuntimeCssEntry;
+  chunks: RuntimeCssChunk[];
+  rootSourceFilePath: string;
+  sourceFilePaths: string[];
+  stylesheetFilePaths: string[];
+  order: RuntimeCssEnvironmentContext["order"];
+  reason: string;
+}): RuntimeCssEnvironmentContext {
+  return {
+    id: runtimeCssEnvironmentContextId({
+      kind: input.kind,
+      entryId: input.entry.id,
+      rootSourceFilePath: input.rootSourceFilePath,
+    }),
+    kind: input.kind,
+    name: runtimeCssEnvironmentContextName(input.kind, input.rootSourceFilePath),
+    entryId: input.entry.id,
+    chunkIds: input.chunks
+      .map((chunk) => chunk.id)
+      .sort((left, right) => left.localeCompare(right)),
+    rootSourceFilePath: normalizeProjectPath(input.rootSourceFilePath),
+    sourceFilePaths: uniqueSortedProjectPaths(input.sourceFilePaths),
+    stylesheetFilePaths: uniqueSortedProjectPaths(input.stylesheetFilePaths),
+    order: input.order,
+    reason: input.reason,
+  };
+}
+
+function runtimeCssEnvironmentContextName(
+  kind: RuntimeCssEnvironmentContext["kind"],
+  rootSourceFilePath: string,
+): string {
+  if (kind === "initial") {
+    return "initial";
+  }
+  if (kind === "route") {
+    return `route:${normalizeProjectPath(rootSourceFilePath)}`;
+  }
+  return `lazy-boundary:${normalizeProjectPath(rootSourceFilePath)}`;
+}
+
 function pushChunkAndAvailability(input: {
   chunks: RuntimeCssChunk[];
   chunkKeys: Set<string>;
@@ -448,6 +579,7 @@ function pushChunkAndAvailability(input: {
   availabilityKeys: Set<string>;
   entry: RuntimeCssEntry;
   chunk: RuntimeCssChunk;
+  environmentContext: RuntimeCssEnvironmentContext;
   bundlerProfile: RuntimeCssBundlerProfile;
   sourceDynamicallyImportedStylesheetsBySourcePath: Map<string, string[]>;
   unresolvedDynamicImportSpecifiersBySourcePath: Map<string, string[]>;
@@ -463,6 +595,7 @@ function pushChunkAvailability(input: {
   availabilityKeys: Set<string>;
   entry: RuntimeCssEntry;
   chunk: RuntimeCssChunk;
+  environmentContext: RuntimeCssEnvironmentContext;
   bundlerProfile: RuntimeCssBundlerProfile;
   sourceDynamicallyImportedStylesheetsBySourcePath: Map<string, string[]>;
   unresolvedDynamicImportSpecifiersBySourcePath: Map<string, string[]>;
@@ -474,6 +607,7 @@ function pushChunkAvailability(input: {
     availabilityKeys: input.availabilityKeys,
     entry: input.entry,
     chunk: input.chunk,
+    environmentContext: input.environmentContext,
     bundlerProfile: input.bundlerProfile,
     availabilityState: "definite",
     reason: input.availabilityReason,
@@ -483,6 +617,7 @@ function pushChunkAvailability(input: {
     availabilityKeys: input.availabilityKeys,
     entry: input.entry,
     chunk: input.chunk,
+    environmentContext: input.environmentContext,
     bundlerProfile: input.bundlerProfile,
     sourceDynamicallyImportedStylesheetsBySourcePath:
       input.sourceDynamicallyImportedStylesheetsBySourcePath,
@@ -492,6 +627,7 @@ function pushChunkAvailability(input: {
     availabilityKeys: input.availabilityKeys,
     entry: input.entry,
     chunk: input.chunk,
+    environmentContext: input.environmentContext,
     bundlerProfile: input.bundlerProfile,
     stylesheetFilePaths: input.allStylesheetFilePaths,
     unresolvedDynamicImportSpecifiersBySourcePath:
@@ -509,6 +645,34 @@ function pushUniqueChunk(
   }
   chunkKeys.add(chunk.id);
   chunks.push(chunk);
+}
+
+function pushUniqueEnvironmentContext(
+  environmentContexts: RuntimeCssEnvironmentContext[],
+  environmentContextKeys: Set<string>,
+  environmentContext: RuntimeCssEnvironmentContext,
+): void {
+  if (environmentContextKeys.has(environmentContext.id)) {
+    return;
+  }
+  environmentContextKeys.add(environmentContext.id);
+  environmentContexts.push(environmentContext);
+}
+
+function replaceEnvironmentContext(
+  environmentContexts: RuntimeCssEnvironmentContext[],
+  environmentContextKeys: Set<string>,
+  environmentContext: RuntimeCssEnvironmentContext,
+): void {
+  const index = environmentContexts.findIndex(
+    (candidate) => candidate.id === environmentContext.id,
+  );
+  if (index >= 0) {
+    environmentContexts[index] = environmentContext;
+    environmentContextKeys.add(environmentContext.id);
+    return;
+  }
+  pushUniqueEnvironmentContext(environmentContexts, environmentContextKeys, environmentContext);
 }
 
 function replaceChunk(
@@ -530,6 +694,7 @@ function pushAvailabilityRecords(input: {
   availabilityKeys: Set<string>;
   entry: RuntimeCssEntry;
   chunk: RuntimeCssChunk;
+  environmentContext: RuntimeCssEnvironmentContext;
   bundlerProfile: RuntimeCssBundlerProfile;
   availabilityState: RuntimeCssAvailability["availability"];
   reason: RuntimeCssAvailability["reason"];
@@ -541,6 +706,7 @@ function pushAvailabilityRecords(input: {
         availabilityKeys: input.availabilityKeys,
         entry: input.entry,
         chunk: input.chunk,
+        environmentContext: input.environmentContext,
         bundlerProfile: input.bundlerProfile,
         stylesheetFilePath,
         sourceFilePath,
@@ -556,6 +722,7 @@ function pushDynamicCssImportAvailabilityRecords(input: {
   availabilityKeys: Set<string>;
   entry: RuntimeCssEntry;
   chunk: RuntimeCssChunk;
+  environmentContext: RuntimeCssEnvironmentContext;
   bundlerProfile: RuntimeCssBundlerProfile;
   sourceDynamicallyImportedStylesheetsBySourcePath: Map<string, string[]>;
 }): void {
@@ -568,6 +735,7 @@ function pushDynamicCssImportAvailabilityRecords(input: {
         availabilityKeys: input.availabilityKeys,
         entry: input.entry,
         chunk: input.chunk,
+        environmentContext: input.environmentContext,
         bundlerProfile: input.bundlerProfile,
         stylesheetFilePath,
         sourceFilePath,
@@ -583,6 +751,7 @@ function pushUnresolvedDynamicImportAvailabilityRecords(input: {
   availabilityKeys: Set<string>;
   entry: RuntimeCssEntry;
   chunk: RuntimeCssChunk;
+  environmentContext: RuntimeCssEnvironmentContext;
   bundlerProfile: RuntimeCssBundlerProfile;
   stylesheetFilePaths: string[];
   unresolvedDynamicImportSpecifiersBySourcePath: Map<string, string[]>;
@@ -606,6 +775,7 @@ function pushUnresolvedDynamicImportAvailabilityRecords(input: {
         availabilityKeys: input.availabilityKeys,
         entry: input.entry,
         chunk: input.chunk,
+        environmentContext: input.environmentContext,
         bundlerProfile: input.bundlerProfile,
         stylesheetFilePath,
         sourceFilePath,
@@ -621,6 +791,7 @@ function pushGenericBundlerPossibleAvailabilityRecords(input: {
   availabilityKeys: Set<string>;
   entries: RuntimeCssEntry[];
   chunks: RuntimeCssChunk[];
+  environmentContexts: RuntimeCssEnvironmentContext[];
   bundlerProfile: RuntimeCssBundlerProfile;
 }): void {
   for (const entry of input.entries) {
@@ -633,6 +804,18 @@ function pushGenericBundlerPossibleAvailabilityRecords(input: {
     ].sort((left, right) => left.localeCompare(right));
 
     for (const chunk of entryChunks) {
+      const environmentContext =
+        input.environmentContexts.find((context) => context.chunkIds.includes(chunk.id)) ??
+        createRuntimeCssEnvironmentContext({
+          kind: chunk.loading === "initial" ? "initial" : "lazy-boundary",
+          entry,
+          chunks: [chunk],
+          rootSourceFilePath: chunk.rootSourceFilePath,
+          sourceFilePaths: chunk.sourceFilePaths,
+          stylesheetFilePaths: chunk.stylesheetFilePaths,
+          order: "possible",
+          reason: "runtime CSS environment inferred under generic chunk semantics",
+        });
       for (const sourceFilePath of entrySourceFilePaths) {
         for (const stylesheetFilePath of entryStylesheetFilePaths) {
           pushAvailabilityRecord({
@@ -640,6 +823,7 @@ function pushGenericBundlerPossibleAvailabilityRecords(input: {
             availabilityKeys: input.availabilityKeys,
             entry,
             chunk,
+            environmentContext,
             bundlerProfile: input.bundlerProfile,
             stylesheetFilePath,
             sourceFilePath,
@@ -657,6 +841,7 @@ function pushAvailabilityRecord(input: {
   availabilityKeys: Set<string>;
   entry: RuntimeCssEntry;
   chunk: RuntimeCssChunk;
+  environmentContext: RuntimeCssEnvironmentContext;
   bundlerProfile: RuntimeCssBundlerProfile;
   stylesheetFilePath: string;
   sourceFilePath: string;
@@ -669,6 +854,7 @@ function pushAvailabilityRecord(input: {
     availability: input.availabilityState,
     entryId: input.entry.id,
     chunkId: input.chunk.id,
+    environmentContextId: input.environmentContext.id,
     entrySourceFilePath: input.entry.entrySourceFilePath,
     ...(input.entry.htmlFilePath ? { htmlFilePath: input.entry.htmlFilePath } : {}),
     bundlerProfileId: input.bundlerProfile.id,
@@ -690,4 +876,10 @@ function pushAvailabilityRecord(input: {
   }
   input.availabilityKeys.add(key);
   input.availability.push(record);
+}
+
+function uniqueSortedProjectPaths(filePaths: string[]): string[] {
+  return [...new Set(filePaths.map(normalizeProjectPath))].sort((left, right) =>
+    left.localeCompare(right),
+  );
 }

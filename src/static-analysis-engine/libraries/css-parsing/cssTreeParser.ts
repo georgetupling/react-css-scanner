@@ -370,12 +370,8 @@ function parseScopeSelectorRequirements(
     const parsedBranch = parseSelectorBranch(selectorText);
     if (
       !parsedBranch ||
-      parsedBranch.steps.length !== 1 ||
-      parsedBranch.hasCombinators ||
       parsedBranch.hasUnknownSemantics ||
-      parsedBranch.hasSubjectModifiers ||
-      parsedBranch.subjectClassNames.length === 0 ||
-      parsedBranch.classAttributePredicates.length > 0
+      parsedBranch.subjectClassNames.length === 0
     ) {
       return undefined;
     }

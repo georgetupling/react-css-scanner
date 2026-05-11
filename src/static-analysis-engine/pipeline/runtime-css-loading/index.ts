@@ -5,5 +5,6 @@ export type {
   RuntimeCssChunk,
   RuntimeCssDiagnostic,
   RuntimeCssEntry,
+  RuntimeCssEnvironmentContext,
   RuntimeCssLoadingResult,
 } from "./types.js";

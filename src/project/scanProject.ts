@@ -91,6 +91,7 @@ export async function scanProject(input: ScanProjectInput = {}): Promise<ScanPro
               selectedBundlerProfileId: analysisEvidence.runtimeCssLoading.selectedBundlerProfileId,
               entries: analysisEvidence.runtimeCssLoading.entries,
               chunks: analysisEvidence.runtimeCssLoading.chunks,
+              environmentContexts: analysisEvidence.runtimeCssLoading.environmentContexts,
             },
           },
         }

@@ -21,6 +21,11 @@ export type MediaEnvironmentConstraints = {
   orientation?: "landscape" | "portrait";
 };
 
+export type ContainerQueryConstraints = {
+  containerName?: string;
+  width?: MediaWidthRange;
+};
+
 export type SupportsConditionConstraints = {
   required: string[];
   rejected: string[];
@@ -63,6 +68,16 @@ export function normalizeAtRuleConditions(
       if (supportsApplicability === "definite") {
         reasons.push(`@supports ${entry.params} is always active for supported CSS syntax`);
         continue;
+      }
+    }
+    if (entry.name === "container") {
+      const containerApplicability = evaluateContainerQuery(entry.params);
+      if (containerApplicability === "impossible") {
+        return {
+          applicability: "impossible",
+          atRuleContext: [],
+          reasons: [`@container ${entry.params} can never match a container environment`],
+        };
       }
     }
 
@@ -129,6 +144,86 @@ export function getMediaQueryListEnvironmentConstraints(
     return undefined;
   }
   return getSingleMediaQueryEnvironmentConstraints(queries[0]);
+}
+
+export function getContainerQueryConstraints(
+  params: string,
+): ContainerQueryConstraints | undefined {
+  const parsed = parseContainerQuery(params);
+  if (!parsed) {
+    return undefined;
+  }
+
+  const width = getSingleMediaQueryWidthRange(parsed.query);
+  return parsed.containerName || width
+    ? {
+        ...(parsed.containerName ? { containerName: parsed.containerName } : {}),
+        ...(width ? { width } : {}),
+      }
+    : undefined;
+}
+
+function evaluateContainerQuery(params: string): "conditional" | "impossible" {
+  const constraints = getContainerQueryConstraints(params);
+  if (constraints?.width && !isWidthRangeSatisfiable(constraints.width)) {
+    return "impossible";
+  }
+  return "conditional";
+}
+
+function parseContainerQuery(
+  params: string,
+): { containerName?: string; query: string } | undefined {
+  const normalized = params.trim();
+  if (!normalized) {
+    return undefined;
+  }
+
+  const queryStartIndex = findTopLevelOpeningParenthesis(normalized);
+  if (queryStartIndex < 0) {
+    return undefined;
+  }
+
+  const rawName = normalized.slice(0, queryStartIndex).trim();
+  const query = normalized.slice(queryStartIndex).trim();
+  if (!query || query.toLowerCase().includes("style(")) {
+    return undefined;
+  }
+  if (!rawName) {
+    return { query };
+  }
+
+  const containerName = rawName.toLowerCase();
+  if (!/^-?[A-Za-z_][A-Za-z0-9_-]*$/.test(containerName)) {
+    return undefined;
+  }
+
+  return { containerName, query };
+}
+
+function findTopLevelOpeningParenthesis(input: string): number {
+  let quote: string | undefined;
+  for (let index = 0; index < input.length; index += 1) {
+    const character = input[index];
+    if (quote) {
+      if (character === "\\") {
+        index += 1;
+        continue;
+      }
+      if (character === quote) {
+        quote = undefined;
+      }
+      continue;
+    }
+    if (character === '"' || character === "'") {
+      quote = character;
+      continue;
+    }
+    if (character === "(") {
+      return index;
+    }
+  }
+  return -1;
 }
 
 function getSingleMediaQueryEnvironmentConstraints(
@@ -276,8 +371,11 @@ function getSingleValuedMediaFeature<T extends string>(
 function isMediaEnvironmentConstraintSatisfiable(
   constraints: MediaEnvironmentConstraints,
 ): boolean {
-  const width = constraints.width;
-  if (!width || width.minWidthPx === undefined || width.maxWidthPx === undefined) {
+  return !constraints.width || isWidthRangeSatisfiable(constraints.width);
+}
+
+function isWidthRangeSatisfiable(width: MediaWidthRange): boolean {
+  if (width.minWidthPx === undefined || width.maxWidthPx === undefined) {
     return true;
   }
   if (width.minWidthPx < width.maxWidthPx) {

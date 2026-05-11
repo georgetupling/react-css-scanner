@@ -34,12 +34,26 @@ export type RuntimeCssChunk = {
   reason: string;
 };
 
+export type RuntimeCssEnvironmentContext = {
+  id: string;
+  kind: "initial" | "route" | "lazy-boundary";
+  name: string;
+  entryId: string;
+  chunkIds: string[];
+  rootSourceFilePath: string;
+  sourceFilePaths: string[];
+  stylesheetFilePaths: string[];
+  order: "stable" | "possible";
+  reason: string;
+};
+
 export type RuntimeCssAvailability = {
   stylesheetFilePath: string;
   sourceFilePath: string;
   availability: "definite" | "possible" | "unknown" | "unavailable";
   entryId: string;
   chunkId: string;
+  environmentContextId?: string;
   entrySourceFilePath: string;
   htmlFilePath?: string;
   bundlerProfileId: string;
@@ -75,6 +89,7 @@ export type RuntimeCssLoadingResult = {
   selectedBundlerProfileId: string;
   entries: RuntimeCssEntry[];
   chunks: RuntimeCssChunk[];
+  environmentContexts: RuntimeCssEnvironmentContext[];
   availability: RuntimeCssAvailability[];
   diagnostics: RuntimeCssDiagnostic[];
 };

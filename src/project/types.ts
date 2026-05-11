@@ -82,7 +82,7 @@ export type ScanPerformance = {
 export type ScanDebugOutput = {
   runtimeCss?: Pick<
     RuntimeCssLoadingResult,
-    "bundlerProfiles" | "selectedBundlerProfileId" | "entries" | "chunks"
+    "bundlerProfiles" | "selectedBundlerProfileId" | "entries" | "chunks" | "environmentContexts"
   >;
 };
 

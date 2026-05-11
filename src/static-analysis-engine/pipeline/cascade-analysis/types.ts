@@ -105,6 +105,7 @@ export type CascadeOutcome = {
 
 export type CascadeConditionalOutcomeBranch = {
   conditionSetId: string;
+  environmentProfileIds?: string[];
   winningCandidateId?: string;
   losingCandidateIds: string[];
   unresolvedCandidateIds: string[];
@@ -117,6 +118,7 @@ export type CascadeAnalysisDiagnosticCode =
   | "unsupported-selector-match"
   | "unknown-stylesheet-order"
   | "unknown-condition-compatibility"
+  | "condition-branch-limit-exceeded"
   | "unsupported-property-semantics"
   | "unsupported-inline-style"
   | "missing-declaration-location"

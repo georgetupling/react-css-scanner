@@ -172,7 +172,7 @@ export type CascadeKey = {
 
 Initial support includes author stylesheet declarations, direct JSX inline styles on intrinsic elements, and statically analyzable component-forwarded `style` props. User origin and user-agent origin remain representable so the model does not need to be reshaped later.
 
-Inline style support is intentionally static and bounded. The scanner can follow object literals, local and imported exported `const` style object bindings, no-argument local helpers that return style objects, conditional style object branches, static object spreads, and JSX prop spreads that expose a `style` prop or forward `props`/rest props into an intrinsic element. Conflicting conditional values are rejected as unsupported rather than guessed. React inline style declaration semantics are computed before candidate creation: camelCase property names are normalized, numeric values are converted using React's `px`/unitless behavior, custom properties are preserved, and then `propertyEffects` are attached through the shared CSS declaration semantics helper.
+Inline style support is intentionally static and bounded. The scanner can follow object literals, local and imported exported `const` style object bindings, no-argument local helpers that return style objects, conditional style object branches, static object spreads, and JSX prop spreads that expose a `style` prop or forward `props`/rest props into an intrinsic element. JSX prop spread extraction for both `style` and class-like props uses a shared static object value evaluator with exact/partial/unknown confidence, so computed literal keys, member expressions, no-argument helper calls, nested object spreads, and known properties after unknown spreads can be reused consistently across inline style and className analysis. Conflicting conditional inline style values are rejected as unsupported rather than guessed. React inline style declaration semantics are computed before candidate creation: camelCase property names are normalized, numeric values are converted using React's `px`/unitless behavior, custom properties are preserved, and then `propertyEffects` are attached through the shared CSS declaration semantics helper.
 
 ### Condition Evidence
 
@@ -208,11 +208,11 @@ The first implementation treats condition details as opaque signatures:
 - candidates with unconditional plus conditional signatures produce a `condition-branch` outcome: the unconditional declarations form the default winner, and each modeled conditional signature gets its own possible branch winner
 - candidates with only different conditional signatures produce an unresolved `condition-uncertain` outcome, because different runtime contexts may produce different winners
 
-This deliberately avoids inventing a viewport, container, or browser capability profile. It proves stable boolean cases and otherwise only proves whether compared declarations are guarded by the same modeled context.
+Environment-dependent conditions now flow through a small browser environment profile layer. The first built-in profiles describe modern browser support plus representative mobile/desktop and light/dark environments; branch comparison still keeps exact range and contradiction checks as the conservative source of truth so a missing starter profile does not make a real browser state impossible.
 
 Implementation status:
 
-- at-rule and render placement conditions are modeled as compatibility signatures. Cascade normalizes browser-stable at-rule truths: `@media all` is definite, and `@media not all` declarations are ignored as impossible. Basic `@supports` boolean expressions are reduced with `not`/`and`/`or`; invalid declaration conditions are impossible, negated invalid declarations are definite, and syntactically valid declaration conditions remain conditional. Environment-dependent media queries, valid `@supports`, container queries, and unknown at-rules remain conditional.
+- at-rule and render placement conditions are modeled as compatibility signatures. Cascade normalizes browser-stable at-rule truths: `@media all` is definite, and `@media not all` declarations are ignored as impossible. Basic `@supports` boolean expressions are reduced with `not`/`and`/`or`; invalid declaration conditions are impossible, negated invalid declarations are definite, and syntactically valid declaration conditions remain conditional unless a modeled branch can tie them to a built-in environment profile. Environment-dependent media queries, valid `@supports`, container queries, and unknown at-rules remain conditional.
 - supported selector pseudo-classes are modeled as `selector-state` conditions.
 - pseudo-state selectors can still produce selector reachability matches when their structural class requirements are otherwise supported.
 - candidates with the same pseudo-state set can be compared as a possible conditional outcome.
@@ -401,7 +401,7 @@ Implementation status:
 - `projectEvidence.indexes` exposes declaration indexes by id, stylesheet, rule definition node, selector branch, and property.
 - `projectEvidence.meta.cssDeclarationCount` records the declaration count.
 - The first version uses `ruleDefinitionNodeId` rather than a project-evidence `styleRuleId`, because rules are not yet first-class project-evidence entities.
-- Runtime stylesheet order is normalized for definite initial static CSS imports and definite lazy runtime CSS chunks, including CSS files reached through statically imported source modules and nested stylesheet imports.
+- Runtime CSS loading emits named environment contexts (`initial`, `route:<source>`, and `lazy-boundary:<source>`). Runtime stylesheet order is normalized from those contexts for definite initial static CSS imports and definite lazy runtime CSS chunks, including CSS files reached through statically imported source modules and nested stylesheet imports.
 - `stylesheetSourceOrder` and `projectSourceOrder` fields remain deferred on the declaration evidence itself; cascade currently stores normalized order in candidate cascade keys.
 
 Once declarations are first-class, `cascade-analysis` can be added as a narrow proof stage over exact-property author declarations.
@@ -433,38 +433,42 @@ Phase 2 adds the first cascade stage scaffold:
 - conservative `@supports` truth normalization for basic declaration conditions and boolean combinations: syntactically invalid declaration checks are impossible, `not`/`and`/`or` are reduced, and syntactically valid declaration checks remain conditional unless boolean reduction proves the whole condition definite or impossible.
 - outcomes grouped by rendered element and effective property.
 - resolved cross-stylesheet outcomes when all candidates come from a definite runtime CSS context with stable static import order.
-- runtime-specific stylesheet order contexts for lazy CSS chunks: initial chunk styles are ordered before lazy chunk styles for that lazy source context, while lazy chunk styles are not treated as globally loaded for initial source contexts.
+- runtime-specific stylesheet order contexts for named runtime CSS environments: initial chunk styles are ordered in the initial context, and initial chunk styles are ordered before lazy chunk styles for each `lazy-boundary:<source>` context, while lazy styles are not treated as globally loaded for initial source contexts.
 - unresolved outcomes when candidates come from multiple stylesheets and runtime order cannot be proven.
 - conditional outcomes when all candidates share the same non-empty condition signature.
 - `condition-branch` outcomes when unconditional/default declarations compete with conditional declarations, with separate branch winners for each modeled condition signature.
-- modeled condition branch enumeration for satisfiable combinations of supported at-rule and selector-state contexts, including viewport plus pseudo-state branches.
-- media condition normalization for impossible `min-width`/`max-width` and modern `width` comparison ranges, plus branch overlap checks. Disjoint bounded width contexts stay in separate branches; overlapping contexts get an additional combined branch.
+- modeled condition branch enumeration for satisfiable combinations of supported at-rule and selector-state contexts, including viewport plus pseudo-state branches. Conditional branches can carry matching built-in environment profile ids, so consumers can see which named browser environments make a conditional winner possible.
+- explicit `condition-branch-limit-exceeded` diagnostics when simultaneous conditional contexts would exceed the modeled branch cap, instead of silently falling back to less precise conditional handling.
+- media condition normalization for impossible `min-width`/`max-width` and modern `width` comparison ranges, plus environment-profile branch overlap checks. Disjoint bounded width contexts stay in separate branches; overlapping contexts get an additional combined branch.
 - mutually exclusive media feature values are modeled for `prefers-color-scheme: light/dark` and `orientation: portrait/landscape`.
-- simple `@supports` declaration requirements are modeled for branch satisfiability: compatible declaration checks can combine, while `@supports (x: y)` and `@supports not (x: y)` stay mutually exclusive.
+- simple `@supports` declaration requirements are modeled for branch satisfiability and against the built-in modern-browser capability profile: compatible declaration checks can combine, while `@supports (x: y)` and `@supports not (x: y)` stay mutually exclusive.
+- simple `@container` width constraints are modeled for branch satisfiability. Named container queries with overlapping width ranges can combine, disjoint ranges for the same container name stay separate, and different container names remain independently satisfiable.
 - unresolved `condition-uncertain` outcomes when candidates only have unsupported or unmodeled conditional signatures.
 - selector pseudo-state conditions for supported state and structural pseudo-classes, including branch outcomes when a pseudo-state selector is compared with an unconditional selector.
 - pseudo-state branch reduction for modeled selector-state implication, so branches such as `:hover:focus` include declarations that only require `:hover`, and `:focus-visible` branches include declarations that require `:focus`.
-- bounded `@scope` proximity for class-compound root selector lists, including optional class-compound selector-list limits; scoped declarations outside the modeled root are skipped, and proximity is compared between specificity and source order.
+- bounded `@scope` proximity through selector-reachability-backed root and limit matching for supported selector shapes; scoped declarations outside the modeled root are skipped, scope limits block descendants past the limit, and proximity is compared between specificity and source order.
 - value-aware property effects computed by the CSS frontend for exact properties plus supported box-model shorthands: `margin`, `padding`, logical `margin-*`/`padding-*`, physical/logical `inset`, `border-width`, `border-style`, `border-color`, physical side `border-*`, logical `border-block*`/`border-inline*`, whole `border` when the width/style/color value can be safely parsed, and `css-tree`-validated `background` effects for color, image, repeat, attachment, position, size, origin, and clip.
+- a metadata-backed property model for known longhands and shorthands. Longhand records include inheritance, initial values, and bounded logical-to-physical relationships; shorthand records define reset groups. CSS-wide keywords are resolved through metadata: `initial` uses the longhand initial value, `unset` becomes `inherit` for inherited properties and the initial value otherwise, and `revert` / `revert-layer` remain explicit because they depend on origin/layer context. The bounded `all` shorthand expands across the known metadata longhand universe.
 - `unsupported-property-semantics` diagnostics for known unsupported shorthands such as `font`, `flex`, `grid`, transitions, animations, and ambiguous supported-family values such as whole-border CSS variables or ambiguous `background` values.
 
 Known limitations:
 
-- only definite runtime stylesheet contexts are normalized; possible dynamic CSS imports, unresolved dynamic imports, and unknown bundler chunk semantics remain uncertain
-- lazy CSS order is normalized per runtime source context, not as one global project order
-- multi-entry runtime context modeling is conservative; entries remain separate unless a stable per-context order can be proven
-- viewport reasoning is limited to browser-stable `@media all` / `@media not all`, static width range satisfiability for `min-width`, `max-width`, and simple `width` range syntax, plus mutually exclusive `prefers-color-scheme` and `orientation` values; other media features remain conditional without a concrete environment profile
-- capability and container environment evaluation remain conservative beyond `@supports` syntax/boolean normalization and simple declaration-check contradiction; valid supports conditions are modeled as possible, not as always true for a named browser target
+- only definite named runtime stylesheet contexts are normalized; possible dynamic CSS imports, unresolved dynamic imports, and unknown bundler chunk semantics remain uncertain
+- lazy CSS order is normalized per named `lazy-boundary:<source>` runtime environment, not as one global project order
+- multi-entry runtime context modeling is conservative; entries and route contexts remain separate unless a stable per-context order can be proven
+- viewport reasoning has a starter environment profile model for representative mobile/desktop, light/dark, and modern-browser capability contexts, plus browser-stable `@media all` / `@media not all`, static width range satisfiability for `min-width`, `max-width`, and simple `width` range syntax, and mutually exclusive `prefers-color-scheme` and `orientation` values; other media features remain conditional without concrete profile fields
+- capability and container environment evaluation remain conservative beyond the built-in modern-browser support profile, `@supports` syntax/boolean normalization, simple declaration-check contradiction, and simple container width-range overlap. Container style queries, complex container query syntax, and exact DOM container identity are not modeled
+- simultaneous condition branch enumeration is capped at 8 modeled condition sets or 128 branch combinations; outcomes beyond that cap remain condition-uncertain with a diagnostic rather than enumerating every possible environment
 - condition branches enumerate modeled simultaneous at-rule and selector-state contexts, but they do not combine render placement conditions, class-emission conditions, or runtime route/loading contexts yet
 - pseudo-state implication is deliberately small and one-way: `:focus-visible` implies `:focus`, `:user-invalid` implies `:invalid`, and `:user-valid` implies `:valid`; broader pseudo-state overlap, exclusion, or temporal state semantics are not modeled
 - anonymous and otherwise unsupported cascade layer order remains unresolved
 - cross-stylesheet layer ordering follows definite runtime stylesheet order; uncertain runtime stylesheet order still blocks definite cross-stylesheet layer precedence
-- `@scope` support is limited to class-compound root/limit selector lists; complex structural scope roots/limits are skipped conservatively, and `:scope` root matching is not modeled yet
-- no computed style property names or computed JSX prop names
-- no dynamic, unknown spread, parameterized helper, mutation-based, call-result, member-expression, re-export barrel, namespace import, or package-import inline style evaluation
+- `@scope` root/limit support reuses selector reachability for supported class, compound, and simple structural selector shapes; unsupported selector-reachability shapes are still skipped conservatively, and `:scope` root matching inside scoped rule selectors is not modeled yet
+- computed JSX prop names are supported when the key resolves to a literal static object key; computed inline style declaration names inside the style object remain limited to expression-syntax support
+- JSX prop spread extraction has shared static object confidence for known/unknown entries, computed literal keys, member expressions, nested spreads, and no-argument helper calls; dynamic unknown spreads, parameterized helpers, mutation-built objects, arbitrary call results, re-export barrels, namespace imports, and package imports remain conservative
 - conditional inline style branches with conflicting values for the same effective property are intentionally unsupported
 - only a bounded safe shorthand/longhand property semantics set
-- no logical property, reset, or inheritance resolution
+- reset and inheritance handling is metadata-backed for known longhands/shorthands and the bounded `all` reset group, but full parent computed-value inheritance, writing-mode-dependent logical-to-physical resolution, and broader reset semantics are not modeled
 - custom property cascade and definite `var()` substitution are modeled, but conditional, cyclic, missing, and invalid substitutions remain unsupported-property-semantics uncertainty
 - no full typed value grammar; border shorthand parsing recognizes clear width/style/color tokens and intentionally rejects ambiguous whole-value variables
 - `background` shorthand parsing is `css-tree` validated but still partial: it models reset/winning behavior for the main background longhands, but it does not yet model every computed-value nuance or `var()` substitution

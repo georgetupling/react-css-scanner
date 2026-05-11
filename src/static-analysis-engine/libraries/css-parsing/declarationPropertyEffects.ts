@@ -1,6 +1,12 @@
 import * as csstree from "css-tree";
 
 import type { CssDeclarationPropertyEffect } from "../../types/css.js";
+import {
+  getLonghandMetadata,
+  getShorthandMetadata,
+  isCssWideKeyword,
+  resolveCssWideKeywordForLonghand,
+} from "./propertyMetadata.js";
 
 const BOX_SIDES = ["top", "right", "bottom", "left"] as const;
 const BORDER_PARTS = ["width", "style", "color"] as const;
@@ -18,16 +24,12 @@ const BORDER_STYLES = new Set([
 ]);
 const BORDER_WIDTH_KEYWORDS = new Set(["thin", "medium", "thick"]);
 const UNSUPPORTED_SHORTHANDS = new Set([
-  "all",
   "animation",
-  "border-radius",
   "columns",
   "container",
   "flex",
   "font",
   "grid",
-  "list-style",
-  "outline",
   "place-content",
   "place-items",
   "place-self",
@@ -65,6 +67,14 @@ export function getCssDeclarationPropertyEffects(input: {
 }): CssDeclarationPropertyEffect[] {
   const normalizedProperty = input.property.trim().toLowerCase();
   const customPropertyDependencies = collectCustomPropertyDependencies(input.value);
+  const wideKeywordEffects = expandCssWideKeywordShorthand({
+    property: normalizedProperty,
+    value: input.value,
+  });
+  if (wideKeywordEffects) {
+    return withCustomPropertyDependencies(wideKeywordEffects, customPropertyDependencies);
+  }
+
   if (normalizedProperty === "margin" || normalizedProperty === "padding") {
     return withCustomPropertyDependencies(
       expandFourSidedShorthand({
@@ -196,17 +206,74 @@ export function getCssDeclarationPropertyEffects(input: {
     );
   }
 
+  if (getShorthandMetadata(normalizedProperty)) {
+    return withCustomPropertyDependencies(
+      unsupportedShorthandEffect(
+        normalizedProperty,
+        input.value,
+        "is only metadata-backed for CSS-wide reset values",
+      ),
+      customPropertyDependencies,
+    );
+  }
+
   return withCustomPropertyDependencies(
     [
-      {
+      exactPropertyEffect({
         property: normalizedProperty,
         value: input.value,
-        source: "exact",
-        supported: true,
-      },
+      }),
     ],
     customPropertyDependencies,
   );
+}
+
+function expandCssWideKeywordShorthand(input: {
+  property: string;
+  value: string;
+}): CssDeclarationPropertyEffect[] | undefined {
+  if (!isCssWideKeyword(input.value)) {
+    return undefined;
+  }
+  const metadata = getShorthandMetadata(input.property);
+  if (!metadata?.resetSupported) {
+    return undefined;
+  }
+  return metadata.longhands.map((property) => ({
+    property,
+    value:
+      resolveCssWideKeywordForLonghand({
+        property,
+        keyword: input.value,
+      }) ?? input.value.trim().toLowerCase(),
+    source: "shorthand",
+    supported: true,
+  }));
+}
+
+function exactPropertyEffect(input: {
+  property: string;
+  value: string;
+}): CssDeclarationPropertyEffect {
+  if (isCssWideKeyword(input.value) && getLonghandMetadata(input.property)) {
+    return {
+      property: input.property,
+      value:
+        resolveCssWideKeywordForLonghand({
+          property: input.property,
+          keyword: input.value,
+        }) ?? input.value.trim().toLowerCase(),
+      source: "exact",
+      supported: true,
+    };
+  }
+
+  return {
+    property: input.property,
+    value: input.value,
+    source: "exact",
+    supported: true,
+  };
 }
 
 function withCustomPropertyDependencies(
@@ -750,16 +817,6 @@ function isCssColorToken(token: string, options: { allowVariable: boolean }): bo
     return true;
   }
   return options.allowVariable && /^var\(.+\)$/iu.test(token);
-}
-
-function isCssWideKeyword(token: string): boolean {
-  return (
-    token === "inherit" ||
-    token === "initial" ||
-    token === "revert" ||
-    token === "revert-layer" ||
-    token === "unset"
-  );
 }
 
 function unsupportedShorthandEffect(

@@ -4,6 +4,12 @@ import { toSourceAnchor } from "../../../../libraries/react-components/reactComp
 import { collectExpressionSyntaxForNode } from "../expression-syntax/index.js";
 import { createSiteKey } from "./keys.js";
 import { getJsxTagName, isIntrinsicTagName, unwrapJsxAttributeInitializer } from "./jsxUtils.js";
+import {
+  evaluateStaticObjectExpression,
+  findLastKnownPropertyAfterUnknown,
+  getStaticPropertyName,
+  unwrapExpression,
+} from "./staticObjectValues.js";
 import type {
   ReactClassExpressionSiteFact,
   ReactComponentPropBindingFact,
@@ -37,6 +43,7 @@ export function createJsxClassExpressionSites(input: {
     : input.node.attributes.properties;
   const classSiteInputs = collectEffectiveJsxClassSiteInputs({
     attributes,
+    filePath: input.filePath,
     sourceFile: input.sourceFile,
     intrinsicTag,
     componentPropBinding: input.componentPropBinding,
@@ -100,6 +107,7 @@ type JsxClassSiteInput = {
 
 function collectEffectiveJsxClassSiteInputs(input: {
   attributes: ts.NodeArray<ts.JsxAttributeLike>;
+  filePath: string;
   sourceFile: ts.SourceFile;
   intrinsicTag: boolean;
   componentPropBinding?: ReactComponentPropBindingFact;
@@ -129,6 +137,7 @@ function collectEffectiveJsxClassSiteInputs(input: {
       const spreadClassNames =
         resolveSpreadClassNames({
           expression: attribute.expression,
+          filePath: input.filePath,
           sourceFile: input.sourceFile,
           intrinsicTag: input.intrinsicTag,
         }) ??
@@ -200,183 +209,39 @@ function resolveForwardedComponentPropSpread(input: {
 
 function resolveSpreadClassNames(input: {
   expression: ts.Expression;
+  filePath: string;
   sourceFile: ts.SourceFile;
   intrinsicTag: boolean;
 }): JsxClassSiteInput[] | undefined {
-  const objectLiterals = resolveObjectLiteralExpressions({
+  const objectValue = evaluateStaticObjectExpression({
     expression: input.expression,
+    filePath: input.filePath,
     sourceFile: input.sourceFile,
   });
-  if (!objectLiterals) {
+  if (objectValue.confidence === "unknown") {
     return undefined;
   }
 
   const classNames: JsxClassSiteInput[] = [];
-  for (const objectLiteral of objectLiterals) {
-    const classNameProperties = objectLiteral.properties.filter(
-      (property): property is ts.PropertyAssignment => {
-        if (!ts.isPropertyAssignment(property)) {
-          return false;
-        }
-
-        const attributeName = getStaticPropertyName(property.name);
-        return (
-          Boolean(attributeName) &&
-          isClassLikeJsxAttributeName({
-            attributeName: attributeName!,
-            intrinsicTag: input.intrinsicTag,
-          })
-        );
-      },
+  for (const branch of objectValue.branches) {
+    const classNameProperty = findLastKnownPropertyAfterUnknown(branch, (property) =>
+      isClassLikeJsxAttributeName({
+        attributeName: property.key,
+        intrinsicTag: input.intrinsicTag,
+      }),
     );
-    if (classNameProperties.length === 0) {
+    if (!classNameProperty) {
       return undefined;
     }
 
-    for (const classNameProperty of classNameProperties) {
-      const attributeName = getStaticPropertyName(classNameProperty.name);
-      if (!attributeName) {
-        continue;
-      }
-
-      classNames.push({
-        attributeName,
-        initializer: classNameProperty.initializer,
-        expression: classNameProperty.initializer,
-      });
-    }
+    classNames.push({
+      attributeName: classNameProperty.key,
+      initializer: classNameProperty.valueExpression,
+      expression: classNameProperty.valueExpression,
+    });
   }
 
   return classNames;
-}
-
-function resolveObjectLiteralExpressions(input: {
-  expression: ts.Expression;
-  sourceFile: ts.SourceFile;
-}): ts.ObjectLiteralExpression[] | undefined {
-  const unwrapped = unwrapExpression(input.expression);
-  if (ts.isConditionalExpression(unwrapped)) {
-    const whenTrue = resolveObjectLiteralExpressions({
-      expression: unwrapped.whenTrue,
-      sourceFile: input.sourceFile,
-    });
-    const whenFalse = resolveObjectLiteralExpressions({
-      expression: unwrapped.whenFalse,
-      sourceFile: input.sourceFile,
-    });
-    if (!whenTrue || !whenFalse) {
-      return undefined;
-    }
-    return [...whenTrue, ...whenFalse];
-  }
-
-  const objectLiteral = resolveObjectLiteralExpression({
-    expression: unwrapped,
-    sourceFile: input.sourceFile,
-  });
-  if (!objectLiteral) {
-    return undefined;
-  }
-
-  return [objectLiteral];
-}
-
-function resolveObjectLiteralExpression(input: {
-  expression: ts.Expression;
-  sourceFile: ts.SourceFile;
-}): ts.ObjectLiteralExpression | undefined {
-  const unwrapped = unwrapExpression(input.expression);
-  if (ts.isObjectLiteralExpression(unwrapped)) {
-    return unwrapped;
-  }
-
-  if (!ts.isIdentifier(unwrapped)) {
-    return undefined;
-  }
-
-  const declaration = findVisibleConstObjectLiteralDeclaration({
-    sourceFile: input.sourceFile,
-    localName: unwrapped.text,
-    usage: unwrapped,
-  });
-  return declaration?.initializer
-    ? unwrapObjectLiteralInitializer(declaration.initializer)
-    : undefined;
-}
-
-function findVisibleConstObjectLiteralDeclaration(input: {
-  sourceFile: ts.SourceFile;
-  localName: string;
-  usage: ts.Identifier;
-}): ts.VariableDeclaration | undefined {
-  let current: ts.Node | undefined = input.usage;
-  while (current) {
-    if (ts.isBlock(current) || ts.isSourceFile(current) || ts.isModuleBlock(current)) {
-      const declaration = findConstObjectLiteralDeclarationInStatements({
-        statements: current.statements,
-        localName: input.localName,
-        usage: input.usage,
-      });
-      if (declaration) {
-        return declaration;
-      }
-    }
-    current = current.parent;
-  }
-
-  return undefined;
-}
-
-function findConstObjectLiteralDeclarationInStatements(input: {
-  statements: ts.NodeArray<ts.Statement>;
-  localName: string;
-  usage: ts.Identifier;
-}): ts.VariableDeclaration | undefined {
-  for (const statement of input.statements) {
-    if (statement.pos > input.usage.pos) {
-      break;
-    }
-    if (!ts.isVariableStatement(statement)) {
-      continue;
-    }
-    const isConst = (statement.declarationList.flags & ts.NodeFlags.Const) === ts.NodeFlags.Const;
-    if (!isConst) {
-      continue;
-    }
-    for (const declaration of statement.declarationList.declarations) {
-      if (
-        declaration.pos <= input.usage.pos &&
-        ts.isIdentifier(declaration.name) &&
-        declaration.name.text === input.localName &&
-        declaration.initializer
-      ) {
-        return declaration;
-      }
-    }
-  }
-
-  return undefined;
-}
-
-function unwrapObjectLiteralInitializer(
-  expression: ts.Expression,
-): ts.ObjectLiteralExpression | undefined {
-  const unwrapped = unwrapExpression(expression);
-  return ts.isObjectLiteralExpression(unwrapped) ? unwrapped : undefined;
-}
-
-function unwrapExpression(expression: ts.Expression): ts.Expression {
-  let current = expression;
-  while (
-    ts.isParenthesizedExpression(current) ||
-    ts.isAsExpression(current) ||
-    ts.isTypeAssertionExpression(current) ||
-    ts.isNonNullExpression(current) ||
-    ts.isSatisfiesExpression(current)
-  ) {
-    current = current.expression;
-  }
-  return current;
 }
 
 function unwrapFunctionReturnedExpression(expression: ts.Expression): ts.Expression | undefined {
@@ -455,7 +320,8 @@ export function tryCreateCloneElementClassExpressionSite(input: {
 
   const classNameProperty = propsArgument.properties.find(
     (property): property is ts.PropertyAssignment =>
-      ts.isPropertyAssignment(property) && getStaticPropertyName(property.name) === "className",
+      ts.isPropertyAssignment(property) &&
+      getStaticPropertyName(property.name, input.sourceFile)?.key === "className",
   );
   if (!classNameProperty) {
     return undefined;
@@ -510,7 +376,8 @@ export function tryCreateCreateElementClassExpressionSite(input: {
 
   const classNameProperty = objectLiteral.properties.find(
     (property): property is ts.PropertyAssignment =>
-      ts.isPropertyAssignment(property) && getStaticPropertyName(property.name) === "className",
+      ts.isPropertyAssignment(property) &&
+      getStaticPropertyName(property.name, input.sourceFile)?.key === "className",
   );
   if (!classNameProperty) {
     return undefined;
@@ -569,14 +436,6 @@ function isCreateElementCall(expression: ts.CallExpression): boolean {
   }
 
   return ts.isPropertyAccessExpression(callee) && callee.name.text === "createElement";
-}
-
-function getStaticPropertyName(name: ts.PropertyName): string | undefined {
-  if (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNumericLiteral(name)) {
-    return name.text;
-  }
-
-  return undefined;
 }
 
 function isClassLikeJsxAttributeName(input: {

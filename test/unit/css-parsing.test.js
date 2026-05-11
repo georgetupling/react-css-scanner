@@ -184,6 +184,140 @@ test("CSS parser records custom property dependencies in declaration property ef
   ]);
 });
 
+test("CSS parser expands CSS-wide shorthand keywords through property metadata", () => {
+  const [rule] = extractCssStyleRules({
+    cssText: ".button { border: inherit; border-radius: unset; }",
+    filePath: "src/App.css",
+  });
+
+  const border = rule.declarations.find((declaration) => declaration.property === "border");
+  const borderRadius = rule.declarations.find(
+    (declaration) => declaration.property === "border-radius",
+  );
+
+  assert.deepEqual(
+    border.propertyEffects.map(({ property, value, source, supported }) => ({
+      property,
+      value,
+      source,
+      supported,
+    })),
+    [
+      { property: "border-top-width", value: "inherit", source: "shorthand", supported: true },
+      { property: "border-top-style", value: "inherit", source: "shorthand", supported: true },
+      { property: "border-top-color", value: "inherit", source: "shorthand", supported: true },
+      { property: "border-right-width", value: "inherit", source: "shorthand", supported: true },
+      { property: "border-right-style", value: "inherit", source: "shorthand", supported: true },
+      { property: "border-right-color", value: "inherit", source: "shorthand", supported: true },
+      { property: "border-bottom-width", value: "inherit", source: "shorthand", supported: true },
+      { property: "border-bottom-style", value: "inherit", source: "shorthand", supported: true },
+      { property: "border-bottom-color", value: "inherit", source: "shorthand", supported: true },
+      { property: "border-left-width", value: "inherit", source: "shorthand", supported: true },
+      { property: "border-left-style", value: "inherit", source: "shorthand", supported: true },
+      { property: "border-left-color", value: "inherit", source: "shorthand", supported: true },
+    ],
+  );
+  assert.deepEqual(
+    borderRadius.propertyEffects.map(({ property, value, source, supported }) => ({
+      property,
+      value,
+      source,
+      supported,
+    })),
+    [
+      {
+        property: "border-top-left-radius",
+        value: "0",
+        source: "shorthand",
+        supported: true,
+      },
+      {
+        property: "border-top-right-radius",
+        value: "0",
+        source: "shorthand",
+        supported: true,
+      },
+      {
+        property: "border-bottom-right-radius",
+        value: "0",
+        source: "shorthand",
+        supported: true,
+      },
+      {
+        property: "border-bottom-left-radius",
+        value: "0",
+        source: "shorthand",
+        supported: true,
+      },
+    ],
+  );
+});
+
+test("CSS parser resolves CSS-wide longhand and all resets through property metadata", () => {
+  const [rule] = extractCssStyleRules({
+    cssText: ".button { color: unset; margin-top: initial; all: unset; }",
+    filePath: "src/App.css",
+  });
+
+  const color = rule.declarations.find((declaration) => declaration.property === "color");
+  const marginTop = rule.declarations.find((declaration) => declaration.property === "margin-top");
+  const all = rule.declarations.find((declaration) => declaration.property === "all");
+
+  assert.deepEqual(color.propertyEffects, [
+    {
+      property: "color",
+      value: "inherit",
+      source: "exact",
+      supported: true,
+    },
+  ]);
+  assert.deepEqual(marginTop.propertyEffects, [
+    {
+      property: "margin-top",
+      value: "0",
+      source: "exact",
+      supported: true,
+    },
+  ]);
+  assert.equal(
+    all.propertyEffects.some((effect) => effect.property === "color"),
+    true,
+  );
+  assert.equal(all.propertyEffects.find((effect) => effect.property === "color")?.value, "inherit");
+  assert.equal(
+    all.propertyEffects.find((effect) => effect.property === "background-color")?.value,
+    "transparent",
+  );
+});
+
+test("CSS parser keeps metadata-only non-keyword shorthands unsupported", () => {
+  const [rule] = extractCssStyleRules({
+    cssText: ".button { all: red; border-radius: 4px; }",
+    filePath: "src/App.css",
+  });
+
+  for (const declaration of rule.declarations) {
+    assert.deepEqual(
+      declaration.propertyEffects.map(({ property, value, source, supported, reason }) => ({
+        property,
+        value,
+        source,
+        supported,
+        reason,
+      })),
+      [
+        {
+          property: declaration.property,
+          value: declaration.value,
+          source: "exact",
+          supported: false,
+          reason: `The "${declaration.property}" shorthand is only metadata-backed for CSS-wide reset values.`,
+        },
+      ],
+    );
+  }
+});
+
 function summarizeRules(rules) {
   return rules.map((rule) => ({
     selector: rule.selector,

@@ -113,11 +113,51 @@ test("runtime CSS loading scopes dynamic route CSS to lazy chunks", async () => 
     assert.deepEqual(lazyRoutesChunk.stylesheetFilePaths, ["src/lazy/StyledLazy.css"]);
     assert.ok(nestedLazyChunk);
     assert.deepEqual(nestedLazyChunk.stylesheetFilePaths, ["src/lazy/NestedLazy.css"]);
+    assert.deepEqual(
+      result.environmentContexts.map((context) => ({
+        kind: context.kind,
+        name: context.name,
+        rootSourceFilePath: context.rootSourceFilePath,
+        order: context.order,
+      })),
+      [
+        {
+          kind: "initial",
+          name: "initial",
+          rootSourceFilePath: "src/main.tsx",
+          order: "stable",
+        },
+        {
+          kind: "lazy-boundary",
+          name: "lazy-boundary:src/lazy/LazyRoutes.tsx",
+          rootSourceFilePath: "src/lazy/LazyRoutes.tsx",
+          order: "stable",
+        },
+        {
+          kind: "lazy-boundary",
+          name: "lazy-boundary:src/lazy/NestedLazy.tsx",
+          rootSourceFilePath: "src/lazy/NestedLazy.tsx",
+          order: "stable",
+        },
+        {
+          kind: "route",
+          name: "route:src/main.tsx",
+          rootSourceFilePath: "src/main.tsx",
+          order: "stable",
+        },
+      ],
+    );
+    const lazyRoutesEnvironment = result.environmentContexts.find(
+      (context) => context.name === "lazy-boundary:src/lazy/LazyRoutes.tsx",
+    );
+    assert.ok(lazyRoutesEnvironment);
+    assert.deepEqual(lazyRoutesEnvironment.stylesheetFilePaths, ["src/lazy/StyledLazy.css"]);
     assert.ok(
       result.availability.some(
         (availability) =>
           availability.stylesheetFilePath === "src/lazy/StyledLazy.css" &&
           availability.sourceFilePath === "src/lazy/OtherLazy.tsx" &&
+          availability.environmentContextId === lazyRoutesEnvironment.id &&
           availability.reason === "stylesheet is loaded by the same lazy runtime CSS chunk",
       ),
     );

@@ -3,6 +3,7 @@ import type {
   RuntimeCssChunk,
   RuntimeCssDiagnostic,
   RuntimeCssEntry,
+  RuntimeCssEnvironmentContext,
 } from "./types.js";
 
 export function compareRuntimeCssEntries(left: RuntimeCssEntry, right: RuntimeCssEntry): number {
@@ -10,6 +11,13 @@ export function compareRuntimeCssEntries(left: RuntimeCssEntry, right: RuntimeCs
 }
 
 export function compareRuntimeCssChunks(left: RuntimeCssChunk, right: RuntimeCssChunk): number {
+  return left.id.localeCompare(right.id);
+}
+
+export function compareRuntimeCssEnvironmentContexts(
+  left: RuntimeCssEnvironmentContext,
+  right: RuntimeCssEnvironmentContext,
+): number {
   return left.id.localeCompare(right.id);
 }
 
@@ -22,6 +30,7 @@ export function compareRuntimeCssAvailability(
     left.sourceFilePath.localeCompare(right.sourceFilePath) ||
     left.entryId.localeCompare(right.entryId) ||
     left.chunkId.localeCompare(right.chunkId) ||
+    (left.environmentContextId ?? "").localeCompare(right.environmentContextId ?? "") ||
     left.entrySourceFilePath.localeCompare(right.entrySourceFilePath) ||
     (left.htmlFilePath ?? "").localeCompare(right.htmlFilePath ?? "") ||
     left.availability.localeCompare(right.availability) ||

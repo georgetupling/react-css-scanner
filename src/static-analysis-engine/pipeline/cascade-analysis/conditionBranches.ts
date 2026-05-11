@@ -1,11 +1,8 @@
-import {
-  getMediaQueryListEnvironmentConstraints,
-  getSupportsConditionConstraints,
-  type MediaEnvironmentConstraints,
-  type MediaWidthRange,
-  type SupportsConditionConstraints,
-} from "./atRuleConditions.js";
 import { compareCandidates, compareCandidatesReason } from "./candidateComparison.js";
+import {
+  areAtRuleEnvironmentConditionsSatisfiable,
+  evaluateEnvironmentProfilesForAtRuleContext,
+} from "./environmentProfiles.js";
 import { cascadeConditionSetId, cascadeOutcomeId } from "./ids.js";
 import type {
   CascadeConditionalOutcomeBranch,
@@ -19,10 +16,32 @@ type CandidateConditionRecord = {
   conditionSet?: CascadeConditionSet;
 };
 
+export type ModeledConditionBranchLimit = {
+  conditionSetCount: number;
+  branchCombinationCount: number;
+  maxConditionSets: number;
+  maxBranchCombinations: number;
+};
+
+export type ModeledConditionBranchResult = {
+  outcome?: CascadeOutcome;
+  limitExceeded?: ModeledConditionBranchLimit;
+};
+
+const MAX_MODELED_CONDITION_SETS = 8;
+const MAX_MODELED_BRANCH_COMBINATIONS = 128;
+
 export function buildModeledConditionBranchOutcome(
   candidates: CascadeDeclarationCandidate[],
   conditionSetsById: Map<string, CascadeConditionSet>,
 ): CascadeOutcome | undefined {
+  return buildModeledConditionBranchResult(candidates, conditionSetsById).outcome;
+}
+
+export function buildModeledConditionBranchResult(
+  candidates: CascadeDeclarationCandidate[],
+  conditionSetsById: Map<string, CascadeConditionSet>,
+): ModeledConditionBranchResult {
   const candidateRecords = buildCandidateConditionRecords(candidates, conditionSetsById);
   const conditionalConditionSets = uniqueConditionSets(
     candidateRecords
@@ -31,8 +50,22 @@ export function buildModeledConditionBranchOutcome(
         Boolean(conditionSet && conditionSet.sources.length > 0),
       ),
   );
-  if (conditionalConditionSets.length === 0 || conditionalConditionSets.length > 8) {
-    return undefined;
+  if (conditionalConditionSets.length === 0) {
+    return {};
+  }
+  const branchCombinationCount = countConditionSetCombinations(conditionalConditionSets.length);
+  if (
+    conditionalConditionSets.length > MAX_MODELED_CONDITION_SETS ||
+    branchCombinationCount > MAX_MODELED_BRANCH_COMBINATIONS
+  ) {
+    return {
+      limitExceeded: {
+        conditionSetCount: conditionalConditionSets.length,
+        branchCombinationCount,
+        maxConditionSets: MAX_MODELED_CONDITION_SETS,
+        maxBranchCombinations: MAX_MODELED_BRANCH_COMBINATIONS,
+      },
+    };
   }
   if (
     conditionalConditionSets.some(
@@ -42,7 +75,7 @@ export function buildModeledConditionBranchOutcome(
         conditionSet.runtimeContextIds.length > 0,
     )
   ) {
-    return undefined;
+    return {};
   }
 
   const branchConditionSets = buildModeledBranchConditionSets(
@@ -50,7 +83,7 @@ export function buildModeledConditionBranchOutcome(
     conditionSetsById,
   );
   if (branchConditionSets.length === 0) {
-    return undefined;
+    return {};
   }
 
   const defaultCandidates = candidateRecords
@@ -60,46 +93,48 @@ export function buildModeledConditionBranchOutcome(
   const defaultWinner = defaultCandidates.at(-1);
   const fallbackWinner = defaultWinner ?? candidates.slice().sort(compareCandidates).at(-1);
   if (!fallbackWinner) {
-    return undefined;
+    return {};
   }
 
   const conditionalBranches = branchConditionSets
     .map((branchConditionSet) => buildConditionalBranch(candidateRecords, branchConditionSet))
     .filter((branch): branch is NonNullable<typeof branch> => Boolean(branch));
   if (conditionalBranches.length === 0) {
-    return undefined;
+    return {};
   }
 
   return {
-    id: cascadeOutcomeId(fallbackWinner),
-    elementId: fallbackWinner.elementId,
-    property: fallbackWinner.property,
-    ...(defaultWinner ? { winningCandidateId: defaultWinner.id } : {}),
-    losingCandidateIds: defaultWinner
-      ? defaultCandidates
-          .filter((candidate) => candidate.id !== defaultWinner.id)
-          .map((candidate) => candidate.id)
-      : [],
-    unresolvedCandidateIds: [],
-    conditionalBranches,
-    certainty: "possible",
-    reason: "condition-branch",
-    comparisonTrace: [
-      {
-        reason: "condition-branch",
-        ...(defaultWinner ? { winningCandidateId: defaultWinner.id } : {}),
-        certainty: "possible",
-        detail:
-          "Modeled conditional contexts are reduced into separate possible cascade branches, including overlapping media and selector-state contexts.",
-      },
-      ...conditionalBranches.map((branch) => ({
-        reason: branch.reason,
-        winningCandidateId: branch.winningCandidateId,
-        certainty: branch.certainty,
-        detail: `Conditional branch ${branch.conditionSetId} has a separate modeled cascade winner.`,
-      })),
-    ],
-    traces: [],
+    outcome: {
+      id: cascadeOutcomeId(fallbackWinner),
+      elementId: fallbackWinner.elementId,
+      property: fallbackWinner.property,
+      ...(defaultWinner ? { winningCandidateId: defaultWinner.id } : {}),
+      losingCandidateIds: defaultWinner
+        ? defaultCandidates
+            .filter((candidate) => candidate.id !== defaultWinner.id)
+            .map((candidate) => candidate.id)
+        : [],
+      unresolvedCandidateIds: [],
+      conditionalBranches,
+      certainty: "possible",
+      reason: "condition-branch",
+      comparisonTrace: [
+        {
+          reason: "condition-branch",
+          ...(defaultWinner ? { winningCandidateId: defaultWinner.id } : {}),
+          certainty: "possible",
+          detail:
+            "Modeled conditional contexts are reduced into separate possible cascade branches, including overlapping media and selector-state contexts.",
+        },
+        ...conditionalBranches.map((branch) => ({
+          reason: branch.reason,
+          winningCandidateId: branch.winningCandidateId,
+          certainty: branch.certainty,
+          detail: `Conditional branch ${branch.conditionSetId} has a separate modeled cascade winner.`,
+        })),
+      ],
+      traces: [],
+    },
   };
 }
 
@@ -228,6 +263,9 @@ function buildConditionalBranch(
     return undefined;
   }
   const branchRunnerUp = branchCandidates.at(-2);
+  const environmentProfileIds = evaluateEnvironmentProfilesForAtRuleContext(
+    branchConditionSet.atRuleContext,
+  ).profileIds;
   return {
     conditionSetId: branchConditionSet.id,
     winningCandidateId: branchWinner.id,
@@ -235,6 +273,7 @@ function buildConditionalBranch(
       .filter((candidate) => candidate.id !== branchWinner.id)
       .map((candidate) => candidate.id),
     unresolvedCandidateIds: [],
+    ...(environmentProfileIds.length > 0 ? { environmentProfileIds } : {}),
     certainty: "possible",
     reason: branchRunnerUp ? compareCandidatesReason(branchWinner, branchRunnerUp) : "source-order",
   };
@@ -281,6 +320,10 @@ function conditionSetCombinations(conditionSets: CascadeConditionSet[]): Cascade
       .join("|")
       .localeCompare(right.map((conditionSet) => conditionSet.id).join("|"));
   });
+}
+
+function countConditionSetCombinations(conditionSetCount: number): number {
+  return 2 ** conditionSetCount - 1;
 }
 
 function mergeConditionSets(conditionSets: CascadeConditionSet[]): CascadeConditionSet | undefined {
@@ -409,153 +452,7 @@ function isStringSubset(needles: string[], haystack: string[]): boolean {
 function areAtRuleConditionsSatisfiable(
   atRuleContext: CascadeConditionSet["atRuleContext"],
 ): boolean {
-  return (
-    areMediaConditionsSatisfiable(
-      atRuleContext.filter((entry) => entry.name === "media").map((entry) => entry.params),
-    ) &&
-    areSupportsConditionsSatisfiable(
-      atRuleContext.filter((entry) => entry.name === "supports").map((entry) => entry.params),
-    )
-  );
-}
-
-function areMediaConditionsSatisfiable(mediaParams: string[]): boolean {
-  let constraints: MediaEnvironmentConstraints = {};
-  for (const params of mediaParams) {
-    const nextConstraints = getMediaQueryListEnvironmentConstraints(params);
-    if (!nextConstraints) {
-      continue;
-    }
-    const merged = mergeMediaEnvironmentConstraints(constraints, nextConstraints);
-    if (!merged) {
-      return false;
-    }
-    constraints = merged;
-  }
-  return isMediaEnvironmentSatisfiable(constraints);
-}
-
-function mergeMediaEnvironmentConstraints(
-  left: MediaEnvironmentConstraints,
-  right: MediaEnvironmentConstraints,
-): MediaEnvironmentConstraints | undefined {
-  const width = mergeWidthRanges(left.width, right.width);
-  if (width === false) {
-    return undefined;
-  }
-  const prefersColorScheme = mergeExclusiveValue(left.prefersColorScheme, right.prefersColorScheme);
-  if (prefersColorScheme === false) {
-    return undefined;
-  }
-  const orientation = mergeExclusiveValue(left.orientation, right.orientation);
-  if (orientation === false) {
-    return undefined;
-  }
-  return {
-    ...(width ? { width } : {}),
-    ...(prefersColorScheme ? { prefersColorScheme } : {}),
-    ...(orientation ? { orientation } : {}),
-  };
-}
-
-function mergeWidthRanges(
-  left: MediaWidthRange | undefined,
-  right: MediaWidthRange | undefined,
-): MediaWidthRange | false | undefined {
-  if (!left) {
-    return right;
-  }
-  if (!right) {
-    return left;
-  }
-  const merged: MediaWidthRange = {};
-  applyMinWidth(merged, left.minWidthPx, left.minWidthInclusive);
-  applyMinWidth(merged, right.minWidthPx, right.minWidthInclusive);
-  applyMaxWidth(merged, left.maxWidthPx, left.maxWidthInclusive);
-  applyMaxWidth(merged, right.maxWidthPx, right.maxWidthInclusive);
-  return isWidthRangeSatisfiable(merged) ? merged : false;
-}
-
-function applyMinWidth(
-  range: MediaWidthRange,
-  valuePx: number | undefined,
-  inclusive: boolean | undefined,
-): void {
-  if (valuePx === undefined) {
-    return;
-  }
-  const isInclusive = inclusive ?? true;
-  if (
-    range.minWidthPx === undefined ||
-    valuePx > range.minWidthPx ||
-    (valuePx === range.minWidthPx && range.minWidthInclusive === true && !isInclusive)
-  ) {
-    range.minWidthPx = valuePx;
-    range.minWidthInclusive = isInclusive;
-  }
-}
-
-function applyMaxWidth(
-  range: MediaWidthRange,
-  valuePx: number | undefined,
-  inclusive: boolean | undefined,
-): void {
-  if (valuePx === undefined) {
-    return;
-  }
-  const isInclusive = inclusive ?? true;
-  if (
-    range.maxWidthPx === undefined ||
-    valuePx < range.maxWidthPx ||
-    (valuePx === range.maxWidthPx && range.maxWidthInclusive === true && !isInclusive)
-  ) {
-    range.maxWidthPx = valuePx;
-    range.maxWidthInclusive = isInclusive;
-  }
-}
-
-function mergeExclusiveValue<T extends string>(
-  left: T | undefined,
-  right: T | undefined,
-): T | false | undefined {
-  if (!left) {
-    return right;
-  }
-  if (!right || left === right) {
-    return left;
-  }
-  return false;
-}
-
-function isMediaEnvironmentSatisfiable(constraints: MediaEnvironmentConstraints): boolean {
-  return !constraints.width || isWidthRangeSatisfiable(constraints.width);
-}
-
-function isWidthRangeSatisfiable(range: MediaWidthRange): boolean {
-  if (range.minWidthPx === undefined || range.maxWidthPx === undefined) {
-    return true;
-  }
-  if (range.minWidthPx < range.maxWidthPx) {
-    return true;
-  }
-  if (range.minWidthPx > range.maxWidthPx) {
-    return false;
-  }
-  return range.minWidthInclusive === true && range.maxWidthInclusive === true;
-}
-
-function areSupportsConditionsSatisfiable(supportsParams: string[]): boolean {
-  const constraints: SupportsConditionConstraints = { required: [], rejected: [] };
-  for (const params of supportsParams) {
-    const nextConstraints = getSupportsConditionConstraints(params);
-    if (!nextConstraints) {
-      continue;
-    }
-    constraints.required.push(...nextConstraints.required);
-    constraints.rejected.push(...nextConstraints.rejected);
-  }
-  const rejected = new Set(constraints.rejected);
-  return constraints.required.every((required) => !rejected.has(required));
+  return areAtRuleEnvironmentConditionsSatisfiable(atRuleContext);
 }
 
 function expandPseudoStateImplications(pseudoStates: string[]): Set<string> {

@@ -7,8 +7,11 @@ import type { RuntimeCssLoadingResult } from "../runtime-css-loading/index.js";
 
 export type RuntimeStylesheetOrderContext = {
   id: string;
+  name: string;
+  kind: "initial" | "lazy-boundary";
   entryId: string;
   chunkId: string;
+  environmentContextId?: string;
   loading: "initial" | "lazy";
   sourceFilePaths: string[];
   stylesheetOrderById: Map<ProjectEvidenceId, number>;
@@ -40,6 +43,11 @@ export function buildRuntimeStylesheetOrder(input: {
     .sort(compareRuntimeChunks);
 
   for (const chunk of initialChunks) {
+    const environmentContext = findEnvironmentContextForChunk({
+      runtimeCssLoading: input.runtimeCssLoading,
+      chunk,
+      kind: "initial",
+    });
     const orderedStylesheetPaths = getDefiniteOrderedStylesheetsForChunk({
       input,
       chunk,
@@ -52,6 +60,7 @@ export function buildRuntimeStylesheetOrder(input: {
     const context = createRuntimeContext({
       input,
       chunk,
+      environmentContext,
       orderedStylesheetPaths,
     });
     if (context) {
@@ -71,6 +80,11 @@ export function buildRuntimeStylesheetOrder(input: {
   }
 
   for (const chunk of lazyChunks) {
+    const environmentContext = findEnvironmentContextForChunk({
+      runtimeCssLoading: input.runtimeCssLoading,
+      chunk,
+      kind: "lazy-boundary",
+    });
     const lazyOrderedStylesheetPaths = getDefiniteOrderedStylesheetsForChunk({
       input,
       chunk,
@@ -83,6 +97,7 @@ export function buildRuntimeStylesheetOrder(input: {
     const context = createRuntimeContext({
       input,
       chunk,
+      environmentContext,
       orderedStylesheetPaths: [
         ...initialOrderedStylesheetPaths,
         ...lazyOrderedStylesheetPaths.filter(
@@ -155,6 +170,7 @@ function createRuntimeContext(input: {
     projectEvidence: ProjectEvidenceAssemblyResult;
   };
   chunk: RuntimeCssLoadingResult["chunks"][number];
+  environmentContext?: NonNullable<RuntimeCssLoadingResult["environmentContexts"]>[number];
   orderedStylesheetPaths: string[];
 }): RuntimeStylesheetOrderContext | undefined {
   const stylesheetOrderById = new Map<ProjectEvidenceId, number>();
@@ -172,9 +188,16 @@ function createRuntimeContext(input: {
   }
 
   return {
-    id: runtimeStylesheetOrderContextId(input.chunk),
+    id: runtimeStylesheetOrderContextId(input.chunk, input.environmentContext),
+    name:
+      input.environmentContext?.name ??
+      (input.chunk.loading === "initial"
+        ? "initial"
+        : `lazy-boundary:${normalizeProjectPath(input.chunk.rootSourceFilePath)}`),
+    kind: input.chunk.loading === "initial" ? "initial" : "lazy-boundary",
     entryId: input.chunk.entryId,
     chunkId: input.chunk.id,
+    ...(input.environmentContext ? { environmentContextId: input.environmentContext.id } : {}),
     loading: input.chunk.loading,
     sourceFilePaths: input.chunk.sourceFilePaths.map(normalizeProjectPath).sort(compareStrings),
     stylesheetOrderById,
@@ -194,8 +217,23 @@ function indexRuntimeContext(
   }
 }
 
-function runtimeStylesheetOrderContextId(chunk: RuntimeCssLoadingResult["chunks"][number]): string {
-  return ["runtime-css", chunk.entryId, chunk.loading, chunk.id].join(":");
+function runtimeStylesheetOrderContextId(
+  chunk: RuntimeCssLoadingResult["chunks"][number],
+  environmentContext?: NonNullable<RuntimeCssLoadingResult["environmentContexts"]>[number],
+): string {
+  return (
+    environmentContext?.id ?? ["runtime-css", chunk.entryId, chunk.loading, chunk.id].join(":")
+  );
+}
+
+function findEnvironmentContextForChunk(input: {
+  runtimeCssLoading: RuntimeCssLoadingResult;
+  chunk: RuntimeCssLoadingResult["chunks"][number];
+  kind: "initial" | "lazy-boundary";
+}): NonNullable<RuntimeCssLoadingResult["environmentContexts"]>[number] | undefined {
+  return input.runtimeCssLoading.environmentContexts
+    ?.filter((context) => context.kind === input.kind && context.chunkIds.includes(input.chunk.id))
+    .sort((left, right) => left.id.localeCompare(right.id))[0];
 }
 
 function collectRuntimeOrderedStylesheets(input: {

@@ -1,7 +1,7 @@
 import type { ProjectEvidenceAssemblyResult } from "../project-evidence/index.js";
 import { compareCandidates, compareCandidatesReason } from "./candidateComparison.js";
 import {
-  buildModeledConditionBranchOutcome,
+  buildModeledConditionBranchResult,
   buildPseudoStateBranchOutcome,
 } from "./conditionBranches.js";
 import { cascadeDiagnosticId, cascadeOutcomeId, elementPropertyKey } from "./ids.js";
@@ -16,6 +16,12 @@ type CandidateConditionCompatibility = {
   compatibility: "definite" | "conditional" | "unknown";
   detail: string;
   branchOutcome?: CascadeOutcome;
+  conditionBranchLimitExceeded?: {
+    conditionSetCount: number;
+    branchCombinationCount: number;
+    maxConditionSets: number;
+    maxBranchCombinations: number;
+  };
 };
 
 export function buildOutcomes(input: {
@@ -106,6 +112,41 @@ export function buildOutcomes(input: {
         continue;
       }
 
+      if (conditionCompatibility.conditionBranchLimitExceeded) {
+        const limit = conditionCompatibility.conditionBranchLimitExceeded;
+        input.diagnostics.push({
+          id: cascadeDiagnosticId({
+            code: "condition-branch-limit-exceeded",
+            elementId: winner.elementId,
+            index: input.diagnostics.length,
+          }),
+          code: "condition-branch-limit-exceeded",
+          severity: "debug",
+          confidence: "high",
+          message: `Cascade candidates for "${winner.property}" have ${limit.conditionSetCount} condition sets, which would require ${limit.branchCombinationCount} modeled branch combinations; branch modeling is capped at ${limit.maxConditionSets} condition sets or ${limit.maxBranchCombinations} branch combinations.`,
+          elementId: winner.elementId,
+          traces: [],
+        });
+        outcomes.push({
+          id: cascadeOutcomeId(winner),
+          elementId: winner.elementId,
+          property: winner.property,
+          losingCandidateIds: [],
+          unresolvedCandidateIds: sortedCandidates.map((candidate) => candidate.id),
+          certainty: "unknown",
+          reason: "condition-uncertain",
+          comparisonTrace: [
+            {
+              reason: "condition-uncertain",
+              certainty: "unknown",
+              detail: conditionCompatibility.detail,
+            },
+          ],
+          traces: [],
+        });
+        continue;
+      }
+
       input.diagnostics.push({
         id: cascadeDiagnosticId({
           code: "unknown-condition-compatibility",
@@ -183,8 +224,18 @@ function compareCandidateConditionSets(
     candidates.map((candidate) => conditionSignature(candidate, conditionSetsById)),
   );
   if (conditionSignatures.size > 1) {
+    const modeledBranchResult = buildModeledConditionBranchResult(candidates, conditionSetsById);
+    if (modeledBranchResult.limitExceeded) {
+      return {
+        compatibility: "unknown",
+        detail:
+          "Candidates have too many simultaneous conditional contexts to enumerate modeled branch outcomes within the configured cascade-analysis limit.",
+        conditionBranchLimitExceeded: modeledBranchResult.limitExceeded,
+      };
+    }
+
     const branchOutcome =
-      buildModeledConditionBranchOutcome(candidates, conditionSetsById) ??
+      modeledBranchResult.outcome ??
       buildPseudoStateBranchOutcome(candidates, conditionSetsById) ??
       buildConditionalBranchOutcome(candidates, conditionSetsById);
     if (branchOutcome) {

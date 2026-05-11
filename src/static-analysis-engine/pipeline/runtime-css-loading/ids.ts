@@ -1,5 +1,5 @@
 import { normalizeProjectPath } from "./pathUtils.js";
-import type { RuntimeCssChunk, RuntimeCssEntry } from "./types.js";
+import type { RuntimeCssChunk, RuntimeCssEntry, RuntimeCssEnvironmentContext } from "./types.js";
 
 export function runtimeCssEntryId(input: {
   kind: RuntimeCssEntry["kind"];
@@ -23,6 +23,19 @@ export function runtimeCssChunkId(input: {
     "runtime-css-chunk",
     input.entryId,
     input.loading,
+    normalizeProjectPath(input.rootSourceFilePath),
+  ].join(":");
+}
+
+export function runtimeCssEnvironmentContextId(input: {
+  kind: RuntimeCssEnvironmentContext["kind"];
+  entryId: string;
+  rootSourceFilePath: string;
+}): string {
+  return [
+    "runtime-css-env",
+    input.kind,
+    input.entryId,
     normalizeProjectPath(input.rootSourceFilePath),
   ].join(":");
 }

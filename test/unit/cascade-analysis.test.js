@@ -188,6 +188,33 @@ test("cascade analysis normalizes lazy CSS into runtime-specific stylesheet orde
           reason: "static imports reachable from dynamic import chunk root",
         },
       ],
+      environmentContexts: [
+        {
+          id: "runtime-css-env:initial:entry:src/App.tsx",
+          kind: "initial",
+          name: "initial",
+          entryId: "entry",
+          chunkIds: ["initial"],
+          rootSourceFilePath: "src/App.tsx",
+          sourceFilePaths: ["src/App.tsx"],
+          stylesheetFilePaths: ["src/base.css"],
+          order: "stable",
+          reason: "initial runtime environment for the app entry",
+        },
+        {
+          id: "runtime-css-env:lazy-boundary:entry:src/LazyRoute.tsx",
+          kind: "lazy-boundary",
+          name: "lazy-boundary:src/LazyRoute.tsx",
+          entryId: "entry",
+          chunkIds: ["initial", "lazy"],
+          rootSourceFilePath: "src/LazyRoute.tsx",
+          sourceFilePaths: ["src/LazyRoute.tsx"],
+          stylesheetFilePaths: ["src/base.css", "src/lazy.css"],
+          order: "stable",
+          reason:
+            "lazy boundary runtime environment with initial CSS followed by the lazy chunk CSS",
+        },
+      ],
       availability: [
         {
           stylesheetFilePath: "src/base.css",
@@ -225,6 +252,9 @@ test("cascade analysis normalizes lazy CSS into runtime-specific stylesheet orde
   const lazyContextId = order.contextIdsBySourceFilePath.get("src/LazyRoute.tsx")?.[0];
   assert.ok(lazyContextId);
   const lazyContext = order.contextById.get(lazyContextId);
+  assert.equal(lazyContext?.id, "runtime-css-env:lazy-boundary:entry:src/LazyRoute.tsx");
+  assert.equal(lazyContext?.name, "lazy-boundary:src/LazyRoute.tsx");
+  assert.equal(lazyContext?.kind, "lazy-boundary");
   assert.equal(lazyContext?.loading, "lazy");
   assert.equal(lazyContext?.stylesheetOrderById.get("stylesheet:src/base.css"), 0);
   assert.equal(lazyContext?.stylesheetOrderById.get("stylesheet:src/lazy.css"), 1);
@@ -480,6 +510,63 @@ test("cascade analysis reads inline styles supplied through intrinsic JSX prop s
     const winningCandidate = cascade.indexes.candidateById.get(outcome.winningCandidateId);
     assert.equal(winningCandidate?.value, "red");
     assert.equal(winningCandidate?.cascadeKey.origin, "inline");
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis reads inline styles from computed and member JSX prop spreads", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'const styleKey = "style";\nconst props = { button: { [styleKey]: { color: "red" } } };\nexport function App() { return <button {...props.button}>Save</button>; }\n',
+    )
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+    const outcome = cascade.outcomes.find((candidate) => candidate.property === "color");
+
+    assert.ok(outcome?.winningCandidateId);
+    const winningCandidate = cascade.indexes.candidateById.get(outcome.winningCandidateId);
+    assert.equal(winningCandidate?.value, "red");
+    assert.equal(winningCandidate?.cascadeKey.origin, "inline");
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis uses shared static object evaluation for className JSX prop spreads", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./styles.css";\nconst key = "className";\nconst props = { button: { [key]: "button primary" } };\nexport function App() { return <button {...props.button}>Save</button>; }\n',
+    )
+    .withCssFile("src/styles.css", ".button { color: red; }\n.button.primary { color: blue; }\n")
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+    const outcome = cascade.outcomes.find((candidate) => candidate.property === "color");
+
+    assert.ok(outcome?.winningCandidateId);
+    const winningCandidate = cascade.indexes.candidateById.get(outcome.winningCandidateId);
+    assert.equal(winningCandidate?.value, "blue");
+    assert.equal(winningCandidate?.property, "color");
   } finally {
     await project.cleanup();
   }
@@ -1178,6 +1265,27 @@ test("cascade analysis models overlapping at-rule contexts as branch outcomes", 
       branchValues.get("media:(min-width: 40rem)|media:(prefers-color-scheme: dark)"),
       "blue",
     );
+    const branchProfileIds = new Map(
+      (outcome.conditionalBranches ?? []).map((branch) => {
+        const conditionSet = cascade.indexes.conditionSetById.get(branch.conditionSetId);
+        const conditionKey = (conditionSet?.atRuleContext ?? [])
+          .map((entry) => `${entry.name}:${entry.params}`)
+          .join("|");
+        return [conditionKey, branch.environmentProfileIds ?? []];
+      }),
+    );
+    assert.deepEqual(branchProfileIds.get("media:(min-width: 40rem)"), [
+      "desktop-dark",
+      "desktop-light",
+    ]);
+    assert.deepEqual(branchProfileIds.get("media:(prefers-color-scheme: dark)"), [
+      "desktop-dark",
+      "mobile-dark",
+    ]);
+    assert.deepEqual(
+      branchProfileIds.get("media:(min-width: 40rem)|media:(prefers-color-scheme: dark)"),
+      ["desktop-dark"],
+    );
     assert.equal(
       cascade.diagnostics.some(
         (diagnostic) => diagnostic.code === "unknown-condition-compatibility",
@@ -1281,6 +1389,202 @@ test("cascade analysis understands modern width comparison range syntax", async 
     );
     assert.equal(branchValues.get("media:(40rem <= width < 60rem)"), "red");
     assert.equal(branchValues.get("media:(width >= 60rem)"), "blue");
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis keeps disjoint named container width contexts in separate branches", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./styles.css";\nexport function App() { return <button className="button primary">Save</button>; }\n',
+    )
+    .withCssFile(
+      "src/styles.css",
+      "@container card (max-width: 30rem) { .button.primary { color: red; } }\n@container card (min-width: 40rem) { .button.primary { color: blue; } }\n",
+    )
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+    const outcome = cascade.outcomes.find((candidate) => candidate.property === "color");
+
+    assert.ok(outcome);
+    assert.equal(outcome.reason, "condition-branch");
+    assert.equal(outcome.conditionalBranches?.length, 2);
+    const branchValues = new Map(
+      (outcome.conditionalBranches ?? []).map((branch) => {
+        const conditionSet = cascade.indexes.conditionSetById.get(branch.conditionSetId);
+        const conditionKey = (conditionSet?.atRuleContext ?? [])
+          .map((entry) => `${entry.name}:${entry.params}`)
+          .join("|");
+        const winner = branch.winningCandidateId
+          ? cascade.indexes.candidateById.get(branch.winningCandidateId)
+          : undefined;
+        return [conditionKey, winner?.value];
+      }),
+    );
+    assert.equal(branchValues.get("container:card (max-width: 30rem)"), "red");
+    assert.equal(branchValues.get("container:card (min-width: 40rem)"), "blue");
+    assert.equal(
+      branchValues.has("container:card (max-width: 30rem)|container:card (min-width: 40rem)"),
+      false,
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis combines overlapping named container width contexts", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./styles.css";\nexport function App() { return <button className="button primary">Save</button>; }\n',
+    )
+    .withCssFile(
+      "src/styles.css",
+      "@container card (min-width: 30rem) { .button.primary { color: red; } }\n@container card (max-width: 60rem) { .button.primary { color: blue; } }\n",
+    )
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+    const outcome = cascade.outcomes.find((candidate) => candidate.property === "color");
+
+    assert.ok(outcome);
+    assert.equal(outcome.reason, "condition-branch");
+    assert.equal(outcome.conditionalBranches?.length, 3);
+    const branchValues = new Map(
+      (outcome.conditionalBranches ?? []).map((branch) => {
+        const conditionSet = cascade.indexes.conditionSetById.get(branch.conditionSetId);
+        const conditionKey = (conditionSet?.atRuleContext ?? [])
+          .map((entry) => `${entry.name}:${entry.params}`)
+          .join("|");
+        const winner = branch.winningCandidateId
+          ? cascade.indexes.candidateById.get(branch.winningCandidateId)
+          : undefined;
+        return [conditionKey, winner?.value];
+      }),
+    );
+    assert.equal(branchValues.get("container:card (min-width: 30rem)"), "red");
+    assert.equal(branchValues.get("container:card (max-width: 60rem)"), "blue");
+    assert.equal(
+      branchValues.get("container:card (max-width: 60rem)|container:card (min-width: 30rem)"),
+      "blue",
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis combines independently named container width contexts", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./styles.css";\nexport function App() { return <button className="button primary">Save</button>; }\n',
+    )
+    .withCssFile(
+      "src/styles.css",
+      "@container card (max-width: 30rem) { .button.primary { color: red; } }\n@container sidebar (min-width: 40rem) { .button.primary { color: blue; } }\n",
+    )
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+    const outcome = cascade.outcomes.find((candidate) => candidate.property === "color");
+
+    assert.ok(outcome);
+    assert.equal(outcome.reason, "condition-branch");
+    assert.equal(outcome.conditionalBranches?.length, 3);
+    const branchValues = new Map(
+      (outcome.conditionalBranches ?? []).map((branch) => {
+        const conditionSet = cascade.indexes.conditionSetById.get(branch.conditionSetId);
+        const conditionKey = (conditionSet?.atRuleContext ?? [])
+          .map((entry) => `${entry.name}:${entry.params}`)
+          .join("|");
+        const winner = branch.winningCandidateId
+          ? cascade.indexes.candidateById.get(branch.winningCandidateId)
+          : undefined;
+        return [conditionKey, winner?.value];
+      }),
+    );
+    assert.equal(
+      branchValues.get("container:card (max-width: 30rem)|container:sidebar (min-width: 40rem)"),
+      "blue",
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis reports when modeled condition branches exceed the branch cap", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./styles.css";\nexport function App() { return <button className="button primary">Save</button>; }\n',
+    )
+    .withCssFile(
+      "src/styles.css",
+      [
+        ".button.primary { color: black; }",
+        "@media (min-width: 1rem) { .button.primary { color: red; } }",
+        "@media (min-width: 2rem) { .button.primary { color: orange; } }",
+        "@media (min-width: 3rem) { .button.primary { color: yellow; } }",
+        "@media (min-width: 4rem) { .button.primary { color: green; } }",
+        "@media (min-width: 5rem) { .button.primary { color: blue; } }",
+        "@media (min-width: 6rem) { .button.primary { color: indigo; } }",
+        "@media (min-width: 7rem) { .button.primary { color: violet; } }",
+        "@media (min-width: 8rem) { .button.primary { color: white; } }",
+      ].join("\n"),
+    )
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+    const outcome = cascade.outcomes.find((candidate) => candidate.property === "color");
+    const diagnostic = cascade.diagnostics.find(
+      (entry) => entry.code === "condition-branch-limit-exceeded",
+    );
+
+    assert.ok(outcome);
+    assert.equal(outcome.reason, "condition-uncertain");
+    assert.equal(outcome.certainty, "unknown");
+    assert.equal(outcome.winningCandidateId, undefined);
+    assert.equal(outcome.conditionalBranches, undefined);
+    assert.equal(outcome.unresolvedCandidateIds.length, 9);
+    assert.ok(diagnostic);
+    assert.equal(diagnostic.elementId, outcome.elementId);
+    assert.match(diagnostic.message, /8 condition sets/);
+    assert.match(diagnostic.message, /255 modeled branch combinations/);
   } finally {
     await project.cleanup();
   }
@@ -1742,6 +2046,47 @@ test("cascade analysis expands border box shorthands into width style and color 
     assert.equal(
       cascade.indexes.candidateById.get(leftWidthOutcome.winningCandidateId)?.value,
       "2px",
+    );
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis models CSS-wide shorthand resets from property metadata", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./styles.css";\nexport function App() { return <button className="button primary">Save</button>; }\n',
+    )
+    .withCssFile(
+      "src/styles.css",
+      ".button.primary { border-top-color: red; border: inherit; border-radius: unset; }\n",
+    )
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+    const valueFor = (property) => {
+      const outcome = cascade.outcomes.find((candidate) => candidate.property === property);
+      assert.ok(outcome?.winningCandidateId);
+      return cascade.indexes.candidateById.get(outcome.winningCandidateId)?.value;
+    };
+
+    assert.equal(valueFor("border-top-color"), "inherit");
+    assert.equal(valueFor("border-right-style"), "inherit");
+    assert.equal(valueFor("border-bottom-left-radius"), "0");
+    assert.equal(
+      cascade.diagnostics.some(
+        (diagnostic) => diagnostic.code === "unsupported-property-semantics",
+      ),
+      false,
     );
   } finally {
     await project.cleanup();
@@ -2599,6 +2944,54 @@ test("cascade analysis applies declarations inside compound class scope roots", 
       distance: 1,
       known: true,
     });
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("cascade analysis uses selector reachability for structural scope roots and limits", async () => {
+  const project = await new TestProjectBuilder()
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./styles.css";\nexport function App() { return <div className="shell"><section className="panel"><div className="stop"><button className="button">Blocked</button></div><div><button className="button ok">Save</button></div></section></div>; }\n',
+    )
+    .withCssFile(
+      "src/styles.css",
+      ".button { color: blue; }\n.ok { background-color: green; }\n@scope (.shell > .panel) to (.stop) { .button { color: red; } }\n",
+    )
+    .build();
+
+  try {
+    const result = await runAnalysisPipeline({
+      scanInput: {
+        rootDir: project.rootDir,
+        sourceFilePaths: ["src/App.tsx"],
+      },
+      includeTraces: false,
+    });
+    const cascade = result.analysisEvidence.cascadeAnalysis;
+    const okBackgroundOutcome = cascade.outcomes.find(
+      (outcome) => outcome.property === "background-color",
+    );
+    assert.ok(okBackgroundOutcome?.winningCandidateId);
+    const okElementId = cascade.indexes.candidateById.get(
+      okBackgroundOutcome.winningCandidateId,
+    )?.elementId;
+    assert.ok(okElementId);
+
+    const colorValuesByElement = new Map(
+      cascade.outcomes
+        .filter((outcome) => outcome.property === "color")
+        .map((outcome) => {
+          assert.ok(outcome.winningCandidateId);
+          const candidate = cascade.indexes.candidateById.get(outcome.winningCandidateId);
+          assert.ok(candidate);
+          return [candidate.elementId, candidate.value];
+        }),
+    );
+
+    assert.equal(colorValuesByElement.get(okElementId), "red");
+    assert.equal([...colorValuesByElement.values()].filter((value) => value === "blue").length, 1);
   } finally {
     await project.cleanup();
   }

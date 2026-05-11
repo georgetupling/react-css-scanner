@@ -240,6 +240,7 @@ export type {
   RuntimeCssBundlerProfile,
   RuntimeCssChunk,
   RuntimeCssEntry,
+  RuntimeCssEnvironmentContext,
   RuntimeCssLoadingResult,
 } from "./pipeline/runtime-css-loading/index.js";
 export type {
