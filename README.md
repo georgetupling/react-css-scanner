@@ -166,6 +166,7 @@ Rules can be disabled or given a different severity with `rules.<ruleId>` in con
 | `orphan-css-file`                           | `warn`           | Reports project stylesheets that define classes but have no reachable source, component, or render context.            |
 | `duplicate-class-definition`                | `info`           | Reports duplicate same-selector class definitions in the same stylesheet and at-rule context.                          |
 | `declaration-always-shadowed`               | `off`            | Opt-in cascade cleanup rule for declarations proven to always lose to stronger candidates wherever they apply.         |
+| `selector-declaration-never-wins`           | `off`            | Opt-in cascade cleanup rule for selector branches whose declarations never win for any modeled match.                  |
 | `unsatisfiable-selector`                    | `warn`           | Reports selectors that cannot match any known renderable structure under bounded selector/render analysis.             |
 | `compound-selector-never-matched`           | `warn`           | Reports compound selectors, such as `.button.primary`, whose required classes are never observed on one node.          |
 | `unused-compound-selector-branch`           | `warn`           | Reports unused branches in selector lists or compound selectors when other branches may still be useful.               |

@@ -7,6 +7,7 @@ import { duplicateClassDefinitionRule } from "./rules/duplicateClassDefinition.j
 import { cssModuleImportNotUsedRule } from "./rules/cssModuleImportNotUsed.js";
 import { missingCssModuleClassRule } from "./rules/missingCssModuleClass.js";
 import { orphanCssFileRule } from "./rules/orphanCssFile.js";
+import { selectorDeclarationNeverWinsRule } from "./rules/selectorDeclarationNeverWins.js";
 import { selectorOnlyMatchesInUnknownContextsRule } from "./rules/selectorOnlyMatchesInUnknownContexts.js";
 import { singleComponentStyleNotColocatedRule } from "./rules/singleComponentStyleNotColocated.js";
 import { styleSharedWithoutSharedOwnerRule } from "./rules/styleSharedWithoutSharedOwner.js";
@@ -29,6 +30,7 @@ export const RULE_DEFINITIONS: RuleDefinition[] = [
   orphanCssFileRule,
   duplicateClassDefinitionRule,
   declarationAlwaysShadowedRule,
+  selectorDeclarationNeverWinsRule,
   unsatisfiableSelectorRule,
   compoundSelectorNeverMatchedRule,
   unusedCompoundSelectorBranchRule,
@@ -50,6 +52,7 @@ export const DEFAULT_RULE_SEVERITIES: Record<RuleId, RuleConfigSeverity> = {
   "orphan-css-file": "warn",
   "duplicate-class-definition": "info",
   "declaration-always-shadowed": "off",
+  "selector-declaration-never-wins": "off",
   "unsatisfiable-selector": "warn",
   "compound-selector-never-matched": "warn",
   "unused-compound-selector-branch": "warn",

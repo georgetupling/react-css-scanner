@@ -18,6 +18,7 @@ export type {
   CascadeAnalysisResult,
   CascadeComparisonReason,
   CascadeComparisonStep,
+  CascadeConditionalOutcomeBranch,
   CascadeComputedProperty,
   CascadeComputedPropertySource,
   CascadeConditionSet,

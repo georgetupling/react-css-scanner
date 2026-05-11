@@ -14,6 +14,7 @@ const ZERO_FINDINGS_BY_RULE = {
   "orphan-css-file": 0,
   "duplicate-class-definition": 0,
   "declaration-always-shadowed": 0,
+  "selector-declaration-never-wins": 0,
   "unsatisfiable-selector": 0,
   "compound-selector-never-matched": 0,
   "unused-compound-selector-branch": 0,
@@ -167,6 +168,7 @@ test("scanProject returns deterministic public summary from discovered files", a
     assert.equal(result.config.rules["missing-css-module-class"], "error");
     assert.equal(result.config.rules["unused-css-module-class"], "warn");
     assert.equal(result.config.rules["declaration-always-shadowed"], "off");
+    assert.equal(result.config.rules["selector-declaration-never-wins"], "off");
     assert.equal(result.config.rules["dynamic-class-reference"], "debug");
     assert.equal(result.config.rules["unsupported-syntax-affecting-analysis"], "debug");
     assert.equal(result.config.externalCss.fetchRemote, false);
@@ -662,6 +664,73 @@ test("scanProject reports declarations shadowed inside the same supports context
 
     assert.ok(finding);
     assert.equal(result.summary.findingsByRule["declaration-always-shadowed"], 1);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("scanProject reports opt-in selector branches whose declarations never win", async () => {
+  const project = await new TestProjectBuilder()
+    .withConfig({
+      rules: {
+        "duplicate-class-definition": "off",
+        "selector-declaration-never-wins": "info",
+      },
+    })
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./App.css";\nexport function App() { return <section className="card">Hello</section>; }\n',
+    )
+    .withCssFile(
+      "src/App.css",
+      ".card { color: red; background-color: white; }\n.card { color: blue; background-color: black; }\n",
+    )
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+    const finding = result.findings.find(
+      (candidate) => candidate.ruleId === "selector-declaration-never-wins",
+    );
+
+    assert.ok(finding);
+    assert.equal(finding.severity, "info");
+    assert.equal(finding.confidence, "high");
+    assert.equal(finding.subject.kind, "selector-branch");
+    assert.equal(finding.data?.selectorText, ".card");
+    assert.deepEqual(finding.data?.properties, ["background-color", "color"]);
+    assert.equal(result.summary.findingsByRule["selector-declaration-never-wins"], 1);
+  } finally {
+    await project.cleanup();
+  }
+});
+
+test("scanProject does not report selector branches when one declaration still wins", async () => {
+  const project = await new TestProjectBuilder()
+    .withConfig({
+      rules: {
+        "duplicate-class-definition": "off",
+        "selector-declaration-never-wins": "info",
+      },
+    })
+    .withSourceFile(
+      "src/App.tsx",
+      'import "./App.css";\nexport function App() { return <section className="card">Hello</section>; }\n',
+    )
+    .withCssFile(
+      "src/App.css",
+      ".card { color: red; background-color: white; }\n.card { color: blue; }\n",
+    )
+    .build();
+
+  try {
+    const result = await scanProject({ rootDir: project.rootDir });
+
+    assert.equal(
+      result.findings.some((finding) => finding.ruleId === "selector-declaration-never-wins"),
+      false,
+    );
+    assert.equal(result.summary.findingsByRule["selector-declaration-never-wins"] ?? 0, 0);
   } finally {
     await project.cleanup();
   }

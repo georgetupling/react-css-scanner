@@ -203,6 +203,25 @@ Config:
   order coverage
 - only reports when cascade diagnostics and unresolved outcomes are absent for the declaration
 
+#### `selector-declaration-never-wins`
+
+Default severity: `off`
+
+Triggers when a selector branch has at least one cascade candidate and every declaration candidate
+produced by that branch loses to stronger cascade candidates wherever it can apply.
+
+Meaning:
+
+- the selector can produce declarations for modeled rendered elements
+- the scanner can prove none of those declarations wins the browser cascade for any modeled match
+- this is a selector-level cleanup signal for redundant rule blocks, broader than a single shadowed declaration
+
+Config:
+
+- should remain off by default while cascade analysis continues expanding condition, property, and runtime order coverage
+- only reports when cascade diagnostics and unresolved outcomes are absent for the selector branch
+- does not report when any declaration from the selector branch still wins
+
 ### Ownership And Architecture
 
 Ownership rules should be convention-aware and conservative by default.

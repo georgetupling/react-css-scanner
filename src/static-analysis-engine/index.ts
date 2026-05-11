@@ -84,6 +84,7 @@ export type {
   CascadeAnalysisResult,
   CascadeComparisonReason,
   CascadeComparisonStep,
+  CascadeConditionalOutcomeBranch,
   CascadeConditionSet,
   CascadeConditionSource,
   CascadeDeclarationCandidate,

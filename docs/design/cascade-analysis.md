@@ -65,7 +65,7 @@ Current implementation status:
 - `cascade-analysis` is scaffolded under `src/static-analysis-engine/pipeline/cascade-analysis`.
 - The stage currently runs after `ownership-inference` and before `run-rules`.
 - It emits declaration records, condition sets, declaration candidates, outcomes, diagnostics, and indexes.
-- The first pass is intentionally narrow: author stylesheet declarations plus bounded JSX inline style flow, limited CSS property effects, selector-branch render matches only, and one opt-in cascade-consuming rule.
+- The first pass is intentionally narrow: author stylesheet declarations plus bounded JSX inline style flow, limited CSS property effects, selector-branch render matches only, and opt-in cascade-consuming cleanup rules.
 - `scanProject()` uses rule-aware gating so projects only pay for cascade work when a cascade-aware rule is enabled.
 - Direct `runAnalysisPipeline()` calls still build cascade analysis by default for engine tests, tooling, and analysis inspection. Callers can request `cascadeAnalysis: "auto"` to use rule-aware gating.
 
@@ -487,27 +487,29 @@ export type CascadeAnalysisResult = {
 
 ## Initial Rule Targets
 
-Start with one opt-in/debug rule after the stage exists:
+Start with opt-in/debug rules after the stage exists:
 
 - `declaration-always-shadowed`
+- `selector-declaration-never-wins`
 
 Implementation status:
 
 - `declaration-always-shadowed` is implemented as an opt-in rule with default severity `off`.
 - It consumes cascade outcomes and declaration candidates rather than recomputing cascade logic.
-- It reports only when every candidate for a declaration definitely loses and the declaration has no cascade diagnostics.
+- It reports when every candidate for a declaration loses in every modeled context where that candidate can apply and the declaration has no cascade diagnostics.
+- `selector-declaration-never-wins` is implemented as an opt-in rule with default severity `off`.
+- It reports when every candidate produced by a selector branch loses in every modeled context where that candidate can apply, and it stays silent if any declaration from the selector branch still wins.
 
 Only report when:
 
 - at least one candidate for the declaration exists
 - every candidate loses
-- every loss is definite
+- every loss is definite or belongs to a modeled conditional branch where the candidate loses whenever that branch can apply
 - the winning declaration is known
 - no unresolved candidate could let the declaration win
 
 Future rules:
 
-- `selector-declaration-never-wins`
 - `same-property-conflict`
 - `component-style-overridden-externally`
 - `implicit-cascade-dependency`
@@ -608,4 +610,4 @@ Known limitations:
 - custom property cascade and definite `var()` substitution are modeled, but conditional, cyclic, and missing substitutions remain unsupported-property-semantics uncertainty
 - exact property values use `css-tree` typed property grammar validation, but shorthand expansion remains intentionally bounded; border shorthand parsing recognizes clear width/style/color tokens and intentionally rejects ambiguous whole-value variables
 - `background` shorthand parsing is `css-tree` validated but still partial: it models reset/winning behavior for the main background longhands, but it does not yet model every computed-value nuance or `var()` substitution
-- only `declaration-always-shadowed` consumes outcomes today, and it remains opt-in
+- only `declaration-always-shadowed` and `selector-declaration-never-wins` consume outcomes today, and both remain opt-in

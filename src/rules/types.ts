@@ -20,6 +20,7 @@ export type RuleId =
   | "orphan-css-file"
   | "duplicate-class-definition"
   | "declaration-always-shadowed"
+  | "selector-declaration-never-wins"
   | "unsatisfiable-selector"
   | "compound-selector-never-matched"
   | "unused-compound-selector-branch"

@@ -228,5 +228,8 @@ function oneOrMoreOwnershipRulesEnabled(snapshot: ProjectSnapshot) {
 
 function oneOrMoreCascadeRulesEnabled(snapshot: ProjectSnapshot) {
   const rules = snapshot.config.rules;
-  return rules["declaration-always-shadowed"] !== "off";
+  return (
+    rules["declaration-always-shadowed"] !== "off" ||
+    rules["selector-declaration-never-wins"] !== "off"
+  );
 }
